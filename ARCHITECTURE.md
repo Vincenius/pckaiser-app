@@ -3,21 +3,13 @@
 Turn-based mobile strategy game with async online multiplayer.
 Stack: Flutter + Flame (client) · Node.js + Fastify + PostgreSQL (backend) · Firebase Cloud Messaging (push) · Self-hosted via Docker + Nginx.
 
-- Room-based matchmaking in v1: players join using a shared room code. No random matchmaking.
-- No analytics or telemetry in v1.
-
 ---
 
 ## Principles
 
-- Mobile-first design: Android + iOS, touch controls, gesture navigation, pinch-to-zoom map view.
 - No auth in v1. Players are identified by a device-generated UUID stored in secure local storage.
 - Game state is the source of truth. It lives in a JSONB column on the `matches` table. Never split it across tables.
 - The server always validates turns. The client never mutates state directly — it submits an action, the server applies it and returns the new state.
-- Local and online modes share the same state model. Local saves state on device, online stores state on the backend.
-- Auto-save after each completed turn. No manual save UI in v1.
-- The game must protect players from immediate elimination by preventing player deaths during the first 10 years.
-- Matchmaking is simple room code sharing in v1; players create or join a room.
 - Push is fire-and-forget. FCM notifies the opponent when it is their turn. Delivery failure is acceptable; the game remains playable without it.
 
 ---
@@ -141,7 +133,7 @@ PORT=3000
 - Docker Compose runs Fastify + PostgreSQL together.
 - Nginx reverse proxies to Fastify on port 3000, terminates SSL via Let's Encrypt.
 - Run `pg_dump` as a daily cron job for backups.
-- Flutter app talks to `https://pckaiser.vincentwill.com/api/v1`.
+- Flutter app talks to `https://yourdomain.com/api/v1`.
 
 ---
 
