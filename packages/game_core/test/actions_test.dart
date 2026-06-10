@@ -133,6 +133,73 @@ void main() {
           ['buildingBuilt', 'townFounded']);
     });
 
+    test('builds a Hafen on unowned coastal water, taking ownership', () {
+      // Find an unowned water tile orthogonally adjacent to slot 1's land.
+      final map = state.map;
+      var found = (-1, -1);
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (!map.isWaterAt(x, y) ||
+              map.ownerAt(x, y) != World.niemand) {
+            continue;
+          }
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 1) {
+              found = (x, y);
+              break outer;
+            }
+          }
+        }
+      }
+      if (found == (-1, -1)) {
+        return; // landlocked start for this seed — nothing to test
+      }
+      final (x, y) = found;
+      final hafenBefore = state.realm(1).tileCount[Building.hafen];
+      final result = applyAction(
+          state,
+          Build(slot: 1, x: x, y: y, building: Building.hafen),
+          rng);
+      final realm = result.state.realm(1);
+      expect(result.state.map.ownerAt(x, y), 1,
+          reason: 'the build takes ownership of the coastal water');
+      expect(result.state.map.buildingAt(x, y), Building.hafen);
+      expect(realm.tileCount[Building.hafen], hafenBefore + 1);
+      expect(realm.tileCount[Building.none], 0,
+          reason: 'no owned-empty counter is consumed');
+      expect(realm.treasury, 1000 - 700);
+    });
+
+    test('rejects a Hafen on water without an adjacent own tile', () {
+      // The far corner is practically never adjacent to slot 1's cross.
+      final map = state.map;
+      var corner = (-1, -1);
+      outer:
+      for (var y = map.height - 1; y >= 0; y--) {
+        for (var x = map.width - 1; x >= 0; x--) {
+          if (map.isWaterAt(x, y) &&
+              map.ownerAt(x, y) == World.niemand &&
+              ![for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)])
+                if (map.inBounds(x + dx, y + dy)) map.ownerAt(x + dx, y + dy)]
+                  .contains(1)) {
+            corner = (x, y);
+            break outer;
+          }
+        }
+      }
+      expect(corner, isNot((-1, -1)));
+      expect(
+        () => applyAction(
+            state,
+            Build(slot: 1, x: corner.$1, y: corner.$2,
+                building: Building.hafen),
+            rng),
+        throwsA(isA<ActionException>()),
+      );
+    });
+
     test('rejects a Dorf without a name, Markt/Stadt, and unaffordable builds',
         () {
       final (x, y) = claimableTile();

@@ -138,6 +138,10 @@ void main() {
       expect(s.activeWar, isNull, reason: 'war ends on ruler capture');
       expect(s.realm(2).rulerId, s.realm(1).rulerId,
           reason: 'slot pointer overwritten');
+      // D1 decision: control follows the new ruler — the captured slot is
+      // now dispatched to the captor's controller.
+      expect(s.dynasty(2).status, s.dynasty(1).status);
+      expect(s.dynasty(2).humanPlayer, s.dynasty(1).humanPlayer);
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
       // Both rulers female, different religion? Same religion (katholisch),
       // marriage-incompatible (same gender) → loser was Kurfürstin? Human

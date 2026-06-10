@@ -79,6 +79,10 @@ void main() {
 
       expect(state.realm(1).rulerId, foreignSpouse.id,
           reason: 'peaceful inheritance path across dynasties');
+      // D1: control follows the inheriting ruler — slot 1 was human, the
+      // spouse's dynasty (slot 2) is AI, so slot 1 is now AI-dispatched.
+      expect(state.dynasty(1).status, state.dynasty(2).status);
+      expect(state.dynasty(1).humanPlayer, state.dynasty(2).humanPlayer);
     });
 
     test('ruler aliasing: the heir takes ALL the deceased\'s slots', () {

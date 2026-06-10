@@ -41,8 +41,10 @@ class GameSetup {
     required this.ottomanYear,
     required this.seed,
   }) {
-    if (humans.isEmpty || humans.length > 16) {
-      throw ArgumentError('1–16 human players, got ${humans.length}');
+    // 1–16 humans for real games; 0 is allowed for headless simulations
+    // (e.g. the full-AI smoke test).
+    if (humans.length > 16) {
+      throw ArgumentError('at most 16 human players, got ${humans.length}');
     }
     // "Das ist zu früh !!!" — each year validated independently (§5).
     if (reformationYear < minEventYear) {

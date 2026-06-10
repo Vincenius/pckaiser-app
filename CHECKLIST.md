@@ -54,30 +54,33 @@ Spec source of truth: `ORIGINAL_GAME.md` (§ references below point there).
 
 ## Phase 5 — Game Core: AI
 
-- [ ] AI turn script: sell, build loop, recruit, guard, ships, merge, war flag (§20)
-- [ ] AI war-round movement & peace decision (§11.2)
-- [ ] Full-AI smoke test: 30 AI realms, run 200 years headless without invariant violations
+- [x] AI turn script: sell, build loop, recruit, guard, ships, merge, war flag (§20) — `src/ai/ai_turn.dart`, uses the same action primitives via `applyActionInPlace`; realm merge (§6.2) implemented as `MergeRealms` action usable by humans too. Omitted: §20.9 "slight extra build-up in 1006/1009" (untraced cosmetic). AI without units recruits one first [INTERPRETATION]
+- [x] AI war-round movement & peace decision (§11.2) — attacker marches on the enemy capital, defender walks home; AI-vs-AI wars fast-forward in silent mode; `advanceUntilHuman` driver for local loop & server (stops when a human's action phase or a human-defended war is reached)
+- [x] Full-AI smoke test: 30 AI realms, run 200 years headless without invariant violations — `test/ai_test.dart`; `tool/sim_report.dart` prints event statistics (seed 777: 13 wars / 591 battles / 19 coronations / 6 realms left by 1200)
 
 ## Phase 6 — Flutter Client (V1, local)
 
-- [ ] Flame map rendering: tiles, ownership tint **+ color-blind-safe pattern overlays**, troop markers, pinch-zoom + pan
-- [ ] Tap-tile action sheet with costs; confirmation for irreversible actions
-- [ ] Bottom HUD (treasury, population, food, popularity, movement points)
-- [ ] Event feed (filters: my realm / wars / dynasty / world) + "since your last turn" recap card
-- [ ] Undo stack: deterministic actions undoable within turn; cleared on randomized/irreversible actions
-- [ ] Hidden-info views: own realm full, others filtered via `visibleStateFor`; intel report screen per realm
-- [ ] Menus: commerce, military, espionage, misc, info screens, chronicle
-- [ ] Setup flow: players, names, country, first Dorf, Reformation/Ottoman years (defaults 1020/1040, min 1011)
-- [ ] Hot-seat handoff screen (blocks predecessor's intel) + pending-decision prompts
-- [ ] Multiple named game slots; auto-save after every turn; resume
-- [ ] Accessibility: system font scale, 48dp touch targets, semantic labels on overlays
-- [ ] Localization: English default, German optional (string table from §23)
+- [x] Flame map rendering: tiles, ownership tint **+ color-blind-safe pattern overlays**, troop markers, pinch-zoom + pan — `game/map_game.dart` (whole map rasterized to one Picture per state change → 1 draw call/frame); `[APPROX]` shoreline mask→sprite mapping needs a visual pass on device
+- [x] Tap-tile action sheet with costs; confirmation for irreversible actions — `widgets/tile_sheet.dart`
+- [x] Bottom HUD (treasury, population, food, popularity, movement points) — incl. popularity-<30 warning indicator
+- [x] Event feed (filters: my realm / wars / dynasty / world) + "since your last turn" recap card — `widgets/event_feed.dart`
+- [x] Undo stack: deterministic actions undoable within turn; cleared on randomized/irreversible actions — `state/game_controller.dart` (snapshot stack)
+- [x] Hidden-info views: own realm full, others filtered via `visibleStateFor`; intel shown per realm in the Info screen (a dedicated intel-history screen can come in polish)
+- [x] Menus: commerce, military, espionage, misc, info screens, chronicle — `widgets/menus.dart` (sliders for amounts per PROJECT_REQUIREMENTS); war panel + claim-settlement UI in `widgets/war_panel.dart`
+- [x] Setup flow: players, names, country, first Dorf, Reformation/Ottoman years (defaults 1020/1040, min 1011) — `screens/setup_screen.dart`
+- [x] Hot-seat handoff screen (blocks predecessor's intel) + pending-decision prompts — full-screen blocker → recap card → decision dialogs (marriage consent, heir choice, child name, elector vote, bribery, coercion, convert-or-die)
+- [x] Multiple named game slots; auto-save after every turn; resume — home screen + SaveService
+- [x] Accessibility: 48dp touch targets (padded tap targets), semantic labels on HUD stats; system font scale respected by default — needs an on-device audit in Phase 7
+- [ ] Localization: English default, German optional (string table from §23) — basic en/de table + in-app toggle in `l10n/strings.dart`; full §23 coverage still to import
+
+> Note: not yet run on a device/emulator — no Android toolchain on this machine. All logic is covered by tests (controller turn flow, undo, handoff, auto-save); rendering and gestures need a visual pass when a device is available.
 
 ## Phase 7 — Polish & Release (V1)
 
-- [ ] Performance: 60 fps pan/zoom, <3 s cold start on mid-range device
-- [ ] Sound/music (optional), app icons, store metadata
-- [ ] Beta round (TestFlight / Play internal testing)
+- [ ] Performance: 60 fps pan/zoom, <3 s cold start on mid-range device — structurally addressed (map rasterized to one cached Picture, single draw call per frame); **measurement requires a device** (`flutter run --profile`)
+- [x] App icons (generated from the original Burg tile via `flutter_launcher_icons`, Android adaptive + iOS) and store metadata (`store/metadata.md`, EN/DE; screenshots pending device). **Sound/music: skipped by decision (2026-06-10).**
+- [ ] Beta round (TestFlight / Play internal testing) — prepared: release-signing scaffold (`key.properties` pattern in `build.gradle.kts`), build & upload steps documented in README.md; needs device + store accounts
+- [x] README.md with run/test/build/deploy instructions — **standing rule: keep it up to date with every setup/build/deploy change** (also in CLAUDE.md)
 
 ## Phase 8 — Online Mode (V2)
 
@@ -100,4 +103,6 @@ Spec source of truth: `ORIGINAL_GAME.md` (§ references below point there).
 - 2026-06-10: Protect-new-players rule scoped to **random** deaths only (aging, disease); assassinations resolve normally in years 1000–1009.
 - 2026-06-10: Remaining micro-gaps traced from the disassembly: setup years validated ≥ 1011 (§5); earthquake town damage exact (§18.1: `T = random(pop)`, proportional capacity/garrison loss); weight ≡ popularity, ONE stat with exact formula `round(stat × (100+S)/82)` capped ×1.05/turn + ±[1,3] nudge (§8.4); surplus clamp [−30, +15] and growth divisor 82 (§8.2); religion change −70 popularity (§4); guard cap 50 (§13); per-round town normalization pass (§8.3). War-round movement allowance: `[DESIGNED]` = normal movement roll per unit per round. Intel fuzz ±10% adopted as final design.
 - 2026-06-10: Modern features adopted: hidden info + espionage intel reports, event feed, undo within turn, accessibility baseline, multiple named save slots, host-configurable online turn timers (see PROJECT_REQUIREMENTS.md / ARCHITECTURE.md).
+- 2026-06-10: **Control follows the ruler** (post-review decision): when a slot's ruler pointer is overwritten cross-dynasty (conquest §11.2, inheritance §15.4), the slot's dispatch entry (status/humanPlayer) adopts the new ruler's home-dynasty controller (`alignSlotControl`). The original's behavior here is untraced; without this a captured human slot would still be dealt to the old player.
+- 2026-06-10: Post-review fixes: Hafen build = unowned coastal water adjacent to own land, taking ownership (was impossible — ownership check preceded the water rule); plunder guards against ownerless tiles; war-resume no longer duplicates feed events or re-runs the interrupted AI's action phase; bribery dialog charges the deciding finalist's treasury.
 - 2026-06-10: End-of-war "claim settlement" traced (the suspected plunder-budget screen): winner's war score = claim; claim ≥ 0.4 × loser territory → occupied tiles convert; smaller claim → human winner annexes loser tiles adjacent to own land at building-value cost, `F` converts the unspent claim 1:1 into Taler from the loser's treasury; AI winner settles automatically (`proc_00CC0B`, [APPROX]). §11.2/§11.5/§23 updated.

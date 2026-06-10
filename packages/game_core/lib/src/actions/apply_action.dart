@@ -1,6 +1,7 @@
 import '../rng/rng.dart';
 import '../rules/dynasty.dart';
 import '../rules/offices.dart';
+import '../rules/realm_merge.dart';
 import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
@@ -27,45 +28,53 @@ class ActionResult {
 /// Dorf rolls its starting population); `state.rngSeed` is updated so the
 /// save stays replayable.
 ActionResult applyAction(GameState state, PlayerAction action, Rng rng) {
+  final next = state.copy();
+  final events = applyActionInPlace(next, action, rng);
+  next.rngSeed = rng.seed;
+  next.events.addAll(events);
+  return ActionResult(next, events);
+}
+
+/// In-place variant for callers that already own a working copy — the AI
+/// turn script and the turn pipeline. Mutates [state], returns the events
+/// WITHOUT appending them to `state.events` (the caller does both).
+List<GameEvent> applyActionInPlace(
+    GameState state, PlayerAction action, Rng rng) {
   if (action.slot < 1 || action.slot > World.realmCount) {
     throw ActionException('invalid realm slot ${action.slot}');
   }
-  final next = state.copy();
-  final realm = next.realm(action.slot);
+  final realm = state.realm(action.slot);
   if (realm.isVacant) {
     throw ActionException('realm ${action.slot} is vacant');
   }
 
-  final events = switch (action) {
-    ClaimTile() => _claimTile(next, realm, action),
-    Build() => _build(next, realm, action, rng),
-    Demolish() => _demolish(next, realm, action),
-    ChangeReligion() => _changeReligion(next, realm, action),
-    SellGood() => _sellGood(next, realm, action),
-    InvestShips() => _investShips(next, realm, action, rng),
-    ProposeMarriage() => _proposeMarriage(next, realm, action, rng),
-    ResolveDecision() => _resolveDecision(next, realm, action, rng),
-    RecruitTroops() => applyRecruitTroops(next, realm, action, rng),
-    HireSoeldner() => applyHireSoeldner(next, realm, action),
-    ReinforceTroop() => applyReinforceTroop(next, realm, action, rng),
-    MergeTroops() => applyMergeTroops(next, realm, action),
-    DisbandTroop() => applyDisbandTroop(next, realm, action),
-    MoveTroop() => applyMoveTroop(next, realm, action),
-    DeclareWar() => applyDeclareWar(next, realm, action, rng),
-    WarMove() => applyWarMove(next, realm, action, rng),
-    WarPlunder() => applyWarPlunder(next, realm, action, rng),
-    WarPeaceWish() => applyWarPeaceWish(next, realm, action),
-    WarEndRound() => applyWarEndRound(next, realm, action, rng),
-    SettlementAnnex() => applySettlementAnnex(next, realm, action),
-    SettlementFinish() => applySettlementFinish(next, realm, action),
-    SpyMission() => applySpyMission(next, realm, action, rng),
-    OrderAssassination() => applyOrderAssassination(next, realm, action),
-    AdjustGuards() => applyAdjustGuards(next, realm, action),
+  return switch (action) {
+    ClaimTile() => _claimTile(state, realm, action),
+    Build() => _build(state, realm, action, rng),
+    Demolish() => _demolish(state, realm, action),
+    ChangeReligion() => _changeReligion(state, realm, action),
+    SellGood() => _sellGood(state, realm, action),
+    InvestShips() => _investShips(state, realm, action, rng),
+    ProposeMarriage() => _proposeMarriage(state, realm, action, rng),
+    ResolveDecision() => _resolveDecision(state, realm, action, rng),
+    MergeRealms() => _mergeRealms(state, realm, action, rng),
+    RecruitTroops() => applyRecruitTroops(state, realm, action, rng),
+    HireSoeldner() => applyHireSoeldner(state, realm, action),
+    ReinforceTroop() => applyReinforceTroop(state, realm, action, rng),
+    MergeTroops() => applyMergeTroops(state, realm, action),
+    DisbandTroop() => applyDisbandTroop(state, realm, action),
+    MoveTroop() => applyMoveTroop(state, realm, action),
+    DeclareWar() => applyDeclareWar(state, realm, action, rng),
+    WarMove() => applyWarMove(state, realm, action, rng),
+    WarPlunder() => applyWarPlunder(state, realm, action, rng),
+    WarPeaceWish() => applyWarPeaceWish(state, realm, action),
+    WarEndRound() => applyWarEndRound(state, realm, action, rng),
+    SettlementAnnex() => applySettlementAnnex(state, realm, action),
+    SettlementFinish() => applySettlementFinish(state, realm, action),
+    SpyMission() => applySpyMission(state, realm, action, rng),
+    OrderAssassination() => applyOrderAssassination(state, realm, action),
+    AdjustGuards() => applyAdjustGuards(state, realm, action),
   };
-
-  next.rngSeed = rng.seed;
-  next.events.addAll(events);
-  return ActionResult(next, events);
 }
 
 void _requireMovementPoint(Realm realm) {
@@ -141,7 +150,14 @@ List<GameEvent> _build(
   if (cost == null) {
     throw ActionException('this cannot be built');
   }
-  if (map.ownerAt(action.x, action.y) != realm.slot) {
+  final owner = map.ownerAt(action.x, action.y);
+  // A Hafen goes on a coastal water tile (§4/§5): water cannot be claimed,
+  // so building on unowned water next to your land takes ownership as part
+  // of the build — matching the starting-cross harbors.
+  final hafenOnCoast = building == Building.hafen &&
+      owner == World.niemand &&
+      _adjacentToOwn(map, realm.slot, action.x, action.y);
+  if (owner != realm.slot && !hafenOnCoast) {
     throw ActionException('you do not own this tile');
   }
   if (map.buildingAt(action.x, action.y) != Building.none) {
@@ -156,11 +172,7 @@ List<GameEvent> _build(
     Building.burg ||
     Building.palast =>
       Terrain.isLand(terrain),
-    // The starting cross puts the Hafen on an owned water tile (§5);
-    // explicit builds follow the same convention ("Hafen on the coast"):
-    // an owned water tile next to your land.
-    Building.hafen => Terrain.isWater(terrain) &&
-        _adjacentToOwn(map, realm.slot, action.x, action.y),
+    Building.hafen => Terrain.isWater(terrain),
     _ => false,
   };
   if (!terrainOk) {
@@ -177,7 +189,11 @@ List<GameEvent> _build(
   realm.movementPoints--;
   realm.treasury -= cost;
   map.building[map.index(action.x, action.y)] = building;
-  realm.tileCount[Building.none]--;
+  if (hafenOnCoast) {
+    map.owner[map.index(action.x, action.y)] = realm.slot;
+  } else {
+    realm.tileCount[Building.none]--;
+  }
   realm.tileCount[building]++;
 
   final events = <GameEvent>[
@@ -251,6 +267,17 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
       payload: {'x': action.x, 'y': action.y, 'building': building},
     ),
   ];
+}
+
+/// "Reiche zusammenlegen" (§6.2).
+List<GameEvent> _mergeRealms(
+    GameState state, Realm realm, MergeRealms action, Rng rng) {
+  if (!mergeableSlots(state, realm.slot).contains(action.sourceSlot)) {
+    throw ActionException('that realm cannot be merged into this one');
+  }
+  final events = <GameEvent>[];
+  mergeRealms(state, realm.slot, action.sourceSlot, rng, events);
+  return events;
 }
 
 /// Market sale (§9.1): once per good per turn, at the global year price.

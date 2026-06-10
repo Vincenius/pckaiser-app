@@ -7,6 +7,7 @@ library;
 
 export 'src/actions/apply_action.dart';
 export 'src/actions/player_action.dart';
+export 'src/ai/ai_turn.dart';
 export 'src/data/tables.dart';
 export 'src/map/map_generator.dart';
 export 'src/rng/rng.dart';
@@ -19,6 +20,7 @@ export 'src/rules/movement.dart';
 export 'src/rules/offices.dart';
 export 'src/rules/population.dart';
 export 'src/rules/protection.dart';
+export 'src/rules/realm_merge.dart';
 export 'src/rules/titles.dart';
 export 'src/rules/troops.dart';
 export 'src/rules/war.dart';

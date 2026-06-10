@@ -48,6 +48,26 @@ class LocalGameSession {
     return result;
   }
 
+  /// Restores a snapshot — the in-turn undo path (deterministic actions
+  /// only; the stack is managed by the GameController).
+  void restore(GameState snapshot) {
+    _state = snapshot;
+  }
+
+  /// Runs an in-place mutation (AI war movement, war round advance) on a
+  /// copy of the state. Used by the war UI driver.
+  List<GameEvent> mutate(
+      void Function(GameState state, Rng rng, List<GameEvent> events) f) {
+    final next = _state.copy();
+    final rng = Rng(next.rngSeed);
+    final events = <GameEvent>[];
+    f(next, rng, events);
+    next.rngSeed = rng.seed;
+    next.events.addAll(events);
+    _state = next;
+    return events;
+  }
+
   /// Ends the active player's turn, advances the pipeline and auto-saves.
   /// The returned events feed the "since your last turn" recap.
   Future<TurnResult> endTurn() async {
@@ -57,4 +77,18 @@ class LocalGameSession {
     await _saves.save(slotName, _state);
     return result;
   }
+
+  /// Ends the turn, then lets the AI realms play until a human's action
+  /// phase (or a human-defended war) is reached; auto-saves the result.
+  Future<TurnResult> endTurnAndAdvance() async {
+    final rng = Rng(_state.rngSeed);
+    final ended = completeTurn(_state, rng);
+    final advanced = advanceUntilHuman(ended.state, Rng(ended.state.rngSeed));
+    _state = advanced.state;
+    await _saves.save(slotName, _state);
+    return TurnResult(_state, [...ended.events, ...advanced.events]);
+  }
+
+  /// Persists the current state (used after war rounds resolve).
+  Future<void> save() => _saves.save(slotName, _state);
 }

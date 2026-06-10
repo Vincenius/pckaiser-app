@@ -200,6 +200,21 @@ void _birth(GameState state, Person parent, Person? partner, Rng rng,
   ));
 }
 
+/// Design decision (2026-06-10, CHECKLIST resolved-questions log): when a
+/// slot's ruler pointer is overwritten with a ruler from another dynasty —
+/// conquest (§11.2) or cross-dynasty inheritance (§15.4) — control of the
+/// slot follows the new ruler: the slot's dispatch entry adopts the
+/// controller (status + humanPlayer) of the ruler's home dynasty. Without
+/// this, a captured human slot would still be dealt to the old player.
+void alignSlotControl(GameState state, int slot, int? rulerId) {
+  final ruler = state.person(rulerId);
+  if (ruler == null || ruler.dynasty == slot) return;
+  final home = state.dynasty(ruler.dynasty);
+  final dynasty = state.dynasty(slot);
+  dynasty.status = home.status;
+  dynasty.humanPlayer = home.humanPlayer;
+}
+
 /// Death of any person (§15.4): removes them everywhere; rulers trigger
 /// succession across all their slots, office holders get their chronicle
 /// closed (§17.5).
@@ -244,6 +259,7 @@ void handleDeath(
     }
     for (final slot in ruledSlots) {
       state.realm(slot).rulerId = heir.id;
+      alignSlotControl(state, slot, heir.id);
     }
     events.add(GameEvent(
       year: state.year,
@@ -292,6 +308,7 @@ void handleDeath(
   final inheritor = livingRulers[rng.nextInt(livingRulers.length)];
   for (final slot in ruledSlots) {
     state.realm(slot).rulerId = inheritor;
+    alignSlotControl(state, slot, inheritor);
   }
   events.add(GameEvent(
     year: state.year,

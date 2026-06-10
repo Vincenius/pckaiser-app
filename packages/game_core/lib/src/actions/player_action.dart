@@ -29,6 +29,7 @@ sealed class PlayerAction {
         InvestShips.kind => InvestShips.fromJson(json),
         ProposeMarriage.kind => ProposeMarriage.fromJson(json),
         ResolveDecision.kind => ResolveDecision.fromJson(json),
+        MergeRealms.kind => MergeRealms.fromJson(json),
         RecruitTroops.kind => RecruitTroops.fromJson(json),
         HireSoeldner.kind => HireSoeldner.fromJson(json),
         ReinforceTroop.kind => ReinforceTroop.fromJson(json),
@@ -211,6 +212,28 @@ class ResolveDecision extends PlayerAction {
         'decisionId': decisionId,
         'choice': choice,
       };
+}
+
+/// "Reiche zusammenlegen" (§6.2): merge another slot you rule into this
+/// one. Free; the source must own ≥ 1 tile.
+class MergeRealms extends PlayerAction {
+  MergeRealms({required super.slot, required this.sourceSlot});
+
+  factory MergeRealms.fromJson(Map<String, dynamic> json) => MergeRealms(
+        slot: json['slot'] as int,
+        sourceSlot: json['sourceSlot'] as int,
+      );
+
+  static const kind = 'mergeRealms';
+
+  final int sourceSlot;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'sourceSlot': sourceSlot};
 }
 
 /// The two market goods (§9.1).

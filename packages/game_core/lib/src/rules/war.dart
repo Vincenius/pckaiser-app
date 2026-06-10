@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../actions/player_action.dart' show ActionException;
 import '../rng/rng.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
@@ -199,6 +200,7 @@ void endWarByCapture(GameState state, int captorSlot, Rng rng,
   ));
 
   loserRealm.rulerId = captor.rulerId; // slot pointer overwritten (§19)
+  dyn.alignSlotControl(state, loserSlot, captor.rulerId);
   _returnTroops(state, war, events);
   state.activeWar = null;
 
@@ -594,6 +596,10 @@ List<GameEvent> plunderTile(GameState state, int plundererSlot, int x,
   final map = state.map;
   final building = map.buildingAt(x, y);
   final victimSlot = map.ownerAt(x, y);
+  if (victimSlot == World.niemand) {
+    // An ownerless building has no victim to plunder.
+    throw ActionException('Hier steht doch gar nichts !');
+  }
   final plunderer = state.realm(plundererSlot);
   final victim = state.realm(victimSlot);
   final events = <GameEvent>[];

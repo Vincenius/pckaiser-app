@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'l10n/strings.dart';
+import 'screens/home_screen.dart';
+
 void main() {
   runApp(const PcKaiserApp());
 }
@@ -9,15 +12,17 @@ class PcKaiserApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'PC Kaiser',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.brown),
-      ),
-      home: const Scaffold(
-        body: Center(
-          child: Text('PC Kaiser'),
+    return ValueListenableBuilder(
+      valueListenable: appLocale,
+      builder: (context, _, _) => MaterialApp(
+        title: tr('appTitle'),
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF6D4C2F), brightness: Brightness.dark),
+          // Accessibility: generous minimum touch targets.
+          materialTapTargetSize: MaterialTapTargetSize.padded,
         ),
+        home: const HomeScreen(),
       ),
     );
   }

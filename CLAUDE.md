@@ -23,6 +23,9 @@ Keep it updated whenever the project scope or architecture changes.
 - `ARCHITECTURE.md` — system architecture and backend plan.
 - `PROJECT_REQUIREMENTS.md` — current requirements for v1.
 - `CHECKLIST.md` — step-by-step project plan and progress tracker.
+- `README.md` — how to run, test, build and deploy. **Always keep it up to
+  date**: any change to setup, build, test or deploy steps must update the
+  README in the same change.
 
 ## Implementation advice
 - Use a shared state format for game data in both local and online modes.
@@ -30,4 +33,4 @@ Keep it updated whenever the project scope or architecture changes.
 - Design small, isolated modules for economy, population, war, espionage, and events.
 
 ## Keep this file up to date
-Whenever requirements, architecture, or scope change, update `CLAUDE.md` and `ARCHITECTURE.md` together.
+Whenever requirements, architecture, or scope change, update `CLAUDE.md` and `ARCHITECTURE.md` together. Whenever run/test/build/deploy steps change, update `README.md` in the same change.
