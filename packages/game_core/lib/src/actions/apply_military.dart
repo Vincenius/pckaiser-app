@@ -124,8 +124,18 @@ List<GameEvent> applyReinforceTroop(
   return const [];
 }
 
+/// Merging/disbanding reshapes the troop list, which the active war's
+/// `movesLeft` and snapshots are keyed to — forbidden while at war.
+void _requireNotAtWar(GameState state, Realm realm) {
+  final war = state.activeWar;
+  if (war != null && war.isParticipant(realm.slot)) {
+    throw ActionException('Nicht mitten im Krieg !');
+  }
+}
+
 List<GameEvent> applyMergeTroops(
     GameState state, Realm realm, MergeTroops action) {
+  _requireNotAtWar(state, realm);
   if (action.fromIndex == action.toIndex) {
     throw ActionException('Wählen Sie zwei verschiedene Truppen !');
   }
@@ -141,6 +151,7 @@ List<GameEvent> applyMergeTroops(
 
 List<GameEvent> applyDisbandTroop(
     GameState state, Realm realm, DisbandTroop action) {
+  _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   if (troop.garrisonCounted) releaseGarrison(realm, troop.men);
   realm.troops.remove(troop);
@@ -188,6 +199,11 @@ List<GameEvent> applyDeclareWar(
       action.targetSlot > World.realmCount ||
       state.realm(action.targetSlot).isVacant) {
     throw ActionException('Ungültiges Kriegsziel !');
+  }
+  // [DEVIATION] No war against a slot your own ruler already holds
+  // (ruler aliasing, §19) — merging is the intended path.
+  if (state.realm(action.targetSlot).rulerId == realm.rulerId) {
+    throw ActionException('Dieses Reich gehört bereits Ihrem Herrscher !');
   }
   // [DEVIATION] Wars only against realms with a shared border.
   if (!state.map.realmNeighbors(realm.slot).contains(action.targetSlot)) {

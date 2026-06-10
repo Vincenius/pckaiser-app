@@ -3,6 +3,7 @@ class ChronicleRecord {
   ChronicleRecord({
     required this.name,
     required this.accessionYear,
+    this.personId,
     this.deathYear,
     this.epithet,
   });
@@ -11,12 +12,17 @@ class ChronicleRecord {
       ChronicleRecord(
         name: json['name'] as String,
         accessionYear: json['accessionYear'] as int,
+        personId: json['personId'] as int?,
         deathYear: json['deathYear'] as int?,
         epithet: json['epithet'] as String?,
       );
 
   final String name;
   final int accessionYear;
+
+  /// Office holder's person id — table names repeat, so the open record
+  /// is matched by id (null only in pre-personId saves).
+  final int? personId;
 
   /// Null while the office holder is alive / in office.
   int? deathYear;
@@ -27,6 +33,7 @@ class ChronicleRecord {
   ChronicleRecord copy() => ChronicleRecord(
         name: name,
         accessionYear: accessionYear,
+        personId: personId,
         deathYear: deathYear,
         epithet: epithet,
       );
@@ -34,6 +41,7 @@ class ChronicleRecord {
   Map<String, dynamic> toJson() => {
         'name': name,
         'accessionYear': accessionYear,
+        'personId': personId,
         'deathYear': deathYear,
         'epithet': epithet,
       };

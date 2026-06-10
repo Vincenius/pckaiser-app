@@ -346,6 +346,34 @@ void main() {
     });
   });
 
+  group('event log cap', () {
+    test('completeTurn prunes the oldest events past maxRetainedEvents',
+        () {
+      var state = startGame(freshGame(), Rng(1)).state;
+      // Inflate the log well past the cap with marker events.
+      for (var i = 0; i < maxRetainedEvents + 250; i++) {
+        state.events.add(GameEvent(
+          year: state.year,
+          slot: 0,
+          type: 'filler$i',
+          visibility: EventVisibility.public,
+        ));
+      }
+      final before = state.events.length;
+      final result = completeTurn(state, Rng(state.rngSeed));
+      final s = result.state;
+      expect(s.events.length, maxRetainedEvents);
+      expect(s.prunedEventCount,
+          before + result.events.length - maxRetainedEvents);
+      // The newest events (this turn's) survive; the oldest are gone.
+      expect(s.events.last.type, result.events.last.type);
+      expect(s.events.any((e) => e.type == 'filler0'), isFalse);
+      // The cap survives the save round-trip.
+      final json = s.toJson();
+      expect(GameState.fromJson(json).prunedEventCount, s.prunedEventCount);
+    });
+  });
+
   group('protect-new-players rule', () {
     test('is active in years 1000–1009 only', () {
       final state = startGame(freshGame(), Rng(1)).state;

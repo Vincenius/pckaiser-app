@@ -143,6 +143,22 @@ Espionage only matters if other realms' numbers are actually hidden, so visibili
 
 In local mode the same loop runs on-device: human turns come from the UI, AI turns and world phases from `game_core`, auto-save after every completed turn.
 
+### Human-vs-human wars online: blocking with a short war clock (decided 2026-06-10)
+
+**Problem.** A war runs up to 20 rounds; each round both sides move units, may plunder, and answer the peace question — up to ~40 awaited inputs ping-ponging between the two combatants. `GameState.activeWar` holds at most one war globally (original behavior) and the turn loop pauses while a human-defended war is open, so under the match-level timer (hours/days per input) a single human-vs-human war could freeze the other 14 players for days. Human-vs-AI wars are unaffected — they resolve inside the human's turn like any other action.
+
+**Decision: keep wars blocking, but give war inputs their own short clock.**
+
+- Wars stay sequential and global (one `activeWar`, turn loop paused). This preserves the original semantics — a war resolves inside the declarer's turn — and the `(state, action, rng) → state` replay/audit model. No parallel war track.
+- War-round input from the combatant who is not `current_turn` is modeled as a **pending decision** — the mechanism already covers "an action is awaited from a player out of turn order". War rounds never touch `current_turn`.
+- While a war awaits human input, `turn_deadline` is set from a separate **war clock** (`settings.war_round_timeout`, default 10 minutes, host-configurable) instead of `turn_timeout_hours`. The existing timeout job needs no new query — only the deadline source differs.
+- On war start both combatants get a push (`type: "WAR_STARTED"` — "be online or the AI fights for you"); each awaited war input pushes `YOUR_DECISION` as usual. In practice the war plays as a semi-live session.
+- An **expired war input falls back to the existing AI war logic** for that side, for that round (AI movement + the traced peace rules in `rules/war.dart`). The match never stalls; missing war rounds never eliminates anyone (consistent with general timeout policy).
+- A combatant can explicitly **delegate the rest of the war to the AI** (same code path as the timeout fallback) when they know they can't attend.
+- Bound: fully-AFK worst case ≈ 20 rounds × 2 sides × war clock ≈ 7 h at the default; with both players present a war takes minutes.
+
+**Rejected alternatives:** running the war in parallel with other turns (plunder/conquest/treasury transfers mutate shared state under interleaved turns; breaks replay and the single `activeWar`); WEGO battle-plan submission (deletes the game's main tactical moment); plain blocking under the match timer (unbounded freeze).
+
 ---
 
 ## RNG & Determinism

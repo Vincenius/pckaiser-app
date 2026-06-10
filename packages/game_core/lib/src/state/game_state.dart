@@ -39,6 +39,7 @@ class GameState {
     this.activeWar,
     List<PendingDecision>? pendingDecisions,
     List<GameEvent>? events,
+    this.prunedEventCount = 0,
   })  : assert(realms.length == World.realmCount),
         assert(dynasties.length == World.realmCount),
         kurfuerstenIds = kurfuerstenIds ?? [],
@@ -98,6 +99,7 @@ class GameState {
             ?.map((e) =>
                 GameEvent.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
+        prunedEventCount: json['prunedEventCount'] as int? ?? 0,
       );
 
   static List<ChronicleRecord> _recordList(Object? json) =>
@@ -168,7 +170,15 @@ class GameState {
   final List<PendingDecision> pendingDecisions;
 
   /// Append-only event log — feeds the event feed, recap and replay.
+  /// Capped: the turn pipeline drops the oldest entries past
+  /// `maxRetainedEvents` and counts them in [prunedEventCount], so the
+  /// state (copied per action, serialized per auto-save) stays bounded.
   final List<GameEvent> events;
+
+  /// How many old events have been pruned off the front of [events].
+  /// `prunedEventCount + index` is an event's stable absolute position —
+  /// recap baselines use it to survive pruning.
+  int prunedEventCount;
 
   /// Realm for a 1-based slot index.
   Realm realm(int slot) => realms[slot - 1];
@@ -208,6 +218,7 @@ class GameState {
         activeWar: activeWar?.copy(),
         pendingDecisions: List.of(pendingDecisions),
         events: List.of(events),
+        prunedEventCount: prunedEventCount,
       );
 
   Map<String, dynamic> toJson() => {
@@ -238,5 +249,6 @@ class GameState {
         'activeWar': activeWar?.toJson(),
         'pendingDecisions': [for (final d in pendingDecisions) d.toJson()],
         'events': [for (final e in events) e.toJson()],
+        'prunedEventCount': prunedEventCount,
       };
 }

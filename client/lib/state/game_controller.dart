@@ -15,7 +15,8 @@ class GameController extends ChangeNotifier {
   final LocalGameSession _session;
   final List<GameState> _undoStack = [];
 
-  /// events.length when each slot last finished looking at its recap.
+  /// Absolute event position (`prunedEventCount + list index`) up to which
+  /// each slot has seen its recap — stable across event-log pruning.
   final Map<int, int> _recapBaseline = {};
 
   bool _handoffPending = false;
@@ -76,7 +77,9 @@ class GameController extends ChangeNotifier {
 
   /// Events the seated player has not seen yet — the recap card.
   List<GameEvent> recapFor(int slot) {
-    final from = _recapBaseline[slot] ?? 0;
+    final baseline = _recapBaseline[slot] ?? 0;
+    final from =
+        (baseline - state.prunedEventCount).clamp(0, state.events.length);
     return [
       for (var i = from; i < state.events.length; i++)
         if (state.events[i].visibleTo(slot)) state.events[i],
@@ -89,7 +92,7 @@ class GameController extends ChangeNotifier {
   }
 
   void markRecapSeen(int slot) {
-    _recapBaseline[slot] = state.events.length;
+    _recapBaseline[slot] = state.prunedEventCount + state.events.length;
   }
 
   /// Deterministic in-turn action — undoable (PROJECT_REQUIREMENTS).

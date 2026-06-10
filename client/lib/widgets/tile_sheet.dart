@@ -43,9 +43,11 @@ Future<void> showTileActionSheet(
     }
   }
 
-  Future<void> run(gc.PlayerAction action) async {
+  Future<void> run(gc.PlayerAction action, {bool undoable = true}) async {
     try {
-      controller.applyUndoable(action);
+      undoable
+          ? controller.applyUndoable(action)
+          : controller.applyIrreversible(action);
     } on gc.ActionException catch (e) {
       toastError(e);
     }
@@ -111,12 +113,16 @@ Future<void> showTileActionSheet(
           Navigator.pop(context);
           final name = await _askTownName(context);
           if (name == null || name.isEmpty) return;
-          await run(gc.Build(
-              slot: slot,
-              x: x,
-              y: y,
-              building: gc.Building.dorf,
-              townName: name));
+          // Founding a Dorf rolls its starting population — randomized
+          // actions clear the undo stack (PROJECT_REQUIREMENTS).
+          await run(
+              gc.Build(
+                  slot: slot,
+                  x: x,
+                  y: y,
+                  building: gc.Building.dorf,
+                  townName: name),
+              undoable: false);
         },
       ));
     }

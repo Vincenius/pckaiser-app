@@ -566,7 +566,10 @@ List<GameEvent> _resolveDecision(
       if (heirId == null ||
           !candidates.contains(heirId) ||
           state.persons[heirId] == null) {
-        throw ActionException('Ungültige Erbwahl !');
+        // The chosen heir died in the meantime (disease, assassination):
+        // the provisional heir simply stays crowned — never throw, or the
+        // decision would be re-prompted with no resolvable answer.
+        break;
       }
       // Re-crown only slots still held by the provisional heir — conquest
       // in between must not be undone.
@@ -600,23 +603,30 @@ List<GameEvent> _resolveDecision(
       if (election == null ||
           election.office.name != payload['office'] ||
           election.bribesDone.contains(finalistId)) {
-        throw ActionException('Diese Wahlphase ist vorbei !');
+        // The election moved on without this decision (e.g. the finalist
+        // died) — resolving must not throw, or the now-removed decision
+        // would be restored with the discarded state copy and re-prompted
+        // forever. Stale phase: the resolution is simply a no-op.
+        break;
       }
+      // Validate exactly the gifts that will be applied — summing raw
+      // amounts would let negative entries offset an over-spend.
+      final gifts = <(int, int)>[];
       var total = 0;
-      final gifts = (choice['gifts'] as List? ?? const [])
-          .cast<Map<String, dynamic>>();
-      for (final gift in gifts) {
-        total += gift['amount'] as int;
-      }
-      if (total < 0 || total > realm.treasury) {
-        throw ActionException('Sie haben nicht genügend Taler für diese Bestechung !');
-      }
-      for (final gift in gifts) {
+      for (final gift in (choice['gifts'] as List? ?? const [])
+          .cast<Map<String, dynamic>>()) {
         final electorId = gift['electorId'] as int;
         final amount = gift['amount'] as int;
         if (amount <= 0 || !election.electorIds.contains(electorId)) {
           continue;
         }
+        gifts.add((electorId, amount));
+        total += amount;
+      }
+      if (total > realm.treasury) {
+        throw ActionException('Sie haben nicht genügend Taler für diese Bestechung !');
+      }
+      for (final (electorId, amount) in gifts) {
         realm.treasury -= amount;
         realmRuledBy(state, electorId)?.treasury += amount;
         election.addBribe(electorId, finalistId, amount);
@@ -645,7 +655,7 @@ List<GameEvent> _resolveDecision(
       final electorId = payload['electorId'] as int;
       final finalistId = choice['finalistId'] as int?;
       if (election == null || election.office.name != payload['office']) {
-        throw ActionException('Diese Wahl ist vorbei !');
+        break; // election already over — stale decision, no-op
       }
       if (finalistId == null ||
           !election.finalistIds.contains(finalistId)) {
@@ -693,9 +703,10 @@ List<GameEvent> _changeReligion(
   dynasty.religion = religion;
 
   // −70 popularity on every slot this ruler holds (ruler aliasing, §19).
+  // Clamped 0–100 like every other popularity write (Realm.popularity).
   for (final r in state.realms) {
     if (r.rulerId == realm.rulerId) {
-      r.popularity = (r.popularity - 70).clamp(0, 150);
+      r.popularity = (r.popularity - 70).clamp(0, 100);
     }
   }
 

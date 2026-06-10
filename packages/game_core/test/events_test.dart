@@ -192,4 +192,37 @@ void main() {
       expect(GameState.fromJson(json).toJson(), json);
     });
   });
+
+  group('disease mercy rule (§18.2 [DEVIATION])', () {
+    test('the last living member of a dynasty always survives an outbreak',
+        () {
+      for (var seed = 0; seed < 10; seed++) {
+        final state = freshGame(seed: 2026);
+        state.year = 1010; // protection window over
+        // Slot 1's founder stays the lone member of their dynasty; pad
+        // the world above the certain-outbreak threshold (> 250 persons)
+        // by enlarging the OTHER dynasties.
+        final loneId = state.dynasty(1).memberIds.single;
+        var id = state.nextPersonId;
+        while (state.persons.length <= 260) {
+          final slot = 2 + (id % 29);
+          final filler = Person(
+              id: id, name: 'P$id', age: 30, dynasty: slot, gender: id % 2);
+          state.persons[id] = filler;
+          state.dynasty(slot).memberIds.add(id);
+          id++;
+        }
+        state.nextPersonId = id;
+
+        final events = <GameEvent>[];
+        runWorldEvents(state, Rng(seed), events);
+        expect(events.any((e) => e.type == 'disease'), isTrue,
+            reason: '> 250 persons → certain outbreak');
+        expect(state.persons[loneId], isNotNull,
+            reason: 'seed $seed killed the last member of dynasty 1');
+        expect(state.persons.length, lessThan(261),
+            reason: 'population control still works');
+      }
+    });
+  });
 }

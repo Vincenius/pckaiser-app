@@ -29,8 +29,8 @@ void runWorldEvents(GameState state, Rng rng, List<GameEvent> events) {
 void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
   if (state.year < firstEarthquakeYear) return;
   if (rng.nextInt(10) != 0) return;
-  final ex = rng.nextInt(79);
-  final ey = rng.nextInt(43);
+  final ex = rng.nextInt(World.mapWidth);
+  final ey = rng.nextInt(World.mapHeight);
   final map = state.map;
   final affected = <int>{};
 
@@ -91,7 +91,11 @@ void _damageTown(Realm realm, Town town, int t) {
 }
 
 /// §18.2 disease: population control above 150/250 persons. One outbreak
-/// kills 50% of ALL persons in the world — brutal but original.
+/// kills 50% of ALL persons in the world. [DEVIATION] Mercy rule: a
+/// person who is currently the last living member of their dynasty is
+/// spared — the original could erase a player's whole dynasty in one
+/// between-turns tick with zero counterplay. Population control still
+/// works (the floor is one survivor per dynasty).
 /// Suppressed during the protect-new-players window (random deaths).
 void _maybeDisease(GameState state, Rng rng, List<GameEvent> events) {
   if (newPlayerProtectionActive(state)) return;
@@ -122,10 +126,12 @@ void _maybeDisease(GameState state, Rng rng, List<GameEvent> events) {
     }
   }
 
-  // Every person in the game dies with probability 1/2.
+  // Every person in the game dies with probability 1/2 — except the last
+  // member of a dynasty (mercy rule, see doc comment).
   for (final personId in List.of(state.persons.keys)) {
     final person = state.persons[personId];
     if (person == null) continue; // removed by an earlier succession chain
+    if (state.dynasty(person.dynasty).memberIds.length <= 1) continue;
     if (rng.nextInt(2) == 0) {
       events.add(GameEvent(
         year: state.year,

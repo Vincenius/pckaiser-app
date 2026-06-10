@@ -1,29 +1,45 @@
 import 'package:game_core/game_core.dart';
 
 void main() {
-  var state = startGame(
+  // `state.events` is capped (maxRetainedEvents), so tally incrementally
+  // from the TurnResults instead of the final state.
+  final counts = <String, int>{};
+  void tally(Iterable<GameEvent> events) {
+    for (final e in events) {
+      counts[e.type] = (counts[e.type] ?? 0) + 1;
+    }
+  }
+
+  final start = startGame(
       newGame(GameSetup(
         humans: const [],
         reformationYear: 1020,
         ottomanYear: 1040,
         seed: 777,
       )),
-      Rng(777)).state;
+      Rng(777));
+  var state = start.state;
+  tally(start.events);
+  var total = start.events.length;
   var safety = 0;
   while (state.year < 1200 && safety++ < 8000) {
     final slot = state.currentPlayer;
     if (!state.realm(slot).isVacant &&
         state.dynasty(slot).status == DynastyStatus.ai) {
-      state = runAiTurn(state, slot, Rng(state.rngSeed)).state;
+      final result = runAiTurn(state, slot, Rng(state.rngSeed));
+      state = result.state;
+      tally(result.events);
+      total += result.events.length;
     }
-    state = completeTurn(state, Rng(state.rngSeed)).state;
-    if (state.events.isNotEmpty && state.events.last.type == 'gameWon') break;
+    final result = completeTurn(state, Rng(state.rngSeed));
+    state = result.state;
+    tally(result.events);
+    total += result.events.length;
+    if (result.events.any((e) => e.type == 'gameWon')) break;
   }
-  final counts = <String, int>{};
-  for (final e in state.events) {
-    counts[e.type] = (counts[e.type] ?? 0) + 1;
-  }
-  print('final year: ${state.year}, events: ${state.events.length}');
+  print('final year: ${state.year}, events: $total '
+      '(retained in state: ${state.events.length}, '
+      'pruned: ${state.prunedEventCount})');
   final interesting = ['warDeclared', 'battle', 'rulerCaptured', 'warWon',
     'tileConquered', 'plunder', 'assassination', 'disease', 'earthquake',
     'reformation', 'ottomanInvasion', 'crowned', 'bankruptcy',

@@ -324,6 +324,9 @@ void showTroopActions(
   final capacity = realm.troopCapacity - realm.armySize;
   final maxReinforce =
       soeldner ? affordable : (capacity < affordable ? capacity : affordable);
+  // Merging/disbanding is forbidden while at war (the war state is keyed
+  // to the troop list) — mirror the engine gate so the options grey out.
+  final atWar = controller.state.activeWar?.isParticipant(slot) ?? false;
   final mergeTargets = [
     for (var i = 0; i < realm.troops.length; i++)
       if (i != index &&
@@ -363,6 +366,8 @@ void showTroopActions(
             leading: const Icon(Icons.merge),
             title: Text('Vereinigen mit „${realm.troops[other].name}" '
                 '(${realm.troops[other].men} Mann)'),
+            subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
+            enabled: !atWar,
             onTap: () {
               Navigator.pop(context);
               _tryAction(
@@ -376,6 +381,8 @@ void showTroopActions(
         ListTile(
           leading: const Icon(Icons.delete_outline),
           title: const Text('Truppe auflösen'),
+          subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
+          enabled: !atWar,
           onTap: () {
             Navigator.pop(context);
             _tryAction(context, controller,
@@ -404,6 +411,8 @@ void _declareWarSheet(BuildContext context, GameController controller) {
         for (final realm in state.realms)
           if (realm.slot != slot &&
               !realm.isVacant &&
+              // No war against a slot your own ruler already holds.
+              realm.rulerId != controller.currentRealm.rulerId &&
               neighbors.contains(realm.slot))
             ListTile(
               title: Text(gc.countryNames[realm.slot]),

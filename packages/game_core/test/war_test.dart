@@ -370,4 +370,81 @@ void main() {
           reason: '30 agents kill within 30 seeds (p≈30%+ each)');
     });
   });
+
+  group('war bookkeeping fixes', () {
+    test('no war against a slot your own ruler already holds', () {
+      state.realm(2).rulerId = state.realm(1).rulerId;
+      expect(
+        () => applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+            Rng(state.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'ruler aliasing — merge instead',
+      );
+    });
+
+    test('merge and disband are forbidden while at war', () {
+      var s = applyAction(state,
+              RecruitTroops(slot: 1, men: 10, troopClass: 0, name: 'Zweite'),
+              Rng(state.rngSeed))
+          .state;
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
+          .state;
+      expect(
+        () => applyAction(
+            s, DisbandTroop(slot: 1, unitIndex: 0), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      expect(
+        () => applyAction(
+            s, MergeTroops(slot: 1, fromIndex: 0, toIndex: 1), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+    });
+
+    test('movesLeft stays aligned with the troop list when a unit dies',
+        () {
+      // Give the defender a 1-man sacrifice unit at INDEX 0 (in front of
+      // its 50-man unit), so its death shifts every later index.
+      var s = applyAction(state,
+              RecruitTroops(slot: 2, men: 1, troopClass: 0, name: 'Opfer'),
+              Rng(state.rngSeed))
+          .state;
+      final defenderTroops = s.realm(2).troops;
+      defenderTroops.insert(0, defenderTroops.removeLast());
+      expect(defenderTroops.first.name, 'Opfer');
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
+          .state;
+      final attacker = s.realm(1).troops.first;
+      final victim =
+          s.realm(2).troops.firstWhere((t) => t.name == 'Opfer');
+      // Place the victim on flat open ground next to the attacker (def 0
+      // halves nothing away — 50 men kill 1 man on almost every roll).
+      victim.x = attacker.x + 1;
+      victim.y = attacker.y;
+      final map = s.map;
+      final index = map.index(victim.x, victim.y);
+      map.terrain[index] = Terrain.ebene;
+      map.building[index] = Building.none;
+      map.owner[index] = World.niemand;
+      s.activeWar!.movesLeft[1]![0] = 5;
+      final survivorMoves = s.activeWar!.movesLeft[2]![1];
+
+      var killed = false;
+      for (var seed = 0; seed < 20 && !killed; seed++) {
+        final trial = s.copy();
+        final result = applyAction(
+            trial, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(seed));
+        if (result.state.realm(2).troops.length == 1) {
+          killed = true;
+          final war = result.state.activeWar!;
+          expect(war.movesLeft[2], hasLength(1),
+              reason: 'the dead unit\'s entry is dropped');
+          expect(war.movesLeft[2]!.single, survivorMoves,
+              reason: 'the surviving unit keeps its own budget after the '
+                  'index shift');
+        }
+      }
+      expect(killed, isTrue, reason: '1-man unit dies within 20 seeds');
+    });
+  });
 }

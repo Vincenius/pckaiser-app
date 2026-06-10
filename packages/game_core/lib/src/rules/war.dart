@@ -53,8 +53,19 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
   }
 }
 
-/// §11.3 per-tile combat between two opposing units. Returns the events.
-/// One `RandomReal` roll per encounter; def = 0 → zero casualties.
+/// Per-tile combat between two opposing units. Returns the events.
+///
+/// [DEVIATION from §11.3] The original's formula made tile defense
+/// MULTIPLY the occupant's own losses (a Burg tripled your casualties)
+/// and open ground meant zero casualties ever — wars degenerated into
+/// walking races to the capital. The clone keeps the §10.1 power values
+/// and the one-roll-per-encounter shape, but losses now scale with the
+/// OPPONENT's power and are divided by the defender's tile defense:
+///
+///   losses_side = round(P_opponent × R / (2 × (1 + def_side)))
+///
+/// One `RandomReal` roll R ∈ [0, 1) per encounter. Spec'd in
+/// PROJECT_REQUIREMENTS.md "Rule deviations".
 List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
     int slotB, Troop b, Rng rng) {
   int defense(Troop t) {
@@ -69,11 +80,13 @@ List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
     return def;
   }
 
-  final r = rng.nextReal() / 2 * 0.2;
+  final r = rng.nextReal();
   final powerA = (a.men * (3 * a.troopClass + a.quality) / 10).floor();
   final powerB = (b.men * (3 * b.troopClass + b.quality) / 10).floor();
-  var lossesA = math.min(a.men, (powerB * defense(a) * 0.2 * r).round());
-  var lossesB = math.min(b.men, (powerA * defense(b) * 0.2 * r).round());
+  var lossesA =
+      math.min(a.men, (powerB * r / (2 * (1 + defense(a)))).round());
+  var lossesB =
+      math.min(b.men, (powerA * r / (2 * (1 + defense(b)))).round());
 
   if (lossesA == a.men && lossesB == b.men) {
     // Simultaneous annihilation: random(2) picks one side to keep 1 man.
@@ -84,8 +97,8 @@ List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
     }
   }
 
-  _applyLosses(state.realm(slotA), a, lossesA);
-  _applyLosses(state.realm(slotB), b, lossesB);
+  _applyLosses(state, slotA, a, lossesA);
+  _applyLosses(state, slotB, b, lossesB);
 
   return [
     GameEvent(
@@ -105,11 +118,19 @@ List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
   ];
 }
 
-void _applyLosses(Realm realm, Troop troop, int losses) {
+void _applyLosses(GameState state, int slot, Troop troop, int losses) {
   if (losses <= 0) return;
+  final realm = state.realm(slot);
   troop.men -= losses;
   if (troop.garrisonCounted) releaseGarrison(realm, losses);
   if (troop.men <= 0) {
+    // `movesLeft` is parallel to the troop list — drop the dead unit's
+    // entry too, or every later unit would read its neighbor's budget.
+    final index = realm.troops.indexOf(troop);
+    final moves = state.activeWar?.movesLeft[slot];
+    if (moves != null && index >= 0 && index < moves.length) {
+      moves.removeAt(index);
+    }
     realm.troops.remove(troop);
   }
 }

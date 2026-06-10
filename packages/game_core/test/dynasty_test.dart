@@ -316,4 +316,31 @@ void main() {
       expect(realm.titleClass, 11);
     });
   });
+
+  group('heirChoice resilience', () {
+    test('choosing an heir who died in the meantime keeps the provisional '
+        'heir without throwing', () {
+      final state = startGame(freshGame(), Rng(1)).state;
+      final provisional = state.realm(1).rulerId!;
+      state.pendingDecisions.add(PendingDecision(
+        id: 'heir-test',
+        type: 'heirChoice',
+        decidingSlot: 1,
+        payload: {
+          'deceasedName': 'Tot',
+          'candidateIds': [99999],
+          'provisionalHeirId': provisional,
+          'slots': [1],
+        },
+      ));
+      final result = applyAction(
+          state,
+          ResolveDecision(
+              slot: 1, decisionId: 'heir-test', choice: {'heirId': 99999}),
+          Rng(state.rngSeed));
+      expect(result.state.pendingDecisions, isEmpty,
+          reason: 'consumed without throwing');
+      expect(result.state.realm(1).rulerId, provisional);
+    });
+  });
 }

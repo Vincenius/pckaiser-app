@@ -237,6 +237,56 @@ void main() {
     });
   });
 
+  group('bribe validation & stale decisions', () {
+    test('negative gift amounts cannot offset an over-spend', () {
+      final state = startGame(freshGame(), Rng(1)).state;
+      state.year = 1010;
+      state.realm(1).titleClass = 8;
+      state.realm(1).treasury = 500;
+      refillKurfuersten(state, Rng(3), []);
+      final events = <GameEvent>[];
+      maybeStartElection(state, Office.kaiser, Rng(3), events);
+      advanceElection(state, Rng(3), events);
+      final bribe = state.pendingDecisions
+          .singleWhere((d) => d.type == 'electionBribe');
+      final electorIds = (bribe.payload['electorIds'] as List).cast<int>();
+      final finalistId = bribe.payload['finalistId'] as int;
+      final target = electorIds.firstWhere((e) => e != finalistId);
+
+      expect(
+        () => applyAction(
+            state,
+            ResolveDecision(slot: 1, decisionId: bribe.id, choice: {
+              'gifts': [
+                {'electorId': target, 'amount': -10000},
+                {'electorId': target, 'amount': 5000},
+              ],
+            }),
+            Rng(state.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'the −10,000 entry must not make 5,000 look affordable',
+      );
+    });
+
+    test('a stale electionBribe decision resolves as a no-op', () {
+      final state = startGame(freshGame(), Rng(1)).state;
+      // A leftover decision whose election no longer exists.
+      state.pendingDecisions.add(PendingDecision(
+        id: 'bribe-kaiser-99',
+        type: 'electionBribe',
+        decidingSlot: 1,
+        payload: {'office': 'kaiser', 'finalistId': 99, 'electorIds': <int>[]},
+      ));
+      final result = applyAction(
+          state,
+          ResolveDecision(
+              slot: 1, decisionId: 'bribe-kaiser-99', choice: const {}),
+          Rng(state.rngSeed));
+      expect(result.state.pendingDecisions, isEmpty,
+          reason: 'no throw — the decision is consumed, not re-prompted');
+    });
+  });
+
   group('election state JSON', () {
     test('ActiveElection round-trips through the save format', () {
       final election = ActiveElection(

@@ -40,7 +40,17 @@ Future<void> _promptDecision(BuildContext context,
           decision.id, decision.decidingSlot, {'accept': accept});
 
     case 'heirChoice':
-      final candidates = (p['candidateIds'] as List).cast<int>();
+      final candidates = (p['candidateIds'] as List)
+          .cast<int>()
+          .where((id) => state.persons[id] != null)
+          .toList();
+      if (candidates.isEmpty) {
+        // Everyone died in the meantime (disease): keep the provisional
+        // heir instead of showing an undismissable empty dialog.
+        await controller.resolveDecision(decision.id, decision.decidingSlot,
+            {'heirId': p['provisionalHeirId']});
+        return;
+      }
       final heir = await showDialog<int>(
         context: context,
         barrierDismissible: false,
@@ -48,12 +58,11 @@ Future<void> _promptDecision(BuildContext context,
           title: Text('Erbe von ${p['deceasedName']}'),
           children: [
             for (final id in candidates)
-              if (state.persons[id] != null)
-                SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, id),
-                  child: Text(
-                      '${state.persons[id]!.name} (${state.persons[id]!.age})'),
-                ),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, id),
+                child: Text(
+                    '${state.persons[id]!.name} (${state.persons[id]!.age})'),
+              ),
           ],
         ),
       );

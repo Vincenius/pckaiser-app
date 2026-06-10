@@ -141,7 +141,7 @@ void _runTownTransitions(
 
     if (town.population < 5) {
       // Garrison soldiers are removed from the army; the tile reverts.
-      realm.armySize -= town.garrison;
+      realm.armySize = math.max(0, realm.armySize - town.garrison);
       _reduceTroops(realm, town.garrison);
       realm.population -= math.max(0, town.population);
       realm.troopCapacity -= town.troopCapacity;

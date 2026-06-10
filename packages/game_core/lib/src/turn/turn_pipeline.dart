@@ -21,6 +21,19 @@ class TurnResult {
   final List<GameEvent> events;
 }
 
+/// Cap on `state.events`: the state is deep-copied on every action and
+/// serialized on every auto-save, so the log must stay bounded. 1,000
+/// events cover many rounds of recap/feed history; older ones are dropped
+/// at turn completion and counted in `prunedEventCount`.
+const int maxRetainedEvents = 1000;
+
+void _pruneEvents(GameState state) {
+  final excess = state.events.length - maxRetainedEvents;
+  if (excess <= 0) return;
+  state.events.removeRange(0, excess);
+  state.prunedEventCount += excess;
+}
+
 /// Starts the game (§6.1): rolls the world into year 1000 and runs the
 /// first slot's upkeep. Call once on a fresh [GameState] from `newGame`.
 TurnResult startGame(GameState state, Rng rng) {
@@ -34,6 +47,7 @@ TurnResult startGame(GameState state, Rng rng) {
   _beginTurn(next, rng, events);
   next.rngSeed = rng.seed;
   next.events.addAll(events);
+  _pruneEvents(next);
   return TurnResult(next, events);
 }
 
@@ -64,6 +78,7 @@ TurnResult completeTurn(GameState state, Rng rng) {
     ));
     next.rngSeed = rng.seed;
     next.events.addAll(events);
+    _pruneEvents(next);
     return TurnResult(next, events);
   }
 
@@ -76,6 +91,7 @@ TurnResult completeTurn(GameState state, Rng rng) {
 
   next.rngSeed = rng.seed;
   next.events.addAll(events);
+  _pruneEvents(next);
   return TurnResult(next, events);
 }
 

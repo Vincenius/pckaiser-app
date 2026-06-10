@@ -103,6 +103,14 @@ See `ORIGINAL_GAME.md` (§1–27) for exact formulas — all constants there are
 | Modal text walls for events | Event feed + turn recap | Mobile UX, async play |
 | Single implicit save | Multiple named game slots (each auto-saved) | Mobile expectations |
 | No action revert | Undo for deterministic actions within turn | Touch mistaps |
+| Combat (§11.3): tile defense MULTIPLIED the occupant's own losses; def 0 = never any casualties | `losses = round(P_opponent × R / (2 × (1 + def)))` — defense now reduces losses, open ground bleeds | Wars were walking races to the capital; combat now matters |
+| Disease kills 50% of ALL persons (§18.2) | Mercy rule: the last living member of a dynasty is spared | No zero-counterplay dynasty wipes |
+| AI election bribes: random(treasury) repeated until a 0-roll (≈ whole treasury spent) | Campaign budget capped at half the treasury | Healthy AI economies |
+| War declarable on any non-vacant realm | Not against a slot your own ruler already holds (aliasing, §19) | Merging is the intended path; self-war is nonsense |
+| Troop merge/disband any time | Forbidden while at war (the war state is keyed to the troop list) | Consistent war bookkeeping |
+| Unbounded event history in memory | In-state event log capped at 1,000 entries (`prunedEventCount` keeps absolute positions stable) | Bounded saves and state copies |
+
+Two undo/movement clarifications that follow from the table: founding a **Dorf** rolls its starting population, so it counts as a randomized action and clears the undo stack like battles and investments do. And peacetime troop **repositioning** (any own tile for 1 movement point) intentionally differs from war movement (strictly 1 tile per move): war marches are the tactical game, peacetime stationing is logistics.
 
 ---
 

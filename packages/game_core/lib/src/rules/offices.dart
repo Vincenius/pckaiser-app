@@ -156,8 +156,10 @@ void maybeStartElection(
     return;
   }
 
-  // Eliminate pairwise by title score down to 2 finalists; ties break
-  // randomly (shuffle by random draw, then sort stably by score).
+  // Eliminate down to 2 finalists by title score; ties break randomly:
+  // shuffle, then sort by (score desc, shuffled position asc). The
+  // explicit position tiebreaker keeps the shuffle effective — Dart's
+  // List.sort is not stable.
   final pool = List.of(candidates);
   for (var i = pool.length - 1; i > 0; i--) {
     final j = rng.nextInt(i + 1);
@@ -165,8 +167,15 @@ void maybeStartElection(
     pool[i] = pool[j];
     pool[j] = tmp;
   }
-  pool.sort((a, b) => _rulerTitleClass(state, b.id)
-      .compareTo(_rulerTitleClass(state, a.id)));
+  final shuffledIndex = {
+    for (var i = 0; i < pool.length; i++) pool[i].id: i,
+  };
+  pool.sort((a, b) {
+    final byScore = _rulerTitleClass(state, b.id)
+        .compareTo(_rulerTitleClass(state, a.id));
+    if (byScore != 0) return byScore;
+    return shuffledIndex[a.id]!.compareTo(shuffledIndex[b.id]!);
+  });
   final finalists = pool.take(2).toList();
 
   state.activeElection = ActiveElection(
@@ -208,14 +217,19 @@ void advanceElection(GameState state, Rng rng, List<GameEvent> events) {
       }
       return; // wait for the human
     }
-    // AI finalist: gift random(own treasury) to a random elector until a
-    // roll is 0.
+    // AI finalist: gift random amounts to random electors until a roll is
+    // 0. [DEVIATION] The original drew random(treasury) each time, which
+    // in expectation handed out nearly the whole treasury per election and
+    // wrecked AI economies — the clone caps the campaign budget at half
+    // the treasury and draws from what remains of it.
+    var budget = realm.treasury ~/ 2;
     for (var guard = 0; guard < 1000; guard++) {
-      if (realm.treasury <= 0) break;
-      final amount = rng.nextInt(realm.treasury);
+      if (budget <= 0) break;
+      final amount = rng.nextInt(budget);
       if (amount == 0) break;
       final electorId =
           election.electorIds[rng.nextInt(election.electorIds.length)];
+      budget -= amount;
       realm.treasury -= amount;
       realmRuledBy(state, electorId)?.treasury += amount;
       election.addBribe(electorId, finalistId, amount);
@@ -306,12 +320,12 @@ void _crown(GameState state, Office office, Person winner,
     List<GameEvent> events, {bool acclaimed = false}) {
   if (office == Office.kaiser) {
     state.kaiserId = winner.id;
-    state.kaiserChronicle.add(
-        ChronicleRecord(name: winner.name, accessionYear: state.year));
+    state.kaiserChronicle.add(ChronicleRecord(
+        name: winner.name, accessionYear: state.year, personId: winner.id));
   } else {
     state.sultanId = winner.id;
-    state.sultanChronicle.add(
-        ChronicleRecord(name: winner.name, accessionYear: state.year));
+    state.sultanChronicle.add(ChronicleRecord(
+        name: winner.name, accessionYear: state.year, personId: winner.id));
   }
   events.add(GameEvent(
     year: state.year,
@@ -346,11 +360,18 @@ void closeChronicleIfOfficeHolder(
     return;
   }
 
+  // Match the open record by person id (names from the tables repeat);
+  // fall back to name matching only for pre-personId saves.
   var record = chronicle.lastWhere(
-    (r) => r.name == deceased.name && r.deathYear == null,
+    (r) =>
+        r.deathYear == null &&
+        (r.personId == deceased.id ||
+            (r.personId == null && r.name == deceased.name)),
     orElse: () {
       final r = ChronicleRecord(
-          name: deceased.name, accessionYear: state.year);
+          name: deceased.name,
+          accessionYear: state.year,
+          personId: deceased.id);
       chronicle.add(r);
       return r;
     },
