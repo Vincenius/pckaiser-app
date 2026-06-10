@@ -86,6 +86,46 @@ const List<String> placeNames = [
   'Waltersee', 'Frauentürk', 'Heißenwald', 'Kaltenbruck', 'Wien-Hütteldorf',
 ];
 
+/// Epithet pools (§22.6), four pools of 20, chosen by reign length × weight
+/// when a Kaiser/Sultan dies in office (§17.5). Truncated entries and
+/// duplicates are verbatim from the original data. Pool 4 has only 19
+/// usable entries — the 20th slot overlapped adjacent data; a roll of 19
+/// reuses entry 0.
+const List<List<String>> epithetPools = [
+  // Pool 1: long reign + good weight.
+  [
+    'Der Große', 'Der Gute', 'Der Schöne', 'Der Lange', 'Der Gutmütige',
+    'Der Tapfere', 'Der Mutige', 'Der Reiche', 'Der Stifter',
+    'Der Tugendhafte', 'Der Eroberer', 'Der Keusche', 'Der Heilige',
+    'Der Fromme', 'Der Prächtige', 'Der Löwe', 'Der Weise', 'Der Fleißige',
+    'Der Ritterliche', 'Der letzte Ritter',
+  ],
+  // Pool 2: long reign + poor weight.
+  [
+    'Der Lange', 'Der Sonnenkönig', 'Der Böse', 'Der Schreckliche',
+    'Der Kühne', 'Der Eroberer', 'Der Alte', 'Der Hammer', 'Der Gottlose',
+    'Die Geisel Gottes', 'Der Dumme', 'Der Schwachsinnige', 'Der Kämpfer',
+    'Der Kahle', 'Der Riese', 'Der Schlimme', 'Der Schlaue', 'Der Fälscher',
+    'Der Wütende', 'Des Reiches Schande',
+  ],
+  // Pool 3: short reign + good weight.
+  [
+    'Der Kurze', 'Der Kleine', 'Der Kühne', 'Der Tapfere', 'Der Kahle',
+    'Der Keusche', 'Der Kluge', 'Der Gutmütige', 'Der Brave',
+    'Der Gottfrömmige', 'Der Adler', 'Der Fröhliche', 'Der Heilige',
+    'Der Gute', 'Der Magere', 'Der Schlaue', 'Der Händler', 'Der Fremde',
+    'Der Redliche', 'Der Hinterlistige',
+  ],
+  // Pool 4: short reign + poor weight (19 entries).
+  [
+    'Der Böse', 'Der Schreckliche', 'Der Stinkende', 'Der Zwerg',
+    'Der Schlaue', 'Der Fähige', 'Der Durchtriebene', 'Der Räuber',
+    'Der Magere', 'Der Übermütige', 'Der Schnelle', 'Der Dumme',
+    'Der Reisende', 'Der Rohe', 'Der Starke', 'Der Verrückte',
+    'Der Schläfrige', 'Der Unfromme', 'Der Streitbare',
+  ],
+];
+
 /// Title ladders (§16.1): `titleClass` 1–8 Christian, 9–12 Muslim;
 /// +12 for the female form. Index 0 unused.
 const List<String> maleTitles = [

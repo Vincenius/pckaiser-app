@@ -36,21 +36,21 @@ Spec source of truth: `ORIGINAL_GAME.md` (§ references below point there).
 
 ## Phase 3 — Game Core: Dynasty & Society
 
-- [ ] Aging & death roll, succession priority, ruler aliasing across slots (§15, §19)
-- [ ] Births (age 0 fix), marriages, divorce, Islamic succession crisis (§14, §15)
-- [ ] Titles & prestige score, promotions (§16)
-- [ ] Kurfürsten, Kaiser/Sultan elections incl. bribery, chronicle & epithets (§17)
-- [ ] Pending-decisions queue (marriage consent, elector votes, heir choice — ARCHITECTURE.md)
+- [x] Aging & death roll, succession priority, ruler aliasing across slots (§15, §19) — `rules/dynasty.dart`; death rolls suppressed in the protection window; heir takes ALL the deceased's slots; spouse-inheritance across dynasties
+- [x] Births (age 0 fix), marriages, divorce, Islamic succession crisis (§14, §15) — incl. phantom births, conversion divorce hooked into ChangeReligion; crisis crowns the female heir but flips the dynasty to AI
+- [x] Titles & prestige score, promotions (§16) — `rules/titles.dart`, checked in every upkeep, never demotes
+- [x] Kurfürsten, Kaiser/Sultan elections incl. bribery, chronicle & epithets (§17) — `rules/offices.dart` + `ActiveElection` state (JSON-persistable, survives async waits); AI bribery `random(treasury)`-until-0; vote tie keeps throne vacant (original behavior); epithet 2×2 matrix. Sultan electorate = Muslim rulers (interpretation of "same pattern")
+- [x] Pending-decisions queue — `marriageConsent`, `heirChoice` (provisional priority heir applied immediately, re-crowned on resolution), `childName` (non-blocking rename), `electionBribe`, `electorVote`; all resolved via the `ResolveDecision` action; AI deciders resolve inline
 
 ## Phase 4 — Game Core: Conflict & Events
 
-- [ ] Troops: recruitment, garrisons, merge/disband/reinforce (§10)
-- [ ] War: declaration gates, war-round loop, termination (ruler capture / mutual peace / winter >20 rounds), per-tile combat, end-of-war 0.4-threshold resolution, conquest transfer, troop return (§11)
-- [ ] Post-war coercion — only on ruler capture (§12)
-- [ ] Plunder (§11.5)
-- [ ] Espionage & assassination (§13)
-- [ ] Events: earthquake, disease, Reformation, Ottoman invasion, merchant founders, bankruptcy & revolts (§18, §19)
-- [ ] Elimination & win check (§19)
+- [x] Troops: recruitment, garrisons, merge/disband/reinforce (§10) — `rules/troops.dart` + actions; merge requires same class+quality (simplification)
+- [x] War: declaration gates, war-round loop, termination (ruler capture / mutual peace / winter >20 rounds), per-tile combat, end-of-war 0.4-threshold resolution, conquest transfer, troop return (§11) — `rules/war.dart` + `ActiveWar` state; war actions (`WarMove`/`WarPlunder`/`WarPeaceWish`/`WarEndRound`/`SettlementAnnex`/`SettlementFinish`); AI sides hold position until Phase 5 (their traced peace rules incl. the dead-check quirk are in)
+- [x] Post-war coercion — only on ruler capture (§12) — first applicable option; human victor/loser via `coercion`/`convertOrDie` pending decisions, AI via coin flip
+- [x] Plunder (§11.5) — exact rolls; town loot does NOT touch the victim's treasury (original quirk kept)
+- [x] Espionage & assassination (§13) — counter-espionage rolls, 5-check economy reveals, ±10% fuzz into IntelReports; deferred assassination resolved at the target's end-of-turn with public sponsor reveal on failure
+- [x] Events: earthquake, disease, Reformation, Ottoman invasion, merchant founders, bankruptcy & revolts (§18, §19) — `rules/events.dart`. Interpretations: Reformation converts one random AI dynasty; Ottoman target prefers AI realms; merchant-founder rate `[DESIGNED]` 1/10 per vacant slot per round. Disease suppressed in protection window
+- [x] Elimination & win check (§19) — strife + bankruptcy (title-class debt ladder, tile seizures, replacement dynasty via §5 formula); win check was done in Phase 2
 
 ## Phase 5 — Game Core: AI
 

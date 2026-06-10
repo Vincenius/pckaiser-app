@@ -49,13 +49,19 @@ void main() {
       final realm = state.realm(1);
       // Movement roll for Burgherrin (class 13 → equivalent 1): [1, 6].
       expect(realm.movementPoints, inInclusiveRange(1, 6));
-      // Taxes [pop, 2×pop) minus 10% tribute keep the treasury > 1000.
-      expect(realm.treasury, greaterThan(1000));
       expect(state.kaiserPot, greaterThan(0), reason: 'tribute was paid');
 
       final upkeep =
           result.events.where((e) => e.type == 'turnUpkeep').single;
       expect(upkeep.slot, 1);
+      // Treasury follows exactly from the upkeep report.
+      expect(
+          realm.treasury,
+          1000 +
+              (upkeep.payload['tax'] as int) -
+              (upkeep.payload['tribute'] as int) +
+              (upkeep.payload['harborIncome'] as int) -
+              (upkeep.payload['wages'] as int));
       expect(upkeep.payload['tax'],
           inInclusiveRange(realm.population, 2 * realm.population * 2));
       expectInvariants(state);
@@ -218,6 +224,10 @@ void main() {
       town2.population = 600;
       state.realm(3).population += 1500 - town3.population;
       town3.population = 1500;
+      // Keep both realms fed so growth cannot shrink them below the
+      // promotion thresholds before the transition check runs.
+      state.realm(2).grainHarvest = 10000;
+      state.realm(3).grainHarvest = 10000;
 
       var s = completeTurn(state, Rng(state.rngSeed)).state; // slot 2
       s = completeTurn(s, Rng(s.rngSeed)).state; // slot 3

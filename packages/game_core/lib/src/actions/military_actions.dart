@@ -1,0 +1,424 @@
+part of 'player_action.dart';
+
+/// Recruit a new regular unit (§10.2): 5 T/man + class surcharge; men are
+/// quartered in towns against free capacity.
+class RecruitTroops extends PlayerAction {
+  RecruitTroops({
+    required super.slot,
+    required this.men,
+    required this.troopClass,
+    required this.name,
+  });
+
+  factory RecruitTroops.fromJson(Map<String, dynamic> json) => RecruitTroops(
+        slot: json['slot'] as int,
+        men: json['men'] as int,
+        troopClass: json['troopClass'] as int,
+        name: json['name'] as String,
+      );
+
+  static const kind = 'recruitTroops';
+
+  final int men;
+  final int troopClass;
+  final String name;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'men': men,
+        'troopClass': troopClass,
+        'name': name,
+      };
+}
+
+/// Hire Söldner (§10.2): 50 T/man, not garrison-counted, ongoing wages.
+class HireSoeldner extends PlayerAction {
+  HireSoeldner({required super.slot, required this.men, required this.name});
+
+  factory HireSoeldner.fromJson(Map<String, dynamic> json) => HireSoeldner(
+        slot: json['slot'] as int,
+        men: json['men'] as int,
+        name: json['name'] as String,
+      );
+
+  static const kind = 'hireSoeldner';
+
+  final int men;
+  final String name;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'men': men, 'name': name};
+}
+
+/// "Truppe verstärken" — add men to an existing unit (§10.2).
+class ReinforceTroop extends PlayerAction {
+  ReinforceTroop(
+      {required super.slot, required this.unitIndex, required this.men});
+
+  factory ReinforceTroop.fromJson(Map<String, dynamic> json) =>
+      ReinforceTroop(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        men: json['men'] as int,
+      );
+
+  static const kind = 'reinforceTroop';
+
+  final int unitIndex;
+  final int men;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'unitIndex': unitIndex, 'men': men};
+}
+
+/// "Truppen vereinigen" — merge unit [fromIndex] into [toIndex] (§10.2).
+class MergeTroops extends PlayerAction {
+  MergeTroops(
+      {required super.slot, required this.fromIndex, required this.toIndex});
+
+  factory MergeTroops.fromJson(Map<String, dynamic> json) => MergeTroops(
+        slot: json['slot'] as int,
+        fromIndex: json['fromIndex'] as int,
+        toIndex: json['toIndex'] as int,
+      );
+
+  static const kind = 'mergeTroops';
+
+  final int fromIndex;
+  final int toIndex;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'fromIndex': fromIndex,
+        'toIndex': toIndex,
+      };
+}
+
+/// "Truppe auflösen" — disband a unit (§10.2).
+class DisbandTroop extends PlayerAction {
+  DisbandTroop({required super.slot, required this.unitIndex});
+
+  factory DisbandTroop.fromJson(Map<String, dynamic> json) => DisbandTroop(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+      );
+
+  static const kind = 'disbandTroop';
+
+  final int unitIndex;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'unitIndex': unitIndex};
+}
+
+/// "Truppenstandort" — reposition a unit on own territory (1 movement
+/// point, §10.2).
+class MoveTroop extends PlayerAction {
+  MoveTroop({
+    required super.slot,
+    required this.unitIndex,
+    required this.x,
+    required this.y,
+  });
+
+  factory MoveTroop.fromJson(Map<String, dynamic> json) => MoveTroop(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'moveTroop';
+
+  final int unitIndex;
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'x': x,
+        'y': y,
+      };
+}
+
+/// "(K)rieg erklären" (§11.1): year ≥ 1010, once per year, needs troops.
+class DeclareWar extends PlayerAction {
+  DeclareWar({required super.slot, required this.targetSlot});
+
+  factory DeclareWar.fromJson(Map<String, dynamic> json) => DeclareWar(
+        slot: json['slot'] as int,
+        targetSlot: json['targetSlot'] as int,
+      );
+
+  static const kind = 'declareWar';
+
+  final int targetSlot;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'targetSlot': targetSlot};
+}
+
+/// One-tile war-round move (§11.2); meeting an enemy unit fights (§11.3),
+/// reaching the enemy capital captures the ruler.
+class WarMove extends PlayerAction {
+  WarMove({
+    required super.slot,
+    required this.unitIndex,
+    required this.dx,
+    required this.dy,
+  });
+
+  factory WarMove.fromJson(Map<String, dynamic> json) => WarMove(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        dx: json['dx'] as int,
+        dy: json['dy'] as int,
+      );
+
+  static const kind = 'warMove';
+
+  final int unitIndex;
+
+  /// One orthogonal step: (dx, dy) ∈ {(±1,0),(0,±1)}.
+  final int dx;
+  final int dy;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'dx': dx,
+        'dy': dy,
+      };
+}
+
+/// "Plündern" during a war round (§11.5) — once per side per round.
+class WarPlunder extends PlayerAction {
+  WarPlunder({required super.slot, required this.x, required this.y});
+
+  factory WarPlunder.fromJson(Map<String, dynamic> json) => WarPlunder(
+        slot: json['slot'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'warPlunder';
+
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+}
+
+/// "Will `<Land>` ein Ende des Krieges ?" — set this side's peace wish
+/// for the current round (§11.2).
+class WarPeaceWish extends PlayerAction {
+  WarPeaceWish({required super.slot, required this.wantsPeace});
+
+  factory WarPeaceWish.fromJson(Map<String, dynamic> json) => WarPeaceWish(
+        slot: json['slot'] as int,
+        wantsPeace: json['wantsPeace'] as bool,
+      );
+
+  static const kind = 'warPeaceWish';
+
+  final bool wantsPeace;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'wantsPeace': wantsPeace};
+}
+
+/// Ends the current war round: termination checks run, then the next
+/// round's movement allowances are rolled (§11.2).
+class WarEndRound extends PlayerAction {
+  WarEndRound({required super.slot});
+
+  factory WarEndRound.fromJson(Map<String, dynamic> json) =>
+      WarEndRound(slot: json['slot'] as int);
+
+  static const kind = 'warEndRound';
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
+}
+
+/// Claim settlement: annex one loser tile at its building value (§11.2).
+class SettlementAnnex extends PlayerAction {
+  SettlementAnnex({required super.slot, required this.x, required this.y});
+
+  factory SettlementAnnex.fromJson(Map<String, dynamic> json) =>
+      SettlementAnnex(
+        slot: json['slot'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'settlementAnnex';
+
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+}
+
+/// Claim settlement: press `F` (fertig) — unspent claim pays out 1:1 in
+/// Taler from the loser's treasury (§11.2).
+class SettlementFinish extends PlayerAction {
+  SettlementFinish({required super.slot});
+
+  factory SettlementFinish.fromJson(Map<String, dynamic> json) =>
+      SettlementFinish(slot: json['slot'] as int);
+
+  static const kind = 'settlementFinish';
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
+}
+
+/// The two intel mission kinds (§13).
+enum SpyKind { economy, military }
+
+/// Intel mission (§13.1/§13.2): 1–30 agents at 200 T each.
+class SpyMission extends PlayerAction {
+  SpyMission({
+    required super.slot,
+    required this.targetSlot,
+    required this.agents,
+    required this.spyKind,
+  });
+
+  factory SpyMission.fromJson(Map<String, dynamic> json) => SpyMission(
+        slot: json['slot'] as int,
+        targetSlot: json['targetSlot'] as int,
+        agents: json['agents'] as int,
+        spyKind: SpyKind.values.byName(json['spyKind'] as String),
+      );
+
+  static const kind = 'spyMission';
+
+  final int targetSlot;
+  final int agents;
+  final SpyKind spyKind;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'targetSlot': targetSlot,
+        'agents': agents,
+        'spyKind': spyKind.name,
+      };
+}
+
+/// "(A)nschlag verüben" (§13.3): 1–30 agents at 250 T each; queued,
+/// resolved in the event phase.
+class OrderAssassination extends PlayerAction {
+  OrderAssassination({
+    required super.slot,
+    required this.targetSlot,
+    required this.agents,
+  });
+
+  factory OrderAssassination.fromJson(Map<String, dynamic> json) =>
+      OrderAssassination(
+        slot: json['slot'] as int,
+        targetSlot: json['targetSlot'] as int,
+        agents: json['agents'] as int,
+      );
+
+  static const kind = 'orderAssassination';
+
+  final int targetSlot;
+  final int agents;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'targetSlot': targetSlot,
+        'agents': agents,
+      };
+}
+
+/// "(v)erstärken" / dismiss guards (§13): hire at 100 T per guard
+/// (cap 50); dismissing is free.
+class AdjustGuards extends PlayerAction {
+  AdjustGuards({required super.slot, required this.delta});
+
+  factory AdjustGuards.fromJson(Map<String, dynamic> json) => AdjustGuards(
+        slot: json['slot'] as int,
+        delta: json['delta'] as int,
+      );
+
+  static const kind = 'adjustGuards';
+
+  final int delta;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'delta': delta};
+}

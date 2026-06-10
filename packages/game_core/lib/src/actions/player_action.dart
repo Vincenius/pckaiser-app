@@ -3,6 +3,8 @@
 /// locally in hot-seat mode — both through `applyAction`.
 library;
 
+part 'military_actions.dart';
+
 /// Thrown when an action fails validation. The message is player-facing.
 class ActionException implements Exception {
   ActionException(this.message);
@@ -25,6 +27,24 @@ sealed class PlayerAction {
         ChangeReligion.kind => ChangeReligion.fromJson(json),
         SellGood.kind => SellGood.fromJson(json),
         InvestShips.kind => InvestShips.fromJson(json),
+        ProposeMarriage.kind => ProposeMarriage.fromJson(json),
+        ResolveDecision.kind => ResolveDecision.fromJson(json),
+        RecruitTroops.kind => RecruitTroops.fromJson(json),
+        HireSoeldner.kind => HireSoeldner.fromJson(json),
+        ReinforceTroop.kind => ReinforceTroop.fromJson(json),
+        MergeTroops.kind => MergeTroops.fromJson(json),
+        DisbandTroop.kind => DisbandTroop.fromJson(json),
+        MoveTroop.kind => MoveTroop.fromJson(json),
+        DeclareWar.kind => DeclareWar.fromJson(json),
+        WarMove.kind => WarMove.fromJson(json),
+        WarPlunder.kind => WarPlunder.fromJson(json),
+        WarPeaceWish.kind => WarPeaceWish.fromJson(json),
+        WarEndRound.kind => WarEndRound.fromJson(json),
+        SettlementAnnex.kind => SettlementAnnex.fromJson(json),
+        SettlementFinish.kind => SettlementFinish.fromJson(json),
+        SpyMission.kind => SpyMission.fromJson(json),
+        OrderAssassination.kind => OrderAssassination.fromJson(json),
+        AdjustGuards.kind => AdjustGuards.fromJson(json),
         final t => throw ArgumentError('unknown action type: $t'),
       };
 
@@ -123,6 +143,74 @@ class Demolish extends PlayerAction {
   @override
   Map<String, dynamic> toJson() =>
       {'type': kind, 'slot': slot, 'x': x, 'y': y};
+}
+
+/// Menu action "H(e)irat vorschlagen" (§14.1): propose a marriage between
+/// one of your dynasty members and a candidate. An AI-controlled target
+/// rolls 25% immediately; a human target gets a pending decision.
+class ProposeMarriage extends PlayerAction {
+  ProposeMarriage({
+    required super.slot,
+    required this.proposerId,
+    required this.targetId,
+  });
+
+  factory ProposeMarriage.fromJson(Map<String, dynamic> json) =>
+      ProposeMarriage(
+        slot: json['slot'] as int,
+        proposerId: json['proposerId'] as int,
+        targetId: json['targetId'] as int,
+      );
+
+  static const kind = 'proposeMarriage';
+
+  final int proposerId;
+  final int targetId;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'proposerId': proposerId,
+        'targetId': targetId,
+      };
+}
+
+/// Resolves a [PendingDecision] addressed to this slot (ARCHITECTURE.md):
+/// marriage consent, heir choice, child naming, election bribes and
+/// elector votes all arrive through this one action.
+class ResolveDecision extends PlayerAction {
+  ResolveDecision({
+    required super.slot,
+    required this.decisionId,
+    this.choice = const {},
+  });
+
+  factory ResolveDecision.fromJson(Map<String, dynamic> json) =>
+      ResolveDecision(
+        slot: json['slot'] as int,
+        decisionId: json['decisionId'] as String,
+        choice: (json['choice'] as Map?)?.cast<String, dynamic>() ?? const {},
+      );
+
+  static const kind = 'resolveDecision';
+
+  final String decisionId;
+  final Map<String, dynamic> choice;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'decisionId': decisionId,
+        'choice': choice,
+      };
 }
 
 /// The two market goods (§9.1).

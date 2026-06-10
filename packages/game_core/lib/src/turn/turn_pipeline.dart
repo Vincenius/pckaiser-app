@@ -1,8 +1,13 @@
 import '../rng/rng.dart';
+import '../rules/dynasty.dart';
 import '../rules/economy.dart';
+import '../rules/espionage.dart';
+import '../rules/events.dart';
 import '../rules/market.dart';
 import '../rules/movement.dart';
+import '../rules/offices.dart';
 import '../rules/population.dart';
+import '../rules/titles.dart';
 import '../state/constants.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
@@ -43,9 +48,11 @@ TurnResult completeTurn(GameState state, Rng rng) {
   final next = state.copy();
   final events = <GameEvent>[];
 
-  // End-of-turn for the active slot — Phase 3/4 fill these in:
-  // dynasty events (§15), pending assassinations (§13.3), elimination
-  // checks (§19.1–19.2, gated by newPlayerProtectionActive).
+  // End-of-turn for the active slot (§6.1 step 3): dynasty events,
+  // pending assassinations, elimination checks.
+  runDynastyPhase(next, next.currentPlayer, rng, events);
+  resolveAssassinations(next, next.currentPlayer, rng, events);
+  runEliminationChecks(next, next.currentPlayer, rng, events);
 
   final winner = checkWinCondition(next);
   if (winner != null) {
@@ -95,11 +102,9 @@ int? checkWinCondition(GameState state) {
 void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   state.year++;
   rollMarketPrices(state, rng);
-
-  // World-event phase (§18) — Phase 4: earthquake, disease, Reformation,
-  // Ottoman invasion, merchant founders.
-
+  runWorldEvents(state, rng, events); // §18
   normalizeTowns(state);
+  runOfficePhase(state, rng, events); // Kurfürsten + elections (§17)
 
   for (final realm in state.realms) {
     realm.warThisYear = false; // wars: once per year per player (§11.1)
@@ -116,6 +121,7 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
 
   final food = runFoodAndPopulation(state, realm, rng, events);
   final economy = runEconomy(state, realm, rng);
+  checkTitlePromotion(state, realm, events); // §16.2: every turn
 
   realm.movementPoints = rollMovementPoints(realm.titleClass, rng);
   realm.soldGrainThisTurn = false;

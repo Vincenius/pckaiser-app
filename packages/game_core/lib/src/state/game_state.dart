@@ -1,10 +1,12 @@
 import 'chronicle.dart';
 import 'constants.dart';
 import 'dynasty.dart';
+import 'election.dart';
 import 'game_event.dart';
 import 'pending_decision.dart';
 import 'person.dart';
 import 'realm.dart';
+import 'war.dart';
 import 'world_map.dart';
 
 /// The complete game state (ORIGINAL_GAME.md §2). One JSON document — the
@@ -33,6 +35,8 @@ class GameState {
     required this.realms,
     required this.dynasties,
     required this.rngSeed,
+    this.activeElection,
+    this.activeWar,
     List<PendingDecision>? pendingDecisions,
     List<GameEvent>? events,
   })  : assert(realms.length == World.realmCount),
@@ -78,6 +82,14 @@ class GameState {
             .map((d) => Dynasty.fromJson((d as Map).cast<String, dynamic>()))
             .toList(),
         rngSeed: json['rngSeed'] as int,
+        activeElection: json['activeElection'] == null
+            ? null
+            : ActiveElection.fromJson(
+                (json['activeElection'] as Map).cast<String, dynamic>()),
+        activeWar: json['activeWar'] == null
+            ? null
+            : ActiveWar.fromJson(
+                (json['activeWar'] as Map).cast<String, dynamic>()),
         pendingDecisions: (json['pendingDecisions'] as List?)
             ?.map((d) => PendingDecision.fromJson(
                 (d as Map).cast<String, dynamic>()))
@@ -145,6 +157,14 @@ class GameState {
   /// makes saves replayable (ARCHITECTURE.md "RNG & Determinism").
   int rngSeed;
 
+  /// Ongoing Kaiser/Sultan election, while human bribery/votes are pending
+  /// (§17.3); null when no election is running.
+  ActiveElection? activeElection;
+
+  /// Ongoing war (§11); at most one at a time, as in the original (wars
+  /// run synchronously inside the declaring player's turn).
+  ActiveWar? activeWar;
+
   final List<PendingDecision> pendingDecisions;
 
   /// Append-only event log — feeds the event feed, recap and replay.
@@ -184,6 +204,8 @@ class GameState {
         realms: [for (final r in realms) r.copy()],
         dynasties: [for (final d in dynasties) d.copy()],
         rngSeed: rngSeed,
+        activeElection: activeElection?.copy(),
+        activeWar: activeWar?.copy(),
         pendingDecisions: List.of(pendingDecisions),
         events: List.of(events),
       );
@@ -212,6 +234,8 @@ class GameState {
         'realms': [for (final r in realms) r.toJson()],
         'dynasties': [for (final d in dynasties) d.toJson()],
         'rngSeed': rngSeed,
+        'activeElection': activeElection?.toJson(),
+        'activeWar': activeWar?.toJson(),
         'pendingDecisions': [for (final d in pendingDecisions) d.toJson()],
         'events': [for (final e in events) e.toJson()],
       };

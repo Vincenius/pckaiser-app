@@ -1,10 +1,14 @@
 import '../rng/rng.dart';
+import '../rules/dynasty.dart';
+import '../rules/offices.dart';
+import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
 import '../state/town.dart';
 import '../state/world_map.dart';
+import 'apply_military.dart';
 import 'player_action.dart';
 
 /// Result of applying an action: the new state plus the events it emitted.
@@ -39,6 +43,24 @@ ActionResult applyAction(GameState state, PlayerAction action, Rng rng) {
     ChangeReligion() => _changeReligion(next, realm, action),
     SellGood() => _sellGood(next, realm, action),
     InvestShips() => _investShips(next, realm, action, rng),
+    ProposeMarriage() => _proposeMarriage(next, realm, action, rng),
+    ResolveDecision() => _resolveDecision(next, realm, action, rng),
+    RecruitTroops() => applyRecruitTroops(next, realm, action, rng),
+    HireSoeldner() => applyHireSoeldner(next, realm, action),
+    ReinforceTroop() => applyReinforceTroop(next, realm, action, rng),
+    MergeTroops() => applyMergeTroops(next, realm, action),
+    DisbandTroop() => applyDisbandTroop(next, realm, action),
+    MoveTroop() => applyMoveTroop(next, realm, action),
+    DeclareWar() => applyDeclareWar(next, realm, action, rng),
+    WarMove() => applyWarMove(next, realm, action, rng),
+    WarPlunder() => applyWarPlunder(next, realm, action, rng),
+    WarPeaceWish() => applyWarPeaceWish(next, realm, action),
+    WarEndRound() => applyWarEndRound(next, realm, action, rng),
+    SettlementAnnex() => applySettlementAnnex(next, realm, action),
+    SettlementFinish() => applySettlementFinish(next, realm, action),
+    SpyMission() => applySpyMission(next, realm, action, rng),
+    OrderAssassination() => applyOrderAssassination(next, realm, action),
+    AdjustGuards() => applyAdjustGuards(next, realm, action),
   };
 
   next.rngSeed = rng.seed;
@@ -305,6 +327,179 @@ List<GameEvent> _investShips(
   ];
 }
 
+/// "H(e)irat vorschlagen" (§14.1): validates eligibility, then either the
+/// AI 25% roll or a pending decision for a human target.
+List<GameEvent> _proposeMarriage(
+    GameState state, Realm realm, ProposeMarriage action, Rng rng) {
+  final proposer = state.persons[action.proposerId];
+  final target = state.persons[action.targetId];
+  if (proposer == null || target == null) {
+    throw ActionException('person not found');
+  }
+  if (proposer.dynasty != realm.slot) {
+    throw ActionException('the proposer is not in your dynasty');
+  }
+  final eligible = proposer.spouseId == null &&
+      target.spouseId == null &&
+      proposer.gender != target.gender &&
+      proposer.age >= 14 &&
+      target.age >= 14 &&
+      (proposer.age - target.age).abs() < 10 &&
+      proposer.dynasty != target.dynasty &&
+      state.dynasty(proposer.dynasty).religion ==
+          state.dynasty(target.dynasty).religion;
+  if (!eligible) {
+    throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
+  }
+  final events = <GameEvent>[];
+  proposeMarriage(state, proposer, target, rng, events);
+  return events;
+}
+
+/// Resolves a pending decision addressed to this slot.
+List<GameEvent> _resolveDecision(
+    GameState state, Realm realm, ResolveDecision action, Rng rng) {
+  final index =
+      state.pendingDecisions.indexWhere((d) => d.id == action.decisionId);
+  if (index < 0) {
+    throw ActionException('decision ${action.decisionId} not found');
+  }
+  final decision = state.pendingDecisions[index];
+  if (decision.decidingSlot != action.slot) {
+    throw ActionException('this decision is not yours to make');
+  }
+  state.pendingDecisions.removeAt(index);
+
+  final events = <GameEvent>[];
+  final payload = decision.payload;
+  final choice = action.choice;
+
+  switch (decision.type) {
+    case 'marriageConsent':
+      final proposer = state.persons[payload['proposerId'] as int];
+      final target = state.persons[payload['targetId'] as int];
+      final stillValid = proposer != null &&
+          target != null &&
+          proposer.spouseId == null &&
+          target.spouseId == null;
+      if (choice['accept'] == true && stillValid) {
+        marry(state, proposer, target, events);
+      } else {
+        events.add(GameEvent(
+          year: state.year,
+          slot: decision.decidingSlot,
+          type: 'marriageRejected',
+          visibility: EventVisibility.participants,
+          participants: [
+            decision.decidingSlot,
+            if (proposer != null) proposer.dynasty,
+          ],
+          payload: payload,
+        ));
+      }
+
+    case 'heirChoice':
+      final heirId = choice['heirId'] as int?;
+      final candidates = (payload['candidateIds'] as List).cast<int>();
+      final provisional = payload['provisionalHeirId'] as int;
+      if (heirId == null ||
+          !candidates.contains(heirId) ||
+          state.persons[heirId] == null) {
+        throw ActionException('invalid heir choice');
+      }
+      // Re-crown only slots still held by the provisional heir — conquest
+      // in between must not be undone.
+      for (final slot in (payload['slots'] as List).cast<int>()) {
+        if (state.realm(slot).rulerId == provisional) {
+          state.realm(slot).rulerId = heirId;
+        }
+      }
+      events.add(GameEvent(
+        year: state.year,
+        slot: decision.decidingSlot,
+        type: 'succession',
+        visibility: EventVisibility.public,
+        payload: {
+          'deceased': payload['deceasedName'],
+          'heir': state.persons[heirId]!.name,
+          'chosen': true,
+        },
+      ));
+
+    case 'childName':
+      final child = state.persons[payload['childId'] as int];
+      final name = (choice['name'] as String?)?.trim() ?? '';
+      if (child != null && name.isNotEmpty) {
+        child.name = name;
+      }
+
+    case 'electionBribe':
+      final election = state.activeElection;
+      final finalistId = payload['finalistId'] as int;
+      if (election == null ||
+          election.office.name != payload['office'] ||
+          election.bribesDone.contains(finalistId)) {
+        throw ActionException('this election phase is over');
+      }
+      var total = 0;
+      final gifts = (choice['gifts'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
+      for (final gift in gifts) {
+        total += gift['amount'] as int;
+      }
+      if (total < 0 || total > realm.treasury) {
+        throw ActionException('not enough Taler for these bribes');
+      }
+      for (final gift in gifts) {
+        final electorId = gift['electorId'] as int;
+        final amount = gift['amount'] as int;
+        if (amount <= 0 || !election.electorIds.contains(electorId)) {
+          continue;
+        }
+        realm.treasury -= amount;
+        realmRuledBy(state, electorId)?.treasury += amount;
+        election.addBribe(electorId, finalistId, amount);
+      }
+      election.bribesDone.add(finalistId);
+      advanceElection(state, rng, events);
+
+    case 'coercion':
+      final victor = state.persons[payload['victorId'] as int];
+      final captured = state.persons[payload['capturedRulerId'] as int];
+      if (victor != null && captured != null && choice['apply'] != false) {
+        war_rules.applyCoercion(state, payload['option'] as String, victor,
+            captured, rng, events);
+      }
+
+    case 'convertOrDie':
+      final captured = state.persons[payload['capturedRulerId'] as int];
+      if (captured != null) {
+        war_rules.applyConvertOrDie(state, captured,
+            payload['religion'] as int, choice['accept'] == true, rng,
+            events);
+      }
+
+    case 'electorVote':
+      final election = state.activeElection;
+      final electorId = payload['electorId'] as int;
+      final finalistId = choice['finalistId'] as int?;
+      if (election == null || election.office.name != payload['office']) {
+        throw ActionException('this election is over');
+      }
+      if (finalistId == null ||
+          !election.finalistIds.contains(finalistId)) {
+        throw ActionException('vote for one of the finalists');
+      }
+      election.votes[electorId] = finalistId;
+      advanceElection(state, rng, events);
+
+    default:
+      throw ActionException('unknown decision type ${decision.type}');
+  }
+
+  return events;
+}
+
 /// Religion change (§4): katholisch free, evangelisch 500 T, moslemisch
 /// 1,000 T. Availability follows §15.2 (Reformation/Ottoman gates).
 /// Any conversion costs −70 popularity (clamped ≥ 0) on every slot the
@@ -347,6 +542,10 @@ List<GameEvent> _changeReligion(
     state.kurfuerstenIds.remove(realm.rulerId);
   }
 
+  // §14.4: religiously incompatible marriages dissolve.
+  final events = <GameEvent>[];
+  divorceIncompatibleCouples(state, realm.slot, events);
+
   // Switch the title ladder (§16.1). The exact class mapping is not in the
   // spec; we reset to the ladder's floor (Scheich/Ritter) and let the
   // per-turn promotion check (§16.2, Phase 3) climb back by prestige.
@@ -358,13 +557,12 @@ List<GameEvent> _changeReligion(
     realm.titleClass = baseClass + (female ? 12 : 0);
   }
 
-  return [
-    GameEvent(
-      year: state.year,
-      slot: realm.slot,
-      type: 'religionChanged',
-      visibility: EventVisibility.public,
-      payload: {'religion': religion},
-    ),
-  ];
+  events.add(GameEvent(
+    year: state.year,
+    slot: realm.slot,
+    type: 'religionChanged',
+    visibility: EventVisibility.public,
+    payload: {'religion': religion},
+  ));
+  return events;
 }
