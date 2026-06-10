@@ -1,16 +1,61 @@
 # Architecture Guide
 
-Turn-based mobile strategy game with async online multiplayer.
-Stack: Flutter + Flame (client) · Node.js + Fastify + PostgreSQL (backend) · Firebase Cloud Messaging (push) · Self-hosted via Docker + Nginx.
+Turn-based mobile strategy game with async online multiplayer (up to 16 human players per match; the world always has 30 realms — AI fills the rest).
+Stack: Flutter + Flame (client) · Dart `shelf` + PostgreSQL (backend) · Firebase Cloud Messaging (push) · Self-hosted via Docker + Nginx.
 
 ---
 
 ## Principles
 
+- **One game-logic implementation.** All rules live in a pure Dart package (`game_core`) shared verbatim by the Flutter client (local mode) and the Dart server (online mode). Only persistence and orchestration differ.
+- **Pure, deterministic logic.** Domain functions take `(state, action, rng)` and return a new state plus emitted events. The RNG is injected (seeded), never global — this makes the logic testable and lets the server reproduce/validate outcomes.
 - No auth in v1. Players are identified by a device-generated UUID stored in secure local storage.
 - Game state is the source of truth. It lives in a JSONB column on the `matches` table. Never split it across tables.
 - The server always validates turns. The client never mutates state directly — it submits an action, the server applies it and returns the new state.
-- Push is fire-and-forget. FCM notifies the opponent when it is their turn. Delivery failure is acceptable; the game remains playable without it.
+- Push is fire-and-forget. FCM notifies the next human player when it is their turn. Delivery failure is acceptable; the game remains playable without it.
+
+---
+
+## Shared Game Core (Dart package)
+
+```
+/packages/game_core
+  lib/
+    src/
+      state/        # GameState, Realm, Dynasty, Person, Town, Troop, Tile — hand-written toJson/fromJson (no codegen; missing fields get defaults for forward compatibility)
+      rules/        # economy.dart, population.dart, market.dart, military.dart,
+                    # war.dart, espionage.dart, marriage.dart, dynasty.dart,
+                    # titles.dart, offices.dart, events.dart, elimination.dart
+      ai/           # ai_turn.dart — same action primitives as humans
+      actions/      # action types (claim, build, recruit, declareWar, …) + validation
+      visibility/   # visibleStateFor(state, slot), IntelReport model
+      rng/          # injectable RNG abstraction (seeded)
+    game_core.dart
+  test/             # golden-state tests per module
+```
+
+Key API: `applyAction(GameState, PlayerAction, Rng) → (GameState, List<GameEvent>)`,
+`runAiTurn(GameState, int slot, Rng) → (GameState, List<GameEvent>)`,
+`runWorldPhase(...)`, `checkWinCondition(GameState)`,
+`visibleStateFor(GameState, int slot)`.
+
+`GameEvent`s are the single source for all player-facing notifications: the
+client's **event feed** renders them (with filters and a "since your last
+turn" recap), and undo/replay tooling consumes the same stream. Events carry
+`{year, slot, type, visibility, payload}` — `visibility` controls who sees
+them in filtered views (public / owner-only / participants).
+
+### Realm indexing
+
+Realm/dynasty slots follow the original: indices **1–30**, `0` = "Niemand" (unowned/vacant sentinel). The same indices are used in the JSON state and in `match_players.dynasty_index`.
+
+### Pending decisions (required for async online)
+
+Several original mechanics prompt a player **outside their own turn**: marriage consent, Kurfürst votes in a Kaiser election, the defeated ruler's convert-or-die choice, heir selection. The state model represents these as a `pendingDecisions` queue (`{id, type, decidingSlot, payload, deadline?}`):
+
+- **Local mode**: the UI resolves them inline (the device is handed to that player).
+- **Online mode**: the turn pipeline pauses, the deciding player is notified via FCM (`type: "YOUR_DECISION"`), and they submit the decision via the same turn endpoint. AI deciders resolve immediately.
+- Each decision type defines an AI/default fallback (e.g. marriage consent → 25% roll) so an unresponsive player can be timed out later without breaking the model.
 
 ---
 
@@ -25,14 +70,21 @@ players
 
 matches
   id            UUID PRIMARY KEY
-  player_a      UUID REFERENCES players
-  player_b      UUID REFERENCES players
-  current_turn  UUID REFERENCES players
-  state         JSONB NOT NULL     -- full game state
-  status        TEXT NOT NULL      -- waiting | active | finished
-  winner        UUID REFERENCES players
+  current_turn  UUID REFERENCES players   -- human whose input is awaited (turn or pending decision)
+  state         JSONB NOT NULL            -- full game state (shared schema with local)
+  settings      JSONB NOT NULL DEFAULT '{}'  -- host-chosen match settings, e.g. { "turn_timeout_hours": 24 }
+  turn_deadline TIMESTAMPTZ               -- when the awaited input auto-resolves; null = no timer
+  status        TEXT NOT NULL             -- waiting | active | finished
+  winner        UUID REFERENCES players   -- null until game over
   created_at    TIMESTAMPTZ DEFAULT now()
   updated_at    TIMESTAMPTZ DEFAULT now()
+
+match_players                             -- 2–16 humans per match
+  match_id      UUID REFERENCES matches
+  player_id     UUID REFERENCES players
+  turn_order    SMALLINT NOT NULL         -- 0-based; determines play sequence among humans
+  dynasty_index SMALLINT NOT NULL         -- realm slot in game state (1–30)
+  PRIMARY KEY (match_id, player_id)
 
 turns
   id            UUID PRIMARY KEY
@@ -52,44 +104,72 @@ Base path: `/api/v1`
 |--------|------|-------------|
 | POST | `/players` | Register device. Body: `{ id, display_name, fcm_token }`. Returns player. |
 | PATCH | `/players/:id` | Update display name or FCM token. |
-| POST | `/matches` | Create match. Body: `{ player_id }`. Returns match with `status: waiting`. |
-| POST | `/matches/:id/join` | Opponent joins. Body: `{ player_id }`. Sets status to `active`. |
-| GET | `/matches/:id` | Get current match state. |
-| POST | `/matches/:id/turn` | Submit turn. Body: `{ player_id, action }`. Validates turn ownership, applies action, updates state, sends FCM to opponent. |
+| POST | `/matches` | Create match. Body: `{ player_id, human_count, settings }` (2–16 humans; world is always 30 realms; `settings.turn_timeout_hours`: null/12/24/48/168, host-chosen). Returns match with `status: waiting`. |
+| POST | `/matches/:id/join` | Player joins open slot. Body: `{ player_id }`. Sets status to `active` when all human slots filled. |
+| GET | `/matches/:id?player_id=` | Get current match state, **filtered for the requesting player** (see State Visibility). |
+| POST | `/matches/:id/turn` | Submit a turn action or a pending decision. Body: `{ player_id, action }`. Validates ownership, applies it, advances the simulation, sends FCM to the next awaited human. |
 | GET | `/players/:id/matches` | List matches for a player (`active` and `waiting`). |
 
 All responses: `{ data, error }`. HTTP 400 for validation errors, 403 for wrong-turn attempts, 404 for not found.
 
+## State Visibility (hidden information)
+
+Espionage only matters if other realms' numbers are actually hidden, so visibility is part of the shared model, not a UI trick:
+
+- `game_core` provides `visibleStateFor(GameState, int slot) → GameState` — strips other realms' treasury, food stocks, troop details and guard level; keeps public data (map ownership, dynasty names/titles/religion, town tiers, offices, chronicle) and the requesting player's own full data.
+- Successful espionage missions write an `IntelReport {targetSlot, year, fuzzedValues}` into the spying realm's private state; reports survive turns and are included in that player's filtered view.
+- **Online**: the server applies `visibleStateFor` in `GET /matches/:id` and in turn responses. The authoritative full state never leaves the server.
+- **Local hot-seat**: the same filter drives what each seated player sees; the handoff screen sits between turns so nobody scrolls a predecessor's intel.
+
 ---
 
-## Turn Flow
+## Turn Flow (online)
 
 1. Client calls `POST /matches/:id/turn` with `{ player_id, action }`.
-2. Server checks `current_turn === player_id`. Returns 403 if not.
-3. Server applies action to `state` JSONB using game logic module.
-4. Server checks win condition. Sets `status: finished` and `winner` if game over.
-5. Server flips `current_turn` to opponent.
-6. Server sends FCM push to opponent's `fcm_token` with payload `{ match_id, type: "YOUR_TURN" }`.
-7. Server returns updated match.
+2. Server checks the action is awaited from this player (`current_turn`, or a pending decision addressed to them). Returns 403 if not.
+3. Server applies the action via `game_core.applyAction` with the match's seeded RNG.
+4. **Server advances the simulation**: it runs AI realm turns, world events, upkeep, and AI-resolvable pending decisions — looping until the game either needs input from a human (next human turn or a human pending decision) or is over. AI processing happens synchronously in the request; with 30 realms a full inter-human gap is fast (pure state transforms, no I/O).
+5. Server checks the win condition. Sets `status: finished` and `winner` if game over.
+6. Server sets `current_turn` to the human now awaited (skips eliminated players) and saves state + the action to `turns` (audit/replay).
+7. If the match has a turn timer, `turn_deadline = now() + settings.turn_timeout_hours`.
+8. Server sends FCM push to that player's `fcm_token` with payload `{ match_id, type: "YOUR_TURN" | "YOUR_DECISION" }`.
+9. Server returns the updated match (filtered for the submitting player).
+
+### Turn timeouts
+
+- A scheduled job (every few minutes) selects active matches with `turn_deadline < now()` and auto-resolves the awaited input: an expired **turn** becomes "end turn with no actions" (upkeep already ran); an expired **pending decision** takes its defined AI/default fallback. The simulation then advances as in step 4.
+- At ~80% of the timeout a reminder push (`type: "TURN_REMINDER"`) is sent once.
+- Timeouts only skip the awaited input — players are never eliminated for idling; they can play their next turn normally.
+
+In local mode the same loop runs on-device: human turns come from the UI, AI turns and world phases from `game_core`, auto-save after every completed turn.
+
+---
+
+## RNG & Determinism
+
+- `game_core` never calls a global RNG; every entry point takes an `Rng`.
+- Online: the server owns the RNG (seed stored in the match state). Clients never roll dice — outcomes arrive in the returned state/events.
+- Local: the device owns the RNG the same way; the seed lives in the save file, which makes saves replayable and bugs reproducible.
 
 ---
 
 ## FCM Integration
 
-- Backend uses `firebase-admin` Node.js SDK.
-- Initialize once at server startup with service account credentials from env.
-- Send notification in turn handler after state is saved.
+- Backend uses the FCM HTTP v1 API via a Dart client (service account credentials from env).
+- Send notification in the turn handler after state is saved.
 - FCM token is stored on the `players` table. Client updates it on launch via `PATCH /players/:id`.
 - If FCM send fails, log the error but do not fail the turn request.
 
-```js
-// Pseudocode — turn handler (after state saved)
-const opponent = await getPlayer(match.current_turn); // already flipped
-if (opponent.fcm_token) {
-  await firebaseAdmin.messaging().send({
-    token: opponent.fcm_token,
-    data: { match_id: match.id, type: 'YOUR_TURN' }
-  }).catch(err => log.warn('FCM failed', err));
+```dart
+// Pseudocode — turn handler (after state saved, current_turn already advanced)
+final nextPlayer = await getPlayer(match.currentTurn);
+if (nextPlayer.fcmToken != null) {
+  try {
+    await fcm.send(token: nextPlayer.fcmToken,
+                   data: {'match_id': match.id, 'type': 'YOUR_TURN'});
+  } catch (err) {
+    log.warning('FCM failed', err);
+  }
 }
 ```
 
@@ -98,22 +178,24 @@ if (opponent.fcm_token) {
 ## Project Structure
 
 ```
-/backend
-  src/
-    routes/         # players.js, matches.js
-    game/           # logic.js — pure functions: applyAction, checkWinCondition
-    services/       # fcm.js, db.js
-    plugins/        # postgres.js (fastify-postgres), schema validation
+/packages/game_core   # shared pure Dart game logic (see above)
+
+/backend (Dart, shelf)
+  bin/server.dart
+  lib/
+    routes/         # players.dart, matches.dart
+    services/       # fcm.dart, db.dart (postgres), timeout_job.dart
+    middleware/     # json validation, error envelope
   Dockerfile
   docker-compose.yml
 
 /client (Flutter)
   lib/
     main.dart
-    services/       # api_service.dart, player_service.dart, fcm_service.dart
-    models/         # player.dart, match.dart, game_state.dart
-    game/           # flame components
-    screens/        # lobby, match list, game screen
+    services/       # api_service.dart, player_service.dart, fcm_service.dart, save_service.dart
+    game/           # flame components (map, tiles, units)
+    screens/        # setup, lobby, match list, game screen, turn summary
+  # depends on game_core for all rules; models come from game_core/state
 ```
 
 ---
@@ -130,8 +212,8 @@ PORT=3000
 
 ## Infrastructure
 
-- Docker Compose runs Fastify + PostgreSQL together.
-- Nginx reverse proxies to Fastify on port 3000, terminates SSL via Let's Encrypt.
+- Docker Compose runs the Dart server + PostgreSQL together.
+- Nginx reverse proxies to the server on port 3000, terminates SSL via Let's Encrypt.
 - Run `pg_dump` as a daily cron job for backups.
 - Flutter app talks to `https://yourdomain.com/api/v1`.
 

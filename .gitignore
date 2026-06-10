@@ -1,0 +1,6 @@
+# Dart / Flutter tooling
+.dart_tool/
+build/
+
+# game_core is a library package: don't pin its lockfile
+packages/game_core/pubspec.lock

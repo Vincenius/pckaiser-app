@@ -1,0 +1,28 @@
+name: pckaiser
+description: "PC Kaiser mobile clone — Flutter + Flame client."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flame: ^1.30.0
+  game_core:
+    path: ../packages/game_core
+  path_provider: ^2.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    # Original tile graphics (ORIGINAL_GAME.md §24): 38 indices each.
+    # large/ = 32×32 map tiles, small/ = 8×8 minimap/UI tiles.
+    - assets/tiles/large/
+    - assets/tiles/small/
