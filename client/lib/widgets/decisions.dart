@@ -87,7 +87,7 @@ Future<void> _promptDecision(BuildContext context,
         context: context,
         barrierDismissible: false,
         builder: (context) => SimpleDialog(
-          title: const Text('Kaiserwahl — Ihre Stimme'),
+          title: const Text('Kaiserwahl — deine Stimme'),
           children: [
             for (final id in finalists)
               SimpleDialogOption(
@@ -125,7 +125,7 @@ Future<void> _promptDecision(BuildContext context,
       final apply = await _yesNo(
         context,
         'Zwang',
-        'Wollen Sie ${captured?.name ?? '?'} zwingen (${p['option']})?',
+        'Willst du ${captured?.name ?? '?'} zwingen (${p['option']})?',
       );
       await controller.resolveDecision(
           decision.id, decision.decidingSlot, {'apply': apply});
@@ -134,7 +134,7 @@ Future<void> _promptDecision(BuildContext context,
       final accept = await _yesNo(
         context,
         'Bekehrung oder Tod',
-        'Sterben oder sich bekehren — bekehren Sie sich?',
+        'Sterben oder sich bekehren — bekehrst du dich?',
       );
       await controller.resolveDecision(
           decision.id, decision.decidingSlot, {'accept': accept});

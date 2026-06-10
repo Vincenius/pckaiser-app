@@ -6,6 +6,7 @@ import 'game_event.dart';
 import 'pending_decision.dart';
 import 'person.dart';
 import 'realm.dart';
+import 'versioning.dart';
 import 'war.dart';
 import 'world_map.dart';
 
@@ -14,7 +15,8 @@ import 'world_map.dart';
 /// it must stay forward-compatible (add fields, never remove).
 class GameState {
   GameState({
-    this.schemaVersion = 1,
+    this.schemaVersion = currentSchemaVersion,
+    this.rulesVersion = currentRulesVersion,
     required this.year,
     required this.reformationYear,
     required this.ottomanYear,
@@ -50,8 +52,14 @@ class GameState {
         pendingDecisions = pendingDecisions ?? [],
         events = events ?? [];
 
-  factory GameState.fromJson(Map<String, dynamic> json) => GameState(
+  factory GameState.fromJson(Map<String, dynamic> raw) {
+    // Older documents are migrated up to the current schema first; newer
+    // ones (from a future app version) are rejected with a clear error.
+    final json = migrateGameStateJson(raw);
+    return GameState(
         schemaVersion: json['schemaVersion'] as int? ?? 1,
+        // Missing field = game created before rules were versioned (v1).
+        rulesVersion: json['rulesVersion'] as int? ?? 1,
         year: json['year'] as int,
         reformationYear: json['reformationYear'] as int,
         ottomanYear: json['ottomanYear'] as int,
@@ -99,8 +107,8 @@ class GameState {
             ?.map((e) =>
                 GameEvent.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
-        prunedEventCount: json['prunedEventCount'] as int? ?? 0,
-      );
+        prunedEventCount: json['prunedEventCount'] as int? ?? 0);
+  }
 
   static List<ChronicleRecord> _recordList(Object? json) =>
       (json as List? ?? const [])
@@ -108,8 +116,15 @@ class GameState {
               ChronicleRecord.fromJson((r as Map).cast<String, dynamic>()))
           .toList();
 
-  /// Bumped only on incompatible reshapes; additions never bump it.
+  /// JSON shape version (see versioning.dart). Bumped only on
+  /// incompatible reshapes; additions never bump it. Old documents are
+  /// migrated in [GameState.fromJson].
   final int schemaVersion;
+
+  /// Gameplay-rules version, pinned when the game is created and never
+  /// changed afterwards: rule/balance changes gate on this so running
+  /// games (local saves, online matches) keep their original rules.
+  final int rulesVersion;
 
   /// Starts at 999; becomes 1000 at the first round (§1).
   int year;
@@ -192,6 +207,7 @@ class GameState {
   /// until a real persistent-structure need shows up.
   GameState copy() => GameState(
         schemaVersion: schemaVersion,
+        rulesVersion: rulesVersion,
         year: year,
         reformationYear: reformationYear,
         ottomanYear: ottomanYear,
@@ -223,6 +239,7 @@ class GameState {
 
   Map<String, dynamic> toJson() => {
         'schemaVersion': schemaVersion,
+        'rulesVersion': rulesVersion,
         'year': year,
         'reformationYear': reformationYear,
         'ottomanYear': ottomanYear,

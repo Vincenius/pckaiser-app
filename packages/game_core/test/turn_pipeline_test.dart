@@ -274,7 +274,7 @@ void main() {
             SellGood(slot: 1, good: MarketGood.grain, amount: 1),
             Rng(result.state.rngSeed)),
         throwsA(isA<ActionException>()),
-        reason: 'Sie haben diese Runde schon verkauft !!!',
+        reason: 'Du hast diese Runde schon verkauft !!!',
       );
       // Cattle is a separate flag.
       result.state.realm(1).livestockHarvest = 10;

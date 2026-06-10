@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
@@ -129,16 +130,16 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
   final String? warBlocked = state.year < gc.firstWarYear
       ? 'Kriege sind erst ab dem Jahr 1010 erlaubt !'
       : realm.warThisYear
-          ? 'Sie haben dieses Jahr schon einmal Krieg geführt !'
+          ? 'Du hast dieses Jahr schon einmal Krieg geführt !'
           : !hasTroops
-              ? 'Sie haben nicht genug Truppen !'
+              ? 'Du hast nicht genug Truppen !'
               : state.activeWar != null
                   ? 'Es tobt bereits ein anderer Krieg !'
                   : null;
 
   showModalBottomSheet<void>(
     context: context,
-    builder: (context) => SafeArea(
+    builder: (sheetContext) => SafeArea(
       child: ListView(shrinkWrap: true, children: [
         ListTile(
           title: Text(tr('recruit')),
@@ -146,8 +147,10 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
               '5 T pro Mann — freie Kapazität: $freeCapacity'),
           enabled: freeCapacity > 0 && realm.treasury >= 5,
           onTap: () {
-            Navigator.pop(context);
-            // Position first, then class and amount.
+            Navigator.pop(sheetContext);
+            // Position first, then class and amount. Follow-up sheets use
+            // the stable screen [context] — the sheet's own context dies
+            // with the pop and must not leak into later steps.
             _stationSheet(context, controller,
                 onPicked: (x, y) =>
                     _recruitSheet(context, controller, x, y));
@@ -158,7 +161,7 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
           subtitle: const Text('50 T pro Mann (plus Sold)'),
           enabled: realm.treasury >= 50,
           onTap: () {
-            Navigator.pop(context);
+            Navigator.pop(sheetContext);
             _stationSheet(context, controller, onPicked: (x, y) {
               _amountSheet(context,
                   title: tr('hireSoeldner'),
@@ -181,7 +184,7 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
           subtitle: Text('Armee: ${realm.armySize} Mann'),
           enabled: realm.troops.isNotEmpty,
           onTap: () {
-            Navigator.pop(context);
+            Navigator.pop(sheetContext);
             _showTroopList(context, controller);
           },
         ),
@@ -191,7 +194,7 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
           subtitle: Text(warBlocked ?? 'Einmal pro Jahr — nur Nachbarn'),
           enabled: warBlocked == null,
           onTap: () {
-            Navigator.pop(context);
+            Navigator.pop(sheetContext);
             _declareWarSheet(context, controller);
           },
         ),
@@ -201,17 +204,18 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
 }
 
 /// Position picker for a new unit ("ask for the place first"): the
-/// capital or one of the own towns.
+/// capital directly, or any own map tile via "Feld auswählen" — the
+/// sheet closes, the player taps the tile, then the unit is configured.
 void _stationSheet(BuildContext context, GameController controller,
     {required void Function(int x, int y) onPicked}) {
   final realm = controller.currentRealm;
   showModalBottomSheet<void>(
     context: context,
-    builder: (context) => SafeArea(
+    builder: (sheetContext) => SafeArea(
       child: ListView(shrinkWrap: true, children: [
         ListTile(
             title: Text('Wo soll die Truppe stationiert werden?',
-                style: Theme.of(context).textTheme.titleMedium)),
+                style: Theme.of(sheetContext).textTheme.titleMedium)),
         const Divider(height: 1),
         ListTile(
           leading: const Icon(Icons.flag),
@@ -219,20 +223,31 @@ void _stationSheet(BuildContext context, GameController controller,
           subtitle:
               Text('Feld (${realm.capitalX + 1}, ${realm.capitalY + 1})'),
           onTap: () {
-            Navigator.pop(context);
+            Navigator.pop(sheetContext);
             onPicked(realm.capitalX, realm.capitalY);
           },
         ),
-        for (final town in realm.towns)
-          ListTile(
-            leading: const Icon(Icons.home_work),
-            title: Text(town.name),
-            subtitle: Text('Feld (${town.x + 1}, ${town.y + 1})'),
-            onTap: () {
-              Navigator.pop(context);
-              onPicked(town.x, town.y);
-            },
-          ),
+        ListTile(
+          leading: const Icon(Icons.touch_app),
+          title: const Text('Feld auswählen'),
+          subtitle: const Text('Ein eigenes Feld auf der Karte antippen'),
+          onTap: () {
+            Navigator.pop(sheetContext);
+            controller.startTilePick(
+              hint: 'Feld für die neue Truppe antippen',
+              onPick: (x, y) {
+                if (controller.state.map.ownerAt(x, y) !=
+                    controller.currentSlot) {
+                  _toast(context,
+                      'Du musst deine Truppen auf deinem Territorium stationieren !');
+                  return false;
+                }
+                onPicked(x, y);
+                return true;
+              },
+            );
+          },
+        ),
       ]),
     ),
   );
@@ -241,41 +256,54 @@ void _stationSheet(BuildContext context, GameController controller,
 void _recruitSheet(
     BuildContext context, GameController controller, int x, int y) {
   final slot = controller.currentSlot;
+  final realm = controller.currentRealm;
   var troopClass = gc.TroopClass.infanterie;
   showModalBottomSheet<void>(
     context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('Infanterie +0')),
-              ButtonSegment(value: 1, label: Text('Kavallerie +500')),
-              ButtonSegment(value: 2, label: Text('Artillerie +1000')),
-            ],
-            selected: {troopClass},
-            onSelectionChanged: (s) => setState(() => troopClass = s.first),
-          ),
-          _AmountSlider(
-            title: tr('recruit'),
-            max: controller.currentRealm.troopCapacity -
-                controller.currentRealm.armySize,
-            onSubmit: (men) {
-              Navigator.pop(context);
-              _tryAction(
-                  context,
-                  controller,
-                  gc.RecruitTroops(
-                      slot: slot,
-                      men: men,
-                      troopClass: troopClass,
-                      name: 'Rekruten',
-                      x: x,
-                      y: y));
-            },
-          ),
-        ]),
-      ),
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (sheetContext, setState) {
+        // 5 T per man plus the one-time class surcharge — the slider only
+        // offers what the quarters and the treasury can carry.
+        final maxMen = math.min(
+            realm.troopCapacity - realm.armySize,
+            (realm.treasury - gc.classSurcharge(troopClass)) ~/ 5);
+        return SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, label: Text('Infanterie +0')),
+                ButtonSegment(value: 1, label: Text('Kavallerie +500')),
+                ButtonSegment(value: 2, label: Text('Artillerie +1000')),
+              ],
+              selected: {troopClass},
+              onSelectionChanged: (s) =>
+                  setState(() => troopClass = s.first),
+            ),
+            if (maxMen < 1)
+              const ListTile(
+                  title: Text('Du hast nicht genügend Taler !'))
+            else
+              _AmountSlider(
+                key: ValueKey(troopClass),
+                title: tr('recruit'),
+                max: maxMen,
+                onSubmit: (men) {
+                  Navigator.pop(sheetContext);
+                  _tryAction(
+                      context,
+                      controller,
+                      gc.RecruitTroops(
+                          slot: slot,
+                          men: men,
+                          troopClass: troopClass,
+                          name: 'Rekruten',
+                          x: x,
+                          y: y));
+                },
+              ),
+          ]),
+        );
+      },
     ),
   );
 }
@@ -406,7 +434,7 @@ void _declareWarSheet(BuildContext context, GameController controller) {
       child: ListView(shrinkWrap: true, children: [
         if (neighbors.isEmpty)
           const ListTile(
-              title: Text('Sie haben keine gemeinsame Grenze '
+              title: Text('Du hast keine gemeinsame Grenze '
                   'mit einem anderen Reich !')),
         for (final realm in state.realms)
           if (realm.slot != slot &&
@@ -557,7 +585,7 @@ void showMiscMenu(BuildContext context, GameController controller) {
   final String? marriageBlocked = realm.proposedMarriageThisTurn
       ? 'Nur ein Heiratsantrag pro Zug !'
       : !hasProposer
-          ? 'Niemand in Ihrer Dynastie kann heiraten !'
+          ? 'Niemand in deiner Dynastie kann heiraten !'
           : null;
   showModalBottomSheet<void>(
     context: context,
@@ -568,7 +596,7 @@ void showMiscMenu(BuildContext context, GameController controller) {
           title: const Text('Dynastie'),
           subtitle: Text(
               '${state.dynasty(slot).memberIds.length} Mitglieder — '
-              'fremde Dynastien über Info → Reiche'),
+              'fremde Dynastien über Info → Dynastien'),
           onTap: () {
             Navigator.pop(context);
             _showDynastyOf(context, controller, slot);
@@ -588,7 +616,7 @@ void showMiscMenu(BuildContext context, GameController controller) {
           leading: const Icon(Icons.favorite),
           title: const Text('Bürgerlich heiraten'),
           subtitle: Text(marriageBlocked ??
-              'Eine Person aus dem Volk heiraten (25% Zusage)'),
+              'Eine Person aus dem Volk heiraten'),
           enabled: marriageBlocked == null,
           onTap: () {
             Navigator.pop(context);
@@ -670,7 +698,7 @@ void _showRelocateCapital(
   }
   if (candidates.isEmpty) {
     _toast(context,
-        'Sie brauchen eine eigene Stadt, Burg oder einen Palast !');
+        'Du brauchst eine eigene Stadt, Burg oder einen Palast !');
     return;
   }
   showModalBottomSheet<void>(
@@ -770,7 +798,7 @@ void _showMarriageProposers(
         ListTile(
           title: Text(tr('proposeMarriage'),
               style: Theme.of(context).textTheme.titleMedium),
-          subtitle: const Text('Wer aus Ihrer Dynastie soll heiraten?'),
+          subtitle: const Text('Wer aus deiner Dynastie soll heiraten?'),
         ),
         const Divider(height: 1),
         for (final p in proposers)
@@ -858,7 +886,7 @@ void _showCommonerMarriage(
         ListTile(
           title: Text('Bürgerlich heiraten',
               style: Theme.of(context).textTheme.titleMedium),
-          subtitle: const Text('Wer aus Ihrer Dynastie soll heiraten?'),
+          subtitle: const Text('Wer aus deiner Dynastie soll heiraten?'),
         ),
         const Divider(height: 1),
         for (final p in proposers)
@@ -967,23 +995,23 @@ class _MarriageRevealDialogState extends State<_MarriageRevealDialog> {
   }
 }
 
-/// The Info sheet — "Mein Reich" stats, events, chronicle, realm list.
+/// The Info sheet — "Mein Reich" stats, events, dynasties, chronicle.
 void showInfoMenu(BuildContext context, GameController controller) {
   final state = controller.visibleState;
   final realm = controller.currentRealm;
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (context) => SafeArea(
+    builder: (sheetContext) => SafeArea(
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.75,
+        height: MediaQuery.of(sheetContext).size.height * 0.75,
         child: ListView(children: [
           // "Mein Reich" — the stats that used to crowd the HUD.
           ListTile(
             title: Text(
                 'Mein Reich — ${gc.countryNames[realm.slot]}'
                 '${state.person(realm.rulerId) == null ? '' : ' (${gc.titleName(realm.titleClass)} ${state.person(realm.rulerId)!.name})'}',
-                style: Theme.of(context).textTheme.titleMedium),
+                style: Theme.of(sheetContext).textTheme.titleMedium),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Wrap(spacing: 16, runSpacing: 4, children: [
@@ -1002,7 +1030,7 @@ void showInfoMenu(BuildContext context, GameController controller) {
             leading: const Icon(Icons.article),
             title: Text(tr('eventFeed')),
             onTap: () {
-              Navigator.pop(context);
+              Navigator.pop(sheetContext);
               showEventFeed(context, controller);
             },
           ),
@@ -1010,39 +1038,57 @@ void showInfoMenu(BuildContext context, GameController controller) {
             leading: const Icon(Icons.home_work),
             title: Text('Siedlungen (${realm.towns.length})'),
             onTap: () {
-              Navigator.pop(context);
+              Navigator.pop(sheetContext);
               _showSettlements(context, controller);
             },
           ),
           ListTile(
-            leading: const Icon(Icons.leaderboard),
-            title: const Text('Statistiken'),
+            leading: const Icon(Icons.people),
+            title: const Text('Dynastien'),
+            subtitle: const Text('Alle Reiche und ihre Herrscherhäuser'),
             onTap: () {
-              Navigator.pop(context);
-              _showStatistics(context, controller);
+              Navigator.pop(sheetContext);
+              _showDynasties(context, controller);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.history_edu),
+            title: Text(tr('chronicle')),
+            subtitle: const Text('Alle bisherigen Kaiser und Sultane'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showChronicle(context, controller);
             },
           ),
           const Divider(),
+          // Subtle exit back to the main menu — every completed turn is
+          // auto-saved, so leaving is always safe.
           ListTile(
-              title: Text(tr('chronicle')),
-              subtitle: Text([
-                for (final r in state.kaiserChronicle)
-                  '${r.name} (${r.accessionYear}–${r.deathYear ?? ''})'
-                      '${r.epithet == null ? '' : ' "${r.epithet}"'}',
-              ].join('\n'))),
-          const Divider(),
-          for (final realm in state.realms)
-            if (!realm.isVacant)
-              ListTile(
-                title: Text(
-                    '${gc.countryNames[realm.slot]} — ${state.person(realm.rulerId)?.name ?? '?'}'),
-                subtitle: Text(_realmInfoLine(controller, realm)),
-                trailing: const Icon(Icons.people, size: 18),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDynastyOf(context, controller, realm.slot);
-                },
-              ),
+            leading: const Icon(Icons.logout, size: 20),
+            title: const Text('Spiel verlassen'),
+            subtitle:
+                const Text('Zurück zum Hauptmenü — der letzte abgeschlossene Zug ist gespeichert'),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              final sure = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Spiel verlassen?'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: Text(tr('cancel'))),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Spiel verlassen')),
+                  ],
+                ),
+              );
+              if (sure == true && context.mounted) {
+                Navigator.of(context).maybePop();
+              }
+            },
+          ),
         ]),
       ),
     ),
@@ -1066,7 +1112,7 @@ void _showSettlements(BuildContext context, GameController controller) {
                 style: Theme.of(context).textTheme.titleMedium)),
         const Divider(height: 1),
         if (realm.towns.isEmpty)
-          const ListTile(title: Text('Sie haben keine Siedlungen !')),
+          const ListTile(title: Text('Du hast keine Siedlungen !')),
         for (final town in realm.towns)
           ListTile(
             leading: const Icon(Icons.home_work),
@@ -1082,40 +1128,83 @@ void _showSettlements(BuildContext context, GameController controller) {
   );
 }
 
-/// "S(t)atistiken": realm ranking from public information only (territory
-/// size, settlements, title) — hidden numbers stay hidden.
-void _showStatistics(BuildContext context, GameController controller) {
+/// "Kaiserchronik" (the original's "Urkunde" screen): every Kaiser and
+/// Sultan reign with years and epithet.
+void _showChronicle(BuildContext context, GameController controller) {
+  final state = controller.visibleState;
+  String line(gc.ChronicleRecord r) =>
+      '${r.name} (${r.accessionYear}–${r.deathYear ?? ''})'
+      '${r.epithet == null ? '' : ' "${r.epithet}"'}';
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (context) => SafeArea(
+      child: ListView(shrinkWrap: true, children: [
+        ListTile(
+            title: Text(tr('chronicle'),
+                style: Theme.of(context).textTheme.titleMedium)),
+        const Divider(height: 1),
+        if (state.kaiserChronicle.isEmpty && state.sultanChronicle.isEmpty)
+          const ListTile(
+              title: Text('Noch wurde kein Kaiser gekrönt.')),
+        if (state.kaiserChronicle.isNotEmpty)
+          ListTile(
+              title: const Text('Kaiser'),
+              subtitle: Text([
+                for (final r in state.kaiserChronicle) line(r),
+              ].join('\n'))),
+        if (state.sultanChronicle.isNotEmpty)
+          ListTile(
+              title: const Text('Sultane'),
+              subtitle: Text([
+                for (final r in state.sultanChronicle) line(r),
+              ].join('\n'))),
+      ]),
+    ),
+  );
+}
+
+/// "Dynastien" (formerly Statistiken): every realm ranked by territory
+/// size, from public information only (size, settlements, title) plus
+/// the own intel reports — hidden numbers stay hidden. Tapping a realm
+/// opens its dynasty.
+void _showDynasties(BuildContext context, GameController controller) {
   final state = controller.visibleState;
   final rows = [
     for (final realm in state.realms)
       if (!realm.isVacant)
         (
-          realm.slot,
+          realm,
           realm.tileCount.fold(0, (a, b) => a + b),
-          realm.towns.length,
-          realm.titleClass,
         ),
   ]..sort((a, b) => b.$2.compareTo(a.$2));
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (context) => SafeArea(
+    builder: (sheetContext) => SafeArea(
       child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.6,
+        height: MediaQuery.of(sheetContext).size.height * 0.6,
         child: ListView(children: [
           ListTile(
-              title: Text('Statistiken — Reiche nach Größe',
-                  style: Theme.of(context).textTheme.titleMedium)),
+              title: Text('Dynastien — Reiche nach Größe',
+                  style: Theme.of(sheetContext).textTheme.titleMedium)),
           const Divider(height: 1),
           for (var i = 0; i < rows.length; i++)
             ListTile(
               leading: Text('${i + 1}.',
-                  style: Theme.of(context).textTheme.titleSmall),
-              title: Text(gc.countryNames[rows[i].$1] +
-                  (rows[i].$1 == controller.currentSlot ? ' (Sie)' : '')),
+                  style: Theme.of(sheetContext).textTheme.titleSmall),
+              title: Text(
+                  '${gc.countryNames[rows[i].$1.slot]}'
+                  '${rows[i].$1.slot == controller.currentSlot ? ' (du)' : ''}'
+                  ' — ${state.person(rows[i].$1.rulerId)?.name ?? '?'}'),
               subtitle: Text(
-                  '${rows[i].$2} Felder — ${rows[i].$3} Siedlungen — '
-                  '${gc.titleName(rows[i].$4)}'),
+                  '${rows[i].$2} Felder — ${rows[i].$1.towns.length} Siedlungen\n'
+                  '${_realmInfoLine(controller, rows[i].$1)}'),
+              isThreeLine: true,
+              trailing: const Icon(Icons.people, size: 18),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showDynastyOf(context, controller, rows[i].$1.slot);
+              },
             ),
         ]),
       ),
@@ -1199,6 +1288,7 @@ void _targetThenAmount(BuildContext context, GameController controller,
 /// input (PROJECT_REQUIREMENTS "Sliders for numeric inputs").
 class _AmountSlider extends StatefulWidget {
   const _AmountSlider({
+    super.key,
     required this.title,
     required this.max,
     this.min = 0,

@@ -11,6 +11,7 @@ class SaveSlotInfo {
     required this.savedAt,
     required this.year,
     required this.humanCount,
+    this.schemaVersion = currentSchemaVersion,
   });
 
   factory SaveSlotInfo.fromJson(Map<String, dynamic> json) => SaveSlotInfo(
@@ -18,6 +19,7 @@ class SaveSlotInfo {
         savedAt: DateTime.parse(json['savedAt'] as String),
         year: json['year'] as int,
         humanCount: json['humanCount'] as int,
+        schemaVersion: json['schemaVersion'] as int? ?? 1,
       );
 
   final String name;
@@ -25,11 +27,20 @@ class SaveSlotInfo {
   final int year;
   final int humanCount;
 
+  /// Schema version of the stored state, duplicated here so the load list
+  /// can flag saves from a newer app version without parsing the state.
+  final int schemaVersion;
+
+  /// False when the save was written by a newer app version than this
+  /// build can read — the UI offers "update the app" instead of loading.
+  bool get isSupported => schemaVersion <= currentSchemaVersion;
+
   Map<String, dynamic> toJson() => {
         'name': name,
         'savedAt': savedAt.toIso8601String(),
         'year': year,
         'humanCount': humanCount,
+        'schemaVersion': schemaVersion,
       };
 }
 
@@ -85,6 +96,7 @@ class SaveService {
         savedAt: now ?? DateTime.now(),
         year: state.year,
         humanCount: humanCount,
+        schemaVersion: state.schemaVersion,
       ).toJson(),
       'state': state.toJson(),
     };

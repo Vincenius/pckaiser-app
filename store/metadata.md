@@ -13,7 +13,7 @@ Rule a medieval dynasty: build, trade, marry, scheme and conquer. Hot-seat
 for 1–16.
 
 **Full description:**
-PC Kaiser is a faithful mobile remake of the 1999 German strategy classic.
+PC Kaiser is a faithful mobile remake of the 1992 German strategy classic.
 Take a dynasty from a single village in the year 1000 to dominion over the
 whole map — by farming and trade, marriage and inheritance, espionage and
 assassination, elections and open war.
@@ -39,7 +39,7 @@ Hot-Seat 1–16.
 
 **Beschreibung:**
 PC Kaiser ist eine werkgetreue Neuauflage des deutschen Strategie-Klassikers
-von 1999. Führe deine Dynastie vom ersten Dorf im Jahr 1000 zur
+von 1992. Führe deine Dynastie vom ersten Dorf im Jahr 1000 zur
 Alleinherrschaft — durch Landwirtschaft und Handel, Heirat und Erbschaft,
 Spionage und Attentate, Kaiserwahlen und offenen Krieg.
 

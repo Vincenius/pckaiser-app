@@ -39,5 +39,6 @@ export 'src/state/person.dart';
 export 'src/state/realm.dart';
 export 'src/state/town.dart';
 export 'src/state/troop.dart';
+export 'src/state/versioning.dart';
 export 'src/state/world_map.dart';
 export 'src/visibility/visible_state.dart';

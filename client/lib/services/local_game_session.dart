@@ -5,16 +5,19 @@ import 'save_service.dart';
 /// Drives a local hot-seat game: wraps the game_core turn pipeline and
 /// auto-saves after every completed turn, before the device is handed to
 /// the next player (PROJECT_REQUIREMENTS.md "Auto-save triggers after
-/// every turn completion").
+/// every turn completion"). With [persist] off (the tutorial) the session
+/// is ephemeral: nothing is ever written to disk.
 class LocalGameSession {
-  LocalGameSession(this.slotName, this._state, this._saves);
+  LocalGameSession(this.slotName, this._state, this._saves,
+      {this.persist = true});
 
   /// Creates a new game in [slotName], runs the first upkeep and persists
-  /// the initial save.
+  /// the initial save (unless [persist] is off).
   static Future<LocalGameSession> create({
     required String slotName,
     required GameSetup setup,
     required SaveService saves,
+    bool persist = true,
   }) async {
     var state = newGame(setup);
     state = startGame(state, Rng(state.rngSeed)).state;
@@ -25,8 +28,9 @@ class LocalGameSession {
         state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
       state = advanceUntilHuman(state, Rng(state.rngSeed)).state;
     }
-    final session = LocalGameSession(slotName, state, saves);
-    await saves.save(slotName, state);
+    final session =
+        LocalGameSession(slotName, state, saves, persist: persist);
+    await session.save();
     return session;
   }
 
@@ -52,6 +56,10 @@ class LocalGameSession {
 
   final String slotName;
   final SaveService _saves;
+
+  /// False for the throwaway tutorial game: every save becomes a no-op,
+  /// so it never appears in the saved-games list.
+  final bool persist;
 
   GameState _state;
   GameState get state => _state;
@@ -93,7 +101,7 @@ class LocalGameSession {
     final rng = Rng(_state.rngSeed);
     final result = completeTurn(_state, rng);
     _state = result.state;
-    await _saves.save(slotName, _state);
+    await save();
     return result;
   }
 
@@ -104,10 +112,14 @@ class LocalGameSession {
     final ended = completeTurn(_state, rng);
     final advanced = advanceUntilHuman(ended.state, Rng(ended.state.rngSeed));
     _state = advanced.state;
-    await _saves.save(slotName, _state);
+    await save();
     return TurnResult(_state, [...ended.events, ...advanced.events]);
   }
 
-  /// Persists the current state (used after war rounds resolve).
-  Future<void> save() => _saves.save(slotName, _state);
+  /// Persists the current state (used after war rounds resolve); a no-op
+  /// for ephemeral sessions.
+  Future<void> save() async {
+    if (!persist) return;
+    await _saves.save(slotName, _state);
+  }
 }

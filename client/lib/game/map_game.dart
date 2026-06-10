@@ -4,7 +4,18 @@ import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
-import 'package:flutter/painting.dart' show Rect, Paint, Canvas;
+import 'package:flutter/painting.dart'
+    show
+        Canvas,
+        Color,
+        FontWeight,
+        Offset,
+        Paint,
+        Rect,
+        Shadow,
+        TextPainter,
+        TextSpan,
+        TextStyle;
 import 'package:game_core/game_core.dart' as gc;
 
 import 'realm_palette.dart';
@@ -119,7 +130,13 @@ class MapGame extends FlameGame with ScaleDetector {
 
         final owner = map.ownerAt(x, y);
         if (owner != gc.World.niemand) {
-          RealmPalette.paintOwnership(canvas, cell, owner);
+          bool foreign(int nx, int ny) =>
+              !map.inBounds(nx, ny) || map.ownerAt(nx, ny) != owner;
+          RealmPalette.paintOwnership(canvas, cell, owner,
+              left: foreign(x - 1, y),
+              top: foreign(x, y - 1),
+              right: foreign(x + 1, y),
+              bottom: foreign(x, y + 1));
           final realm = _state.realm(owner);
           if (realm.capitalX == x && realm.capitalY == y) {
             RealmPalette.paintCapital(canvas, cell, owner);
@@ -137,7 +154,35 @@ class MapGame extends FlameGame with ScaleDetector {
         }
       }
     }
+    _drawRealmLabels(canvas);
     _picture = recorder.endRecording();
+  }
+
+  /// Small country-name caption under each realm's capital flag.
+  void _drawRealmLabels(Canvas canvas) {
+    for (final realm in _state.realms) {
+      if (realm.isVacant) continue;
+      final painter = TextPainter(
+        text: TextSpan(
+          text: gc.countryNames[realm.slot],
+          style: const TextStyle(
+            color: Color(0xFFFFFFFF),
+            fontSize: tileSize * 0.38,
+            fontWeight: FontWeight.w600,
+            shadows: [
+              Shadow(blurRadius: 3, color: Color(0xDD000000)),
+              Shadow(blurRadius: 1, color: Color(0xDD000000)),
+            ],
+          ),
+        ),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      painter.paint(
+        canvas,
+        Offset((realm.capitalX + 0.5) * tileSize - painter.width / 2,
+            (realm.capitalY + 1) * tileSize + 1),
+      );
+    }
   }
 
   void _drawSprite(Canvas canvas, int index, Rect dest, Paint paint) {

@@ -112,6 +112,15 @@ Base path: `/api/v1`
 
 All responses: `{ data, error }`. HTTP 400 for validation errors, 403 for wrong-turn attempts, 404 for not found.
 
+## Versioning & compatibility
+
+App updates must never break a running game — local saves now, online matches later. Two version numbers travel inside every `GameState` JSON document (`game_core/src/state/versioning.dart`):
+
+- **`schemaVersion`** (`currentSchemaVersion`) — the shape of the JSON. Additive changes (new field with a `fromJson` default) never bump it; this covers almost all evolution. Incompatible reshapes (rename, type change, restructure) bump it by one and add a step to `schemaMigrations`. `GameState.fromJson` migrates old documents transparently, so every load path — local save file and the server's JSONB column — heals automatically. Documents from a *newer* version throw `UnsupportedSchemaVersionException`; the client lists such saves as "update the app" instead of opening them.
+- **`rulesVersion`** (`currentRulesVersion`) — the gameplay rules. Pinned when a game is created and never changed: a running game always finishes under the rules it started with. A rule/balance change bumps the constant and gates the new behavior on `state.rulesVersion >= n`, so only newly created games use it. This is what keeps mixed-version online matches deterministic.
+
+Online additionally relies on the server being authoritative (clients submit actions, the server's `game_core` applies them) plus two API-level rules: API changes are additive within `/api/v1`, and the server reports a minimum supported client version in match responses so outdated clients get a friendly "please update" prompt instead of undefined behavior (store rollouts are gradual; old and new clients always coexist).
+
 ## State Visibility (hidden information)
 
 Espionage only matters if other realms' numbers are actually hidden, so visibility is part of the shared model, not a UI trick:

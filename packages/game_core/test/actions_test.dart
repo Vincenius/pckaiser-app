@@ -408,32 +408,25 @@ void main() {
   });
 
   group('MarryCommoner', () {
-    test('25% acceptance; the commoner spouse joins the dynasty', () {
+    test('always accepted; the commoner spouse joins the dynasty', () {
       state.persons[9001] =
           Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
       state.dynasty(1).memberIds.add(9001);
-      var accepted = 0, rejected = 0;
       for (var seed = 0; seed < 40; seed++) {
         final result = applyAction(
             state, MarryCommoner(slot: 1, personId: 9001), Rng(seed));
         expect(result.state.realm(1).proposedMarriageThisTurn, isTrue);
         final hans = result.state.persons[9001]!;
-        if (hans.spouseId != null) {
-          accepted++;
-          final spouse = result.state.persons[hans.spouseId!]!;
-          expect(spouse.dynasty, 1);
-          expect(spouse.gender, 1, reason: 'opposite gender');
-          expect((spouse.age - 20).abs(), lessThan(10));
-          expect(spouse.age, greaterThanOrEqualTo(14));
-          expect(result.state.dynasty(1).memberIds, contains(spouse.id));
-          expect(result.events.any((e) => e.type == 'wedding'), isTrue);
-        } else {
-          rejected++;
-          expect(result.events.single.type, 'marriageRejected');
-        }
+        expect(hans.spouseId, isNotNull,
+            reason: 'a commoner never declines');
+        final spouse = result.state.persons[hans.spouseId!]!;
+        expect(spouse.dynasty, 1);
+        expect(spouse.gender, 1, reason: 'opposite gender');
+        expect((spouse.age - 20).abs(), lessThan(10));
+        expect(spouse.age, greaterThanOrEqualTo(14));
+        expect(result.state.dynasty(1).memberIds, contains(spouse.id));
+        expect(result.events.any((e) => e.type == 'wedding'), isTrue);
       }
-      expect(accepted, greaterThan(0));
-      expect(rejected, greaterThan(0));
     });
 
     test('shares the one-proposal-per-turn gate and rejects the married',

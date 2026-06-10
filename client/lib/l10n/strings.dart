@@ -8,7 +8,19 @@ final ValueNotifier<String> appLocale = ValueNotifier('de');
 const Map<String, Map<String, String>> _table = {
   'en': {
     'appTitle': 'PC Kaiser',
+    'tagline': 'From knight to emperor — conquer the realm',
     'newGame': 'New game',
+    'tutorial': 'Tutorial — learn the game',
+    'savedGames': 'Saved games',
+    'noSaves': 'No saved games yet.',
+    'noSavesHint':
+        'Start a new game, or learn the basics in the tutorial.',
+    'saveNeedsUpdate':
+        'Saved with a newer app version — update the app to play it.',
+    'credits': 'Credits',
+    'creditsOriginal':
+        'Original game: "PC Kaiser" by Martin Gelter, 1992.',
+    'creditsApp': 'This app: Vincent Will.',
     'resume': 'Resume',
     'endTurn': 'End turn',
     'undo': 'Undo',
@@ -35,14 +47,27 @@ const Map<String, Map<String, String>> _table = {
     'hireSoeldner': 'Hire Söldner',
     'declareWar': 'Declare war',
     'guards': 'Guards',
-    'chronicle': 'Chronicle',
+    'chronicle': 'Kaiser chronicle',
     'gameOver': 'Victory!',
     'proposeMarriage': 'Propose marriage',
     'cancel': 'Cancel',
   },
   'de': {
     'appTitle': 'PC Kaiser',
+    'tagline': 'Vom Ritter zum Kaiser — erobere das Reich',
     'newGame': 'Neues Spiel',
+    'tutorial': 'Tutorial — das Spiel lernen',
+    'savedGames': 'Spielstände',
+    'noSaves': 'Noch keine Spielstände.',
+    'noSavesHint':
+        'Starte ein neues Spiel — oder lerne die Grundlagen im Tutorial.',
+    'saveNeedsUpdate':
+        'Mit neuerer App-Version gespeichert — App aktualisieren, '
+            'um weiterzuspielen.',
+    'credits': 'Credits',
+    'creditsOriginal':
+        'Originalspiel: „PC Kaiser" von Martin Gelter, 1992.',
+    'creditsApp': 'App: Vincent Will.',
     'resume': 'Fortsetzen',
     'endTurn': 'Zug beenden',
     'undo': 'Rückgängig',
@@ -69,7 +94,7 @@ const Map<String, Map<String, String>> _table = {
     'hireSoeldner': 'Söldner anwerben',
     'declareWar': 'Krieg erklären',
     'guards': 'Spionageabwehr',
-    'chronicle': 'Urkunde',
+    'chronicle': 'Kaiserchronik',
     'gameOver': 'Sieg!',
     'proposeMarriage': 'Heirat vorschlagen',
     'cancel': 'Abbrechen',

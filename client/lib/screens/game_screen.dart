@@ -8,6 +8,8 @@ import '../l10n/strings.dart';
 import '../services/local_game_session.dart';
 import '../services/save_service.dart';
 import '../state/game_controller.dart';
+import '../tutorial/tutorial_overlay.dart';
+import '../tutorial/tutorial_steps.dart';
 import '../widgets/decisions.dart';
 import '../widgets/menus.dart';
 import '../widgets/tile_sheet.dart';
@@ -16,7 +18,7 @@ import '../widgets/war_panel.dart';
 /// The in-game screen: Flame map + HUD + menus, with the hot-seat handoff
 /// blocker and pending-decision prompts layered on top.
 class GameScreen extends StatefulWidget {
-  const GameScreen._({required this.sessionFuture});
+  const GameScreen._({required this.sessionFuture, this.tutorial = false});
 
   factory GameScreen.create({
     required String slotName,
@@ -35,7 +37,18 @@ class GameScreen extends StatefulWidget {
           sessionFuture:
               LocalGameSession.resume(slotName: slotName, saves: saves));
 
+  /// Interactive tutorial: a real single-player game (fixed seed) with
+  /// the step overlay on top. The session is ephemeral — never saved.
+  factory GameScreen.tutorial({required SaveService saves}) => GameScreen._(
+      sessionFuture: LocalGameSession.create(
+          slotName: tutorialSlotName,
+          setup: tutorialSetup(),
+          saves: saves,
+          persist: false),
+      tutorial: true);
+
   final Future<LocalGameSession> sessionFuture;
+  final bool tutorial;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -44,6 +57,7 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   GameController? _controller;
   MapGame? _game;
+  late bool _tutorialActive = widget.tutorial;
 
   @override
   void initState() {
@@ -51,6 +65,9 @@ class _GameScreenState extends State<GameScreen> {
     widget.sessionFuture.then((session) {
       if (!mounted) return;
       final controller = GameController(session);
+      // The tutorial is single-player: skip the hot-seat handoff blocker
+      // and its recap popup so the first step card appears immediately.
+      if (widget.tutorial) controller.confirmHandoff();
       final game = MapGame(initial: controller.visibleState);
       game.onTileTap = (x, y) => _onTileTap(controller, x, y);
       controller.addListener(() {
@@ -72,6 +89,8 @@ class _GameScreenState extends State<GameScreen> {
 
   void _onTileTap(GameController controller, int x, int y) {
     if (controller.handoffPending || controller.gameOver) return;
+    // An active tile pick (e.g. stationing a new troop) consumes the tap.
+    if (controller.resolveTilePick(x, y)) return;
     if (controller.state.activeWar != null) {
       _onWarTileTap(controller, x, y);
       return;
@@ -112,7 +131,7 @@ class _GameScreenState extends State<GameScreen> {
     }
     final selected = controller.selectedWarUnit;
     if (selected == null || selected >= realm.troops.length) {
-      _toast('Wählen Sie zuerst eine Ihrer Truppen !');
+      _toast('Wähle zuerst eine deiner Truppen !');
       return;
     }
     _marchToward(controller, slot, selected, x, y);
@@ -200,6 +219,27 @@ class _GameScreenState extends State<GameScreen> {
                     alignment: Alignment.topCenter,
                     child: WarPanel(controller: controller),
                   ),
+                if (controller.tilePickActive && !controller.handoffPending)
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: _tilePickBanner(controller),
+                  ),
+                // Tutorial card above the status row; kept in the tree
+                // (just hidden) during handoffs so the step survives.
+                if (_tutorialActive)
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Visibility(
+                      visible: !controller.handoffPending &&
+                          !controller.gameOver,
+                      maintainState: true,
+                      child: TutorialOverlay(
+                        controller: controller,
+                        onExit: () =>
+                            setState(() => _tutorialActive = false),
+                      ),
+                    ),
+                  ),
               ]),
             ),
             _statusRow(controller),
@@ -221,11 +261,36 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  /// Floating instruction card while a map tile pick is active.
+  Widget _tilePickBanner(GameController controller) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.all(12),
+      color: theme.colorScheme.surfaceContainerHigh,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.touch_app, size: 20),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(controller.tilePickHint ?? '',
+                style: theme.textTheme.bodyMedium),
+          ),
+          TextButton(
+            onPressed: controller.cancelTilePick,
+            child: Text(tr('cancel')),
+          ),
+        ]),
+      ),
+    );
+  }
+
   /// Slim status row, replacing both the old HUD and the top-bar overlay
-  /// (which used to block map tiles): back button, one tappable chip with
-  /// realm color, year/realm and the two always-needed numbers (Taler,
-  /// Züge — tap for the full "Mein Reich" stats), popularity warning when
-  /// it matters, undo, and end turn.
+  /// (which used to block map tiles): one tappable chip with realm color,
+  /// year/realm and the two always-needed numbers (Taler, Züge — tap for
+  /// the full "Mein Reich" stats), popularity warning when it matters,
+  /// undo, and end turn. Leaving the game lives in Info → "Spiel
+  /// verlassen" instead of a prominent back button.
   Widget _statusRow(GameController controller) {
     final realm = controller.currentRealm;
     final realmName = gc.countryNames[controller.currentSlot];
@@ -235,11 +300,7 @@ class _GameScreenState extends State<GameScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Row(children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            tooltip: 'Zurück zum Hauptmenü',
-            onPressed: () => Navigator.of(context).maybePop(),
-          ),
+          const SizedBox(width: 4),
           Flexible(
             child: InkWell(
               borderRadius: BorderRadius.circular(8),

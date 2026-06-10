@@ -184,7 +184,7 @@ class ProposeMarriage extends PlayerAction {
 }
 
 /// "(B)ürgerlich heiraten" (§14.1): marry one of your dynasty members to
-/// a commoner. Same 25% acceptance roll as any non-human target; the new
+/// a commoner. [DEVIATION] Always accepted (original: 25% roll); the new
 /// spouse joins the dynasty so the annual birth loop applies.
 class MarryCommoner extends PlayerAction {
   MarryCommoner({required super.slot, required this.personId});

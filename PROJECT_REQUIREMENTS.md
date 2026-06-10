@@ -1,6 +1,6 @@
 # PC Kaiser Mobile — Project Requirements
 
-Mobile-first clone of PC Kaiser (1999, Martin Gelter). Setting: Holy Roman Empire ~1000 AD.
+Mobile-first clone of PC Kaiser (1992, Martin Gelter). Setting: Holy Roman Empire ~1000 AD.
 The world always has **30 realms** (as in the original); up to **16** of them are human players, the rest are AI. Goal: be the last dynasty standing.
 
 ---
@@ -48,7 +48,7 @@ The world always has **30 realms** (as in the original); up to **16** of them ar
 
 ### Accessibility
 
-- Color-blind-safe realm palette **plus pattern/symbol overlays** on tile ownership (color is never the only channel)
+- Color-blind-safe realm palette **plus country borders and name captions** on the map: a subtle ownership tint, solid border strokes along realm boundaries, and the country name labeled at each capital (color is never the only channel)
 - Scalable UI text (respect system font scale), minimum touch target 48×48 dp
 - Event feed and HUD readable by screen readers (semantic labels on Flame overlays where feasible)
 
@@ -72,7 +72,7 @@ See `ORIGINAL_GAME.md` (§1–27) for exact formulas — all constants there are
 - **War**: year ≥ 1010 gate; once per year per player; war-round loop ends by ruler capture (capital occupied → realm takeover + coercion), mutual peace, or winter after ~20 rounds. End-of-war: leading side's score = "claim"; claim ≥ 0.4 × loser territory value → occupied tiles convert; smaller claim → **claim settlement** (winner annexes adjacent enemy tiles at building-value cost, unspent claim paid out 1:1 in Taler from the loser's treasury) (§11); post-war coercion only on ruler capture (§12)
 - **Military**: 5 T/soldier base; Infantry (+0), Cavalry (+500), Artillery (+1000) fixed cost. Söldner = 50 T/man + wages. Garrison capacity from towns; troops stationed on own territory (§10)
 - **Realms & dynasties**: 30 fixed slots (index 1–30, 0 = "Niemand"), never compacted; dynasty status byte dispatches human/AI; religion is a dynasty property (§2, §19)
-- **Marriage**: eligibility = unmarried, opposite gender, age ≥ 14, age gap < 10, different dynasty, same religion; AI acceptance 25% (§14)
+- **Marriage**: eligibility = unmarried, opposite gender, age ≥ 14, age gap < 10, different dynasty, same religion; AI acceptance 25%; commoner marriage always accepted (deviation, see below) (§14)
 - **Dynasty events**: aging/death roll `2/(90−age)`, births, divorce on religion mismatch, Islamic succession crisis (§15)
 - **Succession**: fixed heir-priority list (first male child → first male member → spouse → any child → any member → random); human dynasties pick from a menu (§15.4)
 - **Elimination**: popularity crisis (popularity < 20 AND dynasty > 3 members); bankruptcy (debt beyond per-title threshold) (§19)
@@ -108,6 +108,7 @@ See `ORIGINAL_GAME.md` (§1–27) for exact formulas — all constants there are
 | AI election bribes: random(treasury) repeated until a 0-roll (≈ whole treasury spent) | Campaign budget capped at half the treasury | Healthy AI economies |
 | War declarable on any non-vacant realm | Not against a slot your own ruler already holds (aliasing, §19) | Merging is the intended path; self-war is nonsense |
 | Troop merge/disband any time | Forbidden while at war (the war state is keyed to the troop list) | Consistent war bookkeeping |
+| Commoner marriage ("Bürgerlich heiraten") rolls the 25% acceptance | Always accepted | The fallback marriage option should reliably work; the 25% roll stays for dynastic proposals |
 | Unbounded event history in memory | In-state event log capped at 1,000 entries (`prunedEventCount` keeps absolute positions stable) | Bounded saves and state copies |
 
 Two undo/movement clarifications that follow from the table: founding a **Dorf** rolls its starting population, so it counts as a randomized action and clears the undo stack like battles and investments do. And peacetime troop **repositioning** (any own tile for 1 movement point) intentionally differs from war movement (strictly 1 tile per move): war marches are the tactical game, peacetime stationing is logistics.

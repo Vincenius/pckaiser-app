@@ -84,13 +84,13 @@ List<GameEvent> applyActionInPlace(
 
 void _requireMovementPoint(Realm realm) {
   if (realm.movementPoints < 1) {
-    throw ActionException('Sie haben keine Züge mehr !');
+    throw ActionException('Du hast keine Züge mehr !');
   }
 }
 
 void _requireFunds(Realm realm, int cost) {
   if (realm.treasury < cost) {
-    throw ActionException('Sie haben nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
 }
 
@@ -121,7 +121,7 @@ List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
     throw ActionException('Das Feld hat bereits einen Besitzer !');
   }
   if (!_adjacentToOwn(map, realm.slot, action.x, action.y)) {
-    throw ActionException('Das Feld grenzt nicht an Ihr Territorium !');
+    throw ActionException('Das Feld grenzt nicht an dein Territorium !');
   }
   _requireMovementPoint(realm);
 
@@ -172,7 +172,7 @@ List<GameEvent> _build(
       Terrain.isLand(terrain) &&
       _adjacentToOwn(map, realm.slot, action.x, action.y);
   if (owner != realm.slot && !hafenOnCoast && !claimOnBuild) {
-    throw ActionException('Das Feld gehört Ihnen nicht !');
+    throw ActionException('Das Feld gehört dir nicht !');
   }
   if (map.buildingAt(action.x, action.y) != Building.none) {
     throw ActionException('Das Feld ist bereits bebaut !');
@@ -251,7 +251,7 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
   if (map.ownerAt(action.x, action.y) != realm.slot) {
-    throw ActionException('Das Feld gehört Ihnen nicht !');
+    throw ActionException('Das Feld gehört dir nicht !');
   }
   final building = map.buildingAt(action.x, action.y);
   if (building == Building.none) {
@@ -300,7 +300,7 @@ List<GameEvent> _mergeRealms(
 List<GameEvent> _sellGood(GameState state, Realm realm, SellGood action) {
   final grain = action.good == MarketGood.grain;
   if (grain ? realm.soldGrainThisTurn : realm.soldCattleThisTurn) {
-    throw ActionException('Sie haben diese Runde schon verkauft !!!');
+    throw ActionException('Du hast diese Runde schon verkauft !!!');
   }
   final stock = grain ? realm.grainHarvest : realm.livestockHarvest;
   if (action.amount < 0 || action.amount > stock) {
@@ -338,7 +338,7 @@ List<GameEvent> _sellGood(GameState state, Realm realm, SellGood action) {
 List<GameEvent> _investShips(
     GameState state, Realm realm, InvestShips action, Rng rng) {
   if (realm.investedThisTurn) {
-    throw ActionException('Sie haben diese Runde schon investiert !');
+    throw ActionException('Du hast diese Runde schon investiert !');
   }
   final maxInvestment = realm.tileCount[Building.hafen] * 600;
   if (action.amount <= 0 ||
@@ -404,10 +404,10 @@ List<GameEvent> _relocateCapital(
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
   if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
-    throw ActionException('Ihr Sitz ist nicht verloren !');
+    throw ActionException('Dein Sitz ist nicht verloren !');
   }
   if (map.ownerAt(action.x, action.y) != realm.slot) {
-    throw ActionException('Der neue Sitz muss auf Ihrem Territorium liegen !');
+    throw ActionException('Der neue Sitz muss auf deinem Territorium liegen !');
   }
   final building = map.buildingAt(action.x, action.y);
   if (building != Building.stadt &&
@@ -445,7 +445,7 @@ List<GameEvent> _proposeMarriage(
     throw ActionException('Person nicht gefunden !');
   }
   if (proposer.dynasty != realm.slot) {
-    throw ActionException('Diese Person gehört nicht zu Ihrer Dynastie !');
+    throw ActionException('Diese Person gehört nicht zu deiner Dynastie !');
   }
   final eligible = proposer.spouseId == null &&
       target.spouseId == null &&
@@ -466,9 +466,9 @@ List<GameEvent> _proposeMarriage(
 }
 
 /// "(B)ürgerlich heiraten" (§14.1): marry [MarryCommoner.personId] to a
-/// freshly created commoner. The commoner rolls the same 25% acceptance
-/// as any non-human target ("Angenommen !" / "Abgelehnt !"); on success
-/// they join the dynasty so the §14.3 birth loop applies to the couple.
+/// freshly created commoner. [DEVIATION] A commoner always accepts (the
+/// original rolled the 25% like any proposal); the spouse joins the
+/// dynasty so the §14.3 birth loop applies to the couple.
 List<GameEvent> _marryCommoner(
     GameState state, Realm realm, MarryCommoner action, Rng rng) {
   if (realm.proposedMarriageThisTurn) {
@@ -476,7 +476,7 @@ List<GameEvent> _marryCommoner(
   }
   final person = state.persons[action.personId];
   if (person == null || person.dynasty != realm.slot) {
-    throw ActionException('Diese Person gehört nicht zu Ihrer Dynastie !');
+    throw ActionException('Diese Person gehört nicht zu deiner Dynastie !');
   }
   if (person.spouseId != null || person.age < 14) {
     throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
@@ -484,18 +484,6 @@ List<GameEvent> _marryCommoner(
   realm.proposedMarriageThisTurn = true;
 
   final events = <GameEvent>[];
-  if (rng.nextInt(4) != 0) {
-    // "Abgelehnt !"
-    events.add(GameEvent(
-      year: state.year,
-      slot: realm.slot,
-      type: 'marriageRejected',
-      visibility: EventVisibility.owner,
-      payload: {'proposerId': person.id},
-    ));
-    return events;
-  }
-
   final dynasty = state.dynasty(realm.slot);
   final gender = 1 - person.gender;
   final names = dynasty.religion == Religion.moslemisch
@@ -527,7 +515,7 @@ List<GameEvent> _resolveDecision(
   }
   final decision = state.pendingDecisions[index];
   if (decision.decidingSlot != action.slot) {
-    throw ActionException('Diese Entscheidung steht Ihnen nicht zu !');
+    throw ActionException('Diese Entscheidung steht dir nicht zu !');
   }
   state.pendingDecisions.removeAt(index);
 
@@ -624,7 +612,7 @@ List<GameEvent> _resolveDecision(
         total += amount;
       }
       if (total > realm.treasury) {
-        throw ActionException('Sie haben nicht genügend Taler für diese Bestechung !');
+        throw ActionException('Du hast nicht genügend Taler für diese Bestechung !');
       }
       for (final (electorId, amount) in gifts) {
         realm.treasury -= amount;
@@ -659,7 +647,7 @@ List<GameEvent> _resolveDecision(
       }
       if (finalistId == null ||
           !election.finalistIds.contains(finalistId)) {
-        throw ActionException('Stimmen Sie für einen der Kandidaten !');
+        throw ActionException('Stimme für einen der Kandidaten !');
       }
       election.votes[electorId] = finalistId;
       advanceElection(state, rng, events);
@@ -684,7 +672,7 @@ List<GameEvent> _changeReligion(
     throw ActionException('Unbekannte Religion !');
   }
   if (religion == dynasty.religion) {
-    throw ActionException('Das ist bereits Ihre Religion !');
+    throw ActionException('Das ist bereits deine Religion !');
   }
   if (religion == Religion.evangelisch && state.year <= state.reformationYear) {
     throw ActionException('Die Reformation hat noch nicht stattgefunden !');

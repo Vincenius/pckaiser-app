@@ -118,7 +118,7 @@ class WarPanel extends StatelessWidget {
           Text('Anspruch: ${war.remainingClaim} Punkte',
               style: Theme.of(context).textTheme.titleSmall),
           const Text(
-              'Tippen Sie auf Felder des Verlierers, um sie zu übernehmen. '
+              'Tippe auf Felder des Verlierers, um sie zu übernehmen. '
               'Alles zählt soviel, wie es kostet. Ein Markt zählt 2500 '
               'Punkte, eine Stadt 5000.'),
           if (isWinner)

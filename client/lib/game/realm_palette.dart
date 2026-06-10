@@ -16,9 +16,6 @@ class RealmPalette {
     return HSLColor.fromAHSL(1.0, hue, 0.85, lightness).toColor();
   }
 
-  /// Pattern overlay kind (0–3): stripes ╱, stripes ╲, dots, crosshatch.
-  /// Neighboring slots rarely share both hue and pattern.
-  static int patternFor(int slot) => slot % 4;
 
   /// Marks a realm's capital: a flag pole with a pennant in the realm
   /// color (no suitable sprite exists in the original tile set).
@@ -47,47 +44,32 @@ class RealmPalette {
     );
   }
 
-  /// Paints the ownership overlay for one tile cell: translucent tint plus
-  /// the pattern in a darker shade.
-  static void paintOwnership(Canvas canvas, Rect cell, int slot) {
+  /// Paints the ownership overlay for one tile cell: a subtle tint that
+  /// keeps the terrain art readable, plus solid country-border strokes
+  /// along every edge whose neighbor belongs to someone else. Together
+  /// with the country-name captions, the borders keep color from being
+  /// the only ownership channel (accessibility).
+  static void paintOwnership(Canvas canvas, Rect cell, int slot,
+      {required bool left,
+      required bool top,
+      required bool right,
+      required bool bottom}) {
     final color = colorFor(slot);
-    canvas.drawRect(cell, Paint()..color = color.withValues(alpha: 0.45));
+    canvas.drawRect(cell, Paint()..color = color.withValues(alpha: 0.16));
 
-    final pattern = Paint()
+    if (!(left || top || right || bottom)) return;
+    final border = Paint()
       ..color = color.withValues(alpha: 0.95)
-      ..strokeWidth = cell.width / 16
-      ..style = PaintingStyle.stroke;
-    final s = cell.width;
-    switch (patternFor(slot)) {
-      case 0: // ╱ stripes
-        for (var i = 1; i < 3; i++) {
-          canvas.drawLine(
-            Offset(cell.left, cell.top + s * i / 3 + s / 6),
-            Offset(cell.left + s * i / 3 + s / 6, cell.top),
-            pattern,
-          );
-        }
-      case 1: // ╲ stripes
-        for (var i = 1; i < 3; i++) {
-          canvas.drawLine(
-            Offset(cell.right, cell.top + s * i / 3 + s / 6),
-            Offset(cell.right - s * i / 3 - s / 6, cell.top),
-            pattern,
-          );
-        }
-      case 2: // dots
-        final dot = Paint()..color = pattern.color;
-        for (final dx in [0.3, 0.7]) {
-          for (final dy in [0.3, 0.7]) {
-            canvas.drawCircle(
-                Offset(cell.left + s * dx, cell.top + s * dy), s / 14, dot);
-          }
-        }
-      case 3: // crosshatch corner ticks
-        canvas.drawLine(Offset(cell.left + s * 0.2, cell.top + s * 0.5),
-            Offset(cell.left + s * 0.8, cell.top + s * 0.5), pattern);
-        canvas.drawLine(Offset(cell.left + s * 0.5, cell.top + s * 0.2),
-            Offset(cell.left + s * 0.5, cell.top + s * 0.8), pattern);
+      ..strokeWidth = cell.width / 8
+      ..strokeCap = StrokeCap.square;
+    // Inset by half the stroke width so the line stays inside the tile
+    // and meets the neighbor's stroke into one continuous border.
+    final inner = cell.deflate(cell.width / 16);
+    if (left) canvas.drawLine(inner.topLeft, inner.bottomLeft, border);
+    if (top) canvas.drawLine(inner.topLeft, inner.topRight, border);
+    if (right) canvas.drawLine(inner.topRight, inner.bottomRight, border);
+    if (bottom) {
+      canvas.drawLine(inner.bottomLeft, inner.bottomRight, border);
     }
   }
 }

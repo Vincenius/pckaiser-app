@@ -15,8 +15,10 @@ Keep it updated whenever the project scope or architecture changes.
 - Local and online share the same domain model AND the same game-logic implementation: one pure Dart package (`game_core`) used by client and server; only persistence/orchestration differs. The backend is Dart (shelf), not Node.
 - The world always has 30 realms (original layout); up to 16 are human players.
 - Keep game logic pure and testable: `(state, action, rng) → state`, RNG injected.
+- Updates must never break running games (`game_core/src/state/versioning.dart`): `GameState` JSON changes must be additive (new field + `fromJson` default); incompatible reshapes bump `currentSchemaVersion` plus a `schemaMigrations` step. Gameplay rule/balance changes bump `currentRulesVersion` and gate on `state.rulesVersion` — running games keep their original rules. See ARCHITECTURE.md "Versioning & compatibility".
 - Hidden information is part of the domain model: other realms' treasury/stocks/army/guards are hidden; `visibleStateFor(state, slot)` filters every view (local hot-seat AND server responses); espionage reveals fuzzed intel.
 - Modern UX deviations (event feed, undo within turn, named save slots, accessibility, host-configurable online turn timers) are specified in PROJECT_REQUIREMENTS.md.
+- The home screen offers an interactive tutorial (`client/lib/tutorial/`): a real fixed-seed single-player game with a scripted step overlay that walks through the basic actions, completes within the first turn (no step ends the turn), and is never saved (ephemeral session, no handoff/recap popups). **Whenever gameplay rules, prices, menu names or UI flows change, update the tutorial steps (`client/lib/tutorial/tutorial_steps.dart`) in the same change.**
 
 ## Important files
 - `ORIGINAL_GAME.md` — source game mechanics spec.

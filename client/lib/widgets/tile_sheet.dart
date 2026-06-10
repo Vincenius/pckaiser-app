@@ -214,9 +214,9 @@ Future<void> showTileActionSheet(
         if (actions.isEmpty)
           ListTile(
               title: Text(!hasMoves
-                  ? 'Sie haben keine Züge mehr !'
+                  ? 'Du hast keine Züge mehr !'
                   : (buildable || expandable) && money < 100
-                      ? 'Sie haben nicht genügend Taler !'
+                      ? 'Du hast nicht genügend Taler !'
                       : 'Hier ist keine Aktion möglich')),
         ...actions,
       ]),
@@ -229,7 +229,7 @@ Future<String?> _askTownName(BuildContext context) {
   return showDialog<String>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Wie soll Ihr Dorf heißen?'),
+      title: const Text('Wie soll dein Dorf heißen?'),
       content: TextField(controller: controller, autofocus: true),
       actions: [
         TextButton(

@@ -27,6 +27,42 @@ class GameController extends ChangeNotifier {
   /// human war side's troop list); null = nothing selected.
   int? selectedWarUnit;
 
+  /// Hint banner text while a map tile pick is active (e.g. "station the
+  /// new troop"); null = no pick pending.
+  String? tilePickHint;
+  bool Function(int x, int y)? _tilePick;
+
+  bool get tilePickActive => _tilePick != null;
+
+  /// Routes the next map taps to [onPick] instead of the tile sheet.
+  /// [onPick] returns true to accept the tile (ends the pick) or false to
+  /// reject it (the pick stays active).
+  void startTilePick(
+      {required String hint, required bool Function(int x, int y) onPick}) {
+    tilePickHint = hint;
+    _tilePick = onPick;
+    notifyListeners();
+  }
+
+  void cancelTilePick() {
+    if (_tilePick == null) return;
+    _tilePick = null;
+    tilePickHint = null;
+    notifyListeners();
+  }
+
+  /// Feeds a map tap into the active pick; returns false when none is.
+  bool resolveTilePick(int x, int y) {
+    final pick = _tilePick;
+    if (pick == null) return false;
+    if (pick(x, y)) {
+      _tilePick = null;
+      tilePickHint = null;
+    }
+    notifyListeners();
+    return true;
+  }
+
   GameState get state => _session.state;
 
   /// What the seated player may see (hidden information).
@@ -123,6 +159,8 @@ class GameController extends ChangeNotifier {
   Future<void> endTurn() async {
     if (_busy) return;
     _busy = true;
+    _tilePick = null;
+    tilePickHint = null;
     _undoStack.clear();
     markRecapSeen(currentSlot);
     notifyListeners();

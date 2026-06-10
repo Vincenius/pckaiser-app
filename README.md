@@ -1,6 +1,6 @@
 # PC Kaiser
 
-A mobile-first remake of the 1999 German strategy classic *PC Kaiser*
+A mobile-first remake of the 1992 German strategy classic *PC Kaiser*
 (Martin Gelter) for Android and iOS — Flutter + Flame. Rule one of 30
 medieval realms: build, trade, marry, scheme, elect a Kaiser and conquer,
 until one dynasty rules the whole map. 1–16 human players hot-seat on one

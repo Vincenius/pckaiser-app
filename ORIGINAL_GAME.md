@@ -2,7 +2,8 @@
 
 Self-contained specification for building a faithful clone of **PC Kaiser**
 ("PCKAISER++"), a German shareware medieval strategy/dynasty-simulation game
-by Martin Gelter (with Lorenz Giefing), final build 1999. Setting: the Holy
+by Martin Gelter (with Lorenz Giefing), originally released 1992 (the
+disassembled final build is from 1999). Setting: the Holy
 Roman Empire from the year 1000. Players rule dynasties; the goal is to be
 the **last dynasty standing**.
 

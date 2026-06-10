@@ -121,7 +121,7 @@ void main() {
         () => applyAction(state, DeclareWar(slot: 1, targetSlot: distant),
             Rng(state.rngSeed)),
         throwsA(isA<ActionException>()),
-        reason: 'Sie haben keine gemeinsame Grenze !',
+        reason: 'Du hast keine gemeinsame Grenze !',
       );
     });
 
@@ -266,7 +266,7 @@ void main() {
         () => applyAction(s, WarPlunder(slot: 1, x: enemyTown.x, y: enemyTown.y),
             Rng(s.rngSeed)),
         throwsA(isA<ActionException>()),
-        reason: 'Sie haben diese Runde schon geplündert !',
+        reason: 'Du hast diese Runde schon geplündert !',
       );
     });
 
