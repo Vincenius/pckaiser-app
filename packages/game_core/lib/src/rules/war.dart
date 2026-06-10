@@ -14,6 +14,7 @@ import '../state/troop.dart';
 import '../state/war.dart';
 import 'dynasty.dart' as dyn;
 import 'movement.dart';
+import 'population.dart' show cutGarrisonTroops;
 import 'troops.dart';
 
 /// §11.1: starts a war. Prunes empty units, snapshots positions, rolls the
@@ -187,6 +188,11 @@ void transferTile(GameState state, int x, int y, int winnerSlot,
     loser.population -= town.population;
     loser.troopCapacity -= town.troopCapacity;
     loser.armySize = math.max(0, loser.armySize - town.garrison);
+    // Rules v2: the lost garrison also leaves the loser's garrison-counted
+    // units — v1 cut only `armySize` and let unit men drift out of sync.
+    if (state.rulesVersion >= 2) {
+      cutGarrisonTroops(loser, town.garrison);
+    }
     town.garrison = 0; // the defenders are gone with the realm
     winner.towns.add(town);
     winner.population += town.population;
@@ -515,6 +521,16 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   }
 }
 
+/// What a loser tile costs against the settlement claim. Rules v2: bare
+/// land (building value 0) costs 100 T like a Kornfeld — under v1 rules
+/// value-0 tiles were free, so any limited victory could strip the loser
+/// of every reachable empty tile without spending the claim.
+int settlementTileValue(GameState state, int building) {
+  final value = Building.value[building];
+  if (value == 0 && state.rulesVersion >= 2) return 100;
+  return value;
+}
+
 /// §11.2 claim settlement, AI path `[APPROX]`: greedily annex affordable
 /// loser tiles adjacent to own land, then take the remainder in cash.
 void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {
@@ -529,7 +545,7 @@ void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {
     for (var y = 0; y < map.height && !annexed; y++) {
       for (var x = 0; x < map.width && !annexed; x++) {
         if (map.ownerAt(x, y) != loserSlot) continue;
-        final value = Building.value[map.buildingAt(x, y)];
+        final value = settlementTileValue(state, map.buildingAt(x, y));
         if (value > war.remainingClaim) continue;
         if (!_bordersTerritory(state, winnerSlot, x, y)) continue;
         transferTile(state, x, y, winnerSlot, events);

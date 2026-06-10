@@ -21,7 +21,16 @@ const int currentSchemaVersion = 1;
 
 /// Bump on gameplay rule/balance changes; gate the change on
 /// `state.rulesVersion` so running games keep their original rules.
-const int currentRulesVersion = 1;
+///
+/// Changelog:
+/// - v2 (2026-06-10): bare land costs 100 T in war claim settlements
+///   (was 0 — any limited victory could strip the loser of all empty
+///   tiles for free); war plunder only hits the war opponent (was: any
+///   foreign realm a unit reached); recruiting, hiring Söldner,
+///   reinforcing and peacetime troop moves are blocked while at war
+///   (matching the existing merge/disband gate); a conquered town's
+///   garrison is also removed from the loser's garrison-counted units.
+const int currentRulesVersion = 2;
 
 /// A document from a newer app version than this one understands.
 /// Surfaced to the user as "update the app to load this game" — never

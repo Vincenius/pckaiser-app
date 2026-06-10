@@ -142,7 +142,7 @@ void _runTownTransitions(
     if (town.population < 5) {
       // Garrison soldiers are removed from the army; the tile reverts.
       realm.armySize = math.max(0, realm.armySize - town.garrison);
-      _reduceTroops(realm, town.garrison);
+      cutGarrisonTroops(realm, town.garrison);
       realm.population -= math.max(0, town.population);
       realm.troopCapacity -= town.troopCapacity;
       final index = map.index(town.x, town.y);
@@ -212,15 +212,16 @@ void normalizeTowns(GameState state) {
         final excess = town.garrison - town.troopCapacity;
         town.garrison = town.troopCapacity;
         realm.armySize = math.max(0, realm.armySize - excess);
-        _reduceTroops(realm, excess);
+        cutGarrisonTroops(realm, excess);
       }
     }
   }
 }
 
 /// Cuts [count] men from garrison-counted troop units only (the garrisons
-/// have already been adjusted by the caller).
-void _reduceTroops(Realm realm, int count) {
+/// have already been adjusted by the caller — e.g. the town holding them
+/// was destroyed, seized or conquered).
+void cutGarrisonTroops(Realm realm, int count) {
   var left = count;
   for (var i = realm.troops.length - 1; i >= 0 && left > 0; i--) {
     final troop = realm.troops[i];

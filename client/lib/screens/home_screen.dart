@@ -216,7 +216,9 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(slot.name),
         subtitle: Text(needsUpdate
             ? tr('saveNeedsUpdate')
-            : 'Anno ${slot.year} · ${slot.humanCount} Spieler · '
+            // Older saves carry no player names — fall back to the count.
+            : 'Anno ${slot.year} · '
+                '${slot.playerNames.isEmpty ? '${slot.humanCount} Spieler' : slot.playerNames.join(', ')} · '
                 '${slot.savedAt.toLocal().toString().substring(0, 16)}'),
         onTap: needsUpdate
             ? () => ScaffoldMessenger.of(context).showSnackBar(

@@ -71,11 +71,12 @@ final List<TutorialStep> tutorialSteps = [
   ),
   TutorialStep(
     title: 'Deine Werte',
-    body: 'Die Leiste unten zeigt Jahr, Reich, Taler (T) und deine '
-        'verbleibenden Züge — fast jede Aktion auf der Karte kostet '
-        'einen Zug. Tippe auf die Leiste für alle Werte deines '
-        'Reichs ("Mein Reich"). Der Pfeil macht Aktionen innerhalb '
-        'des Zuges rückgängig.',
+    body: 'Oben rechts siehst du deine Taler (Münze) und deine '
+        'verbleibenden Züge (Hammer) — fast jede Aktion auf der '
+        'Karte kostet einen Zug. Die Leiste unten zeigt Jahr und '
+        'Reich; tippe auf beides für alle Werte deines Reichs '
+        '("Mein Reich"). Der Pfeil macht Aktionen innerhalb des '
+        'Zuges rückgängig.',
   ),
   TutorialStep(
     title: 'Bauen & Erweitern',

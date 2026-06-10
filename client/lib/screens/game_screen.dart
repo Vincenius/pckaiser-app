@@ -213,6 +213,16 @@ class _GameScreenState extends State<GameScreen> {
             Expanded(
               child: Stack(children: [
                 Positioned.fill(child: GameWidget(game: game)),
+                // Vitals over the map; hidden while the war panel or the
+                // tile-pick banner occupies the top edge.
+                if (controller.state.activeWar == null &&
+                    !controller.tilePickActive &&
+                    !controller.handoffPending)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: _resourceChip(controller),
+                  ),
                 if (controller.state.activeWar != null &&
                     !controller.handoffPending)
                   Align(
@@ -226,8 +236,12 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 // Tutorial card above the status row; kept in the tree
                 // (just hidden) during handoffs so the step survives.
+                // Keyed: the war panel / tile-pick banner are inserted as
+                // siblings above, and without a key that recreates this
+                // element and resets the tutorial progress.
                 if (_tutorialActive)
                   Align(
+                    key: const ValueKey('tutorial-overlay'),
                     alignment: Alignment.bottomCenter,
                     child: Visibility(
                       visible: !controller.handoffPending &&
@@ -235,8 +249,9 @@ class _GameScreenState extends State<GameScreen> {
                       maintainState: true,
                       child: TutorialOverlay(
                         controller: controller,
-                        onExit: () =>
+                        onFinish: () =>
                             setState(() => _tutorialActive = false),
+                        onQuit: () => Navigator.of(context).pop(),
                       ),
                     ),
                   ),
@@ -285,14 +300,59 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  /// Slim status row, replacing both the old HUD and the top-bar overlay
-  /// (which used to block map tiles): one tappable chip with realm color,
-  /// year/realm and the two always-needed numbers (Taler, Züge — tap for
-  /// the full "Mein Reich" stats), popularity warning when it matters,
-  /// undo, and end turn. Leaving the game lives in Info → "Spiel
-  /// verlassen" instead of a prominent back button.
-  Widget _statusRow(GameController controller) {
+  /// Always-visible vitals floating over the map (top right): treasury
+  /// and remaining moves as compact icon chips, plus the low-popularity
+  /// warning. Tapping opens "Mein Reich", like the status row below.
+  Widget _resourceChip(GameController controller) {
     final realm = controller.currentRealm;
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: theme.colorScheme.surfaceContainerHigh,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showInfoMenu(context, controller),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Semantics(
+            container: true,
+            label: '${tr('treasury')}: ${realm.treasury} Taler, '
+                '${tr('moves')}: ${realm.movementPoints}',
+            child: ExcludeSemantics(
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.toll, size: 16),
+                const SizedBox(width: 4),
+                Text('${realm.treasury}',
+                    style: theme.textTheme.titleSmall),
+                const SizedBox(width: 12),
+                const Icon(Icons.construction, size: 16),
+                const SizedBox(width: 4),
+                Text('${realm.movementPoints}',
+                    style: theme.textTheme.titleSmall),
+                if (realm.popularity < 30)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Tooltip(
+                      message: 'Beliebtheit gefährlich niedrig!',
+                      child: Icon(Icons.warning_amber,
+                          size: 18, color: Colors.orange),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Slim status row, replacing both the old HUD and the top-bar overlay
+  /// (which used to block map tiles): one tappable chip with realm color
+  /// and year/realm (tap for the full "Mein Reich" stats), undo, and end
+  /// turn. Taler and Züge live in the top-right [_resourceChip]. Leaving
+  /// the game lives in Info → "Spiel verlassen" instead of a prominent
+  /// back button.
+  Widget _statusRow(GameController controller) {
     final realmName = gc.countryNames[controller.currentSlot];
     final theme = Theme.of(context);
     return Material(
@@ -317,25 +377,11 @@ class _GameScreenState extends State<GameScreen> {
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
-                      'Anno ${controller.state.year} — $realmName · '
-                      '${realm.treasury} T · ${realm.movementPoints} Züge',
+                      'Anno ${controller.state.year} — $realmName',
                       style: theme.textTheme.titleSmall,
                       overflow: TextOverflow.ellipsis,
-                      semanticsLabel: 'Anno ${controller.state.year}, '
-                          '$realmName, '
-                          '${tr('treasury')}: ${realm.treasury} Taler, '
-                          '${tr('moves')}: ${realm.movementPoints}',
                     ),
                   ),
-                  if (realm.popularity < 30)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 6),
-                      child: Tooltip(
-                        message: 'Beliebtheit gefährlich niedrig!',
-                        child: Icon(Icons.warning_amber,
-                            size: 18, color: Colors.orange),
-                      ),
-                    ),
                 ]),
               ),
             ),
@@ -359,22 +405,28 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// Persistent labeled category bar — replaces the old hamburger hub, so
-  /// every menu is one tap away.
+  /// every menu is one tap away. Locked during a war pause: the menus act
+  /// for the seated player's own turn, which is not running while another
+  /// realm's turn stands paused on the war.
   Widget _actionBar(GameController controller) {
     final theme = Theme.of(context);
+    final locked = controller.warPauseActive;
     Widget item(IconData icon, String label,
             void Function(BuildContext, GameController) open) =>
         Expanded(
           child: InkWell(
-            onTap: () => open(context, controller),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, size: 20),
-                Text(label,
-                    style: theme.textTheme.labelSmall,
-                    overflow: TextOverflow.ellipsis),
-              ]),
+            onTap: locked ? null : () => open(context, controller),
+            child: Opacity(
+              opacity: locked ? 0.4 : 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon, size: 20),
+                  Text(label,
+                      style: theme.textTheme.labelSmall,
+                      overflow: TextOverflow.ellipsis),
+                ]),
+              ),
             ),
           ),
         );
@@ -431,16 +483,20 @@ class _GameScreenState extends State<GameScreen> {
   Widget _victory(GameController controller) {
     final event = controller.state.events.last;
     final slot = event.slot;
+    final draw = event.type == 'gameDraw';
     return ColoredBox(
       color: Colors.black87,
       child: Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.emoji_events, size: 72, color: Colors.amber),
+          Icon(draw ? Icons.history_edu : Icons.emoji_events,
+              size: 72, color: Colors.amber),
           const SizedBox(height: 12),
           Text(tr('gameOver'),
               style: Theme.of(context).textTheme.headlineMedium),
           Text(
-            '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
+            draw
+                ? 'Alle Dynastien sind erloschen — das Land bleibt herrenlos.'
+                : '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 20),

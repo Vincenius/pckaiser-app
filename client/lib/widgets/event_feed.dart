@@ -19,7 +19,7 @@ const _worldTypes = {
   'earthquake', 'disease', 'reformation', 'ottomanInvasion',
   'merchantFounder', 'crowned', 'electionStarted', 'electionTie',
   'interregnum', 'newKurfuerst', 'kurfuerstStripped', 'officeHolderDied',
-  'gameWon', 'totalExtinction',
+  'gameWon', 'gameDraw', 'totalExtinction',
 };
 
 /// Human-readable line for an event. Falls back to the type name so new
@@ -118,6 +118,8 @@ String describeEvent(gc.GameEvent e) {
     'ottomanInvasion' => 'Eine riesige Reiterhorde dringt in das Reich ein!',
     'buildingDemolished' => '$realm reißt (${p['x']}, ${p['y']}) ab',
     'gameWon' => '$realm ist der alleinige Herrscher des ganzen Landes!',
+    'gameDraw' =>
+      'Alle Dynastien sind erloschen — das Land bleibt herrenlos',
     _ => '$realm: ${e.type}',
   };
 }

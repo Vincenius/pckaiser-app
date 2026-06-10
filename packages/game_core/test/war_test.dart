@@ -19,6 +19,10 @@ void main() {
         )),
         Rng(7)).state;
     state.year = 1010;
+    // Human-vs-human wars are blocked in V1 (online war clock pending):
+    // the war tests run human slot 1 against an AI-controlled slot 2.
+    state.dynasty(2).status = DynastyStatus.ai;
+    state.dynasty(2).humanPlayer = null;
     for (final slot in [1, 2]) {
       final realm = state.realm(slot);
       realm.treasury = 10000;
@@ -212,16 +216,21 @@ void main() {
     });
 
     test('mutual peace resolves the war; troops return to snapshots', () {
-      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
-              Rng(state.rngSeed))
+      // The AI defender wants peace once it is home AND the war is
+      // decided (here: defender fields > 2× the attacker's units).
+      var s = state.copy();
+      for (final name in ['Zweite', 'Dritte']) {
+        s = applyAction(s,
+                RecruitTroops(slot: 2, men: 10, troopClass: 0, name: name),
+                Rng(s.rngSeed))
+            .state;
+      }
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
           .state;
       final troop = s.realm(1).troops.single;
       final homeX = troop.x;
       final homeY = troop.y;
       s = applyAction(s, WarPeaceWish(slot: 1, wantsPeace: true),
-              Rng(s.rngSeed))
-          .state;
-      s = applyAction(s, WarPeaceWish(slot: 2, wantsPeace: true),
               Rng(s.rngSeed))
           .state;
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
@@ -399,6 +408,164 @@ void main() {
             s, MergeTroops(slot: 1, fromIndex: 0, toIndex: 1), Rng(s.rngSeed)),
         throwsA(isA<ActionException>()),
       );
+    });
+
+    test('human-vs-human wars are blocked (V1, online war clock pending)',
+        () {
+      state.dynasty(2).status = DynastyStatus.human;
+      state.dynasty(2).humanPlayer = 1;
+      expect(
+        () => applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+            Rng(state.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'the V1 war UI can only seat one human side',
+      );
+    });
+
+    test('rules v2: no recruiting, hiring, reinforcing or peacetime moves '
+        'while at war', () {
+      expect(state.rulesVersion, greaterThanOrEqualTo(2));
+      final s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(state.rngSeed))
+          .state;
+      expect(
+        () => applyAction(s,
+            RecruitTroops(slot: 1, men: 5, troopClass: 0, name: 'Nachschub'),
+            Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      expect(
+        () => applyAction(
+            s, HireSoeldner(slot: 1, men: 5, name: 'Mietlinge'),
+            Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      expect(
+        () => applyAction(s,
+            ReinforceTroop(slot: 1, unitIndex: 0, men: 5), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      final capital = s.realm(1);
+      expect(
+        () => applyAction(
+            s,
+            MoveTroop(
+                slot: 1,
+                unitIndex: 0,
+                x: capital.capitalX,
+                y: capital.capitalY),
+            Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      // An uninvolved realm keeps its normal turn actions.
+      final third = s.realms
+          .firstWhere((r) => r.slot > 2 && !r.isVacant && r.towns.isNotEmpty)
+          .slot;
+      s.realm(third).treasury = 1000;
+      expect(
+          applyAction(
+                  s,
+                  RecruitTroops(
+                      slot: third, men: 1, troopClass: 0, name: 'Wache'),
+                  Rng(s.rngSeed))
+              .state
+              .realm(third)
+              .troops,
+          isNotEmpty);
+    });
+
+    test('rules v2: plunder only hits the war opponent', () {
+      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(state.rngSeed))
+          .state;
+      // Park the attacker's unit on a THIRD realm's town tile.
+      final third = s.realms.firstWhere(
+          (r) => r.slot > 2 && !r.isVacant && r.towns.isNotEmpty);
+      final troop = s.realm(1).troops.single;
+      troop.x = third.towns.first.x;
+      troop.y = third.towns.first.y;
+      expect(
+        () => applyAction(
+            s, WarPlunder(slot: 1, x: troop.x, y: troop.y), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'Das gehört nicht deinem Kriegsgegner !',
+      );
+      // The war opponent's town stays plunderable.
+      final enemyTown = s.realm(2).towns.single;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      s = applyAction(
+              s, WarPlunder(slot: 1, x: troop.x, y: troop.y), Rng(s.rngSeed))
+          .state;
+      expect(s.events.any((e) => e.type == 'plunder'), isTrue);
+    });
+
+    test('rules v2: bare land costs 100 in the claim settlement, '
+        'v1 keeps it free', () {
+      expect(settlementTileValue(state, Building.none), 100);
+      expect(settlementTileValue(state, Building.markt), 2500);
+      final v1 = GameState.fromJson(state.toJson()..['rulesVersion'] = 1);
+      expect(settlementTileValue(v1, Building.none), 0);
+      expect(settlementTileValue(v1, Building.kornfeld), 100);
+    });
+
+    test('rules v2: settlement annex of bare land spends the claim', () {
+      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(state.rngSeed))
+          .state;
+      // Force a limited victory for slot 1: its unit occupies the enemy
+      // border tile (bare land, war score > 0 but below 40% of the
+      // loser's territory value).
+      final map = s.map;
+      var bx = -1, by = -1;
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) != 2 ||
+              map.buildingAt(x, y) != Building.none) {
+            continue;
+          }
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 1) {
+              bx = x;
+              by = y;
+              break outer;
+            }
+          }
+        }
+      }
+      expect(bx, greaterThanOrEqualTo(0),
+          reason: 'setUp gave slot 2 a bare tile bordering slot 1');
+      s.activeWar!
+        ..phase = WarPhase.settlement
+        ..winnerSlot = 1
+        ..remainingClaim = 150;
+      s = applyAction(
+              s, SettlementAnnex(slot: 1, x: bx, y: by), Rng(s.rngSeed))
+          .state;
+      expect(s.activeWar!.remainingClaim, 50,
+          reason: 'bare land costs 100 under rules v2');
+      expect(s.map.ownerAt(bx, by), 1);
+      expect(
+        () => applyAction(s, SettlementAnnex(slot: 1, x: bx + 99, y: by),
+            Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+    });
+
+    test('rules v2: conquering a town also cuts the loser\'s '
+        'garrison-counted unit men', () {
+      final loser = state.realm(2);
+      final town = loser.towns.single;
+      final garrison = town.garrison;
+      expect(garrison, 50);
+      final unitMenBefore =
+          loser.troops.fold(0, (n, t) => n + t.men);
+      transferTile(state, town.x, town.y, 1, <GameEvent>[]);
+      final unitMenAfter = loser.troops.fold(0, (n, t) => n + t.men);
+      expect(unitMenAfter, unitMenBefore - garrison);
+      expect(loser.armySize, 0);
     });
 
     test('movesLeft stays aligned with the troop list when a unit dies',

@@ -258,6 +258,21 @@ void main() {
     });
   });
 
+  group('game end', () {
+    test('total extinction ends the game in a draw instead of crashing',
+        () {
+      final state = startGame(freshGame(), Rng(11)).state;
+      for (final realm in state.realms) {
+        realm.rulerId = null;
+      }
+      final result = completeTurn(state, Rng(state.rngSeed));
+      expect(result.events.any((e) => e.type == 'gameDraw'), isTrue);
+      // A dead world stays inert on further calls.
+      final again = completeTurn(result.state, Rng(result.state.rngSeed));
+      expect(again.events.any((e) => e.type == 'gameDraw'), isTrue);
+    });
+  });
+
   group('market actions (§9)', () {
     test('sells once per good per turn at the global price', () {
       final state = startGame(freshGame(), Rng(11)).state;
@@ -284,10 +299,11 @@ void main() {
       expect(cattle.state.realm(1).livestockHarvest, 0);
     });
 
-    test('rejects overselling and negative amounts', () {
+    test('rejects overselling, zero and negative amounts', () {
       final state = startGame(freshGame(), Rng(11)).state;
       state.realm(1).grainHarvest = 50;
-      for (final amount in [-1, 51]) {
+      // 0 must throw too: it would burn the once-per-turn flag for nothing.
+      for (final amount in [-1, 0, 51]) {
         expect(
           () => applyAction(state,
               SellGood(slot: 1, good: MarketGood.grain, amount: amount),

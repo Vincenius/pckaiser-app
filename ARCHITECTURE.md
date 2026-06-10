@@ -126,6 +126,7 @@ Online additionally relies on the server being authoritative (clients submit act
 Espionage only matters if other realms' numbers are actually hidden, so visibility is part of the shared model, not a UI trick:
 
 - `game_core` provides `visibleStateFor(GameState, int slot) → GameState` — strips other realms' treasury, food stocks, troop details and guard level; keeps public data (map ownership, dynasty names/titles/religion, town tiers, offices, chronicle) and the requesting player's own full data.
+- The filter also redacts cross-realm internals: an active election's bribes and cast votes (each participant's pending decision carries what they may know), and an active war's unit snapshots / movement budgets for everyone but the two combatants.
 - Successful espionage missions write an `IntelReport {targetSlot, year, fuzzedValues}` into the spying realm's private state; reports survive turns and are included in that player's filtered view.
 - **Online**: the server applies `visibleStateFor` in `GET /matches/:id` and in turn responses. The authoritative full state never leaves the server.
 - **Local hot-seat**: the same filter drives what each seated player sees; the handoff screen sits between turns so nobody scrolls a predecessor's intel.
@@ -167,6 +168,10 @@ In local mode the same loop runs on-device: human turns come from the UI, AI tur
 - Bound: fully-AFK worst case ≈ 20 rounds × 2 sides × war clock ≈ 7 h at the default; with both players present a war takes minutes.
 
 **Rejected alternatives:** running the war in parallel with other turns (plunder/conquest/treasury transfers mutate shared state under interleaved turns; breaks replay and the single `activeWar`); WEGO battle-plan submission (deletes the game's main tactical moment); plain blocking under the match timer (unbounded freeze).
+
+**Until the war clock ships (V1):** `DeclareWar` against a human-controlled realm is rejected by the engine (and filtered from the UI) — the local war panel can only seat one human side, so a human-vs-human war would deadlock the match. Human-vs-AI wars are unaffected.
+
+**Seat vs. active player (local client).** While an AI's turn stands paused on a war against a human defender, the engine's `currentPlayer` remains the AI. The client's `GameController.currentSlot` is therefore the *seat*: normally the active player, during a war pause the human war side. The map filter (`visibleStateFor`), status row, recap and decision prompts all key off the seat, and the regular action menus are locked while `warPauseActive` — only war actions are legal then. The online server gets the same distinction naturally (authenticated player vs. turn owner).
 
 ---
 

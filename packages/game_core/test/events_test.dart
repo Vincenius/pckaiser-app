@@ -156,6 +156,41 @@ void main() {
       expect(realm.tileCount[Building.burg], 0);
     });
 
+    test('bankruptcy seizure removes the seized town\'s garrison without '
+        'double-cutting other garrisons', () {
+      final state = freshGame();
+      state.year = 1010;
+      final realm = state.realm(2);
+      // Promote the starting Dorf to a (seizable) Stadt and garrison it.
+      final town = realm.towns.single;
+      final index = state.map.index(town.x, town.y);
+      realm.tileCount[state.map.building[index]]--;
+      state.map.building[index] = Building.stadt;
+      realm.tileCount[Building.stadt]++;
+      town.buildingType = Building.stadt;
+      town.troopCapacity = 50;
+      town.garrison = 20;
+      realm.troopCapacity =
+          realm.towns.fold(0, (n, t) => n + t.troopCapacity);
+      realm.armySize = 20;
+      realm.troops.add(Troop(
+          name: 'Garde',
+          men: 20,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: true,
+          x: town.x,
+          y: town.y));
+
+      realm.treasury = -12000; // Ritter limit 10,000 → 2 seizures
+      runEliminationChecks(state, 2, Rng(3), <GameEvent>[]);
+
+      expect(realm.towns, isEmpty, reason: 'the Stadt was seized');
+      expect(realm.armySize, 0);
+      expect(realm.troops, isEmpty,
+          reason: 'the garrisoned unit\'s men vanished with the town');
+    });
+
     test('debt within the title limit is tolerated', () {
       final state = freshGame();
       state.year = 1010;

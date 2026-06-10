@@ -110,8 +110,17 @@ See `ORIGINAL_GAME.md` (§1–27) for exact formulas — all constants there are
 | Troop merge/disband any time | Forbidden while at war (the war state is keyed to the troop list) | Consistent war bookkeeping |
 | Commoner marriage ("Bürgerlich heiraten") rolls the 25% acceptance | Always accepted | The fallback marriage option should reliably work; the 25% roll stays for dynastic proposals |
 | Unbounded event history in memory | In-state event log capped at 1,000 entries (`prunedEventCount` keeps absolute positions stable) | Bounded saves and state copies |
+| War plunder hit any foreign realm a unit could walk to | **Rules v2:** plunder only hits the war opponent | Uninvolved realms can't be sacked in someone else's war |
+| Claim settlement: bare land (building value 0) was free | **Rules v2:** bare land counts 100 T against the claim | A limited victory could otherwise strip the loser of every reachable empty tile |
+| Recruiting/hiring/reinforcing/peacetime troop moves allowed mid-war | **Rules v2:** blocked while at war (like merge/disband) | New units desync the war's `movesLeft`/snapshots; a peacetime move would teleport past the war movement rules |
+| Conquered town: only `armySize` reduced | **Rules v2:** the lost garrison is also cut from the loser's garrison-counted units | Keeps garrison/army/unit bookkeeping in sync |
+| Wars against any opponent | Human-vs-human wars are blocked in V1 (engine + UI) | The V1 war UI seats only one human side — such a war would deadlock; lifted with the V2 online war clock (ARCHITECTURE.md) |
 
-Two undo/movement clarifications that follow from the table: founding a **Dorf** rolls its starting population, so it counts as a randomized action and clears the undo stack like battles and investments do. And peacetime troop **repositioning** (any own tile for 1 movement point) intentionally differs from war movement (strictly 1 tile per move): war marches are the tactical game, peacetime stationing is logistics.
+Rows marked **Rules v2** are gated on `state.rulesVersion >= 2` (see
+`game_core/src/state/versioning.dart`): games created before the change
+keep playing under their original v1 rules.
+
+Two undo/movement clarifications that follow from the table: founding a **Dorf** rolls its starting population, so it counts as a randomized action and clears the undo stack like battles and investments do. And peacetime troop **repositioning** (any own tile for 1 movement point) intentionally differs from war movement (strictly 1 tile per move): war marches are the tactical game, peacetime stationing is logistics — though under rules v2 it is unavailable *while at war*.
 
 ---
 

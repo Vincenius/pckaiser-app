@@ -411,7 +411,8 @@ TurnResult advanceUntilHuman(GameState state, Rng rng) {
 
   while (guard++ < 2000) {
     if (current.events.isNotEmpty &&
-        current.events.last.type == 'gameWon') {
+        (current.events.last.type == 'gameWon' ||
+            current.events.last.type == 'gameDraw')) {
       break;
     }
     final slot = current.currentPlayer;

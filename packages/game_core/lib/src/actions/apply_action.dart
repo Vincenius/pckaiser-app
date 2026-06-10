@@ -303,7 +303,8 @@ List<GameEvent> _sellGood(GameState state, Realm realm, SellGood action) {
     throw ActionException('Du hast diese Runde schon verkauft !!!');
   }
   final stock = grain ? realm.grainHarvest : realm.livestockHarvest;
-  if (action.amount < 0 || action.amount > stock) {
+  // amount ≥ 1: selling 0 would still burn the once-per-turn flag.
+  if (action.amount < 1 || action.amount > stock) {
     throw ActionException('Das geht nicht !!!');
   }
 

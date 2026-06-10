@@ -162,7 +162,7 @@ Future<void> showTileActionSheet(
       actions.add(ListTile(
         leading: const Icon(Icons.groups_2),
         title: Text('„${troop.name}" — ${troop.men} Mann'),
-        subtitle: const Text('Info & Bearbeiten'),
+        subtitle: const Text('Info, Verlegen & Bearbeiten'),
         onTap: () {
           Navigator.pop(context);
           showTroopActions(context, controller, i);

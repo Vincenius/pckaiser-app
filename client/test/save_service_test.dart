@@ -10,8 +10,13 @@ GameState minimalState({int year = 1000}) => GameState(
       ottomanYear: 1040,
       map: generateMap(Rng(1)),
       realms: [
-        for (var s = 1; s <= World.realmCount; s++) Realm(slot: s),
+        for (var s = 1; s <= World.realmCount; s++)
+          Realm(slot: s, rulerId: s <= 2 ? s : null),
       ],
+      persons: {
+        1: Person(id: 1, name: 'Otto', age: 30, dynasty: 1, gender: 0),
+        2: Person(id: 2, name: 'Mathilde', age: 28, dynasty: 2, gender: 1),
+      },
       dynasties: [
         for (var s = 1; s <= World.realmCount; s++)
           Dynasty(
@@ -55,6 +60,18 @@ void main() {
     expect(slots.map((s) => s.name), ['Neu', 'Alt']);
     expect(slots.first.year, 1010);
     expect(slots.first.humanCount, 2);
+    expect(slots.first.playerNames, ['Otto', 'Mathilde']);
+  });
+
+  test('meta without playerNames (older save) parses to an empty list', () {
+    final info = SaveSlotInfo.fromJson({
+      'name': 'Alt',
+      'savedAt': '2026-01-01T00:00:00.000',
+      'year': 1001,
+      'humanCount': 2,
+    });
+    expect(info.playerNames, isEmpty);
+    expect(info.isSupported, isTrue);
   });
 
   test('saving the same slot overwrites it', () async {

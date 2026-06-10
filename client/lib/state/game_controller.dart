@@ -9,7 +9,9 @@ import '../services/local_game_session.dart';
 class GameController extends ChangeNotifier {
   GameController(this._session) {
     _handoffPending = humanCount > 0;
-    _handoffToSlot = state.currentPlayer;
+    // The seat, not the engine's active player: a save resumed inside a
+    // war pause must hand the device to the human war side.
+    _handoffToSlot = currentSlot;
   }
 
   final LocalGameSession _session;
@@ -65,10 +67,29 @@ class GameController extends ChangeNotifier {
 
   GameState get state => _session.state;
 
-  /// What the seated player may see (hidden information).
-  GameState get visibleState => _session.visibleState;
+  /// What the seated player may see (hidden information). Filtered for
+  /// [currentSlot] — the *seat*, not necessarily the engine's active
+  /// player (see [currentSlot]).
+  GameState get visibleState => visibleStateFor(state, currentSlot);
 
-  int get currentSlot => state.currentPlayer;
+  /// The slot of the player seated at the device. Normally the engine's
+  /// active player; during a war pause (an AI's turn stands paused while
+  /// its human war opponent acts) it is the human war side — keying the
+  /// whole UI (map filter, status row, menus) off the seat keeps the
+  /// human from seeing or controlling the paused AI realm.
+  int get currentSlot {
+    final war = state.activeWar;
+    if (war != null &&
+        state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
+      return warHumanSlot ?? state.currentPlayer;
+    }
+    return state.currentPlayer;
+  }
+
+  /// True while a war pauses another realm's turn: the seated player may
+  /// only act in the war, so the regular menus are locked (they would
+  /// issue actions outside the seat's own turn).
+  bool get warPauseActive => currentSlot != state.currentPlayer;
 
   Realm get currentRealm => state.realm(currentSlot);
 
@@ -85,7 +106,9 @@ class GameController extends ChangeNotifier {
   bool get canUndo => _undoStack.isNotEmpty;
 
   bool get gameOver =>
-      state.events.isNotEmpty && state.events.last.type == 'gameWon';
+      state.events.isNotEmpty &&
+      (state.events.last.type == 'gameWon' ||
+          state.events.last.type == 'gameDraw');
 
   /// The active war, when the seated player participates in it.
   ActiveWar? get warForCurrentPlayer {

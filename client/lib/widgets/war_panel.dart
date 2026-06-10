@@ -30,9 +30,15 @@ class WarPanel extends StatelessWidget {
     final selectedTroop = selected != null && selected < realm.troops.length
         ? realm.troops[selected]
         : null;
+    // Rules v2: only the war opponent may be plundered (engine gate).
+    final plunderVictimOk = selectedTroop != null &&
+        (state.rulesVersion >= 2
+            ? state.map.ownerAt(selectedTroop.x, selectedTroop.y) ==
+                enemySlot
+            : state.map.ownerAt(selectedTroop.x, selectedTroop.y) != slot);
     final canPlunder = selectedTroop != null &&
         !war.plunderedThisRound(slot) &&
-        state.map.ownerAt(selectedTroop.x, selectedTroop.y) != slot &&
+        plunderVictimOk &&
         state.map.buildingAt(selectedTroop.x, selectedTroop.y) !=
             gc.Building.none;
 
@@ -109,6 +115,9 @@ class WarPanel extends StatelessWidget {
 
   Widget _settlement(BuildContext context, gc.ActiveWar war, int slot) {
     final isWinner = war.winnerSlot == slot;
+    final bareLandNote = controller.state.rulesVersion >= 2
+        ? ' Leeres Land zählt 100 Punkte.'
+        : '';
     return Card(
       margin: const EdgeInsets.all(8),
       color: Theme.of(context).colorScheme.tertiaryContainer,
@@ -117,10 +126,9 @@ class WarPanel extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('Anspruch: ${war.remainingClaim} Punkte',
               style: Theme.of(context).textTheme.titleSmall),
-          const Text(
-              'Tippe auf Felder des Verlierers, um sie zu übernehmen. '
+          Text('Tippe auf Felder des Verlierers, um sie zu übernehmen. '
               'Alles zählt soviel, wie es kostet. Ein Markt zählt 2500 '
-              'Punkte, eine Stadt 5000.'),
+              'Punkte, eine Stadt 5000.$bareLandNote'),
           if (isWinner)
             FilledButton(
               onPressed: () async {

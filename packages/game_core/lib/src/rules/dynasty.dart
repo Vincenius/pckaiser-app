@@ -51,7 +51,7 @@ void runDynastyPhase(GameState state, int slot, Rng rng,
       continue;
     }
 
-    if (person.age > 14 && rng.nextInt(4) == 0) {
+    if (person.age >= 14 && rng.nextInt(4) == 0) {
       final candidate = findMarriageCandidate(state, person, rng);
       // [DEVIATION] The original's 50% "phantom birth" (§15.3: a
       // single-parent child when no candidate exists) is removed —

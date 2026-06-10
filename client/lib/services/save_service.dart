@@ -11,6 +11,7 @@ class SaveSlotInfo {
     required this.savedAt,
     required this.year,
     required this.humanCount,
+    this.playerNames = const [],
     this.schemaVersion = currentSchemaVersion,
   });
 
@@ -19,6 +20,8 @@ class SaveSlotInfo {
         savedAt: DateTime.parse(json['savedAt'] as String),
         year: json['year'] as int,
         humanCount: json['humanCount'] as int,
+        playerNames:
+            (json['playerNames'] as List?)?.cast<String>() ?? const [],
         schemaVersion: json['schemaVersion'] as int? ?? 1,
       );
 
@@ -26,6 +29,10 @@ class SaveSlotInfo {
   final DateTime savedAt;
   final int year;
   final int humanCount;
+
+  /// Current ruler names of the human players, in player order — empty
+  /// for saves written before this field existed.
+  final List<String> playerNames;
 
   /// Schema version of the stored state, duplicated here so the load list
   /// can flag saves from a newer app version without parsing the state.
@@ -40,6 +47,7 @@ class SaveSlotInfo {
         'savedAt': savedAt.toIso8601String(),
         'year': year,
         'humanCount': humanCount,
+        'playerNames': playerNames,
         'schemaVersion': schemaVersion,
       };
 }
@@ -87,15 +95,24 @@ class SaveService {
 
   /// Auto-save: called after every completed turn.
   Future<void> save(String slotName, GameState state, {DateTime? now}) async {
-    final humanCount = state.dynasties
+    final humans = state.dynasties
         .where((d) => d.status == DynastyStatus.human)
-        .length;
+        .toList()
+      ..sort((a, b) => (a.humanPlayer ?? 0).compareTo(b.humanPlayer ?? 0));
+    // Current ruler per human realm; a ruler-less realm (interregnum)
+    // falls back to its country name.
+    final playerNames = [
+      for (final d in humans)
+        state.person(state.realm(d.index).rulerId)?.name ??
+            countryNames[d.index],
+    ];
     final doc = {
       'meta': SaveSlotInfo(
         name: slotName,
         savedAt: now ?? DateTime.now(),
         year: state.year,
-        humanCount: humanCount,
+        humanCount: humans.length,
+        playerNames: playerNames,
         schemaVersion: state.schemaVersion,
       ).toJson(),
       'state': state.toJson(),

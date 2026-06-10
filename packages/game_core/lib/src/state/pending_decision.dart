@@ -37,6 +37,29 @@ class PendingDecision {
   /// ISO-8601 timestamp; null = no timer (local mode, or timer off).
   final String? deadline;
 
+  /// Deep copy — payloads hold nested lists/maps, and sharing them across
+  /// `GameState.copy()` snapshots would let a mutation leak into the undo
+  /// stack.
+  PendingDecision copy() => PendingDecision(
+        id: id,
+        type: type,
+        decidingSlot: decidingSlot,
+        payload: _copyJsonMap(payload),
+        deadline: deadline,
+      );
+
+  static Map<String, dynamic> _copyJsonMap(Map<String, dynamic> map) => {
+        for (final e in map.entries) e.key: _copyJsonValue(e.value),
+      };
+
+  static Object? _copyJsonValue(Object? value) => switch (value) {
+        final Map<dynamic, dynamic> m => {
+            for (final e in m.entries) e.key: _copyJsonValue(e.value),
+          },
+        final List<dynamic> l => [for (final v in l) _copyJsonValue(v)],
+        _ => value,
+      };
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'type': type,

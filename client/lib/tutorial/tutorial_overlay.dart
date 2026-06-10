@@ -11,14 +11,19 @@ class TutorialOverlay extends StatefulWidget {
   const TutorialOverlay({
     super.key,
     required this.controller,
-    required this.onExit,
+    required this.onFinish,
+    required this.onQuit,
   });
 
   final GameController controller;
 
-  /// Called when the tutorial is finished or dismissed — the game simply
-  /// continues without the overlay.
-  final VoidCallback onExit;
+  /// Called when the last step is completed — the game continues without
+  /// the overlay so the player can keep practicing.
+  final VoidCallback onFinish;
+
+  /// Called when the tutorial is quit early ("Tutorial beenden") — leaves
+  /// the practice game and returns to the main menu.
+  final VoidCallback onQuit;
 
   @override
   State<TutorialOverlay> createState() => _TutorialOverlayState();
@@ -65,7 +70,8 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Tutorial beenden?'),
-        content: const Text('Du kannst danach normal weiterspielen.'),
+        content: const Text('Du kehrst zum Hauptmenü zurück. Die '
+            'Übungspartie wird nicht gespeichert.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -76,7 +82,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
         ],
       ),
     );
-    if (sure == true) widget.onExit();
+    if (sure == true && mounted) widget.onQuit();
   }
 
   @override
@@ -161,7 +167,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton(
-                    onPressed: _isLast ? widget.onExit : _advance,
+                    onPressed: _isLast ? widget.onFinish : _advance,
                     child: Text(
                         _isLast ? 'Tutorial abschließen' : 'Weiter'),
                   ),

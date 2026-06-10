@@ -9,6 +9,7 @@ import '../rules/protection.dart';
 import '../rules/troops.dart';
 import '../rules/war.dart';
 import '../state/constants.dart';
+import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
@@ -25,6 +26,7 @@ Troop unitAt(Realm realm, int index) {
 
 List<GameEvent> applyRecruitTroops(
     GameState state, Realm realm, RecruitTroops action, Rng rng) {
+  _requireNotAtWarV2(state, realm);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   if (action.troopClass < TroopClass.infanterie ||
       action.troopClass > TroopClass.artillerie) {
@@ -74,6 +76,7 @@ List<GameEvent> applyRecruitTroops(
 
 List<GameEvent> applyHireSoeldner(
     GameState state, Realm realm, HireSoeldner action) {
+  _requireNotAtWarV2(state, realm);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   final cost = 50 * action.men;
   if (realm.treasury < cost) {
@@ -104,6 +107,7 @@ List<GameEvent> applyHireSoeldner(
 
 List<GameEvent> applyReinforceTroop(
     GameState state, Realm realm, ReinforceTroop action, Rng rng) {
+  _requireNotAtWarV2(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   final int cost;
@@ -133,6 +137,14 @@ void _requireNotAtWar(GameState state, Realm realm) {
   }
 }
 
+/// Rules v2 widens the at-war gate to recruiting, hiring, reinforcing and
+/// peacetime troop moves: new units desync the war's `movesLeft`/snapshot
+/// lists until the next round roll, and a normal move would teleport a
+/// unit past the war movement rules for one movement point.
+void _requireNotAtWarV2(GameState state, Realm realm) {
+  if (state.rulesVersion >= 2) _requireNotAtWar(state, realm);
+}
+
 List<GameEvent> applyMergeTroops(
     GameState state, Realm realm, MergeTroops action) {
   _requireNotAtWar(state, realm);
@@ -160,6 +172,7 @@ List<GameEvent> applyDisbandTroop(
 
 List<GameEvent> applyMoveTroop(
     GameState state, Realm realm, MoveTroop action) {
+  _requireNotAtWarV2(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   final map = state.map;
   if (!map.inBounds(action.x, action.y) ||
@@ -204,6 +217,14 @@ List<GameEvent> applyDeclareWar(
   // (ruler aliasing, §19) — merging is the intended path.
   if (state.realm(action.targetSlot).rulerId == realm.rulerId) {
     throw ActionException('Dieses Reich gehört bereits deinem Herrscher !');
+  }
+  // V1 limitation: human-vs-human wars wait for the online war clock
+  // (ARCHITECTURE.md "Human-vs-human wars online") — the war UI can only
+  // seat one human side, so such a war would deadlock the game.
+  if (state.dynasty(realm.slot).status == DynastyStatus.human &&
+      state.dynasty(action.targetSlot).status == DynastyStatus.human) {
+    throw ActionException(
+        'Krieg gegen menschliche Mitspieler ist noch nicht möglich !');
   }
   // [DEVIATION] Wars only against realms with a shared border.
   if (!state.map.realmNeighbors(realm.slot).contains(action.targetSlot)) {
@@ -313,6 +334,12 @@ List<GameEvent> applyWarPlunder(
   if (map.ownerAt(action.x, action.y) == realm.slot) {
     throw ActionException('Wollen sie wirklich ihr eigenes Land plündern !');
   }
+  // Rules v2: plunder only hits the war opponent — v1 let a unit sack any
+  // foreign realm it could walk to during someone else's war.
+  if (state.rulesVersion >= 2 &&
+      map.ownerAt(action.x, action.y) != war.opponentOf(realm.slot)) {
+    throw ActionException('Das gehört nicht deinem Kriegsgegner !');
+  }
   // Your troops must have reached the tile.
   final present =
       realm.troops.any((t) => t.x == action.x && t.y == action.y);
@@ -359,7 +386,7 @@ List<GameEvent> applySettlementAnnex(
       map.ownerAt(action.x, action.y) != loserSlot) {
     throw ActionException('Das gehört nicht deinem Feind !');
   }
-  final value = Building.value[map.buildingAt(action.x, action.y)];
+  final value = settlementTileValue(state, map.buildingAt(action.x, action.y));
   if (value > war.remainingClaim) {
     throw ActionException('So viel steht dir nicht zu !');
   }
@@ -399,7 +426,8 @@ List<GameEvent> applySpyMission(
   }
   if (action.targetSlot == realm.slot ||
       action.targetSlot < 1 ||
-      action.targetSlot > World.realmCount) {
+      action.targetSlot > World.realmCount ||
+      state.realm(action.targetSlot).isVacant) {
     throw ActionException('Ungültiges Ziel !');
   }
   final cost = action.agents *

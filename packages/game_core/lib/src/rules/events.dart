@@ -11,8 +11,8 @@ import '../state/realm.dart';
 import '../state/town.dart';
 import '../state/troop.dart';
 import 'dynasty.dart' as dyn;
+import 'population.dart' show cutGarrisonTroops;
 import 'protection.dart';
-import 'troops.dart';
 
 /// The between-turns world-event phase (§18): earthquake, disease,
 /// Reformation, Ottoman invasion, merchant founders. Runs once per round.
@@ -196,6 +196,9 @@ void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
 
   dynasty.religion = Religion.moslemisch;
   state.kurfuerstenIds.remove(realm.rulerId);
+  // Switch to the Muslim title ladder, like every other conversion
+  // (§16.1; mirrors `_changeReligion` and `foundReplacementDynasty`).
+  realm.titleClass = 9 + (realm.titleClass > 12 ? 12 : 0);
 
   // The capital town: nearest town to the capital (usually the first Dorf).
   final town = realm.towns.first;
@@ -386,7 +389,11 @@ void runEliminationChecks(GameState state, int slot, Rng rng,
         final town = realm.towns.removeAt(townIndex);
         realm.population -= town.population;
         realm.troopCapacity -= town.troopCapacity;
-        releaseGarrison(realm, town.garrison);
+        // The seized town's garrison vanishes with it — like a dying town
+        // (§8.3), not like a disbanded unit: cutting other towns' garrisons
+        // here (the old releaseGarrison call) double-counted the loss.
+        realm.armySize = math.max(0, realm.armySize - town.garrison);
+        cutGarrisonTroops(realm, town.garrison);
       }
     }
     map.owner[i] = World.niemand;

@@ -115,6 +115,37 @@ void main() {
       expect(view.persons.length, state.persons.length);
     });
 
+    test('hides election bribes and votes from every viewer', () {
+      state.activeElection = ActiveElection(
+        office: Office.kaiser,
+        finalistIds: [1, 2],
+        electorIds: [3],
+      )..addBribe(3, 1, 500);
+      state.activeElection!.votes[3] = 1;
+      final view = visibleStateFor(state, 1);
+      expect(view.activeElection, isNotNull,
+          reason: 'the running election itself is public');
+      expect(view.activeElection!.bribes, isEmpty);
+      expect(view.activeElection!.votes, isEmpty);
+      expect(state.activeElection!.bribes, isNotEmpty,
+          reason: 'the master state keeps them');
+    });
+
+    test('hides war snapshots and movement budgets from non-participants',
+        () {
+      state.activeWar = ActiveWar(attackerSlot: 2, defenderSlot: 1)
+        ..snapshots[2] = [UnitSnapshot(name: 'Heer', x: 3, y: 4)]
+        ..movesLeft[2] = [5];
+      final participant = visibleStateFor(state, 1);
+      expect(participant.activeWar!.snapshots, isNotEmpty);
+      expect(participant.activeWar!.movesLeft, isNotEmpty);
+      final bystander = visibleStateFor(state, 3);
+      expect(bystander.activeWar, isNotNull,
+          reason: 'that a war rages is public');
+      expect(bystander.activeWar!.snapshots, isEmpty);
+      expect(bystander.activeWar!.movesLeft, isEmpty);
+    });
+
     test('never leaks the RNG seed', () {
       expect(visibleStateFor(state, 1).rngSeed, 0);
       expect(state.rngSeed, isNot(0));

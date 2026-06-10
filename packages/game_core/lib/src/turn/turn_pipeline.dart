@@ -82,6 +82,21 @@ TurnResult completeTurn(GameState state, Rng rng) {
     return TurnResult(next, events);
   }
 
+  // Total extinction (every slot vacant) ends the game in a draw instead
+  // of crashing on the next-slot search.
+  if (!next.realms.any((r) => !r.isVacant)) {
+    events.add(GameEvent(
+      year: next.year,
+      slot: 0,
+      type: 'gameDraw',
+      visibility: EventVisibility.public,
+    ));
+    next.rngSeed = rng.seed;
+    next.events.addAll(events);
+    _pruneEvents(next);
+    return TurnResult(next, events);
+  }
+
   final previous = next.currentPlayer;
   next.currentPlayer = _nextLivingSlot(next, previous);
   if (next.currentPlayer <= previous) {
@@ -125,6 +140,11 @@ void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   for (final realm in state.realms) {
     realm.warThisYear = false; // wars: once per year per player (§11.1)
   }
+
+  // Orders against realms that went vacant (or merged away) can never
+  // resolve — vacant slots take no turns — so drop them.
+  state.assassinationOrders
+      .removeWhere((o) => state.realm(o.targetSlot).isVacant);
 }
 
 /// Per-turn upkeep for `state.currentPlayer` (§6.1 step 1): food →

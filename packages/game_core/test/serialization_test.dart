@@ -178,6 +178,30 @@ void main() {
       expect(state.dynasty(1).memberIds, hasLength(3));
     });
 
+    test('copy() deep-copies pending-decision payloads', () {
+      final state = sampleState();
+      state.pendingDecisions.add(PendingDecision(
+        id: 'heir-1',
+        type: 'heirChoice',
+        decidingSlot: 1,
+        payload: {
+          'candidateIds': [1, 2],
+          'nested': {'slots': [1]},
+        },
+      ));
+      final copy = state.copy();
+      (copy.pendingDecisions.last.payload['candidateIds'] as List).add(3);
+      ((copy.pendingDecisions.last.payload['nested'] as Map)['slots']
+              as List)
+          .add(2);
+      expect(
+          state.pendingDecisions.last.payload['candidateIds'], [1, 2],
+          reason: 'undo snapshots must not share payload lists');
+      expect(
+          (state.pendingDecisions.last.payload['nested'] as Map)['slots'],
+          [1]);
+    });
+
     test('GameEvent.visibleTo respects visibility', () {
       final state = sampleState();
       final intel = state.events[0];

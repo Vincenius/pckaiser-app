@@ -232,7 +232,7 @@ class GameState {
         rngSeed: rngSeed,
         activeElection: activeElection?.copy(),
         activeWar: activeWar?.copy(),
-        pendingDecisions: List.of(pendingDecisions),
+        pendingDecisions: [for (final d in pendingDecisions) d.copy()],
         events: List.of(events),
         prunedEventCount: prunedEventCount,
       );

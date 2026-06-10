@@ -35,6 +35,26 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
       .retainWhere((o) => o.sponsorSlot == viewerSlot);
   filtered.events.retainWhere((e) => e.visibleTo(viewerSlot));
 
+  // Election internals are hidden information: bribes and cast votes stay
+  // on the server/master state only. Each participant's pending decision
+  // already carries exactly what they may know (e.g. the bribes addressed
+  // to them in an `electorVote`).
+  final election = filtered.activeElection;
+  if (election != null) {
+    election.bribes.clear();
+    election.votes.clear();
+  }
+
+  // A war's unit snapshots and movement budgets reveal troop names,
+  // counts and positions — visible to the two combatants only.
+  final filteredWar = filtered.activeWar;
+  if (filteredWar != null &&
+      viewerSlot != filteredWar.attackerSlot &&
+      viewerSlot != filteredWar.defenderSlot) {
+    filteredWar.snapshots.clear();
+    filteredWar.movesLeft.clear();
+  }
+
   // The map's troop markers would betray foreign army positions: rebuild
   // them from the troops the viewer may see — their own, plus both sides'
   // once the viewer fights in the active war.

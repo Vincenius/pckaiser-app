@@ -123,6 +123,9 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
   final realm = controller.currentRealm;
   final state = controller.state;
   final freeCapacity = realm.troopCapacity - realm.armySize;
+  // Rules v2: no recruiting/hiring while at war (engine gate, mirrored).
+  final atWar = state.rulesVersion >= 2 &&
+      (state.activeWar?.isParticipant(slot) ?? false);
 
   // The §11.1 war gates, mirrored so the button is disabled (with the
   // reason shown) instead of failing on tap.
@@ -143,9 +146,10 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
       child: ListView(shrinkWrap: true, children: [
         ListTile(
           title: Text(tr('recruit')),
-          subtitle: Text(
-              '5 T pro Mann — freie Kapazität: $freeCapacity'),
-          enabled: freeCapacity > 0 && realm.treasury >= 5,
+          subtitle: Text(atWar
+              ? 'Nicht mitten im Krieg !'
+              : '5 T pro Mann — freie Kapazität: $freeCapacity'),
+          enabled: !atWar && freeCapacity > 0 && realm.treasury >= 5,
           onTap: () {
             Navigator.pop(sheetContext);
             // Position first, then class and amount. Follow-up sheets use
@@ -158,8 +162,10 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
         ),
         ListTile(
           title: Text(tr('hireSoeldner')),
-          subtitle: const Text('50 T pro Mann (plus Sold)'),
-          enabled: realm.treasury >= 50,
+          subtitle: Text(atWar
+              ? 'Nicht mitten im Krieg !'
+              : '50 T pro Mann (plus Sold)'),
+          enabled: !atWar && realm.treasury >= 50,
           onTap: () {
             Navigator.pop(sheetContext);
             _stationSheet(context, controller, onPicked: (x, y) {
@@ -339,10 +345,13 @@ void _showTroopList(BuildContext context, GameController controller) {
   );
 }
 
-/// Per-unit info & edit sheet (§10.2): verstärken, vereinigen, auflösen.
-/// Public — the tile sheet opens it when tapping a stationed army.
+/// Per-unit info & edit sheet (§10.2): verlegen, verstärken, vereinigen,
+/// auflösen. Public — the tile sheet opens it when tapping a stationed army.
 void showTroopActions(
     BuildContext context, GameController controller, int index) {
+  // The screen's context — onPick of the move tile fires long after the
+  // sheet (and its builder context) is gone.
+  final screenContext = context;
   final slot = controller.currentSlot;
   final realm = controller.currentRealm;
   final troop = realm.troops[index];
@@ -354,7 +363,9 @@ void showTroopActions(
       soeldner ? affordable : (capacity < affordable ? capacity : affordable);
   // Merging/disbanding is forbidden while at war (the war state is keyed
   // to the troop list) — mirror the engine gate so the options grey out.
+  // Rules v2 widens the gate to reinforcing as well.
   final atWar = controller.state.activeWar?.isParticipant(slot) ?? false;
+  final reinforceBlocked = atWar && controller.state.rulesVersion >= 2;
   final mergeTargets = [
     for (var i = 0; i < realm.troops.length; i++)
       if (i != index &&
@@ -376,10 +387,36 @@ void showTroopActions(
         ),
         const Divider(height: 1),
         ListTile(
+          leading: const Icon(Icons.open_with),
+          title: const Text('Truppe verlegen'),
+          subtitle: Text(realm.movementPoints < 1
+              ? 'Du hast keine Züge mehr !'
+              : '1 Zug — Zielfeld auf der Karte antippen'),
+          enabled: realm.movementPoints >= 1,
+          onTap: () {
+            Navigator.pop(context);
+            controller.startTilePick(
+              hint: 'Zielfeld für „${troop.name}" antippen',
+              onPick: (x, y) {
+                try {
+                  controller.applyUndoable(gc.MoveTroop(
+                      slot: slot, unitIndex: index, x: x, y: y));
+                  return true;
+                } on gc.ActionException catch (e) {
+                  if (screenContext.mounted) _toast(screenContext, e.message);
+                  return false;
+                }
+              },
+            );
+          },
+        ),
+        ListTile(
           leading: const Icon(Icons.group_add),
           title: const Text('Truppe verstärken'),
-          subtitle: Text('$costPerMan T pro Mann'),
-          enabled: maxReinforce > 0,
+          subtitle: Text(reinforceBlocked
+              ? 'Nicht mitten im Krieg !'
+              : '$costPerMan T pro Mann'),
+          enabled: !reinforceBlocked && maxReinforce > 0,
           onTap: () {
             Navigator.pop(context);
             _amountSheet(context,
@@ -441,6 +478,9 @@ void _declareWarSheet(BuildContext context, GameController controller) {
               !realm.isVacant &&
               // No war against a slot your own ruler already holds.
               realm.rulerId != controller.currentRealm.rulerId &&
+              // V1: human-vs-human wars wait for the online war clock.
+              controller.state.dynasty(realm.slot).status !=
+                  gc.DynastyStatus.human &&
               neighbors.contains(realm.slot))
             ListTile(
               title: Text(gc.countryNames[realm.slot]),

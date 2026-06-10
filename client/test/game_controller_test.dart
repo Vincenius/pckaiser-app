@@ -114,6 +114,36 @@ void main() {
     expect(recap.every((e) => e.visibleTo(1)), isTrue);
   });
 
+  test('a war pause seats the human war side, not the paused AI realm',
+      () async {
+    final controller = await twoPlayerGame();
+    controller.confirmHandoff();
+    final state = controller.state;
+
+    // Fabricate the pause: an AI realm's turn stands open on a war
+    // against human slot 1 (what advanceUntilHuman leaves behind when an
+    // AI declares war on a human defender).
+    state.currentPlayer = 2;
+    expect(state.dynasty(2).status, DynastyStatus.ai);
+    state.activeWar = ActiveWar(attackerSlot: 2, defenderSlot: 1);
+
+    expect(controller.warPauseActive, isTrue);
+    expect(controller.currentSlot, 1,
+        reason: 'the seat belongs to the human defender');
+    expect(controller.currentRealm.slot, 1);
+    expect(controller.visibleState.realm(1).treasury,
+        state.realm(1).treasury,
+        reason: 'the map view is filtered for the seat — the defender '
+            'sees their own realm, not a redacted one');
+    expect(controller.visibleState.realm(2).treasury, 0,
+        reason: 'the paused AI attacker stays hidden');
+
+    // Outside a war the seat follows the engine again.
+    state.activeWar = null;
+    expect(controller.warPauseActive, isFalse);
+    expect(controller.currentSlot, 2);
+  });
+
   test('a full round returns to player 1 and the year advances', () async {
     final controller = await twoPlayerGame();
     controller.confirmHandoff();
