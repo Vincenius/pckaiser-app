@@ -1,13 +1,16 @@
 part of 'player_action.dart';
 
 /// Recruit a new regular unit (§10.2): 5 T/man + class surcharge; men are
-/// quartered in towns against free capacity.
+/// quartered in towns against free capacity. The unit is stationed at
+/// ([x], [y]) when given (must be own territory), else at the capital.
 class RecruitTroops extends PlayerAction {
   RecruitTroops({
     required super.slot,
     required this.men,
     required this.troopClass,
     required this.name,
+    this.x,
+    this.y,
   });
 
   factory RecruitTroops.fromJson(Map<String, dynamic> json) => RecruitTroops(
@@ -15,6 +18,8 @@ class RecruitTroops extends PlayerAction {
         men: json['men'] as int,
         troopClass: json['troopClass'] as int,
         name: json['name'] as String,
+        x: json['x'] as int?,
+        y: json['y'] as int?,
       );
 
   static const kind = 'recruitTroops';
@@ -22,6 +27,8 @@ class RecruitTroops extends PlayerAction {
   final int men;
   final int troopClass;
   final String name;
+  final int? x;
+  final int? y;
 
   @override
   String get type => kind;
@@ -33,30 +40,43 @@ class RecruitTroops extends PlayerAction {
         'men': men,
         'troopClass': troopClass,
         'name': name,
+        'x': x,
+        'y': y,
       };
 }
 
 /// Hire Söldner (§10.2): 50 T/man, not garrison-counted, ongoing wages.
+/// Stationed at ([x], [y]) when given (own territory), else the capital.
 class HireSoeldner extends PlayerAction {
-  HireSoeldner({required super.slot, required this.men, required this.name});
+  HireSoeldner({
+    required super.slot,
+    required this.men,
+    required this.name,
+    this.x,
+    this.y,
+  });
 
   factory HireSoeldner.fromJson(Map<String, dynamic> json) => HireSoeldner(
         slot: json['slot'] as int,
         men: json['men'] as int,
         name: json['name'] as String,
+        x: json['x'] as int?,
+        y: json['y'] as int?,
       );
 
   static const kind = 'hireSoeldner';
 
   final int men;
   final String name;
+  final int? x;
+  final int? y;
 
   @override
   String get type => kind;
 
   @override
   Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'men': men, 'name': name};
+      {'type': kind, 'slot': slot, 'men': men, 'name': name, 'x': x, 'y': y};
 }
 
 /// "Truppe verstärken" — add men to an existing unit (§10.2).

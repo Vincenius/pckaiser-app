@@ -18,6 +18,23 @@ GameState freshGame({int seed = 2026, List<int> humanSlots = const [1]}) =>
     ));
 
 void main() {
+  group('births (§15.3)', () {
+    test('no children without marriage — phantom births are removed', () {
+      for (var seed = 0; seed < 50; seed++) {
+        final state = startGame(freshGame(seed: 2026), Rng(1)).state;
+        // Leave slot 1's unmarried founder alone in the world: no
+        // marriage candidate can exist, so no birth may ever fire.
+        final founderId = state.dynasty(1).memberIds.single;
+        state.persons.removeWhere((id, _) => id != founderId);
+        final events = <GameEvent>[];
+        runDynastyPhase(state, 1, Rng(seed), events);
+        expect(events.where((e) => e.type == 'birth'), isEmpty,
+            reason: 'seed $seed produced a child without parents');
+        expect(state.persons[founderId]!.spouseId, isNull);
+      }
+    });
+  });
+
   group('aging & death (§15.1)', () {
     test('protection window suppresses death rolls but not aging', () {
       final state = startGame(freshGame(), Rng(1)).state;

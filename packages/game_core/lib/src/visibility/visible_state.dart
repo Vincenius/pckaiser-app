@@ -35,6 +35,26 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
       .retainWhere((o) => o.sponsorSlot == viewerSlot);
   filtered.events.retainWhere((e) => e.visibleTo(viewerSlot));
 
+  // The map's troop markers would betray foreign army positions: rebuild
+  // them from the troops the viewer may see — their own, plus both sides'
+  // once the viewer fights in the active war.
+  final visibleTroopSlots = <int>{viewerSlot};
+  final war = state.activeWar;
+  if (war != null &&
+      (war.attackerSlot == viewerSlot || war.defenderSlot == viewerSlot)) {
+    visibleTroopSlots.addAll([war.attackerSlot, war.defenderSlot]);
+  }
+  // The visible copy encodes the troop's owner slot in the marker, so the
+  // client can pick the attacker/defender icon (the master state keeps the
+  // plain 0/1 convention).
+  final marker = filtered.map.troopMarker;
+  marker.fillRange(0, marker.length, 0);
+  for (final slot in visibleTroopSlots) {
+    for (final troop in state.realm(slot).troops) {
+      marker[filtered.map.index(troop.x, troop.y)] = slot;
+    }
+  }
+
   return filtered;
 }
 

@@ -53,12 +53,10 @@ void runDynastyPhase(GameState state, int slot, Rng rng,
 
     if (person.age > 14 && rng.nextInt(4) == 0) {
       final candidate = findMarriageCandidate(state, person, rng);
-      if (candidate == null) {
-        // §14.3: no candidate → 50% phantom birth.
-        if (rng.nextInt(2) == 0) {
-          _birth(state, person, null, rng, events);
-        }
-      } else {
+      // [DEVIATION] The original's 50% "phantom birth" (§15.3: a
+      // single-parent child when no candidate exists) is removed —
+      // children require married parents.
+      if (candidate != null) {
         proposeMarriage(state, person, candidate, rng, events);
       }
     }

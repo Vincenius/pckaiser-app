@@ -95,7 +95,7 @@ void main() {
       expect(realm.tileCount[Building.none], 0);
     });
 
-    test('rejects Kornfeld on Berg and Weide on Ebene', () {
+    test('rejects Kornfeld on Berg; Weide builds on Ebene and Berg', () {
       final (x, y) = claimableTile();
       final s = applyAction(state, ClaimTile(slot: 1, x: x, y: y), rng).state;
       s.map.terrain[s.map.index(x, y)] = Terrain.berg;
@@ -104,10 +104,55 @@ void main() {
             s, Build(slot: 1, x: x, y: y, building: Building.kornfeld), rng),
         throwsA(isA<ActionException>()),
       );
+      // [DEVIATION] Weide is allowed on Ebene too.
       s.map.terrain[s.map.index(x, y)] = Terrain.ebene;
+      final result = applyAction(
+          s, Build(slot: 1, x: x, y: y, building: Building.weide), rng);
+      expect(result.state.map.buildingAt(x, y), Building.weide);
+    });
+
+    test('building on unowned adjacent land claims the tile in one step', () {
+      final (x, y) = claimableTile();
+      state.map.terrain[state.map.index(x, y)] = Terrain.ebene;
+      final result = applyAction(
+          state, Build(slot: 1, x: x, y: y, building: Building.kornfeld), rng);
+      final realm = result.state.realm(1);
+      expect(result.state.map.ownerAt(x, y), 1);
+      expect(result.state.map.buildingAt(x, y), Building.kornfeld);
+      expect(realm.movementPoints, 4, reason: 'claim+build = 1 MP');
+      expect(realm.treasury, 1000 - 100);
+      expect(realm.tileCount[Building.none], 0);
+      expect(realm.tileCount[Building.kornfeld],
+          state.realm(1).tileCount[Building.kornfeld] + 1);
+    });
+
+    test('still rejects building on unowned land away from own territory',
+        () {
+      final map = state.map;
+      int fx = -1, fy = -1;
+      for (var y = 0; y < map.height && fx < 0; y++) {
+        for (var x = 0; x < map.width && fx < 0; x++) {
+          if (!map.isLandAt(x, y) || map.ownerAt(x, y) != World.niemand) {
+            continue;
+          }
+          var nearOwn = false;
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 1) {
+              nearOwn = true;
+            }
+          }
+          if (!nearOwn) {
+            fx = x;
+            fy = y;
+          }
+        }
+      }
+      expect(fx, greaterThanOrEqualTo(0));
+      state.map.terrain[state.map.index(fx, fy)] = Terrain.ebene;
       expect(
-        () => applyAction(
-            s, Build(slot: 1, x: x, y: y, building: Building.weide), rng),
+        () => applyAction(state,
+            Build(slot: 1, x: fx, y: fy, building: Building.kornfeld), rng),
         throwsA(isA<ActionException>()),
       );
     });
@@ -297,6 +342,173 @@ void main() {
     });
   });
 
+  group('ProposeMarriage', () {
+    test('only one proposal per turn', () {
+      // An eligible pair: opposite gender, both 20, different dynasties,
+      // both Catholic at game start.
+      state.persons[9001] =
+          Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
+      state.persons[9002] =
+          Person(id: 9002, name: 'Ute', age: 20, dynasty: 2, gender: 1);
+      final result = applyAction(state,
+          ProposeMarriage(slot: 1, proposerId: 9001, targetId: 9002), rng);
+      expect(result.state.realm(1).proposedMarriageThisTurn, isTrue);
+      expect(
+        () => applyAction(result.state,
+            ProposeMarriage(slot: 1, proposerId: 9001, targetId: 9002), rng),
+        throwsA(isA<ActionException>()),
+      );
+    });
+  });
+
+  group('RecruitTroops placement', () {
+    test('stations the new unit on the chosen own tile', () {
+      final realm = state.realm(1);
+      realm.treasury = 5000;
+      realm.towns.single.troopCapacity = 100;
+      realm.troopCapacity = 100;
+      final town = realm.towns.single;
+      final result = applyAction(
+          state,
+          RecruitTroops(
+              slot: 1,
+              men: 10,
+              troopClass: TroopClass.infanterie,
+              name: 'Wache',
+              x: town.x,
+              y: town.y),
+          rng);
+      final troop = result.state.realm(1).troops.single;
+      expect((troop.x, troop.y), (town.x, town.y));
+      expect(
+          result.state.map.troopMarker[
+              result.state.map.index(town.x, town.y)],
+          1);
+    });
+
+    test('rejects stationing outside own territory', () {
+      final realm = state.realm(1);
+      realm.treasury = 5000;
+      realm.towns.single.troopCapacity = 100;
+      realm.troopCapacity = 100;
+      final (x, y) = claimableTile(); // unowned land
+      expect(
+          () => applyAction(
+              state,
+              RecruitTroops(
+                  slot: 1,
+                  men: 10,
+                  troopClass: TroopClass.infanterie,
+                  name: 'Wache',
+                  x: x,
+                  y: y),
+              rng),
+          throwsA(isA<ActionException>()));
+    });
+  });
+
+  group('MarryCommoner', () {
+    test('25% acceptance; the commoner spouse joins the dynasty', () {
+      state.persons[9001] =
+          Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
+      state.dynasty(1).memberIds.add(9001);
+      var accepted = 0, rejected = 0;
+      for (var seed = 0; seed < 40; seed++) {
+        final result = applyAction(
+            state, MarryCommoner(slot: 1, personId: 9001), Rng(seed));
+        expect(result.state.realm(1).proposedMarriageThisTurn, isTrue);
+        final hans = result.state.persons[9001]!;
+        if (hans.spouseId != null) {
+          accepted++;
+          final spouse = result.state.persons[hans.spouseId!]!;
+          expect(spouse.dynasty, 1);
+          expect(spouse.gender, 1, reason: 'opposite gender');
+          expect((spouse.age - 20).abs(), lessThan(10));
+          expect(spouse.age, greaterThanOrEqualTo(14));
+          expect(result.state.dynasty(1).memberIds, contains(spouse.id));
+          expect(result.events.any((e) => e.type == 'wedding'), isTrue);
+        } else {
+          rejected++;
+          expect(result.events.single.type, 'marriageRejected');
+        }
+      }
+      expect(accepted, greaterThan(0));
+      expect(rejected, greaterThan(0));
+    });
+
+    test('shares the one-proposal-per-turn gate and rejects the married',
+        () {
+      state.persons[9001] =
+          Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
+      state.realm(1).proposedMarriageThisTurn = true;
+      expect(
+          () => applyAction(
+              state, MarryCommoner(slot: 1, personId: 9001), Rng(1)),
+          throwsA(isA<ActionException>()));
+      state.realm(1).proposedMarriageThisTurn = false;
+      state.persons[9001]!.spouseId = 1;
+      expect(
+          () => applyAction(
+              state, MarryCommoner(slot: 1, personId: 9001), Rng(1)),
+          throwsA(isA<ActionException>()));
+    });
+  });
+
+  group('SendMoney', () {
+    test('transfers Taler to another realm', () {
+      state.realm(1).treasury = 1000;
+      final before = state.realm(2).treasury;
+      final result =
+          applyAction(state, SendMoney(slot: 1, targetSlot: 2, amount: 300), rng);
+      expect(result.state.realm(1).treasury, 700);
+      expect(result.state.realm(2).treasury, before + 300);
+      expect(result.events.single.type, 'moneySent');
+      // Hidden information: only the participants may see the transfer.
+      expect(result.events.single.visibleTo(1), isTrue);
+      expect(result.events.single.visibleTo(2), isTrue);
+      expect(result.events.single.visibleTo(3), isFalse);
+    });
+
+    test('rejects self, vacant target, zero amount and missing funds', () {
+      state.realm(1).treasury = 100;
+      expect(() => applyAction(state, SendMoney(slot: 1, targetSlot: 1, amount: 10), rng),
+          throwsA(isA<ActionException>()));
+      expect(() => applyAction(state, SendMoney(slot: 1, targetSlot: 2, amount: 0), rng),
+          throwsA(isA<ActionException>()));
+      expect(() => applyAction(state, SendMoney(slot: 1, targetSlot: 2, amount: 101), rng),
+          throwsA(isA<ActionException>()));
+    });
+  });
+
+  group('RelocateCapital', () {
+    test('relocates a lost capital onto an own Stadt for 5000 T', () {
+      final realm = state.realm(1);
+      final map = state.map;
+      // Lose the capital tile, then build up a Stadt elsewhere.
+      map.owner[map.index(realm.capitalX, realm.capitalY)] = World.niemand;
+      final (x, y) = claimableTile();
+      map.owner[map.index(x, y)] = 1;
+      map.building[map.index(x, y)] = Building.stadt;
+      realm.treasury = 6000;
+
+      final result =
+          applyAction(state, RelocateCapital(slot: 1, x: x, y: y), rng);
+      expect(result.state.realm(1).capitalX, x);
+      expect(result.state.realm(1).capitalY, y);
+      expect(result.state.realm(1).treasury, 1000);
+      expect(result.events.single.type, 'capitalRelocated');
+    });
+
+    test('rejects while the capital is still held', () {
+      final realm = state.realm(1);
+      realm.treasury = 6000;
+      expect(
+          () => applyAction(state,
+              RelocateCapital(slot: 1, x: realm.capitalX, y: realm.capitalY), rng),
+          throwsA(isA<ActionException>()));
+    });
+  });
+
   group('wire format', () {
     test('actions round-trip through JSON', () {
       final actions = <PlayerAction>[
@@ -304,6 +516,9 @@ void main() {
         Build(slot: 4, x: 5, y: 6, building: Building.dorf, townName: 'Zell'),
         Demolish(slot: 7, x: 8, y: 9),
         ChangeReligion(slot: 10, religion: Religion.moslemisch),
+        SendMoney(slot: 1, targetSlot: 2, amount: 500),
+        RelocateCapital(slot: 3, x: 4, y: 5),
+        MarryCommoner(slot: 6, personId: 7),
       ];
       for (final action in actions) {
         final decoded = PlayerAction.fromJson(action.toJson());

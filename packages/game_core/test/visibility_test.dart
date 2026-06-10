@@ -47,6 +47,44 @@ void main() {
       expect(own.intelReports, hasLength(1));
     });
 
+    test(
+        'hides foreign troop markers on the map '
+        '(visible again in a war the viewer fights)', () {
+      // Give both realms a troop standing on their own capital.
+      for (final slot in [1, 2]) {
+        final realm = state.realm(slot);
+        realm.troops.add(Troop(
+            name: 'Heer$slot',
+            men: 10,
+            troopClass: TroopClass.infanterie,
+            quality: TroopQuality.regular,
+            garrisonCounted: false,
+            x: realm.capitalX,
+            y: realm.capitalY));
+        state.map.troopMarker[
+            state.map.index(realm.capitalX, realm.capitalY)] = 1;
+      }
+      final map = state.map;
+      int markerOf(GameState s, int slot) => s.map.troopMarker[
+          map.index(s.realm(slot).capitalX, s.realm(slot).capitalY)];
+
+      final view1 = visibleStateFor(state, 1);
+      expect(markerOf(view1, 1), 1,
+          reason: 'own troops stay visible (marker = owner slot)');
+      expect(markerOf(view1, 2), 0, reason: 'foreign troops are hidden');
+
+      // At war with each other: both sides' troops become visible, with
+      // the owner slot encoded in the marker (attacker/defender icons).
+      state.activeWar = ActiveWar(attackerSlot: 2, defenderSlot: 1);
+      final atWar = visibleStateFor(state, 1);
+      expect(markerOf(atWar, 2), 2,
+          reason: 'enemy troops show once the war starts');
+      // An uninvolved third party still sees neither.
+      final third = visibleStateFor(state, 3);
+      expect(markerOf(third, 1), 0);
+      expect(markerOf(third, 2), 0);
+    });
+
     test('hides foreign economy, military and intel', () {
       final view = visibleStateFor(state, 1);
       final foreign = view.realm(2);

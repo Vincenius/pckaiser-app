@@ -87,6 +87,50 @@ void main() {
       }
     });
 
+    test('no starting position sits on a small island', () {
+      // Land-component size at each capital via flood fill: every realm
+      // must start on a landmass of ≥ 50 tiles (or the map's largest).
+      for (final seed in [1, 2026, 77777, 424242]) {
+        final state = newGame(sampleSetup(seed: seed));
+        final map = state.map;
+        final componentOf = List<int>.filled(map.terrain.length, -1);
+        final sizes = <int>[];
+        for (var start = 0; start < map.terrain.length; start++) {
+          if (componentOf[start] != -1 ||
+              !Terrain.isLand(map.terrain[start])) {
+            continue;
+          }
+          final id = sizes.length;
+          var count = 0;
+          final stack = [start];
+          componentOf[start] = id;
+          while (stack.isNotEmpty) {
+            final index = stack.removeLast();
+            count++;
+            final x = index % map.width;
+            final y = index ~/ map.width;
+            for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+              if (!map.inBounds(x + dx, y + dy)) continue;
+              final ni = map.index(x + dx, y + dy);
+              if (componentOf[ni] == -1 && Terrain.isLand(map.terrain[ni])) {
+                componentOf[ni] = id;
+                stack.add(ni);
+              }
+            }
+          }
+          sizes.add(count);
+        }
+        final largest = sizes.reduce((a, b) => a > b ? a : b);
+        final threshold = largest < 50 ? largest : 50;
+        for (final realm in state.realms) {
+          final component =
+              componentOf[map.index(realm.capitalX, realm.capitalY)];
+          expect(sizes[component], greaterThanOrEqualTo(threshold),
+              reason: 'slot ${realm.slot} (seed $seed) starts on an island');
+        }
+      }
+    });
+
     test('humans sit on their chosen slots, the rest is AI', () {
       final state = newGame(sampleSetup());
 

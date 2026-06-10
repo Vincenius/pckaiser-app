@@ -13,3 +13,7 @@ bool newPlayerProtectionActive(GameState state) => state.year <= 1009;
 /// War declarations are forbidden before this year
 /// ("Kriege sind erst ab dem Jahr 1010 erlaubt !", §11.1).
 const int firstWarYear = 1010;
+
+/// Earthquakes never strike before this year [DEVIATION: build-up grace
+/// period; the original rolls earthquakes from year 1000].
+const int firstEarthquakeYear = 1005;

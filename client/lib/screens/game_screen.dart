@@ -9,7 +9,6 @@ import '../services/local_game_session.dart';
 import '../services/save_service.dart';
 import '../state/game_controller.dart';
 import '../widgets/decisions.dart';
-import '../widgets/event_feed.dart';
 import '../widgets/menus.dart';
 import '../widgets/tile_sheet.dart';
 import '../widgets/war_panel.dart';
@@ -74,10 +73,109 @@ class _GameScreenState extends State<GameScreen> {
   void _onTileTap(GameController controller, int x, int y) {
     if (controller.handoffPending || controller.gameOver) return;
     if (controller.state.activeWar != null) {
-      showWarTileSheet(context, controller, x, y);
+      _onWarTileTap(controller, x, y);
       return;
     }
     showTileActionSheet(context, controller, x, y);
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// War-mode taps: tap an own army to select it, then tap any tile to
+  /// march toward it (one orthogonal step per movement point; meeting an
+  /// enemy unit fights, reaching the enemy Königssitz wins the war).
+  void _onWarTileTap(GameController controller, int x, int y) {
+    final war = controller.state.activeWar!;
+    final slot = controller.warHumanSlot;
+    if (slot == null) return;
+
+    if (war.phase == gc.WarPhase.settlement) {
+      if (war.winnerSlot != slot) return;
+      try {
+        controller
+            .applyWarAction(gc.SettlementAnnex(slot: slot, x: x, y: y));
+      } on gc.ActionException catch (e) {
+        _toast(e.message);
+      }
+      return;
+    }
+
+    final realm = controller.state.realm(slot);
+    final tappedUnit =
+        realm.troops.indexWhere((t) => t.x == x && t.y == y);
+    if (tappedUnit >= 0) {
+      controller.selectWarUnit(tappedUnit);
+      return;
+    }
+    final selected = controller.selectedWarUnit;
+    if (selected == null || selected >= realm.troops.length) {
+      _toast('Wählen Sie zuerst eine Ihrer Truppen !');
+      return;
+    }
+    _marchToward(controller, slot, selected, x, y);
+  }
+
+  /// Greedy orthogonal march of the selected unit toward (tx, ty): one
+  /// step at a time until the moves run out, combat holds the unit, the
+  /// path is blocked, or the war ends (capital capture).
+  void _marchToward(
+      GameController controller, int slot, int unitIndex, int tx, int ty) {
+    final unitName = controller.state.realm(slot).troops[unitIndex].name;
+    for (var guard = 0; guard < 40; guard++) {
+      final war = controller.state.activeWar;
+      if (war == null || war.phase != gc.WarPhase.rounds) return;
+      final troops = controller.state.realm(slot).troops;
+      if (unitIndex >= troops.length ||
+          troops[unitIndex].name != unitName) {
+        controller.selectWarUnit(null);
+        return; // the unit was destroyed
+      }
+      final troop = troops[unitIndex];
+      final remainingX = tx - troop.x;
+      final remainingY = ty - troop.y;
+      if (remainingX == 0 && remainingY == 0) return; // arrived
+
+      // Prefer the longer axis; fall back to the other on a blocked step.
+      final primary = remainingX.abs() >= remainingY.abs()
+          ? (remainingX.sign, 0)
+          : (0, remainingY.sign);
+      final secondary = remainingX.abs() >= remainingY.abs()
+          ? (0, remainingY.sign)
+          : (remainingX.sign, 0);
+      final beforeX = troop.x;
+      final beforeY = troop.y;
+      var error = _warStepError(controller, slot, unitIndex, primary);
+      if (error != null && secondary != (0, 0)) {
+        error = _warStepError(controller, slot, unitIndex, secondary);
+      }
+      if (error != null) {
+        _toast(error); // blocked on both axes or out of moves
+        return;
+      }
+      final after = controller.state.realm(slot).troops;
+      if (unitIndex < after.length &&
+          after[unitIndex].name == unitName &&
+          after[unitIndex].x == beforeX &&
+          after[unitIndex].y == beforeY) {
+        return; // combat: the defender held the tile
+      }
+    }
+  }
+
+  /// One war step; returns null on success or the engine's message.
+  String? _warStepError(GameController controller, int slot, int unitIndex,
+      (int, int) step) {
+    if (step == (0, 0)) return 'Unpassierbar !';
+    try {
+      controller.applyWarAction(gc.WarMove(
+          slot: slot, unitIndex: unitIndex, dx: step.$1, dy: step.$2));
+      return null;
+    } on gc.ActionException catch (e) {
+      return e.message;
+    }
   }
 
   @override
@@ -92,17 +190,21 @@ class _GameScreenState extends State<GameScreen> {
     return Scaffold(
       body: SafeArea(
         child: Stack(children: [
-          Positioned.fill(child: GameWidget(game: game)),
-          if (controller.state.activeWar != null &&
-              !controller.handoffPending)
-            Align(
-              alignment: Alignment.topCenter,
-              child: WarPanel(controller: controller),
-            )
-          else
-            Align(alignment: Alignment.topLeft, child: _topBar(controller)),
-          Align(
-              alignment: Alignment.bottomCenter, child: _hud(controller)),
+          Column(children: [
+            Expanded(
+              child: Stack(children: [
+                Positioned.fill(child: GameWidget(game: game)),
+                if (controller.state.activeWar != null &&
+                    !controller.handoffPending)
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: WarPanel(controller: controller),
+                  ),
+              ]),
+            ),
+            _statusRow(controller),
+            _actionBar(controller),
+          ]),
           if (controller.busy)
             const Positioned.fill(
               child: ColoredBox(
@@ -119,96 +221,112 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _topBar(GameController controller) {
-    final state = controller.visibleState;
+  /// Slim status row, replacing both the old HUD and the top-bar overlay
+  /// (which used to block map tiles): back button, one tappable chip with
+  /// realm color, year/realm and the two always-needed numbers (Taler,
+  /// Züge — tap for the full "Mein Reich" stats), popularity warning when
+  /// it matters, undo, and end turn.
+  Widget _statusRow(GameController controller) {
+    final realm = controller.currentRealm;
     final realmName = gc.countryNames[controller.currentSlot];
-    final ruler = state.person(controller.currentRealm.rulerId);
-    return Card(
-      margin: const EdgeInsets.all(8),
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(children: [
           IconButton(
             icon: const Icon(Icons.arrow_back),
-            tooltip: 'Back to menu',
+            tooltip: 'Zurück zum Hauptmenü',
             onPressed: () => Navigator.of(context).maybePop(),
           ),
-          CircleAvatar(
-            radius: 10,
-            backgroundColor: RealmPalette.colorFor(controller.currentSlot),
+          Flexible(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => showInfoMenu(context, controller),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  CircleAvatar(
+                    radius: 6,
+                    backgroundColor:
+                        RealmPalette.colorFor(controller.currentSlot),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Anno ${controller.state.year} — $realmName · '
+                      '${realm.treasury} T · ${realm.movementPoints} Züge',
+                      style: theme.textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
+                      semanticsLabel: 'Anno ${controller.state.year}, '
+                          '$realmName, '
+                          '${tr('treasury')}: ${realm.treasury} Taler, '
+                          '${tr('moves')}: ${realm.movementPoints}',
+                    ),
+                  ),
+                  if (realm.popularity < 30)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 6),
+                      child: Tooltip(
+                        message: 'Beliebtheit gefährlich niedrig!',
+                        child: Icon(Icons.warning_amber,
+                            size: 18, color: Colors.orange),
+                      ),
+                    ),
+                ]),
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            'Anno ${state.year} — $realmName'
-            '${ruler == null ? '' : ' (${gc.titleName(controller.currentRealm.titleClass)} ${ruler.name})'}',
-            style: Theme.of(context).textTheme.titleSmall,
+          IconButton(
+            onPressed: controller.canUndo ? controller.undo : null,
+            icon: const Icon(Icons.undo),
+            tooltip: tr('undo'),
+          ),
+          const Spacer(),
+          FilledButton.icon(
+            onPressed: controller.state.activeWar == null
+                ? () => controller.endTurn()
+                : null,
+            icon: const Icon(Icons.skip_next),
+            label: Text(tr('endTurn')),
           ),
         ]),
       ),
     );
   }
 
-  Widget _hud(GameController controller) {
-    final realm = controller.currentRealm;
+  /// Persistent labeled category bar — replaces the old hamburger hub, so
+  /// every menu is one tap away.
+  Widget _actionBar(GameController controller) {
     final theme = Theme.of(context);
-    Widget stat(IconData icon, String label, String value) => Semantics(
-          label: '$label: $value',
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 18),
-              Text(value, style: theme.textTheme.labelMedium),
-            ]),
+    Widget item(IconData icon, String label,
+            void Function(BuildContext, GameController) open) =>
+        Expanded(
+          child: InkWell(
+            onTap: () => open(context, controller),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 20),
+                Text(label,
+                    style: theme.textTheme.labelSmall,
+                    overflow: TextOverflow.ellipsis),
+              ]),
+            ),
           ),
         );
 
-    return Card(
-      margin: const EdgeInsets.all(8),
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            stat(Icons.savings, tr('treasury'), '${realm.treasury} T'),
-            stat(Icons.groups, tr('population'), '${realm.population}'),
-            stat(Icons.agriculture, tr('food'),
-                '${realm.grainHarvest + realm.livestockHarvest}'),
-            stat(Icons.favorite, tr('popularity'), '${realm.popularity}'),
-            stat(Icons.directions_walk, tr('moves'),
-                '${realm.movementPoints}'),
-            if (realm.popularity < 30)
-              const Tooltip(
-                message: 'Popularity dangerously low!',
-                child: Icon(Icons.warning_amber, color: Colors.orange),
-              ),
-          ]),
-          const SizedBox(height: 4),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            IconButton(
-              onPressed: controller.canUndo ? controller.undo : null,
-              icon: const Icon(Icons.undo),
-              tooltip: tr('undo'),
-            ),
-            IconButton(
-              onPressed: () => showGameMenus(context, controller),
-              icon: const Icon(Icons.menu),
-              tooltip: 'Menus',
-            ),
-            IconButton(
-              onPressed: () => showEventFeed(context, controller),
-              icon: const Icon(Icons.article),
-              tooltip: tr('eventFeed'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: controller.state.activeWar == null
-                  ? () => controller.endTurn()
-                  : null,
-              icon: const Icon(Icons.skip_next),
-              label: Text(tr('endTurn')),
-            ),
-          ]),
-        ]),
-      ),
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Row(children: [
+        item(Icons.storefront, tr('commerce'), showCommerceMenu),
+        item(Icons.shield, tr('military'), showMilitaryMenu),
+        item(Icons.visibility, tr('espionage'), showEspionageMenu),
+        item(Icons.church, tr('misc'), showMiscMenu),
+        item(Icons.info_outline, tr('info'), showInfoMenu),
+      ]),
     );
   }
 
@@ -235,6 +353,8 @@ class _GameScreenState extends State<GameScreen> {
           FilledButton(
             onPressed: () async {
               controller.confirmHandoff();
+              // Focus the map on the player whose turn begins.
+              _game?.focusOnRealm(slot);
               await showRecapAndDecisions(context, controller, slot);
             },
             child: Padding(
@@ -259,13 +379,13 @@ class _GameScreenState extends State<GameScreen> {
           Text(tr('gameOver'),
               style: Theme.of(context).textTheme.headlineMedium),
           Text(
-            '${gc.countryNames[slot]} rules the whole land!',
+            '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: () => Navigator.of(context).maybePop(),
-            child: const Text('Back to menu'),
+            child: const Text('Zurück zum Hauptmenü'),
           ),
         ]),
       ),

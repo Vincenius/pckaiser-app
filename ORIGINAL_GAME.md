@@ -1434,18 +1434,23 @@ VGA 320×200-era tile graphics; extracted images in `imgs/` (two sizes:
 | 00 | green speckled | Ebene |
 | 01 | gray mountain | Berg |
 | 02 | solid blue | open water (terrain 2) |
-| 03–13 | water-land transitions | shoreline variants (terrain 3–17 — map the 4-bit neighbor mask onto these) |
-| 14–18 | trees/path/rocks/highland/farmland | land decorations |
-| 19 | crop rows | Kornfeld |
-| 20 | animals on green | Weide |
-| 21 | small red buildings | Dorf |
-| 22 | red brick buildings | Markt |
-| 23 | dark brick + wall | Stadt |
-| 24 | stone castle | Burg |
-| 25 | castle + soldiers | Palast |
-| 26 | ruler figure | ruler icon |
-| 27 | water + boat | Hafen |
-| 28–37 | sea, house, knight, ship, fish, forest, ruins, sword, shield, ship | unit/UI icons |
+| 03–17 | water-land transitions | shoreline variants, 1:1 with terrain 3–17 (sprite index = terrain value; verified: 03 land below, 04 land above, 06 land left, 10 land right) |
+| 18 | crop rows + path | Kornfeld |
+| 19 | farmstead + animals | Weide |
+| 20 | small red buildings | Dorf |
+| 21 | red brick buildings | Markt |
+| 22 | dark brick + wall | Stadt |
+| 23 | gray stone fortress | Burg |
+| 24 | castle + tower + banner | Palast |
+| 25 | ship at dock | Hafen |
+| 26–34 | harbor/ship/water scenes | decorations |
+| 35 | sword | troop marker |
+| 36 | shield emblem | capital marker |
+| 37 | red ship close-up | UI icon |
+
+(The table above reflects the *verified extraction* in `imgs/` /
+`client/assets/tiles/large/`; an earlier draft listed the 19–27 block one
+index too high and a ruler-figure tile that does not exist in the set.)
 
 Owned tiles are tinted/marked per player; the troopMarker draws a unit icon.
 The original used a 4:3 VGA mode with a map viewport, a side panel (tile

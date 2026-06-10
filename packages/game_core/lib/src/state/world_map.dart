@@ -52,6 +52,23 @@ class WorldMap {
   bool isWaterAt(int x, int y) => Terrain.isWater(terrainAt(x, y));
   bool isLandAt(int x, int y) => Terrain.isLand(terrainAt(x, y));
 
+  /// All realm slots whose territory orthogonally touches [slot]'s — wars
+  /// may only be declared across a shared border.
+  Set<int> realmNeighbors(int slot) {
+    final neighbors = <int>{};
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        if (ownerAt(x, y) != slot) continue;
+        for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+          if (!inBounds(x + dx, y + dy)) continue;
+          final other = ownerAt(x + dx, y + dy);
+          if (other != slot && other != World.niemand) neighbors.add(other);
+        }
+      }
+    }
+    return neighbors;
+  }
+
   WorldMap copy() => WorldMap(
         terrain: List.of(terrain, growable: false),
         owner: List.of(owner, growable: false),

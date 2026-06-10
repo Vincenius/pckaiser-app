@@ -109,6 +109,30 @@ void main() {
     });
   });
 
+  group('human guard', () {
+    test('runAiTurn never acts for a human-controlled dynasty', () {
+      final state = newGame(GameSetup(
+        humans: [
+          HumanPlayerSetup(
+              founderName: 'Anna',
+              gender: 1,
+              countrySlot: 1,
+              dorfName: 'Berlin'),
+        ],
+        reformationYear: 1020,
+        ottomanYear: 1040,
+        seed: 3,
+      ));
+      state.realm(1).movementPoints = 5;
+      state.realm(1).treasury = 5000;
+      final result = runAiTurn(state, 1, Rng(7));
+      expect(result.events, isEmpty);
+      expect(result.state.realm(1).treasury, 5000);
+      expect(result.state.realm(1).movementPoints, 5,
+          reason: 'the AI must not play the human realm');
+    });
+  });
+
   group('AI war (§11.2, §20.8)', () {
     test('a fast-forwarded AI war terminates and bookkeeping holds', () {
       final state = aiOnlyGame(seed: 9);
@@ -193,20 +217,29 @@ void main() {
 }
 
 int _adjacentTo(GameState state, int slot) {
+  final neighbors = state.map.realmNeighbors(slot);
+  for (final n in neighbors) {
+    if (!state.realm(n).isVacant) return n;
+  }
+  // No natural neighbor: hand another living realm a tile that touches
+  // [slot] — wars require a shared border.
   final map = state.map;
+  final other =
+      state.realms.firstWhere((r) => r.slot != slot && !r.isVacant).slot;
   for (var y = 0; y < map.height; y++) {
     for (var x = 0; x < map.width; x++) {
-      if (map.ownerAt(x, y) != slot) continue;
+      if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
+        continue;
+      }
       for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-        if (!map.inBounds(x + dx, y + dy)) continue;
-        final other = map.ownerAt(x + dx, y + dy);
-        if (other != World.niemand && other != slot) return other;
+        if (map.inBounds(x + dx, y + dy) &&
+            map.ownerAt(x + dx, y + dy) == slot) {
+          map.owner[map.index(x, y)] = other;
+          state.realm(other).tileCount[Building.none]++;
+          return other;
+        }
       }
     }
-  }
-  // Fall back to any living realm.
-  for (final realm in state.realms) {
-    if (realm.slot != slot && !realm.isVacant) return realm.slot;
   }
   fail('no war target found');
 }

@@ -38,13 +38,13 @@ The world always has **30 realms** (as in the original); up to **16** of them ar
 - Pinch-to-zoom and pan the map
 - Tap tile → action sheet (available builds/actions with costs shown inline)
 - Sliders for numeric inputs: espionage agents, market sell amounts, trade ship investment
-- Persistent bottom HUD: treasury, population, food balance, popularity, movement points
+- Slim status row (treasury + movement points, tap for full "Mein Reich" stats; popularity warning when < 30) + persistent labeled bottom action bar (Handel/Militär/Spionage/Sonstiges/Info — no hamburger). Population/food/popularity live in the Info sheet.
 - **Event feed**: a scrolling chronicle of game events (filters: my realm / wars / dynasty news / world events) plus a "since your last turn" recap card at turn start — replaces the original's modal text walls. Built on the `GameEvent` stream from game_core.
 - **Undo within turn**: deterministic actions (cursor moves, tile claims, builds, demolish before confirmation) can be undone while the turn is open; the undo stack clears on any randomized or irreversible action (battle, ship investment, espionage, market sale, end turn)
 - Confirmation dialog before irreversible actions (demolish, assassination, declare war)
 - Popularity warning indicator when popularity < 30 (before the 20-threshold crisis)
 - Smart defaults in game setup: pre-fill Reformation year 1020 and Ottoman year 1040 (both editable, minimum 1011 per the original's validation)
-- Language: English UI by default; German as optional setting
+- Language: German UI by default (v1); English as optional setting
 
 ### Accessibility
 
@@ -89,8 +89,15 @@ See `ORIGINAL_GAME.md` (§1–27) for exact formulas — all constants there are
 |---|---|---|
 | Newborn age left uninitialized (heap garbage) | Newborns start at age 0 | Confirmed original bug (§15.3) |
 | Shareware cutoff at year 1019/1020 | Removed | Copy protection artifact |
-| German-only UI | English default, German option | Mobile audience |
+| German-only UI | German default, English option (in-app toggle) | Preserve original feel; broader audience via toggle |
 | Keyboard number input | Sliders / steppers | Touch UX |
+| Separate claim step before building | Building on adjacent unowned land claims the tile implicitly; claim-only action removed from the UI (AI still uses it) | Touch UX, fewer taps |
+| Weide only on Berg | Weide also buildable on Ebene | Gameplay request |
+| Starting position: any spot with > 2 land neighbors (islands possible) | Starting landmass must span ≥ 50 connected tiles | No boxed-in starts |
+| Unlimited marriage proposals per turn | One proposal per turn | Pacing/balance |
+| Wars against any realm | Wars only against realms with a shared border | Plausibility, map gameplay |
+| Earthquakes from year 1000 | Earthquakes only from year 1005 | Build-up grace period |
+| 50% "phantom birth" for unmarried members without candidates (§15.3) | Removed — children require married parents | Plausibility |
 | Post-war coercion: convert or die | Retain mechanic, modernize wording | Core game design |
 | Other realms' stats visible in info screens | Hidden by default; espionage reveals (fuzzed) | Makes espionage meaningful |
 | Modal text walls for events | Event feed + turn recap | Mobile UX, async play |

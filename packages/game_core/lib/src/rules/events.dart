@@ -25,7 +25,9 @@ void runWorldEvents(GameState state, Rng rng, List<GameEvent> events) {
 }
 
 /// §18.1 earthquake — 10% per round, radius 10 (Manhattan), 50% per tile.
+/// Never before [firstEarthquakeYear] (grace period, [DEVIATION]).
 void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
+  if (state.year < firstEarthquakeYear) return;
   if (rng.nextInt(10) != 0) return;
   final ex = rng.nextInt(79);
   final ey = rng.nextInt(43);

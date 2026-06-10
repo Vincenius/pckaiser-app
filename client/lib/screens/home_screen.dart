@@ -58,12 +58,12 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text(tr('appTitle')),
         actions: [
-          // Language toggle (English default, German optional).
+          // Language toggle (German default, English optional).
           TextButton(
             onPressed: () =>
                 appLocale.value = appLocale.value == 'en' ? 'de' : 'en',
             child: Text(appLocale.value.toUpperCase(),
-                semanticsLabel: 'Language'),
+                semanticsLabel: 'Sprache'),
           ),
         ],
       ),
@@ -87,21 +87,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () => _openGame(slot.name),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
-                        tooltip: 'Delete',
+                        tooltip: 'Löschen',
                         onPressed: () async {
                           final confirmed = await showDialog<bool>(
                             context: context,
                             builder: (context) => AlertDialog(
-                              title: Text('Delete "${slot.name}"?'),
+                              title: Text('„${slot.name}" löschen?'),
                               actions: [
                                 TextButton(
                                     onPressed: () =>
                                         Navigator.pop(context, false),
-                                    child: const Text('Cancel')),
+                                    child: Text(tr('cancel'))),
                                 FilledButton(
                                     onPressed: () =>
                                         Navigator.pop(context, true),
-                                    child: const Text('Delete')),
+                                    child: const Text('Löschen')),
                               ],
                             ),
                           );

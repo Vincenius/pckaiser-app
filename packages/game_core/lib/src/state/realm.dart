@@ -27,6 +27,7 @@ class Realm {
     this.soldGrainThisTurn = false,
     this.soldCattleThisTurn = false,
     this.investedThisTurn = false,
+    this.proposedMarriageThisTurn = false,
     this.warThisYear = false,
     this.rulerId,
     List<Troop>? troops,
@@ -59,6 +60,8 @@ class Realm {
         soldGrainThisTurn: json['soldGrainThisTurn'] as bool? ?? false,
         soldCattleThisTurn: json['soldCattleThisTurn'] as bool? ?? false,
         investedThisTurn: json['investedThisTurn'] as bool? ?? false,
+        proposedMarriageThisTurn:
+            json['proposedMarriageThisTurn'] as bool? ?? false,
         warThisYear: json['warThisYear'] as bool? ?? false,
         rulerId: json['rulerId'] as int?,
         troops: (json['troops'] as List?)
@@ -117,10 +120,12 @@ class Realm {
   int lastTax;
   int lastTribute;
 
-  // Per-turn action flags (§2). One sell per good per turn (§9.1).
+  // Per-turn action flags (§2). One sell per good per turn (§9.1); one
+  // marriage proposal per turn (modern UX rule).
   bool soldGrainThisTurn;
   bool soldCattleThisTurn;
   bool investedThisTurn;
+  bool proposedMarriageThisTurn;
   bool warThisYear;
 
   /// Ruler person id; null = slot vacant. The same person can rule several
@@ -158,6 +163,7 @@ class Realm {
         soldGrainThisTurn: soldGrainThisTurn,
         soldCattleThisTurn: soldCattleThisTurn,
         investedThisTurn: investedThisTurn,
+        proposedMarriageThisTurn: proposedMarriageThisTurn,
         warThisYear: warThisYear,
         rulerId: rulerId,
         troops: [for (final t in troops) t.copy()],
@@ -187,6 +193,7 @@ class Realm {
         'soldGrainThisTurn': soldGrainThisTurn,
         'soldCattleThisTurn': soldCattleThisTurn,
         'investedThisTurn': investedThisTurn,
+        'proposedMarriageThisTurn': proposedMarriageThisTurn,
         'warThisYear': warThisYear,
         'rulerId': rulerId,
         'troops': [for (final t in troops) t.toJson()],

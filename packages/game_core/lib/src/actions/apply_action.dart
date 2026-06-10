@@ -1,3 +1,4 @@
+import '../data/tables.dart';
 import '../rng/rng.dart';
 import '../rules/dynasty.dart';
 import '../rules/offices.dart';
@@ -6,6 +7,7 @@ import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
+import '../state/person.dart';
 import '../state/realm.dart';
 import '../state/town.dart';
 import '../state/world_map.dart';
@@ -41,11 +43,11 @@ ActionResult applyAction(GameState state, PlayerAction action, Rng rng) {
 List<GameEvent> applyActionInPlace(
     GameState state, PlayerAction action, Rng rng) {
   if (action.slot < 1 || action.slot > World.realmCount) {
-    throw ActionException('invalid realm slot ${action.slot}');
+    throw ActionException('Ungültiges Reich ${action.slot} !');
   }
   final realm = state.realm(action.slot);
   if (realm.isVacant) {
-    throw ActionException('realm ${action.slot} is vacant');
+    throw ActionException('Das Reich ist verwaist !');
   }
 
   return switch (action) {
@@ -55,7 +57,10 @@ List<GameEvent> applyActionInPlace(
     ChangeReligion() => _changeReligion(state, realm, action),
     SellGood() => _sellGood(state, realm, action),
     InvestShips() => _investShips(state, realm, action, rng),
+    SendMoney() => _sendMoney(state, realm, action),
+    RelocateCapital() => _relocateCapital(state, realm, action),
     ProposeMarriage() => _proposeMarriage(state, realm, action, rng),
+    MarryCommoner() => _marryCommoner(state, realm, action, rng),
     ResolveDecision() => _resolveDecision(state, realm, action, rng),
     MergeRealms() => _mergeRealms(state, realm, action, rng),
     RecruitTroops() => applyRecruitTroops(state, realm, action, rng),
@@ -79,19 +84,19 @@ List<GameEvent> applyActionInPlace(
 
 void _requireMovementPoint(Realm realm) {
   if (realm.movementPoints < 1) {
-    throw ActionException('no movement points left');
+    throw ActionException('Sie haben keine Züge mehr !');
   }
 }
 
 void _requireFunds(Realm realm, int cost) {
   if (realm.treasury < cost) {
-    throw ActionException('not enough Taler (need $cost)');
+    throw ActionException('Sie haben nicht genügend Taler ! ($cost benötigt)');
   }
 }
 
 void _requireOnMap(WorldMap map, int x, int y) {
   if (!map.inBounds(x, y)) {
-    throw ActionException('tile ($x, $y) is outside the map');
+    throw ActionException('Das Feld liegt außerhalb der Karte !');
   }
 }
 
@@ -110,13 +115,13 @@ List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
   if (map.isWaterAt(action.x, action.y)) {
-    throw ActionException('water cannot be claimed');
+    throw ActionException('Wasser kann nicht beansprucht werden !');
   }
   if (map.ownerAt(action.x, action.y) != World.niemand) {
-    throw ActionException('tile already has an owner');
+    throw ActionException('Das Feld hat bereits einen Besitzer !');
   }
   if (!_adjacentToOwn(map, realm.slot, action.x, action.y)) {
-    throw ActionException('tile is not adjacent to your territory');
+    throw ActionException('Das Feld grenzt nicht an Ihr Territorium !');
   }
   _requireMovementPoint(realm);
 
@@ -135,9 +140,13 @@ List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   ];
 }
 
-/// Build menu (§4): Kornfeld on Ebene, Weide on Berg, Dorf on land,
+/// Build menu (§4): Kornfeld on Ebene, Weide on Ebene/Berg, Dorf on land,
 /// Burg/Palast on land, Hafen on the coast. Markt/Stadt never built.
 /// Costs 1 movement point + the building's Taler cost.
+///
+/// Building on an unowned land tile adjacent to own territory claims the
+/// tile as part of the build — the separate claim step was dropped from
+/// the player UX [DEVIATION]; `ClaimTile` remains for the AI script.
 List<GameEvent> _build(
     GameState state, Realm realm, Build action, Rng rng) {
   final map = state.map;
@@ -148,26 +157,31 @@ List<GameEvent> _build(
       ? Building.cost[building]
       : null;
   if (cost == null) {
-    throw ActionException('this cannot be built');
+    throw ActionException('Das kann nicht gebaut werden !');
   }
   final owner = map.ownerAt(action.x, action.y);
+  final terrain = map.terrainAt(action.x, action.y);
   // A Hafen goes on a coastal water tile (§4/§5): water cannot be claimed,
   // so building on unowned water next to your land takes ownership as part
   // of the build — matching the starting-cross harbors.
   final hafenOnCoast = building == Building.hafen &&
       owner == World.niemand &&
       _adjacentToOwn(map, realm.slot, action.x, action.y);
-  if (owner != realm.slot && !hafenOnCoast) {
-    throw ActionException('you do not own this tile');
+  final claimOnBuild = building != Building.hafen &&
+      owner == World.niemand &&
+      Terrain.isLand(terrain) &&
+      _adjacentToOwn(map, realm.slot, action.x, action.y);
+  if (owner != realm.slot && !hafenOnCoast && !claimOnBuild) {
+    throw ActionException('Das Feld gehört Ihnen nicht !');
   }
   if (map.buildingAt(action.x, action.y) != Building.none) {
-    throw ActionException('the tile is already built on');
+    throw ActionException('Das Feld ist bereits bebaut !');
   }
 
-  final terrain = map.terrainAt(action.x, action.y);
   final terrainOk = switch (building) {
     Building.kornfeld => terrain == Terrain.ebene,
-    Building.weide => terrain == Terrain.berg,
+    // [DEVIATION] Weide on Ebene too — original restricts it to Berg.
+    Building.weide => terrain == Terrain.berg || terrain == Terrain.ebene,
     Building.dorf ||
     Building.burg ||
     Building.palast =>
@@ -176,11 +190,11 @@ List<GameEvent> _build(
     _ => false,
   };
   if (!terrainOk) {
-    throw ActionException('wrong terrain for this building');
+    throw ActionException('Falsches Gelände für dieses Bauwerk !');
   }
   if (building == Building.dorf &&
       (action.townName == null || action.townName!.trim().isEmpty)) {
-    throw ActionException('the Dorf needs a name');
+    throw ActionException('Das Dorf braucht einen Namen !');
   }
 
   _requireMovementPoint(realm);
@@ -189,7 +203,7 @@ List<GameEvent> _build(
   realm.movementPoints--;
   realm.treasury -= cost;
   map.building[map.index(action.x, action.y)] = building;
-  if (hafenOnCoast) {
+  if (hafenOnCoast || claimOnBuild) {
     map.owner[map.index(action.x, action.y)] = realm.slot;
   } else {
     realm.tileCount[Building.none]--;
@@ -237,16 +251,16 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
   if (map.ownerAt(action.x, action.y) != realm.slot) {
-    throw ActionException('you do not own this tile');
+    throw ActionException('Das Feld gehört Ihnen nicht !');
   }
   final building = map.buildingAt(action.x, action.y);
   if (building == Building.none) {
-    throw ActionException('nothing to demolish here');
+    throw ActionException('Hier steht doch gar nichts !');
   }
   if (building == Building.dorf ||
       building == Building.markt ||
       building == Building.stadt) {
-    throw ActionException('towns cannot be demolished');
+    throw ActionException('Orte können nicht abgerissen werden !');
   }
   const cost = 100;
   _requireMovementPoint(realm);
@@ -273,7 +287,7 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
 List<GameEvent> _mergeRealms(
     GameState state, Realm realm, MergeRealms action, Rng rng) {
   if (!mergeableSlots(state, realm.slot).contains(action.sourceSlot)) {
-    throw ActionException('that realm cannot be merged into this one');
+    throw ActionException('Diese Reiche können nicht zusammengelegt werden !');
   }
   final events = <GameEvent>[];
   mergeRealms(state, realm.slot, action.sourceSlot, rng, events);
@@ -324,7 +338,7 @@ List<GameEvent> _sellGood(GameState state, Realm realm, SellGood action) {
 List<GameEvent> _investShips(
     GameState state, Realm realm, InvestShips action, Rng rng) {
   if (realm.investedThisTurn) {
-    throw ActionException('you already invested this turn');
+    throw ActionException('Sie haben diese Runde schon investiert !');
   }
   final maxInvestment = realm.tileCount[Building.hafen] * 600;
   if (action.amount <= 0 ||
@@ -354,17 +368,84 @@ List<GameEvent> _investShips(
   ];
 }
 
+/// "Geld schicken" (§6.2): transfer Taler to another living realm.
+List<GameEvent> _sendMoney(GameState state, Realm realm, SendMoney action) {
+  if (action.targetSlot < 1 ||
+      action.targetSlot > World.realmCount ||
+      action.targetSlot == realm.slot) {
+    throw ActionException('Ungültiges Zielreich !');
+  }
+  final target = state.realm(action.targetSlot);
+  if (target.isVacant) {
+    throw ActionException('Das Reich ist verwaist !');
+  }
+  if (action.amount < 1) throw ActionException('Das geht nicht !!!');
+  _requireFunds(realm, action.amount);
+
+  realm.treasury -= action.amount;
+  target.treasury += action.amount;
+
+  return [
+    GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'moneySent',
+      visibility: EventVisibility.participants,
+      participants: [realm.slot, action.targetSlot],
+      payload: {'targetSlot': action.targetSlot, 'amount': action.amount},
+    ),
+  ];
+}
+
+/// "Sitz verlegen" (§6.2): 5,000 T; valid target = own tile with
+/// Stadt/Burg/Palast; only when the capital is unset or lost.
+List<GameEvent> _relocateCapital(
+    GameState state, Realm realm, RelocateCapital action) {
+  final map = state.map;
+  _requireOnMap(map, action.x, action.y);
+  if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
+    throw ActionException('Ihr Sitz ist nicht verloren !');
+  }
+  if (map.ownerAt(action.x, action.y) != realm.slot) {
+    throw ActionException('Der neue Sitz muss auf Ihrem Territorium liegen !');
+  }
+  final building = map.buildingAt(action.x, action.y);
+  if (building != Building.stadt &&
+      building != Building.burg &&
+      building != Building.palast) {
+    throw ActionException('Der neue Sitz braucht eine Stadt, Burg oder einen Palast !');
+  }
+  _requireFunds(realm, 5000);
+
+  realm.treasury -= 5000;
+  realm.capitalX = action.x;
+  realm.capitalY = action.y;
+
+  return [
+    GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'capitalRelocated',
+      visibility: EventVisibility.public,
+      payload: {'x': action.x, 'y': action.y},
+    ),
+  ];
+}
+
 /// "H(e)irat vorschlagen" (§14.1): validates eligibility, then either the
 /// AI 25% roll or a pending decision for a human target.
 List<GameEvent> _proposeMarriage(
     GameState state, Realm realm, ProposeMarriage action, Rng rng) {
+  if (realm.proposedMarriageThisTurn) {
+    throw ActionException('Nur ein Heiratsantrag pro Zug !');
+  }
   final proposer = state.persons[action.proposerId];
   final target = state.persons[action.targetId];
   if (proposer == null || target == null) {
-    throw ActionException('person not found');
+    throw ActionException('Person nicht gefunden !');
   }
   if (proposer.dynasty != realm.slot) {
-    throw ActionException('the proposer is not in your dynasty');
+    throw ActionException('Diese Person gehört nicht zu Ihrer Dynastie !');
   }
   final eligible = proposer.spouseId == null &&
       target.spouseId == null &&
@@ -380,6 +461,59 @@ List<GameEvent> _proposeMarriage(
   }
   final events = <GameEvent>[];
   proposeMarriage(state, proposer, target, rng, events);
+  realm.proposedMarriageThisTurn = true;
+  return events;
+}
+
+/// "(B)ürgerlich heiraten" (§14.1): marry [MarryCommoner.personId] to a
+/// freshly created commoner. The commoner rolls the same 25% acceptance
+/// as any non-human target ("Angenommen !" / "Abgelehnt !"); on success
+/// they join the dynasty so the §14.3 birth loop applies to the couple.
+List<GameEvent> _marryCommoner(
+    GameState state, Realm realm, MarryCommoner action, Rng rng) {
+  if (realm.proposedMarriageThisTurn) {
+    throw ActionException('Nur ein Heiratsantrag pro Zug !');
+  }
+  final person = state.persons[action.personId];
+  if (person == null || person.dynasty != realm.slot) {
+    throw ActionException('Diese Person gehört nicht zu Ihrer Dynastie !');
+  }
+  if (person.spouseId != null || person.age < 14) {
+    throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
+  }
+  realm.proposedMarriageThisTurn = true;
+
+  final events = <GameEvent>[];
+  if (rng.nextInt(4) != 0) {
+    // "Abgelehnt !"
+    events.add(GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'marriageRejected',
+      visibility: EventVisibility.owner,
+      payload: {'proposerId': person.id},
+    ));
+    return events;
+  }
+
+  final dynasty = state.dynasty(realm.slot);
+  final gender = 1 - person.gender;
+  final names = dynasty.religion == Religion.moslemisch
+      ? (gender == 0 ? ottomanMaleNames : ottomanFemaleNames)
+      : (gender == 0 ? europeanMaleNames : europeanFemaleNames);
+  // Age gap < 10 like every §14.1 match, but never below 14.
+  var age = person.age - 9 + rng.nextInt(19);
+  if (age < 14) age = 14;
+  final spouse = Person(
+    id: state.nextPersonId++,
+    name: names[rng.nextInt(names.length)],
+    age: age,
+    dynasty: realm.slot,
+    gender: gender,
+  );
+  state.persons[spouse.id] = spouse;
+  dynasty.memberIds.add(spouse.id);
+  marry(state, person, spouse, events); // "Angenommen !"
   return events;
 }
 
@@ -389,11 +523,11 @@ List<GameEvent> _resolveDecision(
   final index =
       state.pendingDecisions.indexWhere((d) => d.id == action.decisionId);
   if (index < 0) {
-    throw ActionException('decision ${action.decisionId} not found');
+    throw ActionException('Entscheidung nicht gefunden !');
   }
   final decision = state.pendingDecisions[index];
   if (decision.decidingSlot != action.slot) {
-    throw ActionException('this decision is not yours to make');
+    throw ActionException('Diese Entscheidung steht Ihnen nicht zu !');
   }
   state.pendingDecisions.removeAt(index);
 
@@ -432,7 +566,7 @@ List<GameEvent> _resolveDecision(
       if (heirId == null ||
           !candidates.contains(heirId) ||
           state.persons[heirId] == null) {
-        throw ActionException('invalid heir choice');
+        throw ActionException('Ungültige Erbwahl !');
       }
       // Re-crown only slots still held by the provisional heir — conquest
       // in between must not be undone.
@@ -466,7 +600,7 @@ List<GameEvent> _resolveDecision(
       if (election == null ||
           election.office.name != payload['office'] ||
           election.bribesDone.contains(finalistId)) {
-        throw ActionException('this election phase is over');
+        throw ActionException('Diese Wahlphase ist vorbei !');
       }
       var total = 0;
       final gifts = (choice['gifts'] as List? ?? const [])
@@ -475,7 +609,7 @@ List<GameEvent> _resolveDecision(
         total += gift['amount'] as int;
       }
       if (total < 0 || total > realm.treasury) {
-        throw ActionException('not enough Taler for these bribes');
+        throw ActionException('Sie haben nicht genügend Taler für diese Bestechung !');
       }
       for (final gift in gifts) {
         final electorId = gift['electorId'] as int;
@@ -511,17 +645,17 @@ List<GameEvent> _resolveDecision(
       final electorId = payload['electorId'] as int;
       final finalistId = choice['finalistId'] as int?;
       if (election == null || election.office.name != payload['office']) {
-        throw ActionException('this election is over');
+        throw ActionException('Diese Wahl ist vorbei !');
       }
       if (finalistId == null ||
           !election.finalistIds.contains(finalistId)) {
-        throw ActionException('vote for one of the finalists');
+        throw ActionException('Stimmen Sie für einen der Kandidaten !');
       }
       election.votes[electorId] = finalistId;
       advanceElection(state, rng, events);
 
     default:
-      throw ActionException('unknown decision type ${decision.type}');
+      throw ActionException('Unbekannte Entscheidung: ${decision.type}');
   }
 
   return events;
@@ -537,16 +671,16 @@ List<GameEvent> _changeReligion(
   final dynasty = state.dynasty(realm.slot);
   final religion = action.religion;
   if (religion < Religion.katholisch || religion > Religion.moslemisch) {
-    throw ActionException('unknown religion');
+    throw ActionException('Unbekannte Religion !');
   }
   if (religion == dynasty.religion) {
-    throw ActionException('that is already your religion');
+    throw ActionException('Das ist bereits Ihre Religion !');
   }
   if (religion == Religion.evangelisch && state.year <= state.reformationYear) {
-    throw ActionException('the Reformation has not happened yet');
+    throw ActionException('Die Reformation hat noch nicht stattgefunden !');
   }
   if (religion == Religion.moslemisch && state.year <= state.ottomanYear) {
-    throw ActionException('Islam is not available yet');
+    throw ActionException('Der Islam ist noch nicht verfügbar !');
   }
 
   final cost = switch (religion) {

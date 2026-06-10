@@ -6,6 +6,7 @@ void main() {
     await tester.pumpWidget(const PcKaiserApp());
     await tester.pump();
     expect(find.text('PC Kaiser'), findsOneWidget);
-    expect(find.text('New game'), findsOneWidget);
+    // German is the v1 default locale.
+    expect(find.text('Neues Spiel'), findsOneWidget);
   });
 }

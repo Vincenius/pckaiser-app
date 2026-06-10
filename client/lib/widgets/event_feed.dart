@@ -12,13 +12,14 @@ const _warTypes = {
 const _dynastyTypes = {
   'wedding', 'birth', 'personDied', 'succession', 'divorce',
   'marriageRejected', 'titlePromoted', 'assassination',
-  'islamicSuccessionCrisis', 'dynastyExtinct', 'dynastyConverted',
+  'assassinationFailed', 'islamicSuccessionCrisis', 'dynastyExtinct',
+  'dynastyConverted', 'internalStrife', 'religionChanged',
 };
 const _worldTypes = {
   'earthquake', 'disease', 'reformation', 'ottomanInvasion',
   'merchantFounder', 'crowned', 'electionStarted', 'electionTie',
-  'interregnum', 'newKurfuerst', 'officeHolderDied', 'gameWon',
-  'totalExtinction',
+  'interregnum', 'newKurfuerst', 'kurfuerstStripped', 'officeHolderDied',
+  'gameWon', 'totalExtinction',
 };
 
 /// Human-readable line for an event. Falls back to the type name so new
@@ -30,36 +31,92 @@ String describeEvent(gc.GameEvent e) {
   return switch (e.type) {
     'turnUpkeep' => '$realm: Steuern ${p['tax']} T, Ernte '
         '${p['grainYield']}/${p['livestockYield']}, Sold ${p['wages']} T',
-    'tileClaimed' => '$realm claims (${p['x']}, ${p['y']})',
-    'buildingBuilt' => '$realm builds on (${p['x']}, ${p['y']})',
-    'townFounded' => '$realm founds ${p['name']}',
+    'tileClaimed' => '$realm beansprucht (${p['x']}, ${p['y']})',
+    'buildingBuilt' => '$realm baut auf (${p['x']}, ${p['y']})',
+    'townFounded' => '$realm gründet ${p['name']}',
     'townPromoted' => 'Dem Ort ${p['name']} wurde das '
         '${p['building'] == gc.Building.markt ? 'Marktrecht' : 'Stadtrecht'} verliehen',
     'townDied' => '${p['name']} ist verlassen',
     'goodsSold' => '$realm verkauft ${p['amount']} für ${p['proceeds']} T',
     'shipsReturned' =>
       '$realm: Schiffe kehren zurück — ${p['returned']} T',
-    'wedding' => '${p['a']} heiratet ${p['b']}',
-    'birth' => '${p['parent']} feiert die Geburt von ${p['child']}',
-    'personDied' => '${p['name']} ist im Alter von ${p['age']} Jahren '
-        'verstorben (${p['cause']})',
-    'succession' => 'Die Weisen erwählen ${p['heir']} zum Erben',
+    'moneySent' =>
+      '$realm schickt ${p['amount']} T an ${gc.countryNames[p['targetSlot'] as int]}',
+    'capitalRelocated' =>
+      '$realm verlegt den Sitz nach (${p['x']}, ${p['y']})',
+    'wedding' => '${p['a']} von $realm heiratet ${p['b']}',
+    'marriageRejected' => '$realm: der Heiratsantrag wurde abgelehnt !',
+    'divorce' =>
+      'Die Ehe von ${p['a']} und ${p['b']} wird geschieden (Religion)',
+    'birth' =>
+      '${p['parent']} von $realm feiert die Geburt von ${p['child']}',
+    'personDied' => '${p['name']} von $realm ist im Alter von ${p['age']} '
+        'Jahren verstorben (${p['cause']})',
+    'succession' =>
+      '$realm: Die Weisen erwählen ${p['heir']} zum Erben',
     'titlePromoted' => '$realm: neuer Titel ${p['title']}',
+    'troopsRecruited' => '$realm bildet ${p['men']} Rekruten aus',
+    'soeldnerHired' => '$realm wirbt ${p['men']} Söldner an',
     'warDeclared' =>
       '$realm erklärt ${gc.countryNames[p['targetSlot'] as int]} den Krieg!',
     'battle' => 'Schlacht: ${p['attackerUnit']} (−${p['attackerLosses']}) '
         'vs ${p['defenderUnit']} (−${p['defenderLosses']})',
     'rulerCaptured' => '$realm nimmt den Herrscher von '
         '${gc.countryNames[p['loserSlot'] as int]} gefangen!',
-    'warWon' => '$realm gewinnt den Krieg — Anspruch ${p['claim']}',
-    'crowned' => '${p['name']} wird ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'}',
-    'assassination' => '${p['victim']} wird hinterhältig ermordet !!!',
+    'warWon' =>
+      '$realm gewinnt den Krieg gegen ${gc.countryNames[p['loserSlot'] as int]}',
+    'warDraw' => 'Der Krieg endet unentschieden',
+    'winterEndsWar' => 'Der Winter beendet den Krieg',
+    'peaceWish' => '$realm wünscht ein Ende des Krieges',
+    'tileConquered' => '$realm erobert (${p['x']}, ${p['y']}) von '
+        '${gc.countryNames[p['from'] as int]}',
+    'plunder' => '$realm plündert (${p['x']}, ${p['y']}) — Opfer: '
+        '${gc.countryNames[p['victim'] as int]}',
+    'claimPaidOut' => '$realm erhält ${p['amount']} T Kriegsentschädigung '
+        'von ${gc.countryNames[p['from'] as int]}',
+    'forcedMarriage' =>
+      '${p['victor']} erzwingt die Heirat mit ${p['spouse']}',
+    'forcedAbdication' => '${p['name']} muss abdanken !',
+    'execution' => '${p['name']} wird hingerichtet !!!',
+    'realmsMerged' =>
+      '$realm übernimmt ${gc.countryNames[p['sourceSlot'] as int]}',
+    'crowned' =>
+      '${p['name']} von $realm wird ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'}',
+    'electionStarted' =>
+      '${p['office'] == 'kaiser' ? 'Kaiserwahl' : 'Sultanswahl'} — die Wahl beginnt',
+    'electionTie' => 'Die Wahl endet unentschieden — Stichwahl !',
+    'interregnum' => 'Interregnum — der Thron bleibt unbesetzt',
+    'newKurfuerst' => '${p['name']} wird Kurfürst',
+    'kurfuerstStripped' =>
+      '${p['name']} verliert die Kurfürstenwürde',
+    'officeHolderDied' => 'Der Amtsinhaber ist verstorben',
+    'assassination' =>
+      '${p['victim']} von $realm wird hinterhältig ermordet !!!',
     'assassinationFailed' => 'Anschlag auf ${p['victim']} vereitelt — '
         'Auftraggeber: ${gc.countryNames[p['sponsorSlot'] as int]}',
+    'assassinsDispatched' => '$realm entsendet ${p['agents']} Attentäter '
+        'nach ${gc.countryNames[p['targetSlot'] as int]}',
+    'intelGathered' => '$realm: Spionagebericht über '
+        '${gc.countryNames[p['targetSlot'] as int]} liegt vor',
+    'missionFailed' => '$realm: Spionagemission in '
+        '${gc.countryNames[p['targetSlot'] as int]} gescheitert'
+        '${p['caught'] == true ? ' — Agenten gefasst !' : ''}',
+    'religionChanged' => '$realm wechselt die Religion',
+    'dynastyConverted' => '$realm: die Dynastie konvertiert',
+    'dynastyExtinct' => '$realm: die Dynastie ist erloschen',
+    'islamicSuccessionCrisis' =>
+      '$realm: Erbfolgekrise — ${p['heir']} setzt sich durch',
+    'internalStrife' =>
+      '$realm: innere Unruhen — ${p['newRuler']} ergreift die Macht',
+    'bankruptcy' => '$realm ist bankrott (${p['debt']} T Schulden) !',
+    'merchantFounder' =>
+      'Der Kaufmann ${p['name']} gründet eine neue Dynastie',
+    'totalExtinction' => 'Alle Dynastien sind erloschen — das Land verfällt',
     'earthquake' => 'Ein verheerendes Erdbeben verwüstet das Reich',
     'disease' => 'Die ${p['name']} geht um!',
     'reformation' => 'Die Reformation! ',
     'ottomanInvasion' => 'Eine riesige Reiterhorde dringt in das Reich ein!',
+    'buildingDemolished' => '$realm reißt (${p['x']}, ${p['y']}) ab',
     'gameWon' => '$realm ist der alleinige Herrscher des ganzen Landes!',
     _ => '$realm: ${e.type}',
   };
@@ -111,11 +168,11 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
             padding: const EdgeInsets.all(8),
             child: SegmentedButton<String>(
               segments: const [
-                ButtonSegment(value: 'all', label: Text('All')),
-                ButtonSegment(value: 'mine', label: Text('Mine')),
-                ButtonSegment(value: 'wars', label: Text('Wars')),
-                ButtonSegment(value: 'dynasty', label: Text('Dynasty')),
-                ButtonSegment(value: 'world', label: Text('World')),
+                ButtonSegment(value: 'all', label: Text('Alle')),
+                ButtonSegment(value: 'mine', label: Text('Mein Reich')),
+                ButtonSegment(value: 'wars', label: Text('Kriege')),
+                ButtonSegment(value: 'dynasty', label: Text('Dynastie')),
+                ButtonSegment(value: 'world', label: Text('Welt')),
               ],
               selected: {_filter},
               onSelectionChanged: (s) => setState(() => _filter = s.first),
@@ -137,11 +194,23 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
   }
 }
 
+/// Routine map management by other players — noise in the recap.
+const _trivialTypes = {'tileClaimed', 'buildingBuilt', 'buildingDemolished'};
+
+/// Blow-by-blow war detail — the recap only shows the result
+/// (warWon/warDraw/winterEndsWar/rulerCaptured); the full feed keeps all.
+const _warDetailTypes = {'battle', 'tileConquered', 'plunder', 'peaceWish'};
+
 /// The "since your last turn" recap card, shown right after the handoff.
+/// Upkeep lines, other players' trivial tile actions and war details are
+/// skipped.
 Future<void> showRecapCard(
     BuildContext context, GameController controller, int slot) async {
   final recap = controller.recapFor(slot)
-      .where((e) => e.type != 'turnUpkeep')
+      .where((e) =>
+          e.type != 'turnUpkeep' &&
+          !_warDetailTypes.contains(e.type) &&
+          !(_trivialTypes.contains(e.type) && e.slot != slot))
       .toList();
   controller.markRecapSeen(slot);
   if (recap.isEmpty) return;

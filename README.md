@@ -22,7 +22,6 @@ verbatim with the planned async-multiplayer backend (V2).
 | `ARCHITECTURE.md` | System architecture incl. the V2 online design |
 | `PROJECT_REQUIREMENTS.md` | Product requirements for V1 |
 | `CHECKLIST.md` | Phase-by-phase progress tracker and decision log |
-| `Jenkinsfile` | CI pipeline (Jenkins) |
 
 ## Prerequisites
 
@@ -59,7 +58,8 @@ dart run tool/sim_report.dart    # in packages/game_core: headless 200-year sim
 
 ## Tests & analysis
 
-CI (Jenkins, see `Jenkinsfile`) runs exactly this — keep it green:
+Run this before every push — keep it green (no CI for the app yet;
+Jenkins will be used for the backend later):
 
 ```bash
 # Rules engine
@@ -130,7 +130,7 @@ Xcode/Transporter to TestFlight.
 
 1. Bump `version:` in `client/pubspec.yaml` (e.g. `0.2.0+2` — the `+N`
    build number must increase for every store upload).
-2. Run the full test suites (see above) — or let Jenkins do it.
+2. Run the full test suites (see above).
 3. `flutter build appbundle --release` with the release keystore.
 4. Upload to **Play Console → Internal testing** (beta round), promote to
    production after the round. Store texts live in `store/metadata.md`;

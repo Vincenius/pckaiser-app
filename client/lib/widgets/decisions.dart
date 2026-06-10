@@ -4,12 +4,11 @@ import 'package:game_core/game_core.dart' as gc;
 import '../state/game_controller.dart';
 import 'event_feed.dart';
 
-/// After the handoff: show the recap card, then prompt every pending
-/// decision addressed to [slot] (ARCHITECTURE.md "Pending decisions" —
-/// local mode resolves them inline).
+/// After the handoff: prompt every pending decision addressed to [slot]
+/// first (marriage consent, baby names, …), then show the recap card —
+/// the summary reads better once the player has acted.
 Future<void> showRecapAndDecisions(
     BuildContext context, GameController controller, int slot) async {
-  await showRecapCard(context, controller, slot);
   while (true) {
     if (!context.mounted) return;
     final decisions = controller.state.pendingDecisions
@@ -18,6 +17,8 @@ Future<void> showRecapAndDecisions(
     if (decisions.isEmpty) break;
     await _promptDecision(context, controller, decisions.first);
   }
+  if (!context.mounted) return;
+  await showRecapCard(context, controller, slot);
 }
 
 Future<void> _promptDecision(BuildContext context,
@@ -60,8 +61,13 @@ Future<void> _promptDecision(BuildContext context,
           {'heirId': heir ?? p['provisionalHeirId']});
 
     case 'childName':
+      final child = state.persons[p['childId'] as int];
+      final isBoy = child == null || child.isMale;
       final name = await _askText(
-          context, 'Name des Kindes:', p['suggestedName'] as String? ?? '');
+          context,
+          'Ein ${isBoy ? 'Junge' : 'Mädchen'} ist geboren ! '
+          'Wie soll ${isBoy ? 'er' : 'sie'} heißen?',
+          p['suggestedName'] as String? ?? '');
       await controller.resolveDecision(
           decision.id, decision.decidingSlot, {'name': name});
 

@@ -33,6 +33,26 @@ void main() {
               name: 'Heer$slot'),
           Rng(state.rngSeed)).state;
     }
+    // Wars need a shared border: hand slot 2 a land tile right next to
+    // slot 1's territory.
+    final map = state.map;
+    outer:
+    for (var y = 0; y < map.height; y++) {
+      for (var x = 0; x < map.width; x++) {
+        if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
+          continue;
+        }
+        for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+          if (map.inBounds(x + dx, y + dy) &&
+              map.ownerAt(x + dx, y + dy) == 1) {
+            map.owner[map.index(x, y)] = 2;
+            state.realm(2).tileCount[Building.none]++;
+            break outer;
+          }
+        }
+      }
+    }
+    expect(state.map.realmNeighbors(1), contains(2));
   });
 
   group('troops (§10)', () {
@@ -90,6 +110,21 @@ void main() {
   });
 
   group('war (§11)', () {
+    test('war needs a shared border', () {
+      // Pick a living realm that does NOT touch slot 1's territory.
+      final neighbors = state.map.realmNeighbors(1);
+      final distant = state.realms
+          .firstWhere((r) =>
+              r.slot != 1 && !r.isVacant && !neighbors.contains(r.slot))
+          .slot;
+      expect(
+        () => applyAction(state, DeclareWar(slot: 1, targetSlot: distant),
+            Rng(state.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'Sie haben keine gemeinsame Grenze !',
+      );
+    });
+
     test('declaration gates: year, once-per-year, troops', () {
       state.year = 1009;
       expect(

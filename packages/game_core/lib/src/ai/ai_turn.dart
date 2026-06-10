@@ -19,7 +19,13 @@ import '../turn/turn_pipeline.dart';
 /// AI action phase for [slot] (ORIGINAL_GAME.md §20): "Die `<name>` zieht."
 /// Uses the same action primitives as humans via [applyActionInPlace].
 /// Pure: returns a new state plus the emitted events.
+///
+/// Defensive guard: the AI script must never act for a human-controlled
+/// dynasty — a caller bug here would silently play the player's realm.
 TurnResult runAiTurn(GameState state, int slot, Rng rng) {
+  if (state.dynasty(slot).status == DynastyStatus.human) {
+    return TurnResult(state, const []);
+  }
   final next = state.copy();
   final events = <GameEvent>[];
   _runAiTurnInPlace(next, slot, rng, events);

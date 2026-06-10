@@ -5,24 +5,56 @@ import 'package:flutter/painting.dart' show HSLColor;
 /// Visual identity per realm slot (1–30): a color plus a pattern index —
 /// color is never the only channel (PROJECT_REQUIREMENTS accessibility).
 class RealmPalette {
-  /// Golden-angle hue spread gives 30 well-separated colors.
+  /// 30 well-separated colors that read clearly on the green terrain:
+  /// hues run 170°–430° (mod 360) — blues, purples, reds, oranges,
+  /// yellows — deliberately skipping the 70°–170° green band. A coprime
+  /// stride spreads consecutive slots far apart on the wheel, and
+  /// alternating lightness doubles the effective separation.
   static Color colorFor(int slot) {
-    final hue = (slot * 137.508) % 360.0;
-    return HSLColor.fromAHSL(1.0, hue, 0.65, 0.45).toColor();
+    final hue = (170.0 + ((slot * 11) % 30) / 30.0 * 260.0) % 360.0;
+    final lightness = slot.isEven ? 0.58 : 0.44;
+    return HSLColor.fromAHSL(1.0, hue, 0.85, lightness).toColor();
   }
 
   /// Pattern overlay kind (0–3): stripes ╱, stripes ╲, dots, crosshatch.
   /// Neighboring slots rarely share both hue and pattern.
   static int patternFor(int slot) => slot % 4;
 
+  /// Marks a realm's capital: a flag pole with a pennant in the realm
+  /// color (no suitable sprite exists in the original tile set).
+  static void paintCapital(Canvas canvas, Rect cell, int slot) {
+    final s = cell.width;
+    final pole = Paint()
+      ..color = const Color(0xFF222222)
+      ..strokeWidth = s / 12;
+    canvas.drawLine(
+      Offset(cell.left + s * 0.35, cell.top + s * 0.15),
+      Offset(cell.left + s * 0.35, cell.top + s * 0.85),
+      pole,
+    );
+    final pennant = Path()
+      ..moveTo(cell.left + s * 0.38, cell.top + s * 0.15)
+      ..lineTo(cell.left + s * 0.85, cell.top + s * 0.28)
+      ..lineTo(cell.left + s * 0.38, cell.top + s * 0.45)
+      ..close();
+    canvas.drawPath(pennant, Paint()..color = colorFor(slot));
+    canvas.drawPath(
+      pennant,
+      Paint()
+        ..color = const Color(0xFF222222)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s / 24,
+    );
+  }
+
   /// Paints the ownership overlay for one tile cell: translucent tint plus
   /// the pattern in a darker shade.
   static void paintOwnership(Canvas canvas, Rect cell, int slot) {
     final color = colorFor(slot);
-    canvas.drawRect(cell, Paint()..color = color.withValues(alpha: 0.30));
+    canvas.drawRect(cell, Paint()..color = color.withValues(alpha: 0.45));
 
     final pattern = Paint()
-      ..color = color.withValues(alpha: 0.85)
+      ..color = color.withValues(alpha: 0.95)
       ..strokeWidth = cell.width / 16
       ..style = PaintingStyle.stroke;
     final s = cell.width;

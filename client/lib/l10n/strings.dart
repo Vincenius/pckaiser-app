@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-/// Minimal string table — English default, German optional
-/// (PROJECT_REQUIREMENTS). The German entries follow §23 of
-/// ORIGINAL_GAME.md where a verbatim original string exists.
-final ValueNotifier<String> appLocale = ValueNotifier('en');
+/// Minimal string table — German default for v1, English optional.
+/// The German entries follow §23 of ORIGINAL_GAME.md where a verbatim
+/// original string exists.
+final ValueNotifier<String> appLocale = ValueNotifier('de');
 
 const Map<String, Map<String, String>> _table = {
   'en': {
@@ -23,14 +23,13 @@ const Map<String, Map<String, String>> _table = {
     'misc': 'Misc',
     'info': 'Info',
     'eventFeed': 'Events',
-    'claimTile': 'Claim tile',
     'demolish': 'Demolish (100 T)',
     'handoff': 'Hand the device to',
     'yourTurn': 'Begin turn',
     'warDeclared': 'War declared!',
     'sellGrain': 'Sell grain',
     'sellCattle': 'Sell cattle',
-    'investShips': 'Trade-ship investment',
+    'investShips': 'Send trade ships',
     'mergeRealms': 'Merge realms',
     'recruit': 'Recruit troops',
     'hireSoeldner': 'Hire Söldner',
@@ -38,6 +37,8 @@ const Map<String, Map<String, String>> _table = {
     'guards': 'Guards',
     'chronicle': 'Chronicle',
     'gameOver': 'Victory!',
+    'proposeMarriage': 'Propose marriage',
+    'cancel': 'Cancel',
   },
   'de': {
     'appTitle': 'PC Kaiser',
@@ -56,14 +57,13 @@ const Map<String, Map<String, String>> _table = {
     'misc': 'Sonstiges',
     'info': 'Info',
     'eventFeed': 'Ereignisse',
-    'claimTile': 'Feld beanspruchen',
     'demolish': 'Abreißen (100 T)',
     'handoff': 'Gerät weitergeben an',
     'yourTurn': 'Zug beginnen',
     'warDeclared': 'Krieg erklärt!',
     'sellGrain': 'Korn verkaufen',
     'sellCattle': 'Rinder verkaufen',
-    'investShips': 'Schiffsbeteiligung',
+    'investShips': 'Handelsschiffe aussenden',
     'mergeRealms': 'Reiche zusammenlegen',
     'recruit': 'Truppe ausbilden',
     'hireSoeldner': 'Söldner anwerben',
@@ -71,6 +71,8 @@ const Map<String, Map<String, String>> _table = {
     'guards': 'Spionageabwehr',
     'chronicle': 'Urkunde',
     'gameOver': 'Sieg!',
+    'proposeMarriage': 'Heirat vorschlagen',
+    'cancel': 'Abbrechen',
   },
 };
 

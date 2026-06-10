@@ -70,6 +70,7 @@ class GameSetup {
 GameState newGame(GameSetup setup) {
   final rng = Rng(setup.seed);
   final map = generateMap(rng);
+  final componentSize = _landComponentSizes(map);
 
   final humanBySlot = <int, int>{};
   for (var i = 0; i < setup.humans.length; i++) {
@@ -126,7 +127,8 @@ GameState newGame(GameSetup setup) {
       popularity: 50,
       rulerId: founder.id,
     );
-    _placeStartingCross(map, realm, rng, dorfName: dorfName);
+    _placeStartingCross(map, realm, rng,
+        dorfName: dorfName, componentSize: componentSize);
     realms.add(realm);
   }
 
@@ -144,6 +146,53 @@ GameState newGame(GameSetup setup) {
   );
 }
 
+/// A starting position must sit on a connected landmass of at least this
+/// many tiles, so no realm starts boxed in on a small island [DEVIATION:
+/// the original accepts any spot with > 2 land neighbors]. On degenerate
+/// maps where no component reaches the threshold, the largest one is
+/// accepted instead.
+const int _minStartComponent = 50;
+
+/// Size of each land tile's 4-connected component, indexed like the map
+/// (water tiles get 0). One flood-fill pass over the finished map.
+List<int> _landComponentSizes(WorldMap map) {
+  final size = List<int>.filled(map.terrain.length, 0);
+  final componentOf = List<int>.filled(map.terrain.length, -1);
+  final componentSizes = <int>[];
+
+  for (var start = 0; start < map.terrain.length; start++) {
+    if (componentOf[start] != -1 || !Terrain.isLand(map.terrain[start])) {
+      continue;
+    }
+    final id = componentSizes.length;
+    final stack = [start];
+    componentOf[start] = id;
+    var count = 0;
+    while (stack.isNotEmpty) {
+      final index = stack.removeLast();
+      count++;
+      final x = index % map.width;
+      final y = index ~/ map.width;
+      for (final (dx, dy) in _scanOrder) {
+        final nx = x + dx;
+        final ny = y + dy;
+        if (!map.inBounds(nx, ny)) continue;
+        final ni = map.index(nx, ny);
+        if (componentOf[ni] == -1 && Terrain.isLand(map.terrain[ni])) {
+          componentOf[ni] = id;
+          stack.add(ni);
+        }
+      }
+    }
+    componentSizes.add(count);
+  }
+
+  for (var i = 0; i < size.length; i++) {
+    if (componentOf[i] != -1) size[i] = componentSizes[componentOf[i]];
+  }
+  return size;
+}
+
 /// Shoreline variants that disqualify a starting position's neighbors (§5).
 const Set<int> _forbiddenShoreline = {7, 8, 9, 11, 12, 13, 15, 16};
 
@@ -158,7 +207,16 @@ void _placeStartingCross(
   Realm realm,
   Rng rng, {
   required String dorfName,
+  required List<int> componentSize,
 }) {
+  var largestComponent = 0;
+  for (final s in componentSize) {
+    if (s > largestComponent) largestComponent = s;
+  }
+  final minComponent = largestComponent < _minStartComponent
+      ? largestComponent
+      : _minStartComponent;
+
   int x, y;
   var attempts = 0;
   for (;;) {
@@ -170,6 +228,7 @@ void _placeStartingCross(
     x = rng.nextInt(78) + 1;
     y = rng.nextInt(42) + 1;
     if (!map.isLandAt(x, y) || map.ownerAt(x, y) != World.niemand) continue;
+    if (componentSize[map.index(x, y)] < minComponent) continue; // island
 
     var landNeighbors = 0;
     var ok = true;

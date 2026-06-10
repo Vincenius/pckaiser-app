@@ -22,6 +22,10 @@ class GameController extends ChangeNotifier {
   int _handoffToSlot = 0;
   bool _busy = false;
 
+  /// The war unit the player has selected on the map (index into the
+  /// human war side's troop list); null = nothing selected.
+  int? selectedWarUnit;
+
   GameState get state => _session.state;
 
   /// What the seated player may see (hidden information).
@@ -141,6 +145,7 @@ class GameController extends ChangeNotifier {
   Future<void> endWarRound() async {
     if (_busy) return;
     _busy = true;
+    selectedWarUnit = null;
     notifyListeners();
     try {
       _undoStack.clear();
@@ -184,10 +189,16 @@ class GameController extends ChangeNotifier {
     await _session.save();
   }
 
+  void selectWarUnit(int? index) {
+    selectedWarUnit = index;
+    notifyListeners();
+  }
+
   /// War actions from the war panel (move, plunder, peace wish).
   ActionResult applyWarAction(PlayerAction action) {
     final result = _session.apply(action);
     _undoStack.clear();
+    if (state.activeWar == null) selectedWarUnit = null;
     notifyListeners();
     return result;
   }

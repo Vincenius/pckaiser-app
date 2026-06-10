@@ -18,17 +18,36 @@ class LocalGameSession {
   }) async {
     var state = newGame(setup);
     state = startGame(state, Rng(state.rngSeed)).state;
+    // startGame leaves the first *living* slot active — usually an AI
+    // (slot 1, Brandenburg). Let the AI realms play until the first
+    // human's action phase, so the human seat never controls an AI realm.
+    if (setup.humans.isNotEmpty &&
+        state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
+      state = advanceUntilHuman(state, Rng(state.rngSeed)).state;
+    }
     final session = LocalGameSession(slotName, state, saves);
     await saves.save(slotName, state);
     return session;
   }
 
-  /// Resumes a saved game.
+  /// Resumes a saved game. Saves from before the first-player fix can be
+  /// parked on an AI slot — the human seat would then control (and watch
+  /// the AI play) a foreign realm. Heal them by advancing to the first
+  /// human action phase.
   static Future<LocalGameSession> resume({
     required String slotName,
     required SaveService saves,
   }) async {
-    return LocalGameSession(slotName, await saves.load(slotName), saves);
+    var state = await saves.load(slotName);
+    final hasHumans = state.dynasties
+        .any((d) => d.status == DynastyStatus.human);
+    if (hasHumans &&
+        state.activeWar == null &&
+        state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
+      state = advanceUntilHuman(state, Rng(state.rngSeed)).state;
+      await saves.save(slotName, state);
+    }
+    return LocalGameSession(slotName, state, saves);
   }
 
   final String slotName;

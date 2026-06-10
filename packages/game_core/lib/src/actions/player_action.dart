@@ -27,7 +27,10 @@ sealed class PlayerAction {
         ChangeReligion.kind => ChangeReligion.fromJson(json),
         SellGood.kind => SellGood.fromJson(json),
         InvestShips.kind => InvestShips.fromJson(json),
+        SendMoney.kind => SendMoney.fromJson(json),
+        RelocateCapital.kind => RelocateCapital.fromJson(json),
         ProposeMarriage.kind => ProposeMarriage.fromJson(json),
+        MarryCommoner.kind => MarryCommoner.fromJson(json),
         ResolveDecision.kind => ResolveDecision.fromJson(json),
         MergeRealms.kind => MergeRealms.fromJson(json),
         RecruitTroops.kind => RecruitTroops.fromJson(json),
@@ -180,6 +183,29 @@ class ProposeMarriage extends PlayerAction {
       };
 }
 
+/// "(B)ürgerlich heiraten" (§14.1): marry one of your dynasty members to
+/// a commoner. Same 25% acceptance roll as any non-human target; the new
+/// spouse joins the dynasty so the annual birth loop applies.
+class MarryCommoner extends PlayerAction {
+  MarryCommoner({required super.slot, required this.personId});
+
+  factory MarryCommoner.fromJson(Map<String, dynamic> json) => MarryCommoner(
+        slot: json['slot'] as int,
+        personId: json['personId'] as int,
+      );
+
+  static const kind = 'marryCommoner';
+
+  final int personId;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'personId': personId};
+}
+
 /// Resolves a [PendingDecision] addressed to this slot (ARCHITECTURE.md):
 /// marriage consent, heir choice, child naming, election bribes and
 /// elector votes all arrive through this one action.
@@ -283,6 +309,63 @@ class InvestShips extends PlayerAction {
   @override
   Map<String, dynamic> toJson() =>
       {'type': kind, 'slot': slot, 'amount': amount};
+}
+
+/// Handel-menu "Geld schicken" (§6.2): transfer Taler to another realm
+/// (diplomacy, election bribes). No gate beyond a sufficient treasury.
+class SendMoney extends PlayerAction {
+  SendMoney({
+    required super.slot,
+    required this.targetSlot,
+    required this.amount,
+  });
+
+  factory SendMoney.fromJson(Map<String, dynamic> json) => SendMoney(
+        slot: json['slot'] as int,
+        targetSlot: json['targetSlot'] as int,
+        amount: json['amount'] as int,
+      );
+
+  static const kind = 'sendMoney';
+
+  final int targetSlot;
+  final int amount;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'targetSlot': targetSlot,
+        'amount': amount,
+      };
+}
+
+/// "Sitz verlegen" (§6.2): relocate a lost/unset capital onto an own tile
+/// with Stadt/Burg/Palast — costs 5,000 T.
+class RelocateCapital extends PlayerAction {
+  RelocateCapital({required super.slot, required this.x, required this.y});
+
+  factory RelocateCapital.fromJson(Map<String, dynamic> json) =>
+      RelocateCapital(
+        slot: json['slot'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'relocateCapital';
+
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
 /// Change the dynasty's religion (§4): katholisch free, evangelisch 500 T,

@@ -49,16 +49,22 @@ class _SetupScreenState extends State<SetupScreen> {
       return 'Das ist zu früh !!! (Reformation ≥ $minEventYear)';
     }
     if (ottoman == null || ottoman < minEventYear) {
-      return 'Das ist zu früh !!! (Ottoman ≥ $minEventYear)';
+      return 'Das ist zu früh !!! (Osmanen ≥ $minEventYear)';
     }
-    if (_slotName.text.trim().isEmpty) return 'Name the save slot';
+    if (_slotName.text.trim().isEmpty) {
+      return 'Bitte dem Spielstand einen Namen geben';
+    }
     for (final p in _players) {
-      if (p.name.text.trim().isEmpty) return 'Every founder needs a name';
-      if (p.dorf.text.trim().isEmpty) return 'Every first Dorf needs a name';
+      if (p.name.text.trim().isEmpty) {
+        return 'Jeder Gründer braucht einen Namen';
+      }
+      if (p.dorf.text.trim().isEmpty) {
+        return 'Jedes erste Dorf braucht einen Namen';
+      }
     }
     final slots = _players.map((p) => p.countrySlot).toSet();
     if (slots.length != _players.length) {
-      return 'Two players picked the same country';
+      return 'Zwei Spieler haben dasselbe Land gewählt';
     }
     return null;
   }
@@ -86,25 +92,30 @@ class _SetupScreenState extends State<SetupScreen> {
       seed: DateTime.now().microsecondsSinceEpoch & 0xFFFFFFFF,
     );
     if (!mounted) return;
-    await Navigator.of(context).pushReplacement(MaterialPageRoute(
+    // push + pop (not pushReplacement): replacing this route would resolve
+    // the home screen's await immediately, so its save list would refresh
+    // before the game exists instead of when the player returns to it.
+    await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => GameScreen.create(
         slotName: _slotName.text.trim(),
         setup: setup,
         saves: widget.saves,
       ),
     ));
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New game')),
+      appBar: AppBar(title: const Text('Neues Spiel')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           TextField(
             controller: _slotName,
-            decoration: const InputDecoration(labelText: 'Save slot name'),
+            decoration:
+                const InputDecoration(labelText: 'Name des Spielstands'),
           ),
           const SizedBox(height: 12),
           Row(children: [
@@ -113,7 +124,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 controller: _reformation,
                 keyboardType: TextInputType.number,
                 decoration:
-                    const InputDecoration(labelText: 'Reformation year'),
+                    const InputDecoration(labelText: 'Jahr der Reformation'),
               ),
             ),
             const SizedBox(width: 12),
@@ -121,7 +132,8 @@ class _SetupScreenState extends State<SetupScreen> {
               child: TextField(
                 controller: _ottoman,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Ottoman year'),
+                decoration: const InputDecoration(
+                    labelText: 'Jahr der Osmanen-Invasion'),
               ),
             ),
           ]),
@@ -133,7 +145,7 @@ class _SetupScreenState extends State<SetupScreen> {
               onPressed: () =>
                   setState(() => _players.add(_PlayerDraft(_nextFreeSlot()))),
               icon: const Icon(Icons.person_add),
-              label: const Text('Add player'),
+              label: const Text('Spieler hinzufügen'),
             ),
           const SizedBox(height: 24),
           FilledButton.icon(
@@ -144,7 +156,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.play_arrow),
-            label: const Text('Start'),
+            label: const Text('Spiel starten'),
           ),
         ],
       ),
@@ -159,19 +171,20 @@ class _SetupScreenState extends State<SetupScreen> {
         padding: const EdgeInsets.all(12),
         child: Column(children: [
           Row(children: [
-            Text('Player ${i + 1}',
+            Text('Spieler ${i + 1}',
                 style: Theme.of(context).textTheme.titleSmall),
             const Spacer(),
             if (_players.length > 1)
               IconButton(
                 icon: const Icon(Icons.close),
-                tooltip: 'Remove player',
+                tooltip: 'Spieler entfernen',
                 onPressed: () => setState(() => _players.removeAt(i)),
               ),
           ]),
           TextField(
             controller: p.name,
-            decoration: const InputDecoration(labelText: 'Founder name'),
+            decoration:
+                const InputDecoration(labelText: 'Name des Gründers'),
           ),
           const SizedBox(height: 8),
           Row(children: [
@@ -192,7 +205,7 @@ class _SetupScreenState extends State<SetupScreen> {
             Expanded(
               child: DropdownButtonFormField<int>(
                 initialValue: p.countrySlot,
-                decoration: const InputDecoration(labelText: 'Country'),
+                decoration: const InputDecoration(labelText: 'Land'),
                 items: [
                   for (var slot = 1; slot <= 30; slot++)
                     DropdownMenuItem(
@@ -208,7 +221,7 @@ class _SetupScreenState extends State<SetupScreen> {
             Expanded(
               child: TextField(
                 controller: p.dorf,
-                decoration: const InputDecoration(labelText: 'First Dorf'),
+                decoration: const InputDecoration(labelText: 'Erstes Dorf'),
               ),
             ),
           ]),
