@@ -37,6 +37,7 @@ export 'src/state/intel_report.dart';
 export 'src/state/pending_decision.dart';
 export 'src/state/person.dart';
 export 'src/state/realm.dart';
+export 'src/state/ship.dart';
 export 'src/state/town.dart';
 export 'src/state/troop.dart';
 export 'src/state/versioning.dart';

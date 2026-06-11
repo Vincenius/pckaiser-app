@@ -52,6 +52,27 @@ class _WarPanelState extends State<WarPanel> {
     final enemyReady =
         state.dynasty(enemySlot).status != gc.DynastyStatus.human &&
             gc.aiWouldAcceptPeace(state, enemySlot);
+    // Rules v9/v11: capital occupation decides the war at round end —
+    // since v11 only when held through the enemy's full response round
+    // (the first round end merely ARMS it, war.heldCapitalSlot).
+    final occupier =
+        state.rulesVersion >= 9 ? gc.capitalOccupier(state, war) : null;
+    final sealsNextRoundEnd = occupier != null &&
+        (state.rulesVersion < 11 ||
+            war.heldCapitalSlot == occupier ||
+            state.realm(war.opponentOf(occupier)).troops.isEmpty);
+    final String? capitalNote = occupier == slot
+        ? (sealsNextRoundEnd
+            ? 'Deine Armee hält den gegnerischen Königssitz ! '
+                '„Runde beenden" besiegelt den Sieg — halte das Feld '
+                'bis dahin.'
+            : 'Deine Armee hält den gegnerischen Königssitz ! Übersteht '
+                'sie dort die nächste Runde, besiegelt das Rundenende '
+                'den Sieg.')
+        : occupier == enemySlot
+            ? 'Der Feind hält deinen Königssitz ! Erobere das Feld '
+                'zurück — sonst ist der Krieg verloren.'
+            : null;
 
     final header = Row(mainAxisSize: MainAxisSize.min, children: [
       const Icon(Icons.gavel, size: 18),
@@ -93,6 +114,19 @@ class _WarPanelState extends State<WarPanel> {
             _scoreboard(theme, myScore, enemyScore),
             const SizedBox(height: 2),
             _enemyArmyLine(theme, enemy),
+            if (capitalNote != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  capitalNote,
+                  style: theme.textTheme.bodySmall!.copyWith(
+                      color: occupier == slot
+                          ? Colors.green.shade800
+                          : theme.colorScheme.error,
+                      fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             if (war.wantsPeace(slot) || enemyReady)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
@@ -116,8 +150,9 @@ class _WarPanelState extends State<WarPanel> {
               selectedTroop == null
                   ? 'Tippe eine deiner Truppen an, um sie zu befehligen.'
                   : '„${selectedTroop.name}" gewählt — tippe ein Ziel auf '
-                      'der Karte: feindliche Armee = Angriff, gegnerischer '
-                      'Königssitz (Fahne) = Sieg.',
+                      'der Karte: feindliche Armee = Angriff. Wer den '
+                      'gegnerischen Königssitz (Fahne) über eine volle '
+                      'Runde hält, gewinnt den Krieg.',
               style: theme.textTheme.bodySmall!
                   .copyWith(fontStyle: FontStyle.italic),
               textAlign: TextAlign.center,

@@ -107,7 +107,11 @@ void _runAiTurnInPlace(
       realm.troops.any((t) => t.men > 0)) {
     final target = _pickWarTarget(state, slot, rng);
     if (target != null) {
-      _act(state, DeclareWar(slot: slot, targetSlot: target), rng, events);
+      try {
+        _act(state, DeclareWar(slot: slot, targetSlot: target), rng, events);
+      } on ActionException {
+        return; // defensive: an invalid pick must not kill the AI turn
+      }
       _fastForwardAiWar(state, rng, events);
     }
   }
@@ -189,8 +193,12 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
           continue;
         }
         for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+          // Own LAND adjacency, like the engine's hafenOnCoast rule — an
+          // own Hafen on water must not anchor the pick (the engine would
+          // reject the build and end the AI's build loop early).
           if (map.inBounds(x + dx, y + dy) &&
-              map.ownerAt(x + dx, y + dy) == slot) {
+              map.ownerAt(x + dx, y + dy) == slot &&
+              Terrain.isLand(map.terrainAt(x + dx, y + dy))) {
             return Build(
                 slot: slot, x: x, y: y, building: Building.hafen);
           }
@@ -304,9 +312,12 @@ int? _pickWarTarget(GameState state, int slot, Rng rng) {
       for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
         if (!map.inBounds(x + dx, y + dy)) continue;
         final other = map.ownerAt(x + dx, y + dy);
+        // A slot the AI's own ruler already holds (aliasing, §19) is no
+        // war target — DeclareWar rejects it; merging is the path.
         if (other != World.niemand &&
             other != slot &&
-            !state.realm(other).isVacant) {
+            !state.realm(other).isVacant &&
+            state.realm(other).rulerId != state.realm(slot).rulerId) {
           adjacent.add(other);
         }
       }
@@ -461,6 +472,27 @@ void runAiWarMovement(GameState state, int slot, Rng rng,
   return null;
 }
 
+/// Ends a war round: the AI sides move first (their response to the
+/// driving side's moves this round), then the round advances — capture,
+/// peace and winter checks included. ONE entry point for the local client
+/// ("Runde beenden") and the V2 server (an awaited war-round input, see
+/// ARCHITECTURE.md "Human-vs-human wars online") so the orchestration
+/// never lives in UI code. Attacker before defender, as in the original.
+void endWarRoundWithAi(GameState state, Rng rng, List<GameEvent> events) {
+  final war = state.activeWar;
+  if (war == null || war.phase != WarPhase.rounds) return;
+  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+    if (state.dynasty(slot).status != DynastyStatus.human) {
+      runAiWarMovement(state, slot, rng, events);
+    }
+  }
+  // A pre-v9 AI move can capture mid-march and end the war right here.
+  if (state.activeWar != null &&
+      state.activeWar!.phase == WarPhase.rounds) {
+    endWarRound(state, rng, events);
+  }
+}
+
 /// Runs a whole AI-vs-AI war to completion in silent "fast mode" (§11.3).
 void _fastForwardAiWar(GameState state, Rng rng, List<GameEvent> events) {
   var guard = 0;
@@ -475,11 +507,7 @@ void _fastForwardAiWar(GameState state, Rng rng, List<GameEvent> events) {
         return; // a human participant drives their own war rounds
       }
     }
-    runAiWarMovement(state, war.attackerSlot, rng, events);
-    if (state.activeWar == null) break;
-    runAiWarMovement(state, war.defenderSlot, rng, events);
-    if (state.activeWar == null) break;
-    endWarRound(state, rng, events);
+    endWarRoundWithAi(state, rng, events);
   }
 }
 

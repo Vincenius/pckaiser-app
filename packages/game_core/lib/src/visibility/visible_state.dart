@@ -13,8 +13,9 @@ import '../state/realm.dart';
 /// tribute pots, events addressed to the viewer.
 ///
 /// Hidden for every other realm: treasury, harvests/food stocks, troop
-/// composition and army size, guard level, popularity, population numbers,
-/// town garrisons, movement points, per-turn flags, intel reports.
+/// composition and army size, colony ships, guard level, popularity,
+/// population numbers, town garrisons, movement points, per-turn flags,
+/// intel reports.
 /// Espionage reveals them as fuzzed [IntelReport]s in the viewer's own
 /// realm instead.
 GameState visibleStateFor(GameState state, int viewerSlot) {
@@ -83,7 +84,9 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
 /// Strips a foreign realm down to its public face. Identity, title, capital
 /// and town tiers stay (visible on the map anyway); all economy and
 /// military numbers go to zero, meaning "unknown" — the UI must render
-/// foreign zeros as hidden, not as the value 0.
+/// foreign zeros as hidden, not as the value 0. Troops, colony ships and
+/// intel reports are simply omitted (the rebuilt realm defaults them
+/// empty).
 Realm _redactRealm(Realm realm) => Realm(
       slot: realm.slot,
       titleClass: realm.titleClass,

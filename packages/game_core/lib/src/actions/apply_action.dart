@@ -3,12 +3,14 @@ import '../rng/rng.dart';
 import '../rules/dynasty.dart';
 import '../rules/offices.dart';
 import '../rules/realm_merge.dart';
+import '../rules/titles.dart' show switchTitleLadder;
 import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/person.dart';
 import '../state/realm.dart';
+import '../state/ship.dart';
 import '../state/town.dart';
 import '../state/world_map.dart';
 import 'apply_military.dart';
@@ -53,6 +55,9 @@ List<GameEvent> applyActionInPlace(
   return switch (action) {
     ClaimTile() => _claimTile(state, realm, action),
     SendShip() => _sendShip(state, realm, action),
+    BuyShip() => _buyShip(state, realm, action),
+    MoveShip() => _moveShip(state, realm, action),
+    ColonizeShip() => _colonizeShip(state, realm, action, rng),
     Build() => _build(state, realm, action, rng),
     Demolish() => _demolish(state, realm, action),
     ChangeReligion() => _changeReligion(state, realm, action),
@@ -157,15 +162,19 @@ List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   ];
 }
 
-/// "(S)chiff" colony ship (manual: "man kann von [Häfen] aus auch Schiffe
-/// ausschicken, um z.B. unbewohnte Inseln zu kolonisieren"; proc_005D2B):
-/// claims a free land tile reachable over water from an own Hafen for a
-/// flat 700 T — the ship is consumed at its build cost. [DEVIATION] The
-/// original steers the ship tile-by-tile at 1 movement point per water
-/// tile; we charge a flat 1 point for the whole voyage (tap-target UX).
+/// "(S)chiff" colony ship, rules v6–v8 (manual: "man kann von [Häfen] aus
+/// auch Schiffe ausschicken, um z.B. unbewohnte Inseln zu kolonisieren";
+/// proc_005D2B): claims a free land tile reachable over water from an own
+/// Hafen for a flat 700 T — the ship is consumed at its build cost.
+/// Rules v9 retired this tap-target voyage in favor of manually steered
+/// ships ([_buyShip]/[_moveShip]/[_colonizeShip]).
 List<GameEvent> _sendShip(GameState state, Realm realm, SendShip action) {
   if (state.rulesVersion < 6) {
     throw ActionException('Das geht in diesem Spielstand noch nicht !');
+  }
+  if (state.rulesVersion >= 9) {
+    throw ActionException(
+        'Schiffe werden jetzt im Hafen gekauft und selbst gesteuert !');
   }
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
@@ -197,6 +206,141 @@ List<GameEvent> _sendShip(GameState state, Realm realm, SendShip action) {
       type: 'shipColonized',
       visibility: EventVisibility.public,
       payload: {'x': action.x, 'y': action.y},
+    ),
+  ];
+}
+
+void _requireManualShips(GameState state) {
+  if (state.rulesVersion < 9) {
+    throw ActionException('Das geht in diesem Spielstand noch nicht !');
+  }
+}
+
+Ship _shipAt(Realm realm, int index) {
+  if (index < 0 || index >= realm.ships.length) {
+    throw ActionException('Dieses Schiff gibt es nicht !');
+  }
+  return realm.ships[index];
+}
+
+/// Buy a colony ship at an own Hafen (rules v9): 700 T + 1 Zug; the ship
+/// spawns on the harbor's water tile and is steered manually from there.
+List<GameEvent> _buyShip(GameState state, Realm realm, BuyShip action) {
+  _requireManualShips(state);
+  final map = state.map;
+  _requireOnMap(map, action.x, action.y);
+  if (map.ownerAt(action.x, action.y) != realm.slot ||
+      map.buildingAt(action.x, action.y) != Building.hafen) {
+    throw ActionException('Schiffe werden in einem eigenen Hafen gekauft !');
+  }
+  _requireMovementPoint(realm);
+  _requireFunds(realm, Building.shipCost);
+
+  realm.movementPoints--;
+  realm.treasury -= Building.shipCost;
+  realm.ships.add(Ship(x: action.x, y: action.y));
+
+  return [
+    GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'shipBought',
+      visibility: EventVisibility.owner,
+      payload: {'x': action.x, 'y': action.y},
+    ),
+  ];
+}
+
+/// Sail a ship to a water tile (rules v9): shortest all-water route,
+/// 1 Zug per water tile — the original's "(S)chiff steuern" cost. A
+/// voyage longer than the remaining Züge must wait for the next turn
+/// (or stop at a nearer tile).
+List<GameEvent> _moveShip(GameState state, Realm realm, MoveShip action) {
+  _requireManualShips(state);
+  final ship = _shipAt(realm, action.shipIndex);
+  final map = state.map;
+  _requireOnMap(map, action.x, action.y);
+  if (!map.isWaterAt(action.x, action.y)) {
+    throw ActionException('Schiffe fahren nur auf dem Wasser !');
+  }
+  final distance =
+      map.waterPathLength(ship.x, ship.y, action.x, action.y);
+  if (distance < 0) {
+    throw ActionException('Dieses Feld ist über See nicht erreichbar !');
+  }
+  if (distance == 0) {
+    throw ActionException('Da liegt das Schiff doch schon !');
+  }
+  if (realm.movementPoints < distance) {
+    throw ActionException(
+        'So weit kommt das Schiff nicht mehr — die Fahrt kostet '
+        '$distance Züge !');
+  }
+
+  realm.movementPoints -= distance;
+  ship.x = action.x;
+  ship.y = action.y;
+  return const [];
+}
+
+/// Colonize with a ship (rules v9): a free land tile orthogonally next to
+/// the ship becomes the realm's, with a freshly founded Dorf on it — the
+/// ship is consumed (its settlers stay). Costs 1 Zug; the ship's 700 T
+/// already covered the colony.
+List<GameEvent> _colonizeShip(
+    GameState state, Realm realm, ColonizeShip action, Rng rng) {
+  _requireManualShips(state);
+  final ship = _shipAt(realm, action.shipIndex);
+  final map = state.map;
+  _requireOnMap(map, action.x, action.y);
+  if ((ship.x - action.x).abs() + (ship.y - action.y).abs() != 1) {
+    throw ActionException('Das Schiff muß direkt neben dem Feld liegen !');
+  }
+  if (map.isWaterAt(action.x, action.y)) {
+    throw ActionException('Kolonisiert wird ein freies Landfeld !');
+  }
+  if (map.ownerAt(action.x, action.y) != World.niemand ||
+      map.buildingAt(action.x, action.y) != Building.none) {
+    throw ActionException('Das Feld hat bereits einen Besitzer !');
+  }
+  if (action.townName.trim().isEmpty) {
+    throw ActionException('Das Dorf braucht einen Namen !');
+  }
+  _requireMovementPoint(realm);
+
+  realm.movementPoints--;
+  realm.ships.remove(ship);
+  map.owner[map.index(action.x, action.y)] = realm.slot;
+  map.building[map.index(action.x, action.y)] = Building.dorf;
+  realm.tileCount[Building.dorf]++;
+
+  final town = Town(
+    name: action.townName.trim(),
+    population: 75 + rng.nextInt(50),
+    troopCapacity: 25,
+    garrison: 0,
+    buildingType: Building.dorf,
+    x: action.x,
+    y: action.y,
+  );
+  realm.towns.add(town);
+  realm.population += town.population;
+  realm.troopCapacity += town.troopCapacity;
+
+  return [
+    GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'shipColonized',
+      visibility: EventVisibility.public,
+      payload: {'x': action.x, 'y': action.y},
+    ),
+    GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'townFounded',
+      visibility: EventVisibility.public,
+      payload: {'name': town.name, 'x': action.x, 'y': action.y},
     ),
   ];
 }
@@ -786,6 +930,14 @@ List<GameEvent> _changeReligion(
 
   if (religion == Religion.moslemisch) {
     state.kurfuerstenIds.remove(realm.rulerId);
+    // Rules v10: the whole dynasty converts (religion is a dynasty
+    // property), so every member's Kurfürst seat is forfeit — exactly as
+    // in the coerced conversion (§12.1); seat eligibility (§17.2) keys
+    // on the member's home-dynasty religion.
+    if (state.rulesVersion >= 10) {
+      state.kurfuerstenIds
+          .removeWhere((id) => state.persons[id]?.dynasty == realm.slot);
+    }
   }
 
   // §14.4: religiously incompatible marriages dissolve.
@@ -795,13 +947,7 @@ List<GameEvent> _changeReligion(
   // Switch the title ladder (§16.1). The exact class mapping is not in the
   // spec; we reset to the ladder's floor (Scheich/Ritter) and let the
   // per-turn promotion check (§16.2, Phase 3) climb back by prestige.
-  final female = realm.titleClass > 12;
-  final baseClass = religion == Religion.moslemisch
-      ? 9
-      : (realm.titleClass > (female ? 20 : 8) ? 1 : null);
-  if (baseClass != null) {
-    realm.titleClass = baseClass + (female ? 12 : 0);
-  }
+  switchTitleLadder(realm, religion);
 
   events.add(GameEvent(
     year: state.year,

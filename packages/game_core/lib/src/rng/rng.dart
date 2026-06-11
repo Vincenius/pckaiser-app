@@ -26,9 +26,18 @@ class Rng {
   }
 
   /// `random(N)` → uniform integer in `[0, n-1]`; `random(0)` = 0 (§25).
+  ///
+  /// Mathematically `(roll × n) >> 32` like the original, but computed
+  /// with `n` split into 31-bit halves: the naive product overflows
+  /// 64-bit ints for n ≳ 2³¹ (late-game treasuries reach that, e.g.
+  /// `nextInt(treasury)` in plunder/bribes) and returned NEGATIVE
+  /// numbers. Identical results for every n below 2³¹.
   int nextInt(int n) {
     if (n <= 0) return 0;
-    return (_next() * n) >> 32;
+    final r = _next();
+    final high = n >>> 31; // n div 2³¹
+    final low = n & 0x7FFFFFFF; // n mod 2³¹
+    return (r * high + ((r * low) >> 31)) >> 1;
   }
 
   /// `RandomReal` → uniform double in `[0, 1)`.

@@ -127,9 +127,11 @@ class GameState {
   /// migrated in [GameState.fromJson].
   final int schemaVersion;
 
-  /// Gameplay-rules version, pinned when the game is created and never
-  /// changed afterwards: rule/balance changes gate on this so running
-  /// games (local saves, online matches) keep their original rules.
+  /// Gameplay-rules version. Rule/balance changes gate on
+  /// `rulesVersion >= n`, but every game plays the LATEST rules: saves
+  /// adopt them at the load boundary (`adoptLatestRules`); the gates
+  /// document each change and keep old behavior testable
+  /// (see versioning.dart).
   final int rulesVersion;
 
   /// Starts at 999; becomes 1000 at the first round (§1).

@@ -145,55 +145,94 @@ Future<void> showTileActionSheet(
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.hafen));
   }
 
-  // "(S)chiff" colony ship (rules v6): a free land tile beyond the own
-  // border — e.g. on an island — can be claimed across the sea from an
-  // own Hafen. The ship is consumed: 700 T, like building one.
-  if (state.rulesVersion >= 6 &&
-      owner == gc.World.niemand &&
-      isLand &&
-      hasMoves &&
-      !_adjacentToOwn(map, slot, x, y) &&
-      realm.tileCount[gc.Building.hafen] >= 1 &&
-      money >= gc.Building.shipCost &&
-      map.shipReachable(slot, x, y)) {
-    act('Schiff aussenden — Feld kolonisieren', '700 T',
-        gc.SendShip(slot: slot, x: x, y: y));
-  }
-
-  // The same action from the harbor side (the original's "(S)chiff
-  // steuern"): tap an own Hafen, then pick the free land target across
-  // the sea. Shown whenever the Hafen could launch a ship; an invalid
-  // pick keeps the pick alive and explains why (engine message).
-  if (state.rulesVersion >= 6 &&
+  // Colony ships (rules v9, manual): buy at an own Hafen, steer over
+  // water (1 Zug per tile), colonize a free coastal tile into a Dorf.
+  if (state.rulesVersion >= 9 &&
       owner == slot &&
-      building == gc.Building.hafen &&
-      hasMoves) {
+      building == gc.Building.hafen) {
     actions.add(ListTile(
       leading: const Icon(Icons.sailing),
-      title: const Text('Schiff aussenden — Feld kolonisieren'),
+      title: const Text('Schiff kaufen'),
       trailing: const Text('700 T'),
-      subtitle: Text(money < gc.Building.shipCost
-          ? 'Du hast nicht genügend Taler !'
-          : 'Tippe danach ein freies Landfeld über See an'),
-      enabled: money >= gc.Building.shipCost,
-      onTap: () {
+      subtitle: Text(!hasMoves
+          ? 'Du hast keine Züge mehr !'
+          : money < gc.Building.shipCost
+              ? 'Du hast nicht genügend Taler !'
+              : 'Das Schiff geht hier im Hafen vor Anker — tippe es '
+                  'danach an, um es zu steuern'),
+      enabled: hasMoves && money >= gc.Building.shipCost,
+      onTap: () async {
         Navigator.pop(context);
-        controller.startTilePick(
-          hint: 'Schiff aussenden: freies Landfeld über See antippen '
-              '(700 T)',
-          onPick: (px, py) {
-            try {
-              controller
-                  .applyUndoable(gc.SendShip(slot: slot, x: px, y: py));
-              return true;
-            } on gc.ActionException catch (e) {
-              toastError(e);
-              return false;
-            }
-          },
-        );
+        await run(gc.BuyShip(slot: slot, x: x, y: y));
       },
     ));
+  }
+
+  // Own ship on the tapped tile: steer it. The voyage costs 1 Zug per
+  // water tile of the shortest sea route (engine-validated).
+  if (state.rulesVersion >= 9) {
+    for (var i = 0; i < realm.ships.length; i++) {
+      final ship = realm.ships[i];
+      if (ship.x != x || ship.y != y) continue;
+      final shipIndex = i;
+      actions.add(ListTile(
+        leading: const Icon(Icons.sailing),
+        title: const Text('Schiff steuern'),
+        subtitle: const Text('1 Zug pro Wasserfeld — neben einem freien '
+            'Landfeld kann das Schiff kolonisieren'),
+        enabled: hasMoves,
+        onTap: () {
+          Navigator.pop(context);
+          controller.startTilePick(
+            hint: 'Schiff steuern: Ziel auf dem Wasser antippen '
+                '(1 Zug pro Feld)',
+            onPick: (px, py) {
+              try {
+                controller.applyUndoable(gc.MoveShip(
+                    slot: slot, shipIndex: shipIndex, x: px, y: py));
+                return true;
+              } on gc.ActionException catch (e) {
+                toastError(e);
+                return false;
+              }
+            },
+          );
+        },
+      ));
+    }
+
+    // Free land tile next to one of the own ships: found the colony.
+    if (owner == gc.World.niemand &&
+        isLand &&
+        building == gc.Building.none) {
+      final shipIndex = realm.ships.indexWhere(
+          (s) => (s.x - x).abs() + (s.y - y).abs() == 1);
+      if (shipIndex >= 0) {
+        actions.add(ListTile(
+          leading: const Icon(Icons.flag),
+          title: const Text('Kolonisieren — Dorf gründen'),
+          subtitle: Text(hasMoves
+              ? 'Das Schiff wird dabei aufgelöst — die Siedler bleiben'
+              : 'Du hast keine Züge mehr !'),
+          enabled: hasMoves,
+          onTap: () async {
+            Navigator.pop(context);
+            final name = await _askTownName(context);
+            if (name == null || name.isEmpty) return;
+            // Founding rolls the starting population — randomized
+            // actions clear the undo stack (PROJECT_REQUIREMENTS).
+            await run(
+                gc.ColonizeShip(
+                    slot: slot,
+                    shipIndex: shipIndex,
+                    x: x,
+                    y: y,
+                    townName: name),
+                undoable: false);
+          },
+        ));
+      }
+    }
   }
 
   if (owner == slot &&

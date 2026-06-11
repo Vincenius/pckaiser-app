@@ -1,6 +1,8 @@
-/// Tests for the "(S)chiff" colony ship (rules v6): send a ship from an
-/// own Hafen to claim a free land tile across water (ORIGINAL_GAME.md
-/// §9.3, manual + proc_005D2B).
+/// Tests for the "(S)chiff" colony ship (rules v6–v8): send a ship from
+/// an own Hafen to claim a free land tile across water (ORIGINAL_GAME.md
+/// §9.3, manual + proc_005D2B). Rules v9 replaced this tap-target voyage
+/// with manually steered ships (see manual_ship_test.dart) — the states
+/// here are pinned to v8.
 library;
 
 import 'package:game_core/game_core.dart';
@@ -58,6 +60,8 @@ void main() {
       ottomanYear: 1040,
       seed: 11,
     ));
+    // SendShip lives in rules v6–v8 only (v9 = manual ships).
+    state = GameState.fromJson(state.toJson()..['rulesVersion'] = 8);
     paintScenario();
     rng = Rng(state.rngSeed);
   });
@@ -140,6 +144,14 @@ void main() {
       final old = GameState.fromJson(state.toJson()..['rulesVersion'] = 5);
       expect(
         () => applyAction(old, SendShip(slot: 1, x: 9, y: 40), rng),
+        throwsA(isA<ActionException>()),
+      );
+    });
+
+    test('v9 retires SendShip in favor of manually steered ships', () {
+      final v9 = GameState.fromJson(state.toJson()..['rulesVersion'] = 9);
+      expect(
+        () => applyAction(v9, SendShip(slot: 1, x: 9, y: 40), rng),
         throwsA(isA<ActionException>()),
       );
     });

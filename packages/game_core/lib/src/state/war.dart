@@ -36,6 +36,7 @@ class ActiveWar {
     Map<int, List<int>>? movesLeft,
     this.winnerSlot,
     this.remainingClaim = 0,
+    this.heldCapitalSlot,
   })  : snapshots = snapshots ?? {},
         movesLeft = movesLeft ?? {};
 
@@ -63,6 +64,8 @@ class ActiveWar {
         },
         winnerSlot: json['winnerSlot'] as int?,
         remainingClaim: json['remainingClaim'] as int? ?? 0,
+        // Additive field (rules v11) — older saves have no armed capture.
+        heldCapitalSlot: json['heldCapitalSlot'] as int?,
       );
 
   final int attackerSlot;
@@ -88,6 +91,12 @@ class ActiveWar {
   /// Set in the settlement phase (§11.2 claim settlement).
   int? winnerSlot;
   int remainingClaim;
+
+  /// Rules v11: the side that occupied the enemy capital at the previous
+  /// round end ("armed" capture). Holding it at the NEXT round end too —
+  /// through the opponent's full response round — resolves the capture;
+  /// null when nobody holds it.
+  int? heldCapitalSlot;
 
   bool isParticipant(int slot) =>
       slot == attackerSlot || slot == defenderSlot;
@@ -135,6 +144,7 @@ class ActiveWar {
         },
         winnerSlot: winnerSlot,
         remainingClaim: remainingClaim,
+        heldCapitalSlot: heldCapitalSlot,
       );
 
   Map<String, dynamic> toJson() => {
@@ -155,5 +165,6 @@ class ActiveWar {
         },
         'winnerSlot': winnerSlot,
         'remainingClaim': remainingClaim,
+        'heldCapitalSlot': heldCapitalSlot,
       };
 }

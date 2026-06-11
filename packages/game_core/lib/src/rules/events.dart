@@ -14,6 +14,7 @@ import 'dynasty.dart' as dyn;
 import 'offices.dart' show closeChronicleIfOfficeHolder;
 import 'population.dart' show cutGarrisonTroops;
 import 'protection.dart';
+import 'titles.dart' show switchTitleLadder;
 
 /// The between-turns world-event phase (§18): earthquake, disease,
 /// Reformation, Ottoman invasion, merchant founders. Runs once per round.
@@ -59,7 +60,7 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
         case Building.dorf || Building.markt || Building.stadt:
           final town =
               realm.towns.firstWhere((t) => t.x == x && t.y == y);
-          _damageTown(realm, town, rng.nextInt(town.population));
+          _damageTown(state, realm, town, rng.nextInt(town.population));
       }
     }
   }
@@ -76,7 +77,9 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
 
 /// §18.1/§18.2 exact town damage shape: `T` victims reduce capacity and
 /// garrison proportionally; the garrison loss is removed from the army.
-void _damageTown(Realm realm, Town town, int t) {
+/// Rules v10 also cuts the garrison-counted troop units, keeping unit men
+/// in sync with `armySize` (the same desync the v2 conquest fix closed).
+void _damageTown(GameState state, Realm realm, Town town, int t) {
   if (town.population <= 0 || t <= 0) return;
   final capacityLoss = (t * town.troopCapacity / town.population).round();
   final garrisonLoss = (t * town.garrison / town.population).round();
@@ -86,6 +89,7 @@ void _damageTown(Realm realm, Town town, int t) {
     final cut = math.min(garrisonLoss, town.garrison);
     town.garrison -= cut;
     realm.armySize = math.max(0, realm.armySize - cut);
+    if (state.rulesVersion >= 10) cutGarrisonTroops(realm, cut);
   }
   town.population -= t;
   realm.population -= t;
@@ -122,7 +126,7 @@ void _maybeDisease(GameState state, Rng rng, List<GameEvent> events) {
       final town = realm.towns[rng.nextInt(realm.towns.length)];
       final t = math.min(
           town.population > 0 ? rng.nextInt(town.population) : 0, d);
-      _damageTown(realm, town, t);
+      _damageTown(state, realm, town, t);
       d -= math.max(1, t);
     }
   }
@@ -161,6 +165,10 @@ void _maybeReformation(GameState state, Rng rng, List<GameEvent> events) {
   if (aiSlots.isNotEmpty) {
     convertSlot = aiSlots[rng.nextInt(aiSlots.length)];
     state.dynasty(convertSlot).religion = Religion.evangelisch;
+    // Rules v10: §14.4 — incompatible marriages dissolve on conversion.
+    if (state.rulesVersion >= 10) {
+      dyn.divorceIncompatibleCouples(state, convertSlot, events);
+    }
   }
   events.add(GameEvent(
     year: state.year,
@@ -197,9 +205,19 @@ void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
 
   dynasty.religion = Religion.moslemisch;
   state.kurfuerstenIds.remove(realm.rulerId);
+  // Rules v10: every dynasty member's Kurfürst seat is forfeit, like the
+  // menu and coerced conversions to Islam (§12.1, §17.2).
+  if (state.rulesVersion >= 10) {
+    state.kurfuerstenIds
+        .removeWhere((id) => state.persons[id]?.dynasty == slot);
+  }
   // Switch to the Muslim title ladder, like every other conversion
   // (§16.1; mirrors `_changeReligion` and `foundReplacementDynasty`).
-  realm.titleClass = 9 + (realm.titleClass > 12 ? 12 : 0);
+  switchTitleLadder(realm, Religion.moslemisch);
+  // Rules v10: §14.4 — incompatible marriages dissolve on conversion.
+  if (state.rulesVersion >= 10) {
+    dyn.divorceIncompatibleCouples(state, slot, events);
+  }
 
   // The capital town: nearest town to the capital (usually the first Dorf).
   final town = realm.towns.first;

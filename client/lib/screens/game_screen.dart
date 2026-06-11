@@ -123,8 +123,8 @@ class _GameScreenState extends State<GameScreen> {
 
   /// War-mode taps: tap an own army to select it (tap again to deselect),
   /// then tap any tile to march toward it — tapping an enemy army attacks
-  /// it, reaching the enemy Königssitz wins the war. Battle results are
-  /// shown as popups.
+  /// it; holding the enemy Königssitz until the round ends wins the war.
+  /// Battle results are shown as popups.
   Future<void> _onWarTileTap(GameController controller, int x, int y) async {
     final war = controller.state.activeWar!;
     final slot = controller.warHumanSlot;
@@ -165,9 +165,10 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// Greedy orthogonal march of the selected unit toward (tx, ty): one
-  /// step at a time until the moves run out, combat holds the unit, the
-  /// path is blocked, or the war ends (capital capture). Afterwards all
-  /// battle/capture events of the march pop up as a report.
+  /// step at a time until the moves run out, combat holds the unit, or
+  /// the path is blocked. Afterwards all battle events of the march pop
+  /// up as a report. (Under pre-v9 rules stepping onto the enemy capital
+  /// could end the war mid-march — the post-march resume handles that.)
   Future<void> _marchToward(GameController controller, int slot,
       int unitIndex, int tx, int ty) async {
     final report = <gc.GameEvent>[];
@@ -544,9 +545,10 @@ class _GameScreenState extends State<GameScreen> {
             'Boden plündern.\n\n'
             'Der Krieg endet, wenn beide Seiten Frieden wünschen '
             '(ohne Gebietsänderungen), spätestens im Winter — oder '
-            'sofort, wenn eine Armee den gegnerischen Königssitz '
-            '(Fahne) erreicht und den Herrscher gefangen '
-            'nimmt.'),
+            'wenn eine Armee den gegnerischen Königssitz (Fahne) über '
+            'eine volle Runde hält: ihr Herrscher wird gefangen '
+            'genommen, und der Sieger wählt, welche Felder er '
+            'übernimmt.'),
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(context),

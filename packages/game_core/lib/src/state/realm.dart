@@ -1,4 +1,5 @@
 import 'intel_report.dart';
+import 'ship.dart';
 import 'town.dart';
 import 'troop.dart';
 
@@ -32,10 +33,12 @@ class Realm {
     this.rulerId,
     List<Troop>? troops,
     List<Town>? towns,
+    List<Ship>? ships,
     List<IntelReport>? intelReports,
   })  : tileCount = tileCount ?? List.filled(9, 0),
         troops = troops ?? [],
         towns = towns ?? [],
+        ships = ships ?? [],
         intelReports = intelReports ?? [];
 
   factory Realm.fromJson(Map<String, dynamic> json) => Realm(
@@ -69,6 +72,10 @@ class Realm {
             .toList(),
         towns: (json['towns'] as List?)
             ?.map((t) => Town.fromJson((t as Map).cast<String, dynamic>()))
+            .toList(),
+        // Additive field (rules v9) — older saves have no ships.
+        ships: (json['ships'] as List?)
+            ?.map((s) => Ship.fromJson((s as Map).cast<String, dynamic>()))
             .toList(),
         intelReports: (json['intelReports'] as List?)
             ?.map((r) =>
@@ -135,6 +142,9 @@ class Realm {
   final List<Troop> troops;
   final List<Town> towns;
 
+  /// Colony ships at sea (rules v9). Hidden information like [troops].
+  final List<Ship> ships;
+
   /// Espionage results owned by this realm — private, hidden-information
   /// state (ARCHITECTURE.md).
   final List<IntelReport> intelReports;
@@ -168,6 +178,7 @@ class Realm {
         rulerId: rulerId,
         troops: [for (final t in troops) t.copy()],
         towns: [for (final t in towns) t.copy()],
+        ships: [for (final s in ships) s.copy()],
         intelReports: [for (final r in intelReports) r.copy()],
       );
 
@@ -198,6 +209,7 @@ class Realm {
         'rulerId': rulerId,
         'troops': [for (final t in troops) t.toJson()],
         'towns': [for (final t in towns) t.toJson()],
+        'ships': [for (final s in ships) s.toJson()],
         'intelReports': [for (final r in intelReports) r.toJson()],
       };
 }

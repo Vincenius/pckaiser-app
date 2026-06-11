@@ -1,130 +1,52 @@
 # Project Checklist — PC Kaiser Mobile
 
-Step-by-step plan and progress tracker. Check items off as they are completed; add notes inline. Update together with `CLAUDE.md` / `ARCHITECTURE.md` when scope changes.
+Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
+`docs/HISTORY.md`. Rules-version changelog: `game_core/src/state/versioning.dart`.
 
-Spec source of truth: `ORIGINAL_GAME.md` (§ references below point there).
+## Phase 0 — Setup ✅
+- [x] Flutter workspace: `client/` (Flutter 3.44.1) + `packages/game_core` (pure Dart)
+- [x] Save format: one JSON file per named slot (`save_service.dart`); no CI (Jenkins reserved for V2 backend)
+- [x] Tile assets imported (38 indices, §24)
 
----
+## Phase 1 — World & State ✅
+- [x] State model + JSON (add-only forward compat), `GameEvent`, `visibleStateFor`, seeded Borland-LCG RNG (§2, §25)
+- [x] Map generation (§3), new-game setup (§5), build/claim/demolish/religion actions (§4), golden tests
 
-## Phase 0 — Project Setup
+## Phase 2 — Turn Pipeline ✅
+- [x] Round/turn driver (§6.1), economy (§7), food/population/popularity (§8), market + trade ships (§9), movement roll (§6.3)
+- [x] Protect-new-players rule (years ≤ 1009); auto-save after each turn
 
-- [x] Flutter workspace: app (`client/`, Flutter 3.44.1) + `packages/game_core` (pure Dart, no Flutter deps)
-- [x] ~~CI via Jenkinsfile~~ removed 2026-06-10: no CI for the app for now; Jenkins will only be used for the backend (V2). Run the test suites locally before pushing (see README)
-- [x] Decide save format (single JSON file vs SQLite) and write `save_service` skeleton — **decision: one JSON file per named slot** (same `GameState` schema as server JSONB; atomic temp-file+rename writes); `client/lib/services/save_service.dart`
-- [x] Import tile assets from `imgs/` (38 indices, §24) into the Flutter asset bundle (`client/assets/tiles/{large,small}/NN.png`)
+## Phase 3 — Dynasty & Society ✅
+- [x] Aging/death/succession incl. ruler aliasing (§15, §19), births/marriages/divorce/Islamic crisis (§14)
+- [x] Titles & promotion (§16); Kurfürsten, Kaiser/Sultan elections, bribery, chronicle/epithets (§17)
+- [x] Pending-decisions queue (marriageConsent, heirChoice, childName, electionBribe, electorVote, coercion, convertOrDie)
 
-## Phase 1 — Game Core: World & State
+## Phase 4 — Conflict & Events ✅
+- [x] Troops (§10), war loop + termination + settlement (§11), coercion (§12), plunder (§11.5)
+- [x] Espionage & assassination (§13); world events + bankruptcy/strife/replacement dynasties (§18, §19); win check (§19.3)
 
-- [x] State model: GameState, Realm (slots 1–30), Dynasty, Person, Town, Troop, Tile (§2) with JSON (de)serialization — forward-compatible (add-only) (`lib/src/state/`; persons referenced by stable int ids instead of pointers)
-- [x] GameEvent model `{year, slot, type, visibility, payload}` — feeds event feed, recap, replay (incl. `visibleTo()` filter)
-- [x] Visibility module: `visibleStateFor(state, slot)`, IntelReport storage (ARCHITECTURE.md) — also filters pending decisions, assassination orders, events; zeroes `rngSeed`
-- [x] Injectable seeded RNG (`random(N)`, `RandomReal`, §25) — exact Borland Pascal LCG, platform-independent determinism
-- [x] Map generation: land patches, lakes, shoreline mask (§3) — invariant tests in `test/map_generator_test.dart`
-- [x] New-game setup: starting cross, founder, starting values (§5) — `src/setup/new_game.dart`; all starting dynasties Catholic per §15.2; **replacement-dynasty values (§19) still pending** (Phase 4 elimination work)
-- [x] Buildings, tile values, build/claim/demolish actions, religion change (§4) — `src/actions/`; sealed `PlayerAction` with JSON wire format + `applyAction` dispatcher. Hafen build = owned water tile adjacent to own land (matches starting-cross convention). Title-ladder reset on conversion is an approximation until §16.2 promotions exist (Phase 3)
-- [x] Golden tests: map statistics, setup invariants (population/capacity/garrison sums) — `test/new_game_test.dart` cross-checks tileCount vs map, aggregate sums, 150 owned tiles
+## Phase 5 — AI ✅
+- [x] AI turn script (§20) via the same action primitives; AI war movement (v7: defender fights back)
+- [x] 200-year full-AI smoke test + `tool/sim_report.dart`
 
-## Phase 2 — Game Core: Turn Pipeline
+## Phase 6 — Flutter Client (V1 local) ✅
+- [x] Flame map (single rasterized Picture, color-blind-safe borders + captions), tile sheet, HUD, event feed + recap
+- [x] Undo stack, hidden-info views, menus, war panel + settlement UI, setup flow, hot-seat handoff, save slots
+- [x] Accessibility baseline (48dp targets, semantics); interactive tutorial (`client/lib/tutorial/`)
+- [ ] Localization: full §23 string-table import (basic en/de toggle exists)
 
-- [x] Round/turn driver: year increment, price re-roll, world-event phase, per-slot upkeep (§6.1) — `src/turn/turn_pipeline.dart` (`startGame` / `completeTurn` / `checkWinCondition`); world-event phase is a stub until Phase 4
-- [x] Economy: taxes, tribute pots, harbor income, wages (§7) — single 10% tribute into the religion's pot, office holder collects on own turn and pays none; wages 0.5 T/man for regulars AND Söldner (§27 constants list gives one rate)
-- [x] Food, growth (+10% cap), famine desertion, town transitions, popularity & weight (§8) — exact formulas incl. ×1.05 cap, divisor 82, balance nudge; **[INTERPRETATION]** food consumption: stock −= population after S (grain first), since the spec implies but never states the write-back
-- [x] Market sales + trade-ship investment (§9) — `SellGood`/`InvestShips` actions + annual `rollMarketPrices`
-- [x] Movement points by title class (§6.3) — incl. Muslim→Christian class equivalents
-- [x] Protect-new-players rule — `newPlayerProtectionActive()` helper (years ≤ 1009); consumed by Phase 3 death rolls & Phase 4 eliminations
-- [x] Auto-save hook after each completed turn — `client/lib/services/local_game_session.dart` (`endTurn()` saves before handoff; tested)
-
-## Phase 3 — Game Core: Dynasty & Society
-
-- [x] Aging & death roll, succession priority, ruler aliasing across slots (§15, §19) — `rules/dynasty.dart`; death rolls suppressed in the protection window; heir takes ALL the deceased's slots; spouse-inheritance across dynasties
-- [x] Births (age 0 fix), marriages, divorce, Islamic succession crisis (§14, §15) — incl. phantom births, conversion divorce hooked into ChangeReligion; crisis crowns the female heir but flips the dynasty to AI
-- [x] Titles & prestige score, promotions (§16) — `rules/titles.dart`, checked in every upkeep, never demotes
-- [x] Kurfürsten, Kaiser/Sultan elections incl. bribery, chronicle & epithets (§17) — `rules/offices.dart` + `ActiveElection` state (JSON-persistable, survives async waits); AI bribery `random(treasury)`-until-0; vote tie keeps throne vacant (original behavior); epithet 2×2 matrix. Sultan electorate = Muslim rulers (interpretation of "same pattern")
-- [x] Pending-decisions queue — `marriageConsent`, `heirChoice` (provisional priority heir applied immediately, re-crowned on resolution), `childName` (non-blocking rename), `electionBribe`, `electorVote`; all resolved via the `ResolveDecision` action; AI deciders resolve inline
-
-## Phase 4 — Game Core: Conflict & Events
-
-- [x] Troops: recruitment, garrisons, merge/disband/reinforce (§10) — `rules/troops.dart` + actions; merge requires same class+quality (simplification)
-- [x] War: declaration gates, war-round loop, termination (ruler capture / mutual peace / winter >20 rounds), per-tile combat, end-of-war 0.4-threshold resolution, conquest transfer, troop return (§11) — `rules/war.dart` + `ActiveWar` state; war actions (`WarMove`/`WarPlunder`/`WarPeaceWish`/`WarEndRound`/`SettlementAnnex`/`SettlementFinish`); AI sides hold position until Phase 5 (their traced peace rules incl. the dead-check quirk are in)
-- [x] Post-war coercion — only on ruler capture (§12) — first applicable option; human victor/loser via `coercion`/`convertOrDie` pending decisions, AI via coin flip
-- [x] Plunder (§11.5) — exact rolls; town loot does NOT touch the victim's treasury (original quirk kept)
-- [x] Espionage & assassination (§13) — counter-espionage rolls, 5-check economy reveals, ±10% fuzz into IntelReports; deferred assassination resolved at the target's end-of-turn with public sponsor reveal on failure
-- [x] Events: earthquake, disease, Reformation, Ottoman invasion, merchant founders, bankruptcy & revolts (§18, §19) — `rules/events.dart`. Interpretations: Reformation converts one random AI dynasty; Ottoman target prefers AI realms; merchant-founder rate `[DESIGNED]` 1/10 per vacant slot per round. Disease suppressed in protection window
-- [x] Elimination & win check (§19) — strife + bankruptcy (title-class debt ladder, tile seizures, replacement dynasty via §5 formula); win check was done in Phase 2
-
-## Phase 5 — Game Core: AI
-
-- [x] AI turn script: sell, build loop, recruit, guard, ships, merge, war flag (§20) — `src/ai/ai_turn.dart`, uses the same action primitives via `applyActionInPlace`; realm merge (§6.2) implemented as `MergeRealms` action usable by humans too. Omitted: §20.9 "slight extra build-up in 1006/1009" (untraced cosmetic). AI without units recruits one first [INTERPRETATION]
-- [x] AI war-round movement & peace decision (§11.2) — attacker marches on the enemy capital, defender walks home; AI-vs-AI wars fast-forward in silent mode; `advanceUntilHuman` driver for local loop & server (stops when a human's action phase or a human-defended war is reached)
-- [x] Full-AI smoke test: 30 AI realms, run 200 years headless without invariant violations — `test/ai_test.dart`; `tool/sim_report.dart` prints event statistics (seed 777: 13 wars / 591 battles / 19 coronations / 6 realms left by 1200)
-
-## Phase 6 — Flutter Client (V1, local)
-
-- [x] Flame map rendering: tiles, ownership tint **+ color-blind-safe pattern overlays**, troop markers, pinch-zoom + pan — `game/map_game.dart` (whole map rasterized to one Picture per state change → 1 draw call/frame); `[APPROX]` shoreline mask→sprite mapping needs a visual pass on device
-- [x] Tap-tile action sheet with costs; confirmation for irreversible actions — `widgets/tile_sheet.dart`
-- [x] Bottom HUD (treasury, population, food, popularity, movement points) — incl. popularity-<30 warning indicator
-- [x] Event feed (filters: my realm / wars / dynasty / world) + "since your last turn" recap card — `widgets/event_feed.dart`
-- [x] Undo stack: deterministic actions undoable within turn; cleared on randomized/irreversible actions — `state/game_controller.dart` (snapshot stack)
-- [x] Hidden-info views: own realm full, others filtered via `visibleStateFor`; intel shown per realm in the Info screen (a dedicated intel-history screen can come in polish)
-- [x] Menus: commerce, military, espionage, misc, info screens, chronicle — `widgets/menus.dart` (sliders for amounts per PROJECT_REQUIREMENTS); war panel + claim-settlement UI in `widgets/war_panel.dart`
-- [x] Setup flow: players, names, country, first Dorf, Reformation/Ottoman years (defaults 1020/1040, min 1011) — `screens/setup_screen.dart`
-- [x] Hot-seat handoff screen (blocks predecessor's intel) + pending-decision prompts — full-screen blocker → recap card → decision dialogs (marriage consent, heir choice, child name, elector vote, bribery, coercion, convert-or-die)
-- [x] Multiple named game slots; auto-save after every turn; resume — home screen + SaveService
-- [x] Accessibility: 48dp touch targets (padded tap targets), semantic labels on HUD stats; system font scale respected by default — needs an on-device audit in Phase 7
-- [ ] Localization: English default, German optional (string table from §23) — basic en/de table + in-app toggle in `l10n/strings.dart`; full §23 coverage still to import
-
-> Note: not yet run on a device/emulator — no Android toolchain on this machine. All logic is covered by tests (controller turn flow, undo, handoff, auto-save); rendering and gestures need a visual pass when a device is available.
+> Not yet run on a device/emulator (no Android toolchain here). Logic is test-covered; rendering/gestures need a visual pass.
 
 ## Phase 7 — Polish & Release (V1)
-
-- [ ] Performance: 60 fps pan/zoom, <3 s cold start on mid-range device — structurally addressed (map rasterized to one cached Picture, single draw call per frame); **measurement requires a device** (`flutter run --profile`)
-- [x] App icons (generated from the original Burg tile via `flutter_launcher_icons`, Android adaptive + iOS) and store metadata (`store/metadata.md`, EN/DE; screenshots pending device). **Sound/music: skipped by decision (2026-06-10).**
-- [ ] Beta round (TestFlight / Play internal testing) — prepared: release-signing scaffold (`key.properties` pattern in `build.gradle.kts`), build & upload steps documented in README.md; needs device + store accounts
-- [x] README.md with run/test/build/deploy instructions — **standing rule: keep it up to date with every setup/build/deploy change** (also in CLAUDE.md)
-- [x] Update-safe versioning (`game_core/src/state/versioning.dart`): `schemaVersion` + migration chain applied in `GameState.fromJson` (covers local saves and the future JSONB column), `rulesVersion` pinned per game so rule changes never alter running games; saves from a newer app version are listed as "App aktualisieren" instead of failing to load (ARCHITECTURE.md "Versioning & compatibility")
+- [ ] Performance measurement on device (`flutter run --profile`; map already 1 draw call/frame)
+- [x] App icons + store metadata (`store/metadata.md`); sound/music skipped by decision
+- [ ] Beta round (TestFlight / Play internal) — signing + README steps ready; needs device + store accounts
+- [x] README run/test/build/deploy docs (standing rule: keep current)
+- [x] Update-safe versioning (schema migrations + rules gates + latest-rules adoption; see versioning.dart)
 
 ## Phase 8 — Online Mode (V2)
-
 - [ ] Dart shelf backend: players/matches routes, JSONB state, turn endpoint (ARCHITECTURE.md)
-- [ ] Server-side simulation advance (AI realms + world events between human turns)
-- [ ] Server-side `visibleStateFor` filtering on all state responses
-- [ ] Host match settings (turn timer off/12h/24h/48h/7d); `turn_deadline` bookkeeping
-- [ ] Timeout job: auto-resolve expired turns/decisions; reminder push at ~80% of timeout
-- [ ] Human-vs-human war clock: war-round inputs as pending decisions with `war_round_timeout` deadline (default 10 min, host-configurable); expiry falls back to AI war logic for that round; explicit delegate-war-to-AI action; WAR_STARTED push (ARCHITECTURE.md "Human-vs-human wars online")
-- [ ] FCM push (YOUR_TURN / YOUR_DECISION / TURN_REMINDER / WAR_STARTED), token refresh
-- [ ] Match lifecycle: create/join/list, eliminated-player skipping
-- [ ] Docker + Nginx deployment, pg_dump backups
-
----
-
-## Resolved questions log
-
-- 2026-06-10: World size = 30 realms (original), max 16 humans.
-- 2026-06-10: Single game-logic implementation in Dart (`game_core`), shared by client and server; backend is Dart shelf, not Node.
-- 2026-06-10: War termination traced from `proc_00E097` (ruler capture / mutual peace / winter after ~20 rounds); coercion only on ruler capture. Spec updated in §11/§12.
-- 2026-06-10: Protect-new-players rule scoped to **random** deaths only (aging, disease); assassinations resolve normally in years 1000–1009.
-- 2026-06-10: Remaining micro-gaps traced from the disassembly: setup years validated ≥ 1011 (§5); earthquake town damage exact (§18.1: `T = random(pop)`, proportional capacity/garrison loss); weight ≡ popularity, ONE stat with exact formula `round(stat × (100+S)/82)` capped ×1.05/turn + ±[1,3] nudge (§8.4); surplus clamp [−30, +15] and growth divisor 82 (§8.2); religion change −70 popularity (§4); guard cap 50 (§13); per-round town normalization pass (§8.3). War-round movement allowance: `[DESIGNED]` = normal movement roll per unit per round. Intel fuzz ±10% adopted as final design.
-- 2026-06-10: Modern features adopted: hidden info + espionage intel reports, event feed, undo within turn, accessibility baseline, multiple named save slots, host-configurable online turn timers (see PROJECT_REQUIREMENTS.md / ARCHITECTURE.md).
-- 2026-06-10: **Control follows the ruler** (post-review decision): when a slot's ruler pointer is overwritten cross-dynasty (conquest §11.2, inheritance §15.4), the slot's dispatch entry (status/humanPlayer) adopts the new ruler's home-dynasty controller (`alignSlotControl`). The original's behavior here is untraced; without this a captured human slot would still be dealt to the old player.
-- 2026-06-10: Post-review fixes: Hafen build = unowned coastal water adjacent to own land, taking ownership (was impossible — ownership check preceded the water rule); plunder guards against ownerless tiles; war-resume no longer duplicates feed events or re-runs the interrupted AI's action phase; bribery dialog charges the deciding finalist's treasury.
-- 2026-06-10: Menu parity vs. original screenshots verified; gaps closed: "(B)ürgerlich heiraten" (`MarryCommoner`, 25% roll, spouse joins the dynasty — replaces the removed phantom births as the no-candidate fallback), Dynastien-Info (tap a realm in Info), Siedlungs-Info, Statistiken (public data only). Jenkinsfile removed — Jenkins reserved for the V2 backend.
-- 2026-06-10: Military/UX round: troop markers in the visible state encode the owner slot → map draws sword (attacker/idle own) vs. shield (war defender); capital marked by a realm-colored pennant (no ruler sprite exists); new units ask for their station first (capital or town; `RecruitTroops`/`HireSoeldner` got optional x/y validated against own territory); Truppenliste overview + tap-an-army-on-the-map info/edit sheet; religion options hidden until available (§15.2: evangelisch after Reformation, moslemisch after Ottoman invasion — core gates already enforced this); dynasty info shows the spouse's country or "(bürgerlich)".
-- 2026-06-10: War UX rework: tap an own army to select, tap any tile to march toward it (greedy orthogonal steps; combat on contact, capital capture wins — engine already matched §11); war panel shows the enemy Königssitz, live war scores and a Plündern button for the selected unit; war tile-sheet removed. Recap shows only war results (warWon "X gewinnt den Krieg gegen Y"/warDraw/winter/rulerCaptured) — battles/conquests/plunder stay in the full feed. AI-plays-player report: traced to pre-fix saves parked on an AI slot; `resume` now heals such saves via advanceUntilHuman (persisted), and `runAiTurn` got a defensive human-dynasty guard.
-- 2026-06-10: Online human-vs-human wars (V2): wars stay blocking/sequential (one global `activeWar`, original semantics preserved), but war-round inputs run on a short **war clock** (`war_round_timeout`, default 10 min) instead of the match turn timer; expired inputs fall back to the existing AI war logic per round; players can delegate the war to the AI; both combatants get a WAR_STARTED push. Rejected: parallel war track (breaks replay + shared-state mutation), WEGO battle plans (kills tactics), plain blocking (days-long match freeze). Full design in ARCHITECTURE.md "Human-vs-human wars online".
-- 2026-06-10: Full-codebase review round — bug fixes: war `movesLeft` now drops a dead unit's entry (was index-misaligned after mid-round losses; merge/disband additionally forbidden while at war, greyed out in the UI); election-bribe validation only counts the gifts actually applied (negative amounts could offset an over-spend); stale decisions (electionBribe/electorVote after the election ended, heirChoice with a dead heir) resolve as no-ops instead of throwing — a throw restored the removed decision and re-prompted forever; `armySize` clamped in town death; event log capped at `maxRetainedEvents` (1,000) with `prunedEventCount` keeping recap baselines stable (sim_report tallies incrementally now); chronicle records match by new `personId` (table names repeat); earthquake epicenter covers the full map; election tie-break uses an explicit shuffled-position tiebreaker (Dart sort is unstable); religion-change popularity clamps 0–100 like every other write. Design changes (all in PROJECT_REQUIREMENTS deviations table): combat formula `losses = round(P_opponent × R / (2 × (1 + def)))` — defense reduces losses, open ground bleeds (original: defense multiplied own losses, def 0 = no casualties; wars were walking races — sim: 164 wars/4,936 near-lossless battles → meaningful attrition); disease mercy rule (last dynasty member survives); AI election bribes capped at half treasury; no war against a same-ruler slot; Dorf founding counts as randomized for undo. ARCHITECTURE.md documents the single-global-war constraint as the biggest V2 unwind.
-- 2026-06-10: Home screen redesigned (hero header, primary "Neues Spiel"/"Tutorial" actions, save-slot cards, empty state) and an **interactive tutorial** added (`client/lib/tutorial/`): a real fixed-seed single-player game (Brandenburg) in the reserved "Tutorial" slot, with a step-overlay card that watches the live game state to auto-advance (build → trade → recruit → end turn; espionage/dynasty as explainer steps). Steps are individually skippable, the overlay is minimizable, and finishing/closing the tutorial drops into free play. Standing rule added to CLAUDE.md: keep `tutorial_steps.dart` in sync with every gameplay/UI change. Credits page added (home-screen footer link): original game by Martin Gelter, 1992; app by Vincent Will — release year corrected 1999→1992 in README/PROJECT_REQUIREMENTS/store metadata (ORIGINAL_GAME.md keeps the traced final-build-1999 note).
-- 2026-06-10: End-of-war "claim settlement" traced (the suspected plunder-budget screen): winner's war score = claim; claim ≥ 0.4 × loser territory → occupied tiles convert; smaller claim → human winner annexes loser tiles adjacent to own land at building-value cost, `F` converts the unspent claim 1:1 into Taler from the loser's treasury; AI winner settles automatically (`proc_00CC0B`, [APPROX]). §11.2/§11.5/§23 updated.
-- 2026-06-10: Update-safe versioning added so app updates never break running games: `schemaVersion` (JSON shape; additive changes free, reshapes bump + migrate in `GameState.fromJson` — one chokepoint for local saves and the server's JSONB) and `rulesVersion` (pinned at game creation; rule/balance changes gate on it, only new games get new rules — keeps mixed-version online matches deterministic). Newer-than-supported saves are rejected with `UnsupportedSchemaVersionException` and shown as "App aktualisieren" in the load list. V2 API rule: additive changes within `/api/v1` + server-reported minimum client version.
-- 2026-06-10: UX feedback round: troop creation fixed — the station→recruit sheet chain reused the already-dismissed military sheet's context, so the follow-up sheet never opened and no unit was created; menus now keep the stable screen context across sheet hops. Station picker reworked: "Hauptsitz" or "Feld auswählen" (map tile pick with hint banner + cancel; own-territory validated, then class/amount). Recruit slider now also caps at what the treasury affords (incl. class surcharge). `MarryCommoner` always accepted (deviation — see PROJECT_REQUIREMENTS). Info → "Statistiken" renamed "Dynastien" and now hosts the realm list (ranking + intel line + tap → dynasty); realm rows removed from the Info sheet. Map: ownership tint softened (0.45 → 0.16 alpha), per-tile patterns replaced by solid country-border strokes, country-name captions under each capital. Back arrow removed; leaving the game = Info → "Spiel verlassen" with confirmation.
-- 2026-06-10: Second full-codebase review round. **Client seat concept**: during a war pause (AI turn paused on a human-defended war) `GameController.currentSlot` now returns the human war side instead of the paused AI — previously the defender saw the AI's `visibleState` (own realm redacted!) and the action menus issued actions *for the AI attacker's realm* (e.g. its treasury was spendable via "Geld schicken"); regular menus are locked while `warPauseActive`. **Human-vs-human wars blocked in V1** (engine `DeclareWar` gate + UI filter): the war panel seats only one human side, so such a war deadlocked (defender frozen; settlement won by the defender had no finish button) — lifted with the V2 war clock. **Rules v2** (`currentRulesVersion = 2`, gated on `state.rulesVersion`, running games keep v1): bare land costs 100 T in claim settlements (value-0 tiles let any limited victory strip all reachable empty land for free, human and AI path); war plunder only hits the war opponent (units could sack uninvolved third realms); recruiting/hiring/reinforcing/peacetime troop moves blocked while at war (movesLeft/snapshot desync, teleport bypass); conquest also cuts the lost garrison from the loser's garrison-counted units. **Unconditional bug fixes**: bankruptcy seizure no longer double-cuts garrisons via `releaseGarrison` after the town was removed (now mirrors the town-death path; helper `cutGarrisonTroops` shared); Ottoman invasion switches the realm to the Muslim title ladder; `SellGood` rejects amount 0 (burned the once-per-turn flag); `SpyMission` rejects vacant targets; auto-marriage age check aligned to ≥ 14; total extinction ends in a `gameDraw` event instead of crashing the pipeline; stale assassination orders against vacant realms pruned each round; `GameState.copy()` deep-copies pending-decision payloads (undo-stack aliasing). **Visibility**: `visibleStateFor` now clears election bribes/votes for every viewer and war snapshots/movesLeft for non-participants.
-- 2026-06-11: Third full-codebase review round. **Rules v4** (`currentRulesVersion = 4`, gated; changelog in versioning.dart, deviations in PROJECT_REQUIREMENTS): ruler capture requires the enemy capital tile to still be enemy-OWNED (stale capital coordinates — tile conquered in an earlier war or seized in bankruptcy, seat never relocated, and the AI never relocates — made any such realm instantly capturable by stepping onto a tile the attacker may already own); moving onto stacked enemy units fights them ALL one after another (was: only the first, then free co-location — a multi-unit capital garrison defended with one unit); an assassination whose agents were all caught always fails (was: still 30%, guards couldn't fully prevent it); `MergeRealms` blocked while either realm fights the active war (absorbing a whole army mid-war bypassed the v2 no-reinforcement gate and desynced movesLeft/snapshots; mirrored in the Handel menu); Kaiser-election candidates must currently rule a realm (a Kurfürst deposed by internal strife kept his seat and could be elected — even acclaimed — as a Kaiser who can never collect the pot; the vote is kept). **Unconditional integrity fixes**: `foundReplacementDynasty` (bankruptcy §19.2, merchant founders §18.5) now fully cleans up the vanished dynasty — childrenIds references, Kaiser/Sultan office + chronicle via `closeChronicleIfOfficeHolder`, and slots aliased to a removed ruler pass on per §15.4 to a random living ruler (dangling `rulerId`/`kaiserId` previously froze succession AND all future elections and made the §19.3 win check unsatisfiable; signature gained an `events` param); unknown pending-decision types resolve as a no-op (forward compat — the engine throw restored the removed decision and re-prompted forever on older builds); `marriageConsent` re-checks religion and distinct-dynasty at resolution (a §14.4 conversion or a merge between proposal and consent slipped through); stale pending decisions for AI/vacant deciding slots purged each round (created for humans, unresolvable after strife/capture/merge flipped the slot); `mergeRealms` sets the vacated source dynasty to AI (a captured-then-merged slot kept counting as a human seat → phantom handoffs); war snapshots matched consume-based by name (`matchedSnapshots`) for troop return, the AI peace test and AI retreat (duplicate names — every AI unit is "Rekruten" — all matched the FIRST snapshot: units piled onto one tile after the war); troop markers refreshed on disband/merge. **Recap baselines persisted**: new additive `GameState.recapBaselines` (slot → absolute event position, redacted to the viewer in `visibleStateFor`); `GameController` reads/writes it instead of an in-memory map — "since your last turn" no longer replays the whole log after an app restart (closes the known open item). 15 regression tests in `game_core/test/bugfix_v4_test.dart`; 168 core + 23 client tests green; 200-year full-AI sim clean. Deliberate non-fixes: election self-bribes (provably a no-op — finalists always vote for themselves), sole-surviving-realm win semantics, town plunder minting Taler (documented deviation).
-
-- 2026-06-11: **Colony ships (rules v6)** — the original's "(S)chiff" mechanic researched from the manual ("Schiffe ausschicken, um z.B. unbewohnte Inseln zu kolonisieren") and disassembly (`proc_005D2B`: flat 700 T, target tile owner set, ship consumed) and implemented: new `SendShip` action claims a free land tile reachable over water from an own Hafen (BFS in `WorldMap.shipReachable`) for 700 T + 1 Zug; the village is then founded with a normal Dorf build. Tap-target UX instead of tile-by-tile steering (deviation: flat 1 Zug, documented in PROJECT_REQUIREMENTS). ORIGINAL_GAME.md §4 corrected ((S)chiff is the colony ship, not a trade-ship enabler) + new §9.3; tile sheet offers "Schiff aussenden" on sea-reachable free land, event feed + tutorial updated; tests in `game_core/test/send_ship_test.dart`.
-
-- 2026-06-11: **Rules v7 — war AI, war UI, troop drilling.** (1) War AI: the AI defender now fights back (`runAiWarMovement`): units intercept enemy units standing on own territory and counter-march on the enemy capital once the enemy army is wiped out or outmatched >1.5× (was: defenders only ever walked home and sat there — a beaten attacker saw an enemy that "never moved"); AI war pathing upgraded from the greedy axis step to a BFS around water. (2) War panel overlay reworked: collapsible card, score chips with leading-side color, enemy-army strength line ("Feindliches Heer ... / vernichtet !"), round counter with winter tooltip (N/20), unit chips flag units on enemy territory + grey out spent units, plunder button explains why it is disabled. (3) `DrillTroop` — the traced original "Truppe ausbilden" (proc_00A316: cost = men × 5, quality +1, class unchanged): once per unit per turn, regulars only, capped at quality 10 [DESIGNED]; `Troop.quality` is now mutable with a `drilledThisTurn` flag (additive JSON, reset in upkeep); the v5 class retrain stays as "Truppe umrüsten" and accepts drilled units (gate switched from quality==1 to garrisonCounted). Tutorial military step updated; tests in `game_core/test/war_ai_v7_test.dart`.
-
-- 2026-06-11: **About page & latest-rules policy.** (1) The credits page is now an "About" page (`about_screen.dart`): short game description, app version (`lib/app_version.dart`, kept in sync with pubspec.yaml by `app_version_test.dart`) and ruleset version, plus the credits. (2) **Policy change (product decision): every game always plays the LATEST ruleset.** `adoptLatestRules` (versioning.dart) upgrades `rulesVersion` at the save-load boundary (`SaveService.load`); `GameState.fromJson` stays a faithful decoder (tests rebuild old-rules states through it), and the per-version gates remain as documentation/testability and as the re-pinning mechanism if online ever needs mid-match rule stability. CLAUDE.md, ARCHITECTURE.md and PROJECT_REQUIREMENTS.md updated accordingly.
-
-- 2026-06-11: Colony-ship discoverability fix (user could not find the feature): "Schiff aussenden" now also appears on the OWN Hafen tile sheet (the original's "(S)chiff steuern" flow) and starts a tile pick for the free land target — an invalid pick keeps the pick alive and toasts the engine reason (e.g. "über See nicht erreichbar"). The tap-the-target entry stays. Diagnosed with a scripted map scan: the engine path was correct; the action was only reachable by tapping a remote free land tile, and on some maps a harbor has zero valid targets (enclosed water) with no feedback.
-
-- 2026-06-11: UX feedback round (user requests). (1) The red crosshair on the war goal (enemy Königssitz) is removed from the map overlay — the capital flag alone marks the target; war texts now say "(Fahne)" instead of "(rotes Fadenkreuz)". (2) **Rules v8**: drilling ("Truppe ausbilden") is no longer limited to once per unit per turn — a unit may drill as often as the treasury allows; the quality cap (10) still bounds the total (`drilledThisTurn` stays in the state/JSON for v7 testability and upkeep reset). (3) The tile action sheet no longer offers "„…" hierher ziehen" (peacetime troop relocation) on own tiles — troops are moved only via Militär → Truppenliste → "Truppe verlegen"; the info/edit entry for armies standing on the tapped tile stays.
+- [ ] Server-side simulation advance; `visibleStateFor` on all responses
+- [ ] Host match settings + turn timers; timeout job + reminder push
+- [ ] Human-vs-human war clock (pending decisions + `war_round_timeout`, delegate-to-AI, WAR_STARTED push)
+- [ ] FCM push, match lifecycle, Docker + Nginx deployment, backups

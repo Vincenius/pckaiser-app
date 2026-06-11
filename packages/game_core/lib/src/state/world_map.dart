@@ -101,6 +101,42 @@ class WorldMap {
     return false;
   }
 
+  /// Length of the shortest all-water path from ([fromX],[fromY]) to
+  /// ([toX],[toY]) in orthogonal steps, or -1 when unreachable. Both ends
+  /// must be water tiles. Used by the manual ship voyage (rules v9):
+  /// every water tile sailed costs 1 Zug, like the original's
+  /// "(S)chiff steuern".
+  int waterPathLength(int fromX, int fromY, int toX, int toY) {
+    if (!inBounds(fromX, fromY) ||
+        !inBounds(toX, toY) ||
+        !isWaterAt(fromX, fromY) ||
+        !isWaterAt(toX, toY)) {
+      return -1;
+    }
+    final start = index(fromX, fromY);
+    final goal = index(toX, toY);
+    if (start == goal) return 0;
+    final dist = List<int>.filled(terrain.length, -1);
+    dist[start] = 0;
+    final queue = <int>[start];
+    for (var head = 0; head < queue.length; head++) {
+      final cur = queue[head];
+      final cx = cur % width;
+      final cy = cur ~/ width;
+      for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+        final nx = cx + dx;
+        final ny = cy + dy;
+        if (!inBounds(nx, ny)) continue;
+        final ni = index(nx, ny);
+        if (dist[ni] != -1 || !Terrain.isWater(terrain[ni])) continue;
+        dist[ni] = dist[cur] + 1;
+        if (ni == goal) return dist[ni];
+        queue.add(ni);
+      }
+    }
+    return -1;
+  }
+
   WorldMap copy() => WorldMap(
         terrain: List.of(terrain, growable: false),
         owner: List.of(owner, growable: false),

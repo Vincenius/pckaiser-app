@@ -125,10 +125,17 @@ Future<void> _promptDecision(BuildContext context,
 
     case 'coercion':
       final captured = state.persons[p['capturedRulerId'] as int];
+      final demand = switch (p['option']) {
+        'convertOrDie' => 'vor die Wahl stellen: Bekehrung oder Tod',
+        'forcedMarriage' => 'zur Heirat zwingen',
+        'abdication' => 'als Kaiser abdanken lassen',
+        'stripSeat' => 'den Kurfürstensitz aberkennen',
+        _ => 'zwingen (${p['option']})',
+      };
       final apply = await _yesNo(
         context,
         'Zwang',
-        'Willst du ${captured?.name ?? '?'} zwingen (${p['option']})?',
+        'Willst du ${captured?.name ?? '?'} $demand?',
       );
       await controller.resolveDecision(
           decision.id, decision.decidingSlot, {'apply': apply});

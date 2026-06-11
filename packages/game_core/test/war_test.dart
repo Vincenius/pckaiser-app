@@ -154,10 +154,13 @@ void main() {
       expect(s.activeWar!.snapshots[1], hasLength(1));
     });
 
-    test('marching onto the enemy capital captures the ruler and takes '
-        'the realm', () {
-      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
-              Rng(state.rngSeed))
+    test('pre-v9: marching onto the enemy capital instantly captures the '
+        'ruler and takes the realm', () {
+      // The instant capture lives in rules < v9; v9 resolves the capture
+      // at round end instead (see the "ruler capture (rules v9)" group).
+      var s = GameState.fromJson(state.toJson()..['rulesVersion'] = 8);
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(s.rngSeed))
           .state;
       final enemy = s.realm(2);
       // The defender's unit must not block the capital tile.
@@ -500,6 +503,199 @@ void main() {
           reason: 'treasury share moves with the town tile');
       expect(state.map.ownerAt(town.x, town.y), 1);
       expect(events.single.type, 'tileConquered');
+    });
+  });
+
+  group('ruler capture (rules v9–v10)', () {
+    /// Declares war and parks slot 1's unit on slot 2's capital (the
+    /// defender's unit is moved aside first). Pinned to rules v10: under
+    /// v9–v10 the capture resolves at the FIRST round end (v11 requires
+    /// holding through a full round — own group below).
+    GameState marchOntoCapital() {
+      var s = GameState.fromJson(state.toJson()..['rulesVersion'] = 10);
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(s.rngSeed))
+          .state;
+      final enemy = s.realm(2);
+      enemy.troops.single.x = enemy.towns.single.x;
+      enemy.troops.single.y = enemy.towns.single.y;
+      final troop = s.realm(1).troops.single;
+      troop.x = enemy.capitalX - 1;
+      troop.y = enemy.capitalY;
+      s.activeWar!.movesLeft[1]![0] = 5;
+      return applyAction(
+              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
+          .state;
+    }
+
+    test('stepping onto the enemy capital no longer ends the war', () {
+      final s = marchOntoCapital();
+      expect(s.activeWar, isNotNull,
+          reason: 'v9: the capital must be HELD until round end');
+      expect(s.activeWar!.phase, WarPhase.rounds);
+      expect(s.events.any((e) => e.type == 'rulerCaptured'), isFalse);
+      expect(capitalOccupier(s, s.activeWar!), 1);
+    });
+
+    test('holding the capital at round end captures the ruler and opens '
+        'the claim settlement — no silent realm takeover', () {
+      var s = marchOntoCapital();
+      final loserRulerId = s.realm(2).rulerId;
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
+      expect(result.events.any((e) => e.type == 'warWon'), isTrue);
+      expect(s.activeWar, isNotNull);
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.winnerSlot, 1);
+      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(3000),
+          reason: 'the claim includes the +3,000 capital bonus');
+      expect(s.realm(2).rulerId, loserRulerId,
+          reason: 'the loser keeps the realm — the winner SELECTS tiles');
+
+      // The winner annexes a chosen loser tile against the claim: the
+      // bare border tile handed to slot 2 in setUp costs 100.
+      final map = s.map;
+      int? bx, by;
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) != 2 ||
+              map.buildingAt(x, y) != Building.none) {
+            continue;
+          }
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 1) {
+              bx = x;
+              by = y;
+              break outer;
+            }
+          }
+        }
+      }
+      expect(bx, isNotNull);
+      final claimBefore = s.activeWar!.remainingClaim;
+      s = applyAction(
+              s, SettlementAnnex(slot: 1, x: bx!, y: by!), Rng(s.rngSeed))
+          .state;
+      expect(s.map.ownerAt(bx, by), 1);
+      expect(s.activeWar!.remainingClaim, claimBefore - 100);
+
+      // Finishing pays the unspent claim in Taler and ends the war.
+      final rest = s.activeWar!.remainingClaim;
+      final winnerTreasury = s.realm(1).treasury;
+      s = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.activeWar, isNull);
+      expect(s.realm(1).treasury, winnerTreasury + rest);
+    });
+
+    test('a capital tile no longer owned by the enemy does not count', () {
+      var s = marchOntoCapital();
+      // The capital tile was conquered earlier — stale coordinates.
+      s.map.owner[s.map.index(s.realm(2).capitalX, s.realm(2).capitalY)] = 1;
+      expect(capitalOccupier(s, s.activeWar!), isNull);
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isFalse);
+    });
+  });
+
+  group('ruler capture must be HELD through a full round (rules v11)', () {
+    /// Declares war (latest rules) and parks slot 1's unit on slot 2's
+    /// capital; the defender's unit is moved aside first.
+    GameState marchOntoCapital() {
+      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(state.rngSeed))
+          .state;
+      final enemy = s.realm(2);
+      enemy.troops.single.x = enemy.towns.single.x;
+      enemy.troops.single.y = enemy.towns.single.y;
+      final troop = s.realm(1).troops.single;
+      troop.x = enemy.capitalX - 1;
+      troop.y = enemy.capitalY;
+      s.activeWar!.movesLeft[1]![0] = 5;
+      return applyAction(
+              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
+          .state;
+    }
+
+    test('the first round end only ARMS the capture', () {
+      var s = marchOntoCapital();
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+
+      expect(result.events.any((e) => e.type == 'capitalHeld'), isTrue);
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isFalse,
+          reason: 'the enemy gets a full round to retake the seat');
+      expect(s.activeWar, isNotNull);
+      expect(s.activeWar!.phase, WarPhase.rounds);
+      expect(s.activeWar!.heldCapitalSlot, 1);
+    });
+
+    test('holding through the second round end resolves the capture', () {
+      var s = marchOntoCapital();
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
+      expect(result.events.any((e) => e.type == 'warWon'), isTrue);
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.winnerSlot, 1);
+      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(3000));
+    });
+
+    test('a dislodged occupier disarms the capture', () {
+      var s = marchOntoCapital();
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      // The occupier is driven off (here: walks off) before the next
+      // round end — the armed capture lapses.
+      final troop = s.realm(1).troops.single;
+      troop.x = s.realm(2).capitalX - 1;
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isFalse);
+      expect(s.activeWar!.heldCapitalSlot, isNull);
+    });
+
+    test('a troopless enemy cannot respond — capture resolves at once',
+        () {
+      var s = marchOntoCapital();
+      s.realm(2).troops.clear();
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
+      expect(s.activeWar!.phase, WarPhase.settlement);
+    });
+
+    test('endWarRoundWithAi: an AI seizing the capital does not win in '
+        'the same round end', () {
+      // Slot 2 (AI) attacks slot 1 (human): the AI unit stands next to
+      // the human capital and seizes it during its response movement.
+      var s = applyAction(state, DeclareWar(slot: 2, targetSlot: 1),
+              Rng(state.rngSeed))
+          .state;
+      final human = s.realm(1);
+      human.troops.single.x = human.towns.single.x;
+      human.troops.single.y = human.towns.single.y;
+      final aiTroop = s.realm(2).troops.single;
+      aiTroop.x = human.capitalX - 1;
+      aiTroop.y = human.capitalY;
+      s.activeWar!.movesLeft[2]![0] = 5;
+
+      final events = <GameEvent>[];
+      endWarRoundWithAi(s, Rng(s.rngSeed), events);
+
+      expect(s.activeWar, isNotNull,
+          reason: 'the human defender gets a full round to retake');
+      expect(events.any((e) => e.type == 'rulerCaptured'), isFalse);
+      if (capitalOccupier(s, s.activeWar!) == 2) {
+        expect(s.activeWar!.heldCapitalSlot, 2,
+            reason: 'the AI capture is armed, not resolved');
+      }
     });
   });
 

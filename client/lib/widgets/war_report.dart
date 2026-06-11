@@ -18,8 +18,9 @@ class _ReportEntry {
 
 /// Event types the report popup covers; everything else stays in the feed.
 const _reportTypes = {
-  'battle', 'plunder', 'rulerCaptured', 'tileConquered', 'warWon',
-  'warDraw', 'winterEndsWar', 'claimPaidOut', 'peaceWish', 'peaceAgreed',
+  'battle', 'plunder', 'rulerCaptured', 'capitalHeld', 'tileConquered',
+  'warWon', 'warDraw', 'winterEndsWar', 'claimPaidOut', 'peaceWish',
+  'peaceAgreed',
   'forcedMarriage', 'forcedAbdication', 'dynastyConverted', 'execution',
   'kurfuerstStripped', 'enemyMoved', 'enemyHolds',
 };
@@ -175,6 +176,20 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
         'Herrscher gefangen !',
         '$realm nimmt ${p['ruler'] ?? 'den Herrscher'} von $loser gefangen '
             '— der Krieg ist entschieden.',
+      );
+
+    case 'capitalHeld':
+      final besieged = gc.countryNames[p['loserSlot'] as int? ?? 0];
+      final mine = event.slot == viewerSlot;
+      return _ReportEntry(
+        Icons.flag,
+        mine ? Colors.green : Colors.red,
+        mine ? 'Königssitz besetzt !' : 'Dein Königssitz ist besetzt !',
+        mine
+            ? 'Deine Armee hält den Königssitz von $besieged — übersteht '
+                'sie dort die nächste Runde, ist der Krieg gewonnen.'
+            : '$realm hält deinen Königssitz ! Erobere das Feld in der '
+                'nächsten Runde zurück — sonst ist der Krieg verloren.',
       );
 
     case 'warWon':

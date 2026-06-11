@@ -92,7 +92,61 @@ const int currentSchemaVersion = 1;
 /// - v8 (2026-06-11): drilling has no per-turn limit anymore — a unit
 ///   may drill as often as the treasury allows within one turn; the
 ///   quality cap (10) still bounds the total `[DESIGNED]`.
-const int currentRulesVersion = 8;
+/// - v9 (2026-06-11): (1) manually steered colony ships — `BuyShip`
+///   (700 T + 1 Zug, spawns on an own Hafen), `MoveShip` (player picks
+///   the destination; shortest all-water route, 1 Zug per water tile —
+///   the original's "(S)chiff steuern" cost), `ColonizeShip` (a free
+///   land tile next to the ship becomes a named Dorf; the ship is
+///   consumed). Replaces the v6 tap-target `SendShip`, which v9 rejects.
+///   Ships live on the realm (`Realm.ships`, additive field) and are
+///   hidden information like troops. (2) Ruler capture resolves at war
+///   ROUND END: a unit must HOLD the (still enemy-owned) enemy capital
+///   when the round ends (was: stepping onto the tile ended the war
+///   mid-march). (3) A capture victory no longer swallows the loser's
+///   whole realm silently — the captured ruler is still coerced (§12),
+///   but the winner now picks the spoils in the claim settlement
+///   (claim = the winner's war score incl. the +3,000 capital bonus),
+///   selecting loser tiles by their cost.
+/// - v10 (2026-06-11): original-fidelity round — (1) §12 post-war
+///   coercion checks EVERY applicable option in order, as the original
+///   does (convert-or-die / forced marriage, then Kaiser abdication,
+///   then Kurfürst seat strip; was: only the first applicable option
+///   fired, so e.g. a captured Kaiser of another religion never had to
+///   abdicate); (2) a coerced conversion (§12.1) switches the dynasty's
+///   HOME realm onto the right title ladder (§4/§16.1 — only the home
+///   slot: the promotion check keys the ladder off the slot dynasty's
+///   religion, so aliased realms keep theirs) and dissolves religiously
+///   incompatible marriages (§14.4) — previously only the menu religion
+///   change did; the Reformation and Ottoman-invasion conversions now
+///   dissolve incompatible marriages too; (3) every conversion to Islam
+///   (menu, Ottoman invasion) strips ALL the dynasty's Kurfürst seats,
+///   like the coerced conversion already did (was: only the acting
+///   ruler's seat — a member ruling an inherited slot kept voting);
+///   (4) earthquake and disease town damage removes the garrison loss
+///   from the garrison-counted troop units as well (was: only `armySize`
+///   and the town garrison shrank, so unit men drifted out of sync — the
+///   same desync the v2 conquest fix addressed). Unversioned bookkeeping
+///   fixes in the same round: "Reiche zusammenlegen" moves the source
+///   realm's colony ships and intel reports to the surviving realm (they
+///   were silently lost); a stale abdication coercion can no longer
+///   depose a successor Kaiser (only the captured ruler's own crown is
+///   forfeit); the AI no longer tries to declare war on a slot its own
+///   ruler already holds, and its harbor picks honor the own-LAND
+///   adjacency rule.
+/// - v11 (2026-06-11): ruler capture must be held through the enemy's
+///   FULL response round — occupying the enemy capital at a round end
+///   only ARMS the capture (`ActiveWar.heldCapitalSlot`, additive field;
+///   public `capitalHeld` event); holding it at the NEXT round end too
+///   resolves it. Exception: an opponent with no troops left cannot
+///   respond, so the capture resolves immediately. Fixes the v9
+///   asymmetry where the round-end check ran after the AI side's
+///   movement — an AI seizing a human defender's capital won in the same
+///   "Runde beenden" tap, with no chance to retake the seat. Same round:
+///   `endWarRoundWithAi` becomes the one engine entry point for "AI
+///   sides respond, then the round ends" (client and V2 server), and
+///   `completeTurn` rejects completing a turn over an open war
+///   (engine-level backstop for the V2 server).
+const int currentRulesVersion = 11;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

@@ -60,6 +60,15 @@ TurnResult startGame(GameState state, Rng rng) {
 /// Returns with `state.currentPlayer` set to the next slot whose action
 /// phase may begin — or with a `gameWon` event if the game is over.
 TurnResult completeTurn(GameState state, Rng rng) {
+  // Wars resolve INSIDE a turn (one global activeWar, §11): completing a
+  // turn over an open war would leak it across turns and desync its
+  // bookkeeping. The client disables "Zug beenden" at war; the V2 server
+  // must reject such a submission — this is the engine-level backstop.
+  if (state.activeWar != null) {
+    throw StateError(
+        'completeTurn: a war is still active — it must end (or its '
+        'settlement finish) before the turn can complete');
+  }
   final next = state.copy();
   final events = <GameEvent>[];
 

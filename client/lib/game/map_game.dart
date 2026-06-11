@@ -64,6 +64,7 @@ class MapGame extends FlameGame with ScaleDetector {
 
   static const int _troopSprite = 35; // sword: attacking / idle own troops
   static const int _shieldSprite = 36; // shield: the war's defending side
+  static const int _shipSprite = 37; // colony ship at sea
 
   @override
   Future<void> onLoad() async {
@@ -176,8 +177,35 @@ class MapGame extends FlameGame with ScaleDetector {
         }
       }
     }
+    _drawShips(canvas, paint);
     _drawRealmLabels(canvas);
     _picture = recorder.endRecording();
+  }
+
+  /// Colony ships at sea. The state is the seated player's visible copy:
+  /// foreign realms carry no ships (hidden information), so everything
+  /// here may be drawn.
+  void _drawShips(Canvas canvas, Paint paint) {
+    for (final realm in _state.realms) {
+      for (final ship in realm.ships) {
+        final cell = Rect.fromLTWH(
+            ship.x * tileSize, ship.y * tileSize, tileSize, tileSize);
+        canvas.drawCircle(
+            cell.center,
+            tileSize * 0.42,
+            Paint()
+              ..color =
+                  RealmPalette.colorFor(realm.slot).withValues(alpha: 0.8));
+        canvas.drawCircle(
+            cell.center,
+            tileSize * 0.42,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+              ..color = const Color(0xEEFFFFFF));
+        _drawSprite(canvas, _shipSprite, cell.deflate(tileSize / 6), paint);
+      }
+    }
   }
 
   /// Small country-name caption under each realm's capital flag.

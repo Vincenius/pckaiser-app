@@ -35,6 +35,32 @@ void main() {
       expect(seen, hasLength(7));
     });
 
+    test('huge n never overflows into negative results', () {
+      // Late-game treasuries exceed 2^31; the naive (roll × n) >> 32
+      // overflowed 64-bit ints and returned negative numbers.
+      final rng = Rng(42);
+      for (final n in [1 << 31, 1 << 40, 1 << 52, (1 << 62) - 1]) {
+        for (var i = 0; i < 200; i++) {
+          final v = rng.nextInt(n);
+          expect(v, inInclusiveRange(0, n - 1), reason: 'n = $n');
+        }
+      }
+    });
+
+    test('split computation matches the naive product for small n', () {
+      final naive = Rng(7);
+      final rng = Rng(7);
+      for (var i = 0; i < 1000; i++) {
+        final n = 1 + (i * 2147479) % 0x7FFFFFFF;
+        // Reference: the pre-fix formula, safe here because n < 2^31.
+        final seedBefore = naive.seed;
+        final expected =
+            (((seedBefore * 0x08088405 + 1) & 0xFFFFFFFF) * n) >> 32;
+        naive.nextInt(n); // keep the reference stream advancing
+        expect(rng.nextInt(n), expected, reason: 'n = $n');
+      }
+    });
+
     test('random(0) and negative n return 0 (§25)', () {
       final rng = Rng(42);
       expect(rng.nextInt(0), 0);

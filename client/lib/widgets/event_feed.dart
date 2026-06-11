@@ -5,7 +5,8 @@ import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 
 const _warTypes = {
-  'warDeclared', 'battle', 'rulerCaptured', 'warWon', 'warDraw',
+  'warDeclared', 'battle', 'rulerCaptured', 'capitalHeld', 'warWon',
+  'warDraw',
   'tileConquered', 'plunder', 'peaceWish', 'peaceAgreed', 'winterEndsWar',
   'claimPaidOut', 'forcedMarriage', 'forcedAbdication', 'execution',
 };
@@ -32,6 +33,8 @@ String describeEvent(gc.GameEvent e) {
     'turnUpkeep' => '$realm: Steuern ${p['tax']} T, Ernte '
         '${p['grainYield']}/${p['livestockYield']}, Sold ${p['wages']} T',
     'tileClaimed' => '$realm beansprucht (${p['x']}, ${p['y']})',
+    'shipBought' => '$realm kauft ein Schiff im Hafen '
+        '(${p['x']}, ${p['y']})',
     'shipColonized' =>
       '$realm kolonisiert (${p['x']}, ${p['y']}) per Schiff',
     'buildingBuilt' => '$realm baut auf (${p['x']}, ${p['y']})',
@@ -65,6 +68,8 @@ String describeEvent(gc.GameEvent e) {
         'vs ${p['defenderUnit']} (−${p['defenderLosses']})',
     'rulerCaptured' => '$realm nimmt den Herrscher von '
         '${gc.countryNames[p['loserSlot'] as int]} gefangen!',
+    'capitalHeld' => '$realm besetzt den Königssitz von '
+        '${gc.countryNames[p['loserSlot'] as int]} !',
     'warWon' =>
       '$realm gewinnt den Krieg gegen ${gc.countryNames[p['loserSlot'] as int]}',
     'warDraw' => 'Der Krieg endet unentschieden',
@@ -205,7 +210,9 @@ const _trivialTypes = {'tileClaimed', 'buildingBuilt', 'buildingDemolished'};
 
 /// Blow-by-blow war detail — the recap only shows the result
 /// (warWon/warDraw/winterEndsWar/rulerCaptured); the full feed keeps all.
-const _warDetailTypes = {'battle', 'tileConquered', 'plunder', 'peaceWish'};
+const _warDetailTypes = {
+  'battle', 'tileConquered', 'plunder', 'peaceWish', 'capitalHeld',
+};
 
 /// Rare, personal drama that gets its own popup at turn start (the recap
 /// card then skips it): an assassination hitting your dynasty, the fate

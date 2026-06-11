@@ -231,19 +231,9 @@ class GameController extends ChangeNotifier {
     }
     try {
       _undoStack.clear();
-      events = _session.mutate((s, rng, events) {
-        final war = s.activeWar;
-        if (war == null) return;
-        for (final slot in [war.attackerSlot, war.defenderSlot]) {
-          if (s.dynasty(slot).status != DynastyStatus.human) {
-            runAiWarMovement(s, slot, rng, events);
-          }
-        }
-        if (s.activeWar != null &&
-            s.activeWar!.phase == WarPhase.rounds) {
-          endWarRoundRule(s, rng, events);
-        }
-      });
+      // One shared engine entry point (client + V2 server): the AI sides
+      // respond, then the round advances — see endWarRoundWithAi.
+      events = _session.mutate(endWarRoundWithAi);
       await _resumeAfterWarIfOver();
     } finally {
       _busy = false;
@@ -360,7 +350,3 @@ class GameController extends ChangeNotifier {
   }
 
 }
-
-/// Alias to avoid clashing with [GameController.endWarRound].
-void endWarRoundRule(GameState state, Rng rng, List<GameEvent> events) =>
-    endWarRound(state, rng, events);

@@ -21,7 +21,8 @@ verbatim with the planned async-multiplayer backend (V2).
 | `ORIGINAL_GAME.md` | The traced spec of the original game — source of truth for all rules |
 | `ARCHITECTURE.md` | System architecture incl. the V2 online design |
 | `PROJECT_REQUIREMENTS.md` | Product requirements for V1 |
-| `CHECKLIST.md` | Phase-by-phase progress tracker and decision log |
+| `CHECKLIST.md` | Phase-by-phase progress tracker |
+| `docs/HISTORY.md` | Dated decision & fix log (lookups) |
 
 ## Prerequisites
 
@@ -150,11 +151,12 @@ it lands.
 
 ## Status
 
-Phases 0–6 of `CHECKLIST.md` are implemented and tested (121 tests):
-complete rules engine (economy, dynasty, elections, war, espionage, world
-events, AI) plus the playable Flutter client. Phase 7 (device validation,
-beta) is in progress — the app has not yet had its first on-device visual
-pass. Known open items are tracked at the end of `CHECKLIST.md`.
+Phases 0–6 of `CHECKLIST.md` are implemented and tested (~240 tests across
+engine and client): complete rules engine (economy, dynasty, elections,
+war, espionage, world events, AI) plus the playable Flutter client.
+Phase 7 (device validation, beta) is in progress — the app has not yet had
+its first on-device visual pass. Open items: `CHECKLIST.md`; history:
+`docs/HISTORY.md`.
 
 > Maintenance note: this README is part of the definition of done — update
 > it with every change to setup, build, test or deploy steps (see

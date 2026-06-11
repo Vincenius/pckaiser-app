@@ -25,6 +25,21 @@ const List<(int, int)> _muslimLadder = [
   (10, 20000), (11, 50000), (12, 80000),
 ];
 
+/// Switches a realm's title onto the other religion's ladder when its
+/// current class belongs to the wrong one (§4/§16.1): conversion to Islam
+/// resets to Scheich (9), conversion away from Islam to Ritter (1) — the
+/// per-turn promotion check climbs back by prestige. Catholic↔Protestant
+/// share the Christian ladder, so nothing changes there.
+void switchTitleLadder(Realm realm, int religion) {
+  final female = realm.titleClass > 12;
+  final base = female ? realm.titleClass - 12 : realm.titleClass;
+  if (religion == Religion.moslemisch) {
+    if (base <= 8) realm.titleClass = 9 + (female ? 12 : 0);
+  } else if (base >= 9) {
+    realm.titleClass = 1 + (female ? 12 : 0);
+  }
+}
+
 /// §16.2 promotion check ("checked every turn, every player"): promotes
 /// the realm's title when the prestige score reaches a higher class.
 void checkTitlePromotion(GameState state, Realm realm,

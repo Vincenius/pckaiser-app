@@ -15,6 +15,7 @@ import '../state/war.dart';
 import 'dynasty.dart' as dyn;
 import 'movement.dart';
 import 'population.dart' show cutGarrisonTroops;
+import 'titles.dart' show switchTitleLadder;
 import 'troops.dart';
 
 /// §11.1: starts a war. Prunes empty units, snapshots positions, rolls the
@@ -252,8 +253,11 @@ void transferTile(GameState state, int x, int y, int winnerSlot,
   ));
 }
 
-/// Ruler capture (§11.2): the capturer takes over the loser's entire
-/// realm, then post-war coercion (§12) — the ONLY path that triggers it.
+/// Ruler capture under rules < v9 (§11.2): the capturer takes over the
+/// loser's entire realm, then post-war coercion (§12). From v9 on the
+/// capture resolves at round end via [_endWarByCapitalOccupation]
+/// instead — coercion still fires, but the winner selects tiles in the
+/// claim settlement rather than swallowing the realm.
 void endWarByCapture(GameState state, int captorSlot, Rng rng,
     List<GameEvent> events) {
   final war = state.activeWar!;
@@ -280,8 +284,12 @@ void endWarByCapture(GameState state, int captorSlot, Rng rng,
   }
 }
 
-/// §12 post-war coercion, checked in order; first applicable option fires.
-/// AI victors auto-execute; a human victor gets a `coercion` decision
+/// §12 post-war coercion, checked in order. Convert-or-die and forced
+/// marriage exclude each other (religions differ vs. match); Kaiser
+/// abdication and the Kurfürst seat strip are independent checks on top.
+/// Rules v10 fires every applicable option like the original ("prompt per
+/// applicable option"); earlier rules fired only the first. AI victors
+/// auto-execute; a human victor gets one `coercion` decision per option
 /// (default: apply). A human loser facing convert-or-die gets their own
 /// decision; an AI loser flips a coin.
 void runCoercion(GameState state, int victorSlot, Person capturedRuler,
@@ -292,9 +300,9 @@ void runCoercion(GameState state, int victorSlot, Person capturedRuler,
   final victorReligion = state.dynasty(victor.dynasty).religion;
   final loserDynasty = state.dynasty(capturedRuler.dynasty);
 
-  final String option;
+  final options = <String>[];
   if (loserDynasty.religion != victorReligion) {
-    option = 'convertOrDie';
+    options.add('convertOrDie');
   } else if (victor.isMale &&
       victor.spouseId == null &&
       capturedRuler.spouseId == null &&
@@ -302,29 +310,38 @@ void runCoercion(GameState state, int victorSlot, Person capturedRuler,
       victor.age >= 14 &&
       capturedRuler.age >= 14 &&
       (victor.age - capturedRuler.age).abs() < 10) {
-    option = 'forcedMarriage';
-  } else if (state.kaiserId == capturedRuler.id) {
-    option = 'abdication';
-  } else if (state.kurfuerstenIds.contains(capturedRuler.id)) {
-    option = 'stripSeat';
-  } else {
-    return;
+    options.add('forcedMarriage');
+  }
+  if (state.kaiserId == capturedRuler.id) options.add('abdication');
+  if (state.kurfuerstenIds.contains(capturedRuler.id)) {
+    options.add('stripSeat');
+  }
+  if (options.isEmpty) return;
+  if (state.rulesVersion < 10 && options.length > 1) {
+    options.removeRange(1, options.length); // pre-v10: first option only
   }
 
-  if (state.dynasty(victor.dynasty).status == DynastyStatus.human) {
-    state.pendingDecisions.add(PendingDecision(
-      id: 'coercion-${capturedRuler.id}-${state.year}',
-      type: 'coercion',
-      decidingSlot: victor.dynasty,
-      payload: {
-        'option': option,
-        'victorId': victor.id,
-        'capturedRulerId': capturedRuler.id,
-      },
-    ));
-    return;
+  final humanVictor =
+      state.dynasty(victor.dynasty).status == DynastyStatus.human;
+  for (final option in options) {
+    if (humanVictor) {
+      state.pendingDecisions.add(PendingDecision(
+        id: 'coercion-${capturedRuler.id}-${state.year}-$option',
+        type: 'coercion',
+        decidingSlot: victor.dynasty,
+        payload: {
+          'option': option,
+          'victorId': victor.id,
+          'capturedRulerId': capturedRuler.id,
+        },
+      ));
+    } else {
+      applyCoercion(state, option, victor, capturedRuler, rng, events);
+      // An executed ruler (refused conversion) needs no further coercion —
+      // succession already cleared their offices.
+      if (!state.persons.containsKey(capturedRuler.id)) break;
+    }
   }
-  applyCoercion(state, option, victor, capturedRuler, rng, events);
 }
 
 /// Executes a coercion option (§12).
@@ -360,6 +377,10 @@ void applyCoercion(GameState state, String option, Person victor,
       ));
 
     case 'abdication':
+      // A pending decision can outlive the capture (succession or an
+      // election may crown someone else first) — only the captured
+      // ruler's own crown is forfeit, never a successor's.
+      if (state.kaiserId != capturedRuler.id) break;
       state.kaiserId = null;
       events.add(GameEvent(
         year: state.year,
@@ -394,6 +415,18 @@ void applyConvertOrDie(GameState state, Person capturedRuler, int religion,
         }
       }
     }
+    // Rules v10: like every other conversion, the dynasty's home realm
+    // switches onto the right title ladder (§4/§16.1) and religiously
+    // incompatible marriages dissolve (§14.4). Only the HOME slot's
+    // ladder switches: the promotion check (§16.2) keys the ladder off
+    // the slot dynasty's religion, so an aliased realm (ruled by a
+    // member of this dynasty but belonging to an unconverted slot
+    // dynasty) must keep its ladder — switching it would strand the
+    // title where its own ladder never promotes.
+    if (state.rulesVersion >= 10) {
+      switchTitleLadder(state.realm(dynasty.index), religion);
+      dyn.divorceIncompatibleCouples(state, dynasty.index, events);
+    }
     events.add(GameEvent(
       year: state.year,
       slot: dynasty.index,
@@ -413,13 +446,111 @@ void applyConvertOrDie(GameState state, Person capturedRuler, int religion,
   }
 }
 
+/// The war side holding the enemy's (still enemy-owned) capital tile with
+/// at least one unit, or null. When both sides stand on each other's
+/// capital the higher war score wins (tie: the attacker — they moved
+/// first). Surfaced to the war UI ("end the round to seal the victory").
+int? capitalOccupier(GameState state, ActiveWar war) {
+  bool occupies(int slot) {
+    final enemy = state.realm(war.opponentOf(slot));
+    return state.map.ownerAt(enemy.capitalX, enemy.capitalY) ==
+            war.opponentOf(slot) &&
+        state
+            .realm(slot)
+            .troops
+            .any((t) => t.x == enemy.capitalX && t.y == enemy.capitalY);
+  }
+
+  final attacker = occupies(war.attackerSlot);
+  final defender = occupies(war.defenderSlot);
+  if (attacker && defender) {
+    return warScore(state, war.defenderSlot) >
+            warScore(state, war.attackerSlot)
+        ? war.defenderSlot
+        : war.attackerSlot;
+  }
+  if (attacker) return war.attackerSlot;
+  if (defender) return war.defenderSlot;
+  return null;
+}
+
+/// Rules v9 ruler capture, resolved at ROUND END (was: instantly on the
+/// move): the captor holds the enemy capital when the round ends. The
+/// loser's ruler is captured and coerced (§12), but the realm is no
+/// longer swallowed whole — instead the captor wins the war and SELECTS
+/// loser tiles in the claim settlement, against a claim of their war
+/// score (which includes the +3,000 capital bonus).
+void _endWarByCapitalOccupation(GameState state, int captorSlot, Rng rng,
+    List<GameEvent> events) {
+  final war = state.activeWar!;
+  final loserSlot = war.opponentOf(captorSlot);
+  final capturedRuler = state.person(state.realm(loserSlot).rulerId);
+  final claim = warScore(state, captorSlot);
+
+  events.add(GameEvent(
+    year: state.year,
+    slot: captorSlot,
+    type: 'rulerCaptured',
+    visibility: EventVisibility.public,
+    payload: {'loserSlot': loserSlot, 'ruler': capturedRuler?.name},
+  ));
+  events.add(GameEvent(
+    year: state.year,
+    slot: captorSlot,
+    type: 'warWon',
+    visibility: EventVisibility.public,
+    payload: {'claim': claim, 'loserSlot': loserSlot},
+  ));
+
+  war.phase = WarPhase.settlement;
+  war.winnerSlot = captorSlot;
+  war.remainingClaim = claim;
+
+  if (capturedRuler != null) {
+    runCoercion(state, captorSlot, capturedRuler, rng, events);
+  }
+  if (state.dynasty(captorSlot).status != DynastyStatus.human) {
+    autoSettleClaim(state, rng, events);
+  }
+}
+
 /// Advances a war round (§11.2): applies the AI peace placeholders,
 /// checks mutual peace and winter, and otherwise rolls the next round.
 /// (AI unit movement arrives with Phase 5 — until then AI sides hold
 /// position, which makes the traced AI peace rules fire naturally.)
+///
+/// Rules v9: before anything else, a side holding the enemy capital wins
+/// the war right here (see [_endWarByCapitalOccupation]). Rules v11
+/// tightens this to holding it across TWO consecutive round ends — i.e.
+/// through the opponent's full response round (the v9 check ran after the
+/// AI side's movement, so an AI seizing the capital won before its human
+/// opponent could ever react). The first round end only ARMS the capture
+/// (`war.heldCapitalSlot`, `capitalHeld` event); an opponent with no
+/// troops left cannot respond, so the capture resolves immediately.
 void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
+
+  if (state.rulesVersion >= 9) {
+    final captor = capitalOccupier(state, war);
+    if (captor != null &&
+        (state.rulesVersion < 11 ||
+            captor == war.heldCapitalSlot ||
+            state.realm(war.opponentOf(captor)).troops.isEmpty)) {
+      _endWarByCapitalOccupation(state, captor, rng, events);
+      return;
+    }
+    if (captor != null && captor != war.heldCapitalSlot) {
+      events.add(GameEvent(
+        year: state.year,
+        slot: captor,
+        type: 'capitalHeld',
+        visibility: EventVisibility.public,
+        payload: {'loserSlot': war.opponentOf(captor)},
+      ));
+    }
+    war.heldCapitalSlot = captor;
+  }
 
   // AI peace decisions (§11.2, incl. the original's dead-check quirk: an
   // AI attacker wants peace as soon as its units are back on/at their

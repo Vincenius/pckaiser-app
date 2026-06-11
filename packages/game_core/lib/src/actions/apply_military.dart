@@ -392,7 +392,11 @@ List<GameEvent> applyWarMove(
   // capital coordinates (the tile was conquered or seized in an earlier
   // war/bankruptcy and the seat never relocated) no longer grant an
   // instant capture by stepping onto a tile the attacker may even own.
-  if (nx == enemyRealm.capitalX &&
+  // Rules v9: stepping onto the capital no longer ends the war on the
+  // spot — the occupier must HOLD the tile until the war round ends
+  // (`endWarRound` resolves the capture, opening the claim settlement).
+  if (state.rulesVersion < 9 &&
+      nx == enemyRealm.capitalX &&
       ny == enemyRealm.capitalY &&
       (state.rulesVersion < 4 || map.ownerAt(nx, ny) == enemySlot)) {
     endWarByCapture(state, realm.slot, rng, events);

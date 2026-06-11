@@ -43,11 +43,15 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
     source.tileCount[b] = 0;
   }
 
-  // Towns, troops, sums, money, stocks.
+  // Towns, troops, ships, intel, sums, money, stocks.
   target.towns.addAll(source.towns);
   source.towns.clear();
   target.troops.addAll(source.troops);
   source.troops.clear();
+  target.ships.addAll(source.ships);
+  source.ships.clear();
+  target.intelReports.addAll(source.intelReports);
+  source.intelReports.clear();
   target.population += source.population;
   target.troopCapacity += source.troopCapacity;
   target.armySize += source.armySize;
