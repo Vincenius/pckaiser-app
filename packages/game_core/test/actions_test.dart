@@ -78,6 +78,60 @@ void main() {
     });
   });
 
+  group('MoveTroop', () {
+    /// Any own tile of slot 1 other than (tx, ty).
+    (int, int) ownTileAwayFrom(int tx, int ty) {
+      final map = state.map;
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) == 1 && (x != tx || y != ty)) return (x, y);
+        }
+      }
+      fail('no second own tile for slot 1');
+    }
+
+    Troop addTroop() {
+      final realm = state.realm(1);
+      final troop = Troop(
+        name: 'Garde',
+        men: 10,
+        troopClass: TroopClass.infanterie,
+        quality: TroopQuality.regular,
+        garrisonCounted: false,
+        x: realm.capitalX,
+        y: realm.capitalY,
+      );
+      realm.troops.add(troop);
+      return troop;
+    }
+
+    test('rules v3: relocating costs no movement point', () {
+      final troop = addTroop();
+      final (x, y) = ownTileAwayFrom(troop.x, troop.y);
+      state.realm(1).movementPoints = 0; // free even with no Züge left
+      final result =
+          applyAction(state, MoveTroop(slot: 1, unitIndex: 0, x: x, y: y), rng);
+      final realm = result.state.realm(1);
+      expect((realm.troops[0].x, realm.troops[0].y), (x, y));
+      expect(realm.movementPoints, 0);
+    });
+
+    test('rules v2: relocating still costs 1 movement point', () {
+      final troop = addTroop();
+      final (x, y) = ownTileAwayFrom(troop.x, troop.y);
+      final v2 = GameState.fromJson(state.toJson()..['rulesVersion'] = 2);
+      final result =
+          applyAction(v2, MoveTroop(slot: 1, unitIndex: 0, x: x, y: y), rng);
+      expect(result.state.realm(1).movementPoints, 4);
+      v2.realm(1).movementPoints = 0;
+      expect(
+        () => applyAction(
+            v2, MoveTroop(slot: 1, unitIndex: 0, x: x, y: y), rng),
+        throwsA(isA<ActionException>()),
+      );
+    });
+  });
+
   group('Build', () {
     test('builds a Kornfeld on owned Ebene, paying cost and 1 MP', () {
       final (x, y) = claimableTile();
@@ -179,7 +233,8 @@ void main() {
     });
 
     test('builds a Hafen on unowned coastal water, taking ownership', () {
-      // Find an unowned water tile orthogonally adjacent to slot 1's land.
+      // Find an unowned water tile orthogonally adjacent to slot 1's LAND
+      // (an own Hafen on water does not qualify as anchor).
       final map = state.map;
       var found = (-1, -1);
       outer:
@@ -191,7 +246,8 @@ void main() {
           }
           for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
             if (map.inBounds(x + dx, y + dy) &&
-                map.ownerAt(x + dx, y + dy) == 1) {
+                map.ownerAt(x + dx, y + dy) == 1 &&
+                Terrain.isLand(map.terrainAt(x + dx, y + dy))) {
               found = (x, y);
               break outer;
             }
@@ -242,6 +298,46 @@ void main() {
                 building: Building.hafen),
             rng),
         throwsA(isA<ActionException>()),
+      );
+    });
+
+    test('a Hafen must touch own LAND — no harbor chains along the coast',
+        () {
+      // Manufactured geography far from the start: own land L, then open
+      // water W1, W2 in a row (W2 surrounded by water except W1).
+      final map = state.map;
+      const lx = 5, ly = 5;
+      void set(int x, int y, int terrain, int owner) {
+        map.terrain[map.index(x, y)] = terrain;
+        map.owner[map.index(x, y)] = owner;
+        map.building[map.index(x, y)] = Building.none;
+      }
+
+      set(lx, ly, Terrain.ebene, 1); // own land anchor
+      for (final (x, y) in [
+        (lx + 1, ly), (lx + 2, ly), (lx + 3, ly), // W1, W2, beyond
+        (lx + 1, ly - 1), (lx + 1, ly + 1),
+        (lx + 2, ly - 1), (lx + 2, ly + 1),
+      ]) {
+        set(x, y, Terrain.water, World.niemand);
+      }
+      state.realm(1).treasury = 5000;
+      state.realm(1).movementPoints = 5;
+
+      // W1 touches own land → builds fine.
+      var s = applyAction(state,
+              Build(slot: 1, x: lx + 1, y: ly, building: Building.hafen),
+              rng)
+          .state;
+      expect(s.map.buildingAt(lx + 1, ly), Building.hafen);
+
+      // W2 touches only the own Hafen on water → rejected.
+      expect(
+        () => applyAction(s,
+            Build(slot: 1, x: lx + 2, y: ly, building: Building.hafen),
+            Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'harbors must not chain without land contact',
       );
     });
 
@@ -415,7 +511,8 @@ void main() {
       for (var seed = 0; seed < 40; seed++) {
         final result = applyAction(
             state, MarryCommoner(slot: 1, personId: 9001), Rng(seed));
-        expect(result.state.realm(1).proposedMarriageThisTurn, isTrue);
+        expect(result.state.realm(1).proposedMarriageThisTurn, isFalse,
+            reason: 'v5+: does not consume the royal proposal');
         final hans = result.state.persons[9001]!;
         expect(hans.spouseId, isNotNull,
             reason: 'a commoner never declines');
@@ -429,16 +526,30 @@ void main() {
       }
     });
 
-    test('shares the one-proposal-per-turn gate and rejects the married',
-        () {
+    test('v5+: available even after a royal proposal this turn', () {
       state.persons[9001] =
           Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
+      state.dynasty(1).memberIds.add(9001);
       state.realm(1).proposedMarriageThisTurn = true;
+      final result = applyAction(
+          state, MarryCommoner(slot: 1, personId: 9001), Rng(1));
+      expect(result.state.persons[9001]!.spouseId, isNotNull);
+    });
+
+    test('pre-v5: shares the one-proposal-per-turn gate', () {
+      final old = GameState.fromJson(state.toJson()..['rulesVersion'] = 4);
+      old.persons[9001] =
+          Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
+      old.realm(1).proposedMarriageThisTurn = true;
       expect(
           () => applyAction(
-              state, MarryCommoner(slot: 1, personId: 9001), Rng(1)),
+              old, MarryCommoner(slot: 1, personId: 9001), Rng(1)),
           throwsA(isA<ActionException>()));
-      state.realm(1).proposedMarriageThisTurn = false;
+    });
+
+    test('rejects the already married', () {
+      state.persons[9001] =
+          Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
       state.persons[9001]!.spouseId = 1;
       expect(
           () => applyAction(

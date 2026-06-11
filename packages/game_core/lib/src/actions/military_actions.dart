@@ -104,6 +104,92 @@ class ReinforceTroop extends PlayerAction {
       {'type': kind, 'slot': slot, 'unitIndex': unitIndex, 'men': men};
 }
 
+/// "Truppe ausbilden" — drill (§10.2, rules v7, the traced original
+/// `proc_00A316`): +1 quality for 5 T/man, no class change. Once per unit
+/// per turn, regulars only, capped at [Troop.drillCap].
+class DrillTroop extends PlayerAction {
+  DrillTroop({required super.slot, required this.unitIndex});
+
+  factory DrillTroop.fromJson(Map<String, dynamic> json) => DrillTroop(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+      );
+
+  static const kind = 'drillTroop';
+
+  final int unitIndex;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'unitIndex': unitIndex};
+}
+
+/// "Truppe umrüsten" (rules v5): retrain a regular unit to a new
+/// class for 5 T/man plus the class surcharge (Kav +500, Art +1,000).
+class TrainTroop extends PlayerAction {
+  TrainTroop({
+    required super.slot,
+    required this.unitIndex,
+    required this.troopClass,
+  });
+
+  factory TrainTroop.fromJson(Map<String, dynamic> json) => TrainTroop(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        troopClass: json['troopClass'] as int,
+      );
+
+  static const kind = 'trainTroop';
+
+  final int unitIndex;
+  final int troopClass;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'troopClass': troopClass,
+      };
+}
+
+/// Rename a unit (free; forbidden at war — war snapshots match by name).
+class RenameTroop extends PlayerAction {
+  RenameTroop({
+    required super.slot,
+    required this.unitIndex,
+    required this.name,
+  });
+
+  factory RenameTroop.fromJson(Map<String, dynamic> json) => RenameTroop(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        name: json['name'] as String,
+      );
+
+  static const kind = 'renameTroop';
+
+  final int unitIndex;
+  final String name;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'name': name,
+      };
+}
+
 /// "Truppen vereinigen" — merge unit [fromIndex] into [toIndex] (§10.2).
 class MergeTroops extends PlayerAction {
   MergeTroops(

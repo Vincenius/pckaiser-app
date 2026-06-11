@@ -17,8 +17,8 @@ class TutorialOverlay extends StatefulWidget {
 
   final GameController controller;
 
-  /// Called when the last step is completed — the game continues without
-  /// the overlay so the player can keep practicing.
+  /// Called when the last step is completed ("Tutorial abschließen") —
+  /// leaves the practice game and returns to the main menu.
   final VoidCallback onFinish;
 
   /// Called when the tutorial is quit early ("Tutorial beenden") — leaves

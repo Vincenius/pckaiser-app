@@ -52,6 +52,7 @@ List<GameEvent> applyActionInPlace(
 
   return switch (action) {
     ClaimTile() => _claimTile(state, realm, action),
+    SendShip() => _sendShip(state, realm, action),
     Build() => _build(state, realm, action, rng),
     Demolish() => _demolish(state, realm, action),
     ChangeReligion() => _changeReligion(state, realm, action),
@@ -66,6 +67,9 @@ List<GameEvent> applyActionInPlace(
     RecruitTroops() => applyRecruitTroops(state, realm, action, rng),
     HireSoeldner() => applyHireSoeldner(state, realm, action),
     ReinforceTroop() => applyReinforceTroop(state, realm, action, rng),
+    TrainTroop() => applyTrainTroop(state, realm, action),
+    DrillTroop() => applyDrillTroop(state, realm, action),
+    RenameTroop() => applyRenameTroop(state, realm, action),
     MergeTroops() => applyMergeTroops(state, realm, action),
     DisbandTroop() => applyDisbandTroop(state, realm, action),
     MoveTroop() => applyMoveTroop(state, realm, action),
@@ -110,6 +114,19 @@ bool _adjacentToOwn(WorldMap map, int slot, int x, int y) {
   return false;
 }
 
+/// Like [_adjacentToOwn], but only own LAND tiles count — an own Hafen on
+/// a water tile must not anchor further coastal builds.
+bool _adjacentToOwnLand(WorldMap map, int slot, int x, int y) {
+  for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+    if (map.inBounds(x + dx, y + dy) &&
+        map.ownerAt(x + dx, y + dy) == slot &&
+        Terrain.isLand(map.terrainAt(x + dx, y + dy))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Claiming an adjacent unowned land tile costs 1 movement point (§4).
 List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   final map = state.map;
@@ -140,6 +157,50 @@ List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   ];
 }
 
+/// "(S)chiff" colony ship (manual: "man kann von [Häfen] aus auch Schiffe
+/// ausschicken, um z.B. unbewohnte Inseln zu kolonisieren"; proc_005D2B):
+/// claims a free land tile reachable over water from an own Hafen for a
+/// flat 700 T — the ship is consumed at its build cost. [DEVIATION] The
+/// original steers the ship tile-by-tile at 1 movement point per water
+/// tile; we charge a flat 1 point for the whole voyage (tap-target UX).
+List<GameEvent> _sendShip(GameState state, Realm realm, SendShip action) {
+  if (state.rulesVersion < 6) {
+    throw ActionException('Das geht in diesem Spielstand noch nicht !');
+  }
+  final map = state.map;
+  _requireOnMap(map, action.x, action.y);
+  if (map.isWaterAt(action.x, action.y)) {
+    throw ActionException('Das Schiff muß ein freies Landfeld ansteuern !');
+  }
+  if (map.ownerAt(action.x, action.y) != World.niemand) {
+    throw ActionException('Das Feld hat bereits einen Besitzer !');
+  }
+  if (realm.tileCount[Building.hafen] < 1) {
+    throw ActionException('Du brauchst zuerst einen Hafen !');
+  }
+  if (!map.shipReachable(realm.slot, action.x, action.y)) {
+    throw ActionException('Dieses Feld ist über See nicht erreichbar !');
+  }
+  const cost = Building.shipCost;
+  _requireMovementPoint(realm);
+  _requireFunds(realm, cost);
+
+  realm.movementPoints--;
+  realm.treasury -= cost;
+  map.owner[map.index(action.x, action.y)] = realm.slot;
+  realm.tileCount[Building.none]++;
+
+  return [
+    GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'shipColonized',
+      visibility: EventVisibility.public,
+      payload: {'x': action.x, 'y': action.y},
+    ),
+  ];
+}
+
 /// Build menu (§4): Kornfeld on Ebene, Weide on Ebene/Berg, Dorf on land,
 /// Burg/Palast on land, Hafen on the coast. Markt/Stadt never built.
 /// Costs 1 movement point + the building's Taler cost.
@@ -163,10 +224,12 @@ List<GameEvent> _build(
   final terrain = map.terrainAt(action.x, action.y);
   // A Hafen goes on a coastal water tile (§4/§5): water cannot be claimed,
   // so building on unowned water next to your land takes ownership as part
-  // of the build — matching the starting-cross harbors.
+  // of the build — matching the starting-cross harbors. It must touch own
+  // LAND: an own Hafen on water must not count, or harbors could chain
+  // along the coast with no land contact at all.
   final hafenOnCoast = building == Building.hafen &&
       owner == World.niemand &&
-      _adjacentToOwn(map, realm.slot, action.x, action.y);
+      _adjacentToOwnLand(map, realm.slot, action.x, action.y);
   final claimOnBuild = building != Building.hafen &&
       owner == World.niemand &&
       Terrain.isLand(terrain) &&
@@ -286,6 +349,16 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
 /// "Reiche zusammenlegen" (§6.2).
 List<GameEvent> _mergeRealms(
     GameState state, Realm realm, MergeRealms action, Rng rng) {
+  // Rules v4: no merging while either realm fights the active war — the
+  // merged-in troops would bypass the v2 no-reinforcement-at-war gate and
+  // desync the war's movesLeft/snapshot bookkeeping.
+  final war = state.activeWar;
+  if (state.rulesVersion >= 4 &&
+      war != null &&
+      (war.isParticipant(realm.slot) ||
+          war.isParticipant(action.sourceSlot))) {
+    throw ActionException('Nicht mitten im Krieg !');
+  }
   if (!mergeableSlots(state, realm.slot).contains(action.sourceSlot)) {
     throw ActionException('Diese Reiche können nicht zusammengelegt werden !');
   }
@@ -469,10 +542,12 @@ List<GameEvent> _proposeMarriage(
 /// "(B)ürgerlich heiraten" (§14.1): marry [MarryCommoner.personId] to a
 /// freshly created commoner. [DEVIATION] A commoner always accepts (the
 /// original rolled the 25% like any proposal); the spouse joins the
-/// dynasty so the §14.3 birth loop applies to the couple.
+/// dynasty so the §14.3 birth loop applies to the couple. Rules v5+:
+/// always available — it neither checks nor consumes the one royal
+/// proposal per turn.
 List<GameEvent> _marryCommoner(
     GameState state, Realm realm, MarryCommoner action, Rng rng) {
-  if (realm.proposedMarriageThisTurn) {
+  if (state.rulesVersion < 5 && realm.proposedMarriageThisTurn) {
     throw ActionException('Nur ein Heiratsantrag pro Zug !');
   }
   final person = state.persons[action.personId];
@@ -482,7 +557,7 @@ List<GameEvent> _marryCommoner(
   if (person.spouseId != null || person.age < 14) {
     throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
   }
-  realm.proposedMarriageThisTurn = true;
+  if (state.rulesVersion < 5) realm.proposedMarriageThisTurn = true;
 
   final events = <GameEvent>[];
   final dynasty = state.dynasty(realm.slot);
@@ -528,10 +603,16 @@ List<GameEvent> _resolveDecision(
     case 'marriageConsent':
       final proposer = state.persons[payload['proposerId'] as int];
       final target = state.persons[payload['targetId'] as int];
+      // Eligibility can decay between proposal and consent: a death, a
+      // marriage, a religion change (§14.4) or a merge collapsing the two
+      // dynasties into one — re-check what can have changed.
       final stillValid = proposer != null &&
           target != null &&
           proposer.spouseId == null &&
-          target.spouseId == null;
+          target.spouseId == null &&
+          proposer.dynasty != target.dynasty &&
+          state.dynasty(proposer.dynasty).religion ==
+              state.dynasty(target.dynasty).religion;
       if (choice['accept'] == true && stillValid) {
         marry(state, proposer, target, events);
       } else {
@@ -654,7 +735,11 @@ List<GameEvent> _resolveDecision(
       advanceElection(state, rng, events);
 
     default:
-      throw ActionException('Unbekannte Entscheidung: ${decision.type}');
+      // A decision type this build does not know — written by a newer app
+      // version (decision types are additive schema changes). Throwing
+      // would restore the decision with the discarded state copy and
+      // re-prompt it forever; dropping it resolves to the rules' default.
+      break;
   }
 
   return events;

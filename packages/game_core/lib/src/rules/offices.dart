@@ -110,10 +110,16 @@ void maybeStartElection(
   final List<Person> candidates;
   if (office == Office.kaiser) {
     electorIds = List.of(state.kurfuerstenIds);
+    // Rules v4: a seated Kurfürst who no longer rules any realm (deposed
+    // by internal strife, realm captured) keeps the vote but is no longer
+    // a candidate — a throne without a realm could never collect the pot.
     candidates = _kurfuerstCandidates(state)
       ..addAll([
         for (final id in state.kurfuerstenIds)
-          if (state.persons[id] != null) state.persons[id]!,
+          if (state.persons[id] != null &&
+              (state.rulesVersion < 4 ||
+                  realmRuledBy(state, id) != null))
+            state.persons[id]!,
       ]);
   } else {
     // Sultan mirror office: candidates and voters are the Muslim rulers.

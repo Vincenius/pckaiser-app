@@ -6,6 +6,7 @@ import '../data/tables.dart';
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
 import '../rules/realm_merge.dart';
+import '../rules/troops.dart' show troopStrength;
 import '../rules/war.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
@@ -14,6 +15,7 @@ import '../state/game_state.dart';
 import '../state/realm.dart';
 import '../state/troop.dart';
 import '../state/war.dart';
+import '../state/world_map.dart';
 import '../turn/turn_pipeline.dart';
 
 /// AI action phase for [slot] (ORIGINAL_GAME.md §20): "Die `<name>` zieht."
@@ -220,6 +222,14 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
   return null; // boxed in → war flag
 }
 
+/// Default names for AI units. The original named every AI unit
+/// "Rekruten" (it has no troop-name table); a small period-flavor pool
+/// keeps battle reports readable when several AI units fight.
+const aiTroopNames = [
+  'Heerbann', 'Landwehr', 'Reisige', 'Stadtwache', 'Aufgebot',
+  'Bogenschützen', 'Pikeniere', 'Reiterei',
+];
+
 /// §20.5: each unit gets `random(freeCapacity) + 1` recruits; a realm
 /// without units raises one first [INTERPRETATION — the original AI must
 /// create units to be able to declare war].
@@ -237,7 +247,8 @@ void _reinforce(
                 slot: realm.slot,
                 men: men,
                 troopClass: TroopClass.infanterie,
-                name: 'Rekruten'),
+                name: aiTroopNames[(realm.slot + realm.troops.length) %
+                    aiTroopNames.length]),
             rng,
             events);
       }
@@ -314,14 +325,20 @@ int? _pickWarTarget(GameState state, int slot, Rng rng) {
 /// AI war-round movement (§11.2): the attacker's units march toward the
 /// enemy capital; the defender's units walk back to their snapshots.
 /// Returns when the side is out of moves (or the war ended).
+///
+/// Rules v7 `[DESIGNED]`: the defender fights back — units intercept
+/// enemy units standing on own territory, and once the enemy army is
+/// wiped out or clearly outmatched they counter-march on the enemy
+/// capital (occupying tiles for war score, capturing the ruler if they
+/// reach it). Both sides also path around water with a BFS instead of
+/// the greedy axis step (which strands units on lake shores). Pre-v7
+/// the defender sat at home for the whole war — even with the enemy
+/// army annihilated.
 void runAiWarMovement(GameState state, int slot, Rng rng,
     List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
   final realm = state.realm(slot);
-  final enemy = state.realm(war.opponentOf(slot));
-  final isAttacker = slot == war.attackerSlot;
-  final snapshots = war.snapshots[slot] ?? const [];
 
   for (var i = 0; i < realm.troops.length; i++) {
     var guard = 0;
@@ -331,22 +348,17 @@ void runAiWarMovement(GameState state, int slot, Rng rng,
         (war.movesLeft[slot]?[i] ?? 0) > 0 &&
         guard++ < 30) {
       final troop = realm.troops[i];
-      final int tx;
-      final int ty;
-      if (isAttacker) {
-        tx = enemy.capitalX;
-        ty = enemy.capitalY;
-      } else {
-        final home = snapshots
-            .where((s) => s.name == troop.name)
-            .toList();
-        if (home.isEmpty) break;
-        tx = home.first.x;
-        ty = home.first.y;
-      }
+      // Recomputed every step: kills and deaths reshape the troop list
+      // and can change the nearest-intruder pick.
+      final target = _warTarget(state, war, slot, i, troop);
+      if (target == null) break;
+      final (tx, ty) = target;
       if (troop.x == tx && troop.y == ty) break;
 
-      final step = _stepToward(state, troop.x, troop.y, tx, ty);
+      final step = state.rulesVersion >= 7
+          ? _bfsStep(state.map, troop.x, troop.y, tx, ty) ??
+              _stepToward(state, troop.x, troop.y, tx, ty)
+          : _stepToward(state, troop.x, troop.y, tx, ty);
       if (step == null) break;
       try {
         events.addAll(applyActionInPlace(
@@ -359,6 +371,77 @@ void runAiWarMovement(GameState state, int slot, Rng rng,
     }
     if (state.activeWar == null) return; // capture ended the war
   }
+}
+
+/// Where an AI war unit wants to go this step (see [runAiWarMovement]).
+(int, int)? _warTarget(
+    GameState state, ActiveWar war, int slot, int index, Troop troop) {
+  final realm = state.realm(slot);
+  final enemy = state.realm(war.opponentOf(slot));
+
+  if (slot == war.attackerSlot) {
+    return (enemy.capitalX, enemy.capitalY);
+  }
+
+  if (state.rulesVersion >= 7) {
+    // Intercept the nearest intruder on own soil.
+    (int, int)? nearest;
+    var best = 1 << 30;
+    for (final e in enemy.troops) {
+      if (state.map.ownerAt(e.x, e.y) != slot) continue;
+      final d = (e.x - troop.x).abs() + (e.y - troop.y).abs();
+      if (d < best) {
+        best = d;
+        nearest = (e.x, e.y);
+      }
+    }
+    if (nearest != null) return nearest;
+
+    // Counter-offensive once the enemy army is gone or clearly weaker.
+    final own = realm.troops.fold(0.0, (a, t) => a + troopStrength(t));
+    final theirs = enemy.troops.fold(0.0, (a, t) => a + troopStrength(t));
+    if (enemy.troops.isEmpty || own > 1.5 * theirs) {
+      return (enemy.capitalX, enemy.capitalY);
+    }
+  }
+
+  // Walk back home. Distinct snapshot per unit — recomputed because
+  // deaths reshape the troop list (matchedSnapshots pairs by list order).
+  final home =
+      matchedSnapshots(realm.troops, war.snapshots[slot] ?? const [])[index];
+  return home == null ? null : (home.x, home.y);
+}
+
+/// First step of a shortest land path from ([x],[y]) to ([tx],[ty]);
+/// null when the target is start itself or unreachable over land.
+(int, int)? _bfsStep(WorldMap map, int x, int y, int tx, int ty) {
+  final start = map.index(x, y);
+  final goal = map.index(tx, ty);
+  if (start == goal) return null;
+  final prev = List<int>.filled(map.terrain.length, -1);
+  prev[start] = start;
+  final queue = <int>[start];
+  for (var head = 0; head < queue.length; head++) {
+    final cur = queue[head];
+    if (cur == goal) break;
+    final cx = cur % map.width;
+    final cy = cur ~/ map.width;
+    for (final (dx, dy) in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
+      final nx = cx + dx;
+      final ny = cy + dy;
+      if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) continue;
+      final ni = map.index(nx, ny);
+      if (prev[ni] != -1) continue;
+      prev[ni] = cur;
+      queue.add(ni);
+    }
+  }
+  if (prev[goal] == -1) return null; // unreachable (island capital etc.)
+  var cur = goal;
+  while (prev[cur] != start) {
+    cur = prev[cur];
+  }
+  return (cur % map.width - x, cur ~/ map.width - y);
 }
 
 (int, int)? _stepToward(GameState state, int x, int y, int tx, int ty) {

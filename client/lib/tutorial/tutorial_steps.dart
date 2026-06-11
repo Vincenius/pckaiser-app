@@ -72,18 +72,20 @@ final List<TutorialStep> tutorialSteps = [
   TutorialStep(
     title: 'Deine Werte',
     body: 'Oben rechts siehst du deine Taler (Münze) und deine '
-        'verbleibenden Züge (Hammer) — fast jede Aktion auf der '
-        'Karte kostet einen Zug. Die Leiste unten zeigt Jahr und '
-        'Reich; tippe auf beides für alle Werte deines Reichs '
-        '("Mein Reich"). Der Pfeil macht Aktionen innerhalb des '
-        'Zuges rückgängig.',
+        'verbleibenden Züge (Hammer) — Bauen und Erweitern auf der '
+        'Karte kostet einen Zug, Truppen verlegen ist kostenlos. '
+        'Die Leiste unten zeigt Jahr und Reich; tippe auf beides für '
+        'alle Werte deines Reichs ("Mein Reich"). Der Pfeil macht '
+        'Aktionen innerhalb des Zuges rückgängig.',
   ),
   TutorialStep(
     title: 'Bauen & Erweitern',
     body: 'Dein Reich wächst, indem du auf freien Feldern neben deinem '
         'Gebiet baust: Kornfelder (100 T) und Weiden (150 T) ernähren '
         'das Volk, Dörfer (1000 T) bringen Einwohner und Steuern, '
-        'Häfen (700 T) erlauben Handelsschiffe.',
+        'Häfen (700 T) erlauben Handelsschiffe. Von einem Hafen aus '
+        'kannst du außerdem Schiffe (700 T) zu freien Feldern über '
+        'See schicken und so z. B. Inseln kolonisieren.',
     task: 'Tippe ein freies Feld neben deinem Gebiet an und baue '
         'ein Kornfeld oder eine Weide.',
     isDone: (c, since) =>
@@ -103,9 +105,11 @@ final List<TutorialStep> tutorialSteps = [
     title: 'Militär',
     body: 'Truppen schützen dein Reich und führen Kriege: Rekruten kosten '
         '5 T pro Mann (Söldner 50 T), die Kapazität kommt aus deinen '
-        'Siedlungen. Krieg erklären kannst du ab dem Jahr 1010 — nur '
+        'Siedlungen. Bestehende Truppen kannst du ausbilden (5 T pro '
+        'Mann, stärkt die Qualität) oder zu Kavallerie/Artillerie '
+        'umrüsten. Krieg erklären kannst du ab dem Jahr 1010 — nur '
         'Nachbarn, einmal pro Jahr.',
-    task: 'Öffne „Militär" → „Truppe ausbilden" und stationiere '
+    task: 'Öffne „Militär" → „Truppe bilden" und stationiere '
         'Rekruten am Hauptsitz.',
     isDone: (c, since) => c.currentRealm.armySize > since.armySize,
   ),
@@ -135,9 +139,10 @@ final List<TutorialStep> tutorialSteps = [
     title: 'Bereit zur Herrschaft',
     body: 'Das waren die Grundlagen! Alles Weitere findest du unter '
         '„Info": Ereignisse, Siedlungen, Dynastien und die Kaiserchronik. '
-        'Verlassen kannst du das Spiel jederzeit über Info → '
-        '„Spiel verlassen".\n\n'
-        'Diese Übungspartie wird nicht gespeichert — übe noch frei '
-        'weiter, oder starte vom Hauptmenü dein erstes richtiges Spiel.',
+        'Verlassen kannst du das Spiel jederzeit über das rote Symbol '
+        'links in der Leiste unten.\n\n'
+        'Diese Übungspartie wird nicht gespeichert — mit „Tutorial '
+        'abschließen" kehrst du zum Hauptmenü zurück und kannst dein '
+        'erstes richtiges Spiel starten.',
   ),
 ];

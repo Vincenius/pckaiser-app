@@ -36,6 +36,9 @@ sealed class PlayerAction {
         RecruitTroops.kind => RecruitTroops.fromJson(json),
         HireSoeldner.kind => HireSoeldner.fromJson(json),
         ReinforceTroop.kind => ReinforceTroop.fromJson(json),
+        TrainTroop.kind => TrainTroop.fromJson(json),
+        DrillTroop.kind => DrillTroop.fromJson(json),
+        RenameTroop.kind => RenameTroop.fromJson(json),
         MergeTroops.kind => MergeTroops.fromJson(json),
         DisbandTroop.kind => DisbandTroop.fromJson(json),
         MoveTroop.kind => MoveTroop.fromJson(json),
@@ -46,6 +49,7 @@ sealed class PlayerAction {
         WarEndRound.kind => WarEndRound.fromJson(json),
         SettlementAnnex.kind => SettlementAnnex.fromJson(json),
         SettlementFinish.kind => SettlementFinish.fromJson(json),
+        SendShip.kind => SendShip.fromJson(json),
         SpyMission.kind => SpyMission.fromJson(json),
         OrderAssassination.kind => OrderAssassination.fromJson(json),
         AdjustGuards.kind => AdjustGuards.fromJson(json),
@@ -260,6 +264,33 @@ class MergeRealms extends PlayerAction {
   @override
   Map<String, dynamic> toJson() =>
       {'type': kind, 'slot': slot, 'sourceSlot': sourceSlot};
+}
+
+/// "(S)chiff" — send a colony ship from a harbor (§4/§9.3, rules v6):
+/// claims a free land tile reachable over open water from an own Hafen,
+/// e.g. on an uninhabited island. The ship is consumed: flat 700 T plus
+/// 1 movement point.
+class SendShip extends PlayerAction {
+  SendShip({required super.slot, required this.x, required this.y});
+
+  factory SendShip.fromJson(Map<String, dynamic> json) => SendShip(
+        slot: json['slot'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'sendShip';
+
+  /// Target land tile to colonize.
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
 /// The two market goods (§9.1).

@@ -11,8 +11,12 @@ import 'package:flutter/painting.dart'
         FontWeight,
         Offset,
         Paint,
+        PaintingStyle,
         Rect,
+        RRect,
+        Radius,
         Shadow,
+        StrokeCap,
         TextPainter,
         TextSpan,
         TextStyle;
@@ -35,6 +39,12 @@ class MapGame extends FlameGame with ScaleDetector {
 
   /// Called with tile coordinates when the player taps the map.
   void Function(int x, int y)? onTileTap;
+
+  /// Tile of the currently selected war unit (pulsing ring); null = none.
+  (int, int)? selectedTile;
+
+  /// War goal marker — the enemy Königssitz during a war; null = none.
+  (int, int)? warTargetTile;
 
   gc.GameState _state;
   ui.Picture? _picture;
@@ -69,7 +79,7 @@ class MapGame extends FlameGame with ScaleDetector {
     camera.viewfinder.anchor = Anchor.center;
     camera.viewfinder.position = Vector2(
         gc.World.mapWidth * tileSize / 2, gc.World.mapHeight * tileSize / 2);
-    camera.viewfinder.zoom = 0.6;
+    camera.viewfinder.zoom = 0.5;
     world.add(_MapLayer(this));
     _rebuild();
     focusOnRealm(_state.currentPlayer);
@@ -100,12 +110,14 @@ class MapGame extends FlameGame with ScaleDetector {
       minX = maxX = realm.capitalX;
       minY = maxY = realm.capitalY;
     }
-    // One tile of margin on every side, then fit — but never closer than
-    // 3.0 (tiny realms) and never farther out than the pan limit allows.
+    // One tile of margin on every side, then fit — backed off to 80% so
+    // the default view starts a bit zoomed out (more surroundings
+    // visible), and never closer than 2.5 (tiny realms) or farther out
+    // than the pan limit allows.
     final extentX = (maxX - minX + 3) * tileSize;
     final extentY = (maxY - minY + 3) * tileSize;
     final fit = math.min(size.x / extentX, size.y / extentY);
-    camera.viewfinder.zoom = fit.clamp(0.6, 3.0);
+    camera.viewfinder.zoom = (fit * 0.8).clamp(0.5, 2.5);
     camera.viewfinder.position = Vector2(
         (minX + maxX + 1) / 2 * tileSize, (minY + maxY + 1) / 2 * tileSize);
     _clampCamera();
@@ -143,13 +155,27 @@ class MapGame extends FlameGame with ScaleDetector {
           }
         }
         // The visible state encodes the troop owner in the marker: the
-        // war's defending side gets the shield, everyone else the sword.
+        // war's defending side gets the shield, everyone else the sword —
+        // on a realm-colored badge so armies are attributable at a glance.
         final troopOwner = map.troopMarker[map.index(x, y)];
         if (troopOwner != 0) {
           final war = _state.activeWar;
           final sprite = war != null && troopOwner == war.defenderSlot
               ? _shieldSprite
               : _troopSprite;
+          canvas.drawCircle(
+              cell.center,
+              tileSize * 0.42,
+              Paint()
+                ..color = RealmPalette.colorFor(troopOwner)
+                    .withValues(alpha: 0.8));
+          canvas.drawCircle(
+              cell.center,
+              tileSize * 0.42,
+              Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.5
+                ..color = const Color(0xEEFFFFFF));
           _drawSprite(canvas, sprite, cell.deflate(tileSize / 5), paint);
         }
       }
@@ -247,10 +273,64 @@ class _MapLayer extends PositionComponent with TapCallbacks {
 
   final MapGame game;
 
+  /// Clock for the pulsing selection ring.
+  double _time = 0;
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    _time += dt;
+  }
+
   @override
   void render(Canvas canvas) {
     final picture = game._picture;
     if (picture != null) canvas.drawPicture(picture);
+    _renderWarTarget(canvas);
+    _renderSelection(canvas);
+  }
+
+  /// Crosshair on the war goal (the enemy Königssitz).
+  void _renderWarTarget(Canvas canvas) {
+    final target = game.warTargetTile;
+    if (target == null) return;
+    final (x, y) = target;
+    final center =
+        Offset((x + 0.5) * tileSize, (y + 0.5) * tileSize);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFFE53935);
+    canvas.drawCircle(center, tileSize * 0.55, paint);
+    const r = tileSize * 0.55;
+    for (final (dx, dy) in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
+      canvas.drawLine(
+        center + Offset(dx * r * 0.6, dy * r * 0.6),
+        center + Offset(dx * r * 1.3, dy * r * 1.3),
+        paint,
+      );
+    }
+  }
+
+  /// Pulsing ring around the selected war unit.
+  void _renderSelection(Canvas canvas) {
+    final selected = game.selectedTile;
+    if (selected == null) return;
+    final (x, y) = selected;
+    final pulse = 0.5 + 0.5 * math.sin(_time * 5);
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(x * tileSize, y * tileSize, tileSize, tileSize)
+          .inflate(2 + pulse * 2),
+      const Radius.circular(6),
+    );
+    canvas.drawRRect(
+      rect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = const Color(0xFFFFEB3B).withValues(alpha: 0.6 + 0.4 * pulse),
+    );
   }
 
   @override

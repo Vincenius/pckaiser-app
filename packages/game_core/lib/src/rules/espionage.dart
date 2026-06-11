@@ -132,7 +132,10 @@ void resolveAssassinations(GameState state, int targetSlot, Rng rng,
     final g = 2 * target.guardLevel;
     final caught = math.min(rng.nextInt(g + 15), order.count);
     final survivors = math.min(order.count - caught, 49);
-    final success = rng.nextInt(math.max(1, 50 - survivors)) < 15;
+    // Rules v4: like the spy missions, an attempt whose agents were ALL
+    // caught fails outright — earlier rules still rolled a 30% success.
+    final success = (state.rulesVersion < 4 || survivors > 0) &&
+        rng.nextInt(math.max(1, 50 - survivors)) < 15;
 
     if (success) {
       events.add(GameEvent(

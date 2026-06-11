@@ -42,6 +42,7 @@ class GameState {
     List<PendingDecision>? pendingDecisions,
     List<GameEvent>? events,
     this.prunedEventCount = 0,
+    Map<int, int>? recapBaselines,
   })  : assert(realms.length == World.realmCount),
         assert(dynasties.length == World.realmCount),
         kurfuerstenIds = kurfuerstenIds ?? [],
@@ -50,7 +51,8 @@ class GameState {
         persons = persons ?? {},
         assassinationOrders = assassinationOrders ?? [],
         pendingDecisions = pendingDecisions ?? [],
-        events = events ?? [];
+        events = events ?? [],
+        recapBaselines = recapBaselines ?? {};
 
   factory GameState.fromJson(Map<String, dynamic> raw) {
     // Older documents are migrated up to the current schema first; newer
@@ -107,7 +109,11 @@ class GameState {
             ?.map((e) =>
                 GameEvent.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
-        prunedEventCount: json['prunedEventCount'] as int? ?? 0);
+        prunedEventCount: json['prunedEventCount'] as int? ?? 0,
+        recapBaselines: {
+          for (final e in ((json['recapBaselines'] as Map?) ?? {}).entries)
+            int.parse(e.key as String): e.value as int,
+        });
   }
 
   static List<ChronicleRecord> _recordList(Object? json) =>
@@ -195,6 +201,11 @@ class GameState {
   /// recap baselines use it to survive pruning.
   int prunedEventCount;
 
+  /// Per-slot absolute event position up to which that seat has seen its
+  /// "since your last turn" recap (modern UX). Lives in the state so it
+  /// survives app restarts (local) and travels with the match (online).
+  final Map<int, int> recapBaselines;
+
   /// Realm for a 1-based slot index.
   Realm realm(int slot) => realms[slot - 1];
 
@@ -235,6 +246,7 @@ class GameState {
         pendingDecisions: [for (final d in pendingDecisions) d.copy()],
         events: List.of(events),
         prunedEventCount: prunedEventCount,
+        recapBaselines: Map.of(recapBaselines),
       );
 
   Map<String, dynamic> toJson() => {
@@ -267,5 +279,8 @@ class GameState {
         'pendingDecisions': [for (final d in pendingDecisions) d.toJson()],
         'events': [for (final e in events) e.toJson()],
         'prunedEventCount': prunedEventCount,
+        'recapBaselines': {
+          for (final e in recapBaselines.entries) '${e.key}': e.value,
+        },
       };
 }

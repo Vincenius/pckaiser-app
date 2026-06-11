@@ -90,7 +90,9 @@ const Map<String, Map<String, String>> _table = {
     'sellCattle': 'Rinder verkaufen',
     'investShips': 'Handelsschiffe aussenden',
     'mergeRealms': 'Reiche zusammenlegen',
-    'recruit': 'Truppe ausbilden',
+    // Original menu wording: "Truppe bilden" creates a unit; "Truppe
+    // ausbilden" (the troop sheet's retrain option) sets the class.
+    'recruit': 'Truppe bilden',
     'hireSoeldner': 'Söldner anwerben',
     'declareWar': 'Krieg erklären',
     'guards': 'Spionageabwehr',

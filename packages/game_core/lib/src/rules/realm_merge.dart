@@ -1,4 +1,5 @@
 import '../rng/rng.dart';
+import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 
@@ -72,9 +73,13 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
   sourceDynasty.memberIds.clear();
 
   // One-off movement bonus (raw titleClass byte, as in the original),
-  // then vacate the source slot.
+  // then vacate the source slot. The vacated slot is no longer a human
+  // seat — a captured-then-merged slot would otherwise keep counting as a
+  // human player (handoffs, decision routing) forever.
   target.movementPoints += source.titleClass + rng.nextInt(6);
   source.rulerId = null;
+  sourceDynasty.status = DynastyStatus.ai;
+  sourceDynasty.humanPlayer = null;
 
   events.add(GameEvent(
     year: state.year,

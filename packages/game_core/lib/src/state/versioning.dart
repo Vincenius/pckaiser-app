@@ -30,7 +30,60 @@ const int currentSchemaVersion = 1;
 ///   reinforcing and peacetime troop moves are blocked while at war
 ///   (matching the existing merge/disband gate); a conquered town's
 ///   garrison is also removed from the loser's garrison-counted units.
-const int currentRulesVersion = 2;
+/// - v3 (2026-06-11): peacetime troop moves (`MoveTroop`) no longer cost
+///   a movement point — only building/claiming/demolishing consume Züge.
+/// - v4 (2026-06-11): ruler capture requires the enemy capital tile to
+///   still be OWNED by the enemy (was: coordinates only — a realm whose
+///   capital tile had been conquered/seized earlier could be captured by
+///   stepping onto a tile the attacker already owned); moving onto a tile
+///   with several stacked enemy units fights them ALL, one after another
+///   (was: only the first, then free co-location); an assassination whose
+///   agents were all caught always fails (was: still 30%); `MergeRealms`
+///   is blocked while either realm is in the active war (same reason as
+///   the v2 recruit/reinforce gate — merged-in troops desync the war
+///   bookkeeping); Kaiser-election candidates must currently rule a realm
+///   (was: a deposed Kurfürst could be elected and hold a throne with no
+///   realm to collect the pot).
+/// - v5 (2026-06-11): war overhaul — (1) every army-vs-army encounter is
+///   DECIDED: the side with the higher `P × (1+def/2) × fortune` wins
+///   the clash, the loser takes 35–65% casualties (remnants under 5 men
+///   are wiped), the winner 10–25% and always survives — a unit falls
+///   after ~2–5 engagements (was: a single power-scaled roll that
+///   typically killed 0–3 men, dragging wars on forever; the original's
+///   combat was even more cosmetic — losses `P × def × 0.2 × R`,
+///   R ∈ [0, 0.1), zero on open ground — its wars were walking races
+///   decided by the score);
+///   (2) mutual peace is a WHITE peace: both sides return home, no
+///   tiles, no claim, no payment (was: the leading side collected its
+///   full claim, auto-converting occupied tiles on a decisive score —
+///   agreeing to peace could lose you land); (3) a war decided by winter
+///   always opens the claim settlement, where the winner SELECTS which
+///   loser tiles to annex (was: a decisive score auto-converted every
+///   occupied tile with no choice) — ruler capture still takes the whole
+///   realm; (4) the `TrainTroop` action (original "Truppe ausbilden"):
+///   retrain a regular unit to another class for 5 T/man plus the class
+///   surcharge (Kavallerie +500, Artillerie +1,000); (5) "Bürgerlich
+///   heiraten" is always available: it no longer checks or consumes the
+///   one-royal-proposal-per-turn gate (was: both marriage actions shared
+///   it — a rejected royal proposal locked out commoner marriage too).
+/// - v6 (2026-06-11): the original's "(S)chiff" colony ship (`SendShip`,
+///   manual: send ships from a Hafen to colonize e.g. uninhabited
+///   islands; disassembly proc_005D2B: flat 700 T, ship consumed): claim
+///   any free land tile reachable over open water from an own Hafen for
+///   700 T + 1 movement point. Pre-v6 games keep playing without it
+///   (new capability = balance change).
+/// - v7 (2026-06-11): (1) the AI war defender fights back — units
+///   intercept enemy units standing on own territory and, once the
+///   enemy army is wiped out or clearly outmatched (>1.5× strength),
+///   counter-march on the enemy capital (was: defenders only ever
+///   walked back to their pre-war spots, so a beaten attacker faced an
+///   enemy that "never moved"); AI war pathing uses a BFS around water
+///   (was: greedy axis step that stranded units on lake shores);
+///   (2) `DrillTroop` — the traced original "Truppe ausbilden"
+///   (proc_00A316): +1 quality for 5 T/man with no class change; once
+///   per unit per turn, regulars only, capped at quality 10 [DESIGNED]
+///   (the v5 `TrainTroop` class retrain stays, relabeled "umrüsten").
+const int currentRulesVersion = 7;
 
 /// A document from a newer app version than this one understands.
 /// Surfaced to the user as "update the app to load this game" — never

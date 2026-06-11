@@ -11,6 +11,7 @@ import '../state/realm.dart';
 import '../state/town.dart';
 import '../state/troop.dart';
 import 'dynasty.dart' as dyn;
+import 'offices.dart' show closeChronicleIfOfficeHolder;
 import 'population.dart' show cutGarrisonTroops;
 import 'protection.dart';
 
@@ -238,8 +239,8 @@ void _maybeMerchantFounders(GameState state, Rng rng, List<GameEvent> events) {
     if (!realm.isVacant) continue;
     final owned = realm.tileCount.fold(0, (a, b) => a + b);
     if (owned == 0 || rng.nextInt(10) != 0) continue;
-    final founder =
-        foundReplacementDynasty(state, realm.slot, rng, treasury: 1000);
+    final founder = foundReplacementDynasty(state, realm.slot, rng, events,
+        treasury: 1000);
     events.add(GameEvent(
       year: state.year,
       slot: realm.slot,
@@ -253,20 +254,59 @@ void _maybeMerchantFounders(GameState state, Rng rng, List<GameEvent> events) {
 /// Founds a replacement dynasty on [slot] (§5 replacement values, §15.2
 /// religion availability, §18.5/§19.2): new founder aged 17+random(5),
 /// Ritter/Scheich, the old dynasty's members vanish, the slot becomes AI.
-Person foundReplacementDynasty(GameState state, int slot, Rng rng,
+Person foundReplacementDynasty(
+    GameState state, int slot, Rng rng, List<GameEvent> events,
     {int? treasury}) {
   final realm = state.realm(slot);
   final dynasty = state.dynasty(slot);
 
-  // The old dynasty's members disappear with it.
+  // The old dynasty's members disappear with it. Each removal gets the
+  // full handleDeath-style cleanup: a vanished person must not stay
+  // referenced as someone's child, as Kaiser/Sultan (a dangling kaiserId
+  // would block every future election) or as ruler of another slot
+  // (ruler aliasing, §19 — a dangling rulerId would freeze that realm
+  // without succession and make the §19.3 win check unsatisfiable).
+  final removedIds = <int>{};
   for (final id in List.of(dynasty.memberIds)) {
     final person = state.persons.remove(id);
     if (person == null) continue;
+    removedIds.add(id);
     final spouse = state.person(person.spouseId);
     spouse?.spouseId = null;
     state.kurfuerstenIds.remove(id);
+    closeChronicleIfOfficeHolder(state, person, rng, events);
   }
   dynasty.memberIds.clear();
+  for (final person in state.persons.values) {
+    person.childrenIds.removeWhere(removedIds.contains);
+  }
+
+  // Other slots ruled by a removed person pass on like a dynasty
+  // extinction (§15.4): to a random other living ruler, else vacant.
+  final aliasedSlots = [
+    for (final r in state.realms)
+      if (r.slot != slot && removedIds.contains(r.rulerId)) r.slot,
+  ];
+  if (aliasedSlots.isNotEmpty) {
+    final livingRulers = <int>{
+      for (final r in state.realms)
+        if (r.rulerId != null && !removedIds.contains(r.rulerId)) r.rulerId!,
+    }.toList();
+    final inheritor = livingRulers.isEmpty
+        ? null
+        : livingRulers[rng.nextInt(livingRulers.length)];
+    for (final aliased in aliasedSlots) {
+      state.realm(aliased).rulerId = inheritor;
+      if (inheritor != null) dyn.alignSlotControl(state, aliased, inheritor);
+      events.add(GameEvent(
+        year: state.year,
+        slot: aliased,
+        type: 'dynastyExtinct',
+        visibility: EventVisibility.public,
+        payload: {'inheritor': state.persons[inheritor]?.name},
+      ));
+    }
+  }
 
   // §15.2 religion availability for new dynasties.
   final int religion;
@@ -402,7 +442,7 @@ void runEliminationChecks(GameState state, int slot, Rng rng,
     seizures--;
   }
 
-  foundReplacementDynasty(state, slot, rng);
+  foundReplacementDynasty(state, slot, rng, events);
 }
 
 int _muslimEquivalent(int muslimClass) =>

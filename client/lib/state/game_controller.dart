@@ -17,10 +17,6 @@ class GameController extends ChangeNotifier {
   final LocalGameSession _session;
   final List<GameState> _undoStack = [];
 
-  /// Absolute event position (`prunedEventCount + list index`) up to which
-  /// each slot has seen its recap — stable across event-log pruning.
-  final Map<int, int> _recapBaseline = {};
-
   bool _handoffPending = false;
   int _handoffToSlot = 0;
   bool _busy = false;
@@ -134,9 +130,12 @@ class GameController extends ChangeNotifier {
       .where((d) => d.decidingSlot == currentSlot)
       .toList();
 
-  /// Events the seated player has not seen yet — the recap card.
+  /// Events the seated player has not seen yet — the recap card. The
+  /// baseline is an absolute event position (`prunedEventCount + index`,
+  /// stable across pruning) stored in the game state, so it survives app
+  /// restarts.
   List<GameEvent> recapFor(int slot) {
-    final baseline = _recapBaseline[slot] ?? 0;
+    final baseline = state.recapBaselines[slot] ?? 0;
     final from =
         (baseline - state.prunedEventCount).clamp(0, state.events.length);
     return [
@@ -151,7 +150,10 @@ class GameController extends ChangeNotifier {
   }
 
   void markRecapSeen(int slot) {
-    _recapBaseline[slot] = state.prunedEventCount + state.events.length;
+    // Written into the session's live state (persisted with the next
+    // auto-save) — endTurn copies the state right after, carrying it over.
+    state.recapBaselines[slot] =
+        state.prunedEventCount + state.events.length;
   }
 
   /// Deterministic in-turn action — undoable (PROJECT_REQUIREMENTS).
@@ -206,14 +208,30 @@ class GameController extends ChangeNotifier {
 
   /// Ends a war round: the AI side moves, then the round advances. When
   /// the war finishes, AI turns resume until a human's action phase.
-  Future<void> endWarRound() async {
-    if (_busy) return;
+  /// Returns the round's events (battles, plunders, war end) so the UI
+  /// can show them as a report popup.
+  Future<List<GameEvent>> endWarRound() async {
+    if (_busy) return const [];
     _busy = true;
     selectedWarUnit = null;
     notifyListeners();
+    var events = const <GameEvent>[];
+    // Pre-round positions of the AI side's units: the human can't watch
+    // the AI act, so the round report lists the enemy's movements.
+    final beforePositions = <int, List<(String, int, int)>>{};
+    final warBefore = state.activeWar;
+    if (warBefore != null) {
+      for (final slot in [warBefore.attackerSlot, warBefore.defenderSlot]) {
+        if (state.dynasty(slot).status != DynastyStatus.human) {
+          beforePositions[slot] = [
+            for (final t in state.realm(slot).troops) (t.name, t.x, t.y),
+          ];
+        }
+      }
+    }
     try {
       _undoStack.clear();
-      _session.mutate((s, rng, events) {
+      events = _session.mutate((s, rng, events) {
         final war = s.activeWar;
         if (war == null) return;
         for (final slot in [war.attackerSlot, war.defenderSlot]) {
@@ -226,6 +244,71 @@ class GameController extends ChangeNotifier {
           endWarRoundRule(s, rng, events);
         }
       });
+      await _resumeAfterWarIfOver();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+    return [...events, ..._enemyMovementEvents(beforePositions)];
+  }
+
+  /// Synthetic (report-only, never stored) events describing what the AI
+  /// side's units did this round. Skipped once the war is over — the
+  /// post-war troop return would otherwise read as movement.
+  List<GameEvent> _enemyMovementEvents(
+      Map<int, List<(String, int, int)>> before) {
+    if (before.isEmpty || state.activeWar == null) return const [];
+    final events = <GameEvent>[];
+    for (final entry in before.entries) {
+      final troops = state.realm(entry.key).troops;
+      if (troops.isEmpty) continue;
+      // Match after-units to a distinct same-named before-entry, in list
+      // order (names can repeat — same scheme as the war snapshots).
+      final used = List<bool>.filled(entry.value.length, false);
+      var moves = 0;
+      for (final troop in troops) {
+        for (var i = 0; i < entry.value.length; i++) {
+          final (name, x, y) = entry.value[i];
+          if (used[i] || name != troop.name) continue;
+          used[i] = true;
+          if (x != troop.x || y != troop.y) {
+            moves++;
+            events.add(GameEvent(
+              year: state.year,
+              slot: entry.key,
+              type: 'enemyMoved',
+              visibility: EventVisibility.public,
+              payload: {
+                'unit': troop.name,
+                'fromX': x,
+                'fromY': y,
+                'x': troop.x,
+                'y': troop.y,
+              },
+            ));
+          }
+          break;
+        }
+      }
+      if (moves == 0) {
+        events.add(GameEvent(
+          year: state.year,
+          slot: entry.key,
+          type: 'enemyHolds',
+          visibility: EventVisibility.public,
+        ));
+      }
+    }
+    return events;
+  }
+
+  /// Call after a war action ended the war outside [endWarRound] (capital
+  /// capture during a march): resumes the paused AI advance and saves.
+  Future<void> resumeAfterWar() async {
+    if (_busy || state.activeWar != null) return;
+    _busy = true;
+    notifyListeners();
+    try {
       await _resumeAfterWarIfOver();
     } finally {
       _busy = false;

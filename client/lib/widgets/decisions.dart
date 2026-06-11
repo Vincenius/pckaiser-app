@@ -5,8 +5,9 @@ import '../state/game_controller.dart';
 import 'event_feed.dart';
 
 /// After the handoff: prompt every pending decision addressed to [slot]
-/// first (marriage consent, baby names, …), then show the recap card —
-/// the summary reads better once the player has acted.
+/// first (marriage consent, baby names, …), then the standalone drama
+/// popups (assassinations, coronation), then the recap card — the
+/// summary reads better once the player has acted.
 Future<void> showRecapAndDecisions(
     BuildContext context, GameController controller, int slot) async {
   while (true) {
@@ -17,6 +18,8 @@ Future<void> showRecapAndDecisions(
     if (decisions.isEmpty) break;
     await _promptDecision(context, controller, decisions.first);
   }
+  if (!context.mounted) return;
+  await showDramaPopups(context, controller, slot);
   if (!context.mounted) return;
   await showRecapCard(context, controller, slot);
 }

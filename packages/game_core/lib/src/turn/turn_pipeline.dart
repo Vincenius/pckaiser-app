@@ -9,6 +9,7 @@ import '../rules/offices.dart';
 import '../rules/population.dart';
 import '../rules/titles.dart';
 import '../state/constants.dart';
+import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 
@@ -145,6 +146,14 @@ void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   // resolve — vacant slots take no turns — so drop them.
   state.assassinationOrders
       .removeWhere((o) => state.realm(o.targetSlot).isVacant);
+
+  // Decisions are only created for human dynasties; one whose slot has
+  // since turned AI or vacant (strife, capture, merge) is never surfaced
+  // again and would sit in the state forever — drop it. The rules treat
+  // an unresolved decision as its default anyway.
+  state.pendingDecisions.removeWhere((d) =>
+      state.dynasty(d.decidingSlot).status != DynastyStatus.human ||
+      state.realm(d.decidingSlot).isVacant);
 }
 
 /// Per-turn upkeep for `state.currentPlayer` (§6.1 step 1): food →
@@ -164,6 +173,9 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
   realm.soldCattleThisTurn = false;
   realm.investedThisTurn = false;
   realm.proposedMarriageThisTurn = false;
+  for (final troop in realm.troops) {
+    troop.drilledThisTurn = false;
+  }
 
   events.add(GameEvent(
     year: state.year,

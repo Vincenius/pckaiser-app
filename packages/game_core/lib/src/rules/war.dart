@@ -65,8 +65,19 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 ///
 ///   losses_side = round(P_opponent × R / (2 × (1 + def_side)))
 ///
-/// One `RandomReal` roll R ∈ [0, 1) per encounter. Spec'd in
-/// PROJECT_REQUIREMENTS.md "Rule deviations".
+/// Rules < v5 keep a single `RandomReal` roll R ∈ [0, 1) per encounter
+/// (battles typically killed 0–3 men, so wars dragged on forever). Rules
+/// v5 decide each encounter: the side with the higher effective strength
+///
+///   eff = P × (1 + def / 2) × fortune     (one shared fortune roll,
+///                                          [0.5, 1.5) vs its mirror)
+///
+/// wins the clash — the loser takes 35–65% casualties (a remnant under 5
+/// men is wiped), the winner 10–25% (and always survives). Equal forces
+/// on open ground trade ~50/50 wins, so a unit typically falls after
+/// 2–5 engagements; a fortified or clearly stronger side wins most
+/// clashes and grinds the enemy down fast while bleeding slowly. Spec'd
+/// in PROJECT_REQUIREMENTS.md "Rule deviations".
 List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
     int slotB, Troop b, Rng rng) {
   int defense(Troop t) {
@@ -81,13 +92,41 @@ List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
     return def;
   }
 
+  final defenseA = defense(a);
+  final defenseB = defense(b);
   final r = rng.nextReal();
   final powerA = (a.men * (3 * a.troopClass + a.quality) / 10).floor();
   final powerB = (b.men * (3 * b.troopClass + b.quality) / 10).floor();
-  var lossesA =
-      math.min(a.men, (powerB * r / (2 * (1 + defense(a)))).round());
-  var lossesB =
-      math.min(b.men, (powerA * r / (2 * (1 + defense(b)))).round());
+  int lossesA;
+  int lossesB;
+
+  if (state.rulesVersion >= 5) {
+    final effA = powerA * (1 + defenseA / 2) * (0.5 + r);
+    final effB = powerB * (1 + defenseB / 2) * (1.5 - r);
+    final loserShare = 0.35 + 0.3 * rng.nextReal();
+    final winnerShare = 0.10 + 0.15 * rng.nextReal();
+    int loserLosses(int men) {
+      final losses = math.max(1, (men * loserShare).round());
+      // A remnant under 5 men is wiped — no endless 1-man tail fights.
+      return men - losses < 5 ? men : losses;
+    }
+
+    int winnerLosses(int men) =>
+        math.min(men - 1, (men * winnerShare).round());
+
+    if (effA >= effB) {
+      lossesA = winnerLosses(a.men);
+      lossesB = loserLosses(b.men);
+    } else {
+      lossesA = loserLosses(a.men);
+      lossesB = winnerLosses(b.men);
+    }
+  } else {
+    lossesA =
+        math.min(a.men, (powerB * r / (2 * (1 + defenseA))).round());
+    lossesB =
+        math.min(b.men, (powerA * r / (2 * (1 + defenseB))).round());
+  }
 
   if (lossesA == a.men && lossesB == b.men) {
     // Simultaneous annihilation: random(2) picks one side to keep 1 man.
@@ -98,6 +137,8 @@ List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
     }
   }
 
+  final destroyedA = lossesA >= a.men;
+  final destroyedB = lossesB >= b.men;
   _applyLosses(state, slotA, a, lossesA);
   _applyLosses(state, slotB, b, lossesB);
 
@@ -112,6 +153,9 @@ List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
         'defenderUnit': b.name,
         'attackerLosses': lossesA,
         'defenderLosses': lossesB,
+        'defenderSlot': slotB,
+        'attackerDestroyed': destroyedA,
+        'defenderDestroyed': destroyedB,
         'x': b.x,
         'y': b.y,
       },
@@ -394,6 +438,21 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
         type: 'winterEndsWar',
         visibility: EventVisibility.public,
       ));
+    } else if (state.rulesVersion >= 5) {
+      // Rules v5: a NEGOTIATED peace is a white peace — status quo ante,
+      // nobody gains tiles or money (under v1–v4 rules the leading side
+      // still collected its full claim, so agreeing to peace could lose
+      // you land). Only a winter-forced end goes to score arbitration.
+      events.add(GameEvent(
+        year: state.year,
+        slot: 0,
+        type: 'peaceAgreed',
+        visibility: EventVisibility.public,
+        participants: [war.attackerSlot, war.defenderSlot],
+      ));
+      _returnTroops(state, war, events);
+      state.activeWar = null;
+      return;
     }
     resolveWarEnd(state, rng, events);
     return;
@@ -407,14 +466,57 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   _rollWarMoves(state, war, rng);
 }
 
+/// Pairs each troop with a distinct snapshot of the same name, in list
+/// order. Units are snapshotted by name only, and names repeat (every AI
+/// recruit is "Rekruten") — naive name lookup would match every duplicate
+/// to the FIRST snapshot. Entries are null for troops without a snapshot
+/// (e.g. merged in mid-war under pre-v4 rules).
+List<UnitSnapshot?> matchedSnapshots(
+    List<Troop> troops, List<UnitSnapshot> snapshots) {
+  final used = List<bool>.filled(snapshots.length, false);
+  UnitSnapshot? claim(Troop troop) {
+    for (var i = 0; i < snapshots.length; i++) {
+      if (!used[i] && snapshots[i].name == troop.name) {
+        used[i] = true;
+        return snapshots[i];
+      }
+    }
+    return null;
+  }
+
+  return [for (final troop in troops) claim(troop)];
+}
+
+/// Whether [slot]'s AI would currently agree to peace (§11.2 AI peace
+/// rules). Surfaced to the war UI so a human knows that wishing for
+/// peace and ending the round would actually end the war.
+bool aiWouldAcceptPeace(GameState state, int slot) {
+  final war = state.activeWar;
+  if (war == null || !war.isParticipant(slot)) return false;
+  return _aiWantsPeace(state, war, slot);
+}
+
 bool _aiWantsPeace(GameState state, ActiveWar war, int slot) {
   final realm = state.realm(slot);
   final snapshots = war.snapshots[slot] ?? const [];
+  // Home test: every unit claims a distinct snapshot matching name AND
+  // position — same-named units are interchangeable, so the side is home
+  // exactly when the position multisets match.
+  final used = List<bool>.filled(snapshots.length, false);
   var allHome = true;
   for (final troop in realm.troops) {
-    final home = snapshots.any(
-        (s) => s.name == troop.name && s.x == troop.x && s.y == troop.y);
-    if (!home) {
+    var found = false;
+    for (var i = 0; i < snapshots.length; i++) {
+      if (!used[i] &&
+          snapshots[i].name == troop.name &&
+          snapshots[i].x == troop.x &&
+          snapshots[i].y == troop.y) {
+        used[i] = true;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
       allHome = false;
       break;
     }
@@ -498,7 +600,10 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
     payload: {'claim': claim, 'loserSlot': loserSlot},
   ));
 
-  if (claim >= (loserValue * 0.4).round()) {
+  // Rules < v5: a decisive score auto-converts every occupied tile. From
+  // v5 on EVERY victory opens the claim settlement instead — the winner
+  // chooses which tiles to take (humans tap, AIs auto-settle).
+  if (state.rulesVersion < 5 && claim >= (loserValue * 0.4).round()) {
     // Decisive: every tile occupied by a winner unit converts.
     final winner = state.realm(winnerSlot);
     for (final troop in List.of(winner.troops)) {
@@ -512,7 +617,7 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
     return;
   }
 
-  // Limited victory → claim settlement.
+  // Victory → claim settlement.
   war.phase = WarPhase.settlement;
   war.winnerSlot = winnerSlot;
   war.remainingClaim = claim;
@@ -596,11 +701,12 @@ void _returnTroops(GameState state, ActiveWar war, List<GameEvent> events) {
     final realm = state.realm(slot);
     realm.troops.removeWhere((t) => t.men <= 0);
     final snapshots = war.snapshots[slot] ?? const [];
-    for (final troop in realm.troops) {
-      final snapshot = snapshots.where((s) => s.name == troop.name);
-      if (snapshot.isNotEmpty) {
-        troop.x = snapshot.first.x;
-        troop.y = snapshot.first.y;
+    final matched = matchedSnapshots(realm.troops, snapshots);
+    for (var i = 0; i < realm.troops.length; i++) {
+      final snapshot = matched[i];
+      if (snapshot != null) {
+        realm.troops[i].x = snapshot.x;
+        realm.troops[i].y = snapshot.y;
       }
     }
   }
@@ -641,18 +747,24 @@ List<GameEvent> plunderTile(GameState state, int plundererSlot, int x,
   final victim = state.realm(victimSlot);
   final events = <GameEvent>[];
 
+  // Result numbers for the event payload (the client's battle report).
+  var loot = 0;
+  var killed = 0;
+  var destroyed = false;
+
   switch (building) {
     case Building.kornfeld || Building.weide:
       map.building[map.index(x, y)] = Building.none;
       map.owner[map.index(x, y)] = World.niemand;
       victim.tileCount[building]--;
+      destroyed = true;
     case Building.dorf || Building.markt || Building.stadt:
       final town = victim.towns.firstWhere((t) => t.x == x && t.y == y);
-      final killed = rng.nextInt(town.population ~/ 2);
-      final looted = rng.nextInt(town.population);
+      killed = rng.nextInt(town.population ~/ 2);
+      loot = rng.nextInt(town.population);
       final capacityCut =
           rng.nextInt(math.max(0, town.troopCapacity - town.garrison));
-      plunderer.treasury += looted; // victim's treasury is NOT touched
+      plunderer.treasury += loot; // victim's treasury is NOT touched
       town.population -= killed;
       victim.population -= killed;
       if (capacityCut > 0) {
@@ -660,8 +772,7 @@ List<GameEvent> plunderTile(GameState state, int plundererSlot, int x,
         victim.troopCapacity -= capacityCut;
       }
     case Building.burg || Building.palast || Building.hafen:
-      final loot =
-          victim.treasury > 0 ? rng.nextInt(victim.treasury) : 0;
+      loot = victim.treasury > 0 ? rng.nextInt(victim.treasury) : 0;
       victim.treasury -= loot;
       plunderer.treasury += loot;
   }
@@ -671,7 +782,15 @@ List<GameEvent> plunderTile(GameState state, int plundererSlot, int x,
     slot: plundererSlot,
     type: 'plunder',
     visibility: EventVisibility.public,
-    payload: {'x': x, 'y': y, 'building': building, 'victim': victimSlot},
+    payload: {
+      'x': x,
+      'y': y,
+      'building': building,
+      'victim': victimSlot,
+      'loot': loot,
+      'killed': killed,
+      'destroyed': destroyed,
+    },
   ));
   return events;
 }

@@ -41,6 +41,10 @@ abstract final class Building {
   static const List<int?> cost = [
     null, 100, 150, 1000, null, null, 5000, 10000, 700,
   ];
+
+  /// "(S)chiff" colony ship (§4/§9.3) — not a building on a tile: sent
+  /// from a Hafen to claim a free land tile across water, consumed on use.
+  static const int shipCost = 700;
 }
 
 /// World dimensions and slot conventions (§2, §3.1).

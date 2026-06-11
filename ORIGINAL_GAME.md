@@ -193,7 +193,9 @@ point and the listed Taler):
   (§8.3) with population `75 + random(50)`, capacity 25, garrison 0; the
   player names it (first Dorf named at setup).
 - Burg / Palast / Hafen built explicitly (Hafen on the coast).
-- `(S)chiff` (trade ship) 700 T — enables/expands ship investment (§9.2).
+- `(S)chiff` (colony ship) 700 T — sent out from a Hafen to colonize a
+  free land tile across the sea (§9.3); distinct from the *trade-ship
+  investment* of §9.2, which is keyed off the Hafen count, not ships.
 - `(A)breißen` (demolish a field) 100 T — clears the building.
 - Markt and Stadt can never be built — they only grow from towns (§8.3).
 - Claiming an adjacent unowned land tile costs 1 movement point and makes it
@@ -475,6 +477,27 @@ if random(2) == 0:  treasury += amount + random(amount) + 1   # profit, ≤ 2×
 else:               treasury += amount − (random(amount) + 1) # loss, ≥ 0
 ```
 
+### 9.3 Colony ships (`(S)chiff`, build menu)
+
+Manual: "Häfen bringen Geld, man kann von ihnen aus aber auch Schiffe
+ausschicken, um z.B. unbewohnte Inseln zu kolonisieren. Um dies zu tun,
+muß man sein Schiff einfach gegen ein freies Landfeld steuern." — a ship
+is launched from a Hafen and steered tile-by-tile over water (1 movement
+point per tile, also onto a Hafen, §6.3); steering it against a **free
+land tile** colonizes that tile for the player.
+
+Colonization itself (`proc_005D2B`, fully decoded):
+
+```
+tile(shipX, shipY).owner = currentPlayer     # the free land tile hit
+treasury −= 700                              # the ship is consumed at its build cost
+```
+
+The claimed tile is empty — founding a Dorf there is a normal build
+action afterwards. UI strings: "(S)chiff: 700 T", "(S)chiff steuern",
+"Hier kommt das Schiff unmöglich hin ! Sie können nicht weiter ziehen !"
+(invalid ship move / out of movement points).
+
 ---
 
 ## 10. Military: Troops, Recruitment, Garrisons
@@ -505,7 +528,9 @@ power = `(3 × class + quality) / 10`:
   but cost upkeep every turn (§7.4).
 - Military menu: `(K)rieg erklären`, `Truppe (b)ilden` (create unit),
   `Truppe ver(s)tärken` (add men), `Truppe (a)uflösen` (disband),
-  `Truppen ver(e)inigen` (merge units), `Truppe ausb(i)lden` (set class),
+  `Truppen ver(e)inigen` (merge units), `Truppe ausb(i)lden` (drill —
+  traced `proc_00A316`: cost = men × 5 T, increments the unit's
+  **quality** counter (`+0x1a`) by 1, class unchanged),
   `Truppens(t)andort` (position), `Truppen(l)iste`, `(H)auptmenü`.
 - Troops must be stationed on own territory ("müssen Ihre Truppen auf Ihrem
   Territorium stationieren!").

@@ -128,6 +128,84 @@ List<GameEvent> applyReinforceTroop(
   return const [];
 }
 
+/// "Truppe ausbilden" — drill (§10.2, rules v7): the traced original
+/// training (`proc_00A316`: cost = men × 5, quality counter +1). Once per
+/// unit per turn, regulars only, quality capped at [Troop.drillCap]
+/// `[DESIGNED]`. Pre-v7 games keep playing without it.
+List<GameEvent> applyDrillTroop(
+    GameState state, Realm realm, DrillTroop action) {
+  if (state.rulesVersion < 7) {
+    throw ActionException('Das geht in diesem Spielstand noch nicht !');
+  }
+  _requireNotAtWar(state, realm);
+  final troop = unitAt(realm, action.unitIndex);
+  // Söldner (and event units) are not garrison-counted — only the realm's
+  // own regulars drill, whatever quality they have reached.
+  if (!troop.garrisonCounted) {
+    throw ActionException('Nur reguläre Truppen lassen sich ausbilden !');
+  }
+  if (troop.quality >= Troop.drillCap) {
+    throw ActionException('Diese Truppe ist bereits voll ausgebildet !');
+  }
+  if (troop.drilledThisTurn) {
+    throw ActionException(
+        'Diese Truppe wurde in dieser Runde schon ausgebildet !');
+  }
+  final cost = 5 * troop.men;
+  if (realm.treasury < cost) {
+    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+  }
+  realm.treasury -= cost;
+  troop.quality++;
+  troop.drilledThisTurn = true;
+  return const [];
+}
+
+/// "Truppe umrüsten" (rules v5): retrain a regular unit to a new
+/// class for 5 T/man plus the class surcharge. Pre-v5 games keep playing
+/// without it (new capability = balance change).
+List<GameEvent> applyTrainTroop(
+    GameState state, Realm realm, TrainTroop action) {
+  if (state.rulesVersion < 5) {
+    throw ActionException('Das geht in diesem Spielstand noch nicht !');
+  }
+  _requireNotAtWar(state, realm);
+  final troop = unitAt(realm, action.unitIndex);
+  // Garrison-counted = the realm's own regulars (drilled quality stays
+  // retrainable under v7); Söldner/event units are excluded.
+  if (!troop.garrisonCounted) {
+    throw ActionException('Nur reguläre Truppen lassen sich ausbilden !');
+  }
+  if (action.troopClass < TroopClass.infanterie ||
+      action.troopClass > TroopClass.artillerie) {
+    throw ActionException('Unbekannte Truppengattung !');
+  }
+  if (action.troopClass == troop.troopClass) {
+    throw ActionException('Diese Ausbildung hat die Truppe schon !');
+  }
+  final cost = 5 * troop.men + classSurcharge(action.troopClass);
+  if (realm.treasury < cost) {
+    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+  }
+  realm.treasury -= cost;
+  troop.troopClass = action.troopClass;
+  return const [];
+}
+
+/// Renames a unit. Free, but forbidden at war: the war's snapshots and
+/// the post-war troop return match units BY NAME.
+List<GameEvent> applyRenameTroop(
+    GameState state, Realm realm, RenameTroop action) {
+  _requireNotAtWar(state, realm);
+  final troop = unitAt(realm, action.unitIndex);
+  final name = action.name.trim();
+  if (name.isEmpty) {
+    throw ActionException('Die Truppe braucht einen Namen !');
+  }
+  troop.name = name.length > 20 ? name.substring(0, 20) : name;
+  return const [];
+}
+
 /// Merging/disbanding reshapes the troop list, which the active war's
 /// `movesLeft` and snapshots are keyed to — forbidden while at war.
 void _requireNotAtWar(GameState state, Realm realm) {
@@ -158,6 +236,7 @@ List<GameEvent> applyMergeTroops(
   }
   to.men += from.men;
   realm.troops.remove(from);
+  _refreshMarkers(state); // the absorbed unit's marker must not linger
   return const [];
 }
 
@@ -167,6 +246,7 @@ List<GameEvent> applyDisbandTroop(
   final troop = unitAt(realm, action.unitIndex);
   if (troop.garrisonCounted) releaseGarrison(realm, troop.men);
   realm.troops.remove(troop);
+  _refreshMarkers(state); // the disbanded unit's marker must not linger
   return const [];
 }
 
@@ -181,10 +261,13 @@ List<GameEvent> applyMoveTroop(
     throw ActionException(
         'Du musst deine Truppen auf deinem Territorium stationieren !');
   }
-  if (realm.movementPoints < 1) {
-    throw ActionException('Du hast keine Züge mehr !');
+  // Rules v3: relocating troops is free — only building consumes Züge.
+  if (state.rulesVersion < 3) {
+    if (realm.movementPoints < 1) {
+      throw ActionException('Du hast keine Züge mehr !');
+    }
+    realm.movementPoints--;
   }
-  realm.movementPoints--;
   map.troopMarker[map.index(troop.x, troop.y)] = 0;
   troop.x = action.x;
   troop.y = action.y;
@@ -279,18 +362,20 @@ List<GameEvent> applyWarMove(
   final enemySlot = war.opponentOf(realm.slot);
   final enemyRealm = state.realm(enemySlot);
 
-  // Meeting an enemy unit triggers per-tile combat (§11.3).
-  final enemyUnit = enemyRealm.troops
-      .where((t) => t.x == nx && t.y == ny)
-      .toList();
-  if (enemyUnit.isNotEmpty) {
+  // Meeting an enemy unit triggers per-tile combat (§11.3). Rules v4: a
+  // stack of enemy units is fought one after another — earlier rules
+  // fought only the first and then co-located with the survivors.
+  final defenders =
+      enemyRealm.troops.where((t) => t.x == nx && t.y == ny).toList();
+  for (final enemyUnit
+      in state.rulesVersion >= 4 ? defenders : defenders.take(1)) {
     events.addAll(
-        resolveCombat(state, realm.slot, troop, enemySlot, enemyUnit.first, rng));
+        resolveCombat(state, realm.slot, troop, enemySlot, enemyUnit, rng));
     if (!realm.troops.contains(troop)) {
       _refreshMarkers(state);
       return events; // the mover was annihilated
     }
-    if (enemyRealm.troops.contains(enemyUnit.first)) {
+    if (enemyRealm.troops.contains(enemyUnit)) {
       _refreshMarkers(state);
       return events; // defender held the tile
     }
@@ -302,7 +387,13 @@ List<GameEvent> applyWarMove(
   map.troopMarker[map.index(nx, ny)] = 1;
 
   // Ruler capture (§11.2): a unit on the enemy capital ends the war.
-  if (nx == enemyRealm.capitalX && ny == enemyRealm.capitalY) {
+  // Rules v4: only while the capital tile is still enemy-owned — stale
+  // capital coordinates (the tile was conquered or seized in an earlier
+  // war/bankruptcy and the seat never relocated) no longer grant an
+  // instant capture by stepping onto a tile the attacker may even own.
+  if (nx == enemyRealm.capitalX &&
+      ny == enemyRealm.capitalY &&
+      (state.rulesVersion < 4 || map.ownerAt(nx, ny) == enemySlot)) {
     endWarByCapture(state, realm.slot, rng, events);
   }
   return events;

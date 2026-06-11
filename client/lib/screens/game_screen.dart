@@ -14,6 +14,7 @@ import '../widgets/decisions.dart';
 import '../widgets/menus.dart';
 import '../widgets/tile_sheet.dart';
 import '../widgets/war_panel.dart';
+import '../widgets/war_report.dart';
 
 /// The in-game screen: Flame map + HUD + menus, with the hot-seat handoff
 /// blocker and pending-decision prompts layered on top.
@@ -57,7 +58,6 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   GameController? _controller;
   MapGame? _game;
-  late bool _tutorialActive = widget.tutorial;
 
   @override
   void initState() {
@@ -70,8 +70,10 @@ class _GameScreenState extends State<GameScreen> {
       if (widget.tutorial) controller.confirmHandoff();
       final game = MapGame(initial: controller.visibleState);
       game.onTileTap = (x, y) => _onTileTap(controller, x, y);
+      _syncWarOverlay(controller, game);
       controller.addListener(() {
         game.updateState(controller.visibleState);
+        _syncWarOverlay(controller, game);
         if (mounted) setState(() {});
       });
       setState(() {
@@ -103,10 +105,30 @@ class _GameScreenState extends State<GameScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// War-mode taps: tap an own army to select it, then tap any tile to
-  /// march toward it (one orthogonal step per movement point; meeting an
-  /// enemy unit fights, reaching the enemy Königssitz wins the war).
-  void _onWarTileTap(GameController controller, int x, int y) {
+  /// Mirrors the war state into the map overlay: pulsing ring on the
+  /// selected unit, crosshair on the war goal (the enemy Königssitz).
+  void _syncWarOverlay(GameController controller, MapGame game) {
+    final war = controller.state.activeWar;
+    final slot = controller.warHumanSlot;
+    if (war == null || slot == null || war.phase != gc.WarPhase.rounds) {
+      game.selectedTile = null;
+      game.warTargetTile = null;
+      return;
+    }
+    final enemy = controller.state.realm(war.opponentOf(slot));
+    game.warTargetTile = (enemy.capitalX, enemy.capitalY);
+    final selected = controller.selectedWarUnit;
+    final troops = controller.state.realm(slot).troops;
+    game.selectedTile = selected != null && selected < troops.length
+        ? (troops[selected].x, troops[selected].y)
+        : null;
+  }
+
+  /// War-mode taps: tap an own army to select it (tap again to deselect),
+  /// then tap any tile to march toward it — tapping an enemy army attacks
+  /// it, reaching the enemy Königssitz wins the war. Battle results are
+  /// shown as popups.
+  Future<void> _onWarTileTap(GameController controller, int x, int y) async {
     final war = controller.state.activeWar!;
     final slot = controller.warHumanSlot;
     if (slot == null) return;
@@ -126,36 +148,46 @@ class _GameScreenState extends State<GameScreen> {
     final tappedUnit =
         realm.troops.indexWhere((t) => t.x == x && t.y == y);
     if (tappedUnit >= 0) {
-      controller.selectWarUnit(tappedUnit);
+      controller.selectWarUnit(
+          tappedUnit == controller.selectedWarUnit ? null : tappedUnit);
       return;
     }
     final selected = controller.selectedWarUnit;
     if (selected == null || selected >= realm.troops.length) {
-      _toast('Wähle zuerst eine deiner Truppen !');
+      final enemyHere = controller.state
+          .realm(war.opponentOf(slot))
+          .troops
+          .any((t) => t.x == x && t.y == y);
+      _toast(enemyHere
+          ? 'Wähle zuerst eine deiner Truppen — dann tippe die '
+              'feindliche Armee an, um sie anzugreifen !'
+          : 'Wähle zuerst eine deiner Truppen !');
       return;
     }
-    _marchToward(controller, slot, selected, x, y);
+    await _marchToward(controller, slot, selected, x, y);
   }
 
   /// Greedy orthogonal march of the selected unit toward (tx, ty): one
   /// step at a time until the moves run out, combat holds the unit, the
-  /// path is blocked, or the war ends (capital capture).
-  void _marchToward(
-      GameController controller, int slot, int unitIndex, int tx, int ty) {
+  /// path is blocked, or the war ends (capital capture). Afterwards all
+  /// battle/capture events of the march pop up as a report.
+  Future<void> _marchToward(GameController controller, int slot,
+      int unitIndex, int tx, int ty) async {
+    final report = <gc.GameEvent>[];
     final unitName = controller.state.realm(slot).troops[unitIndex].name;
     for (var guard = 0; guard < 40; guard++) {
       final war = controller.state.activeWar;
-      if (war == null || war.phase != gc.WarPhase.rounds) return;
+      if (war == null || war.phase != gc.WarPhase.rounds) break;
       final troops = controller.state.realm(slot).troops;
       if (unitIndex >= troops.length ||
           troops[unitIndex].name != unitName) {
         controller.selectWarUnit(null);
-        return; // the unit was destroyed
+        break; // the unit was destroyed
       }
       final troop = troops[unitIndex];
       final remainingX = tx - troop.x;
       final remainingY = ty - troop.y;
-      if (remainingX == 0 && remainingY == 0) return; // arrived
+      if (remainingX == 0 && remainingY == 0) break; // arrived
 
       // Prefer the longer axis; fall back to the other on a blocked step.
       final primary = remainingX.abs() >= remainingY.abs()
@@ -166,31 +198,41 @@ class _GameScreenState extends State<GameScreen> {
           : (remainingX.sign, 0);
       final beforeX = troop.x;
       final beforeY = troop.y;
-      var error = _warStepError(controller, slot, unitIndex, primary);
+      var error = _warStep(controller, slot, unitIndex, primary, report);
       if (error != null && secondary != (0, 0)) {
-        error = _warStepError(controller, slot, unitIndex, secondary);
+        error = _warStep(controller, slot, unitIndex, secondary, report);
       }
       if (error != null) {
-        _toast(error); // blocked on both axes or out of moves
-        return;
+        // Blocked on both axes or out of moves: only worth a toast when
+        // nothing happened — after a battle the popup explains the halt.
+        if (report.isEmpty) _toast(error);
+        break;
       }
       final after = controller.state.realm(slot).troops;
       if (unitIndex < after.length &&
           after[unitIndex].name == unitName &&
           after[unitIndex].x == beforeX &&
           after[unitIndex].y == beforeY) {
-        return; // combat: the defender held the tile
+        break; // combat: the defender held the tile
       }
+    }
+    if (!mounted) return;
+    await showWarReport(context, report, viewerSlot: slot);
+    // A capital capture ends the war mid-march: resume the paused AI turn.
+    if (controller.state.activeWar == null) {
+      await controller.resumeAfterWar();
     }
   }
 
   /// One war step; returns null on success or the engine's message.
-  String? _warStepError(GameController controller, int slot, int unitIndex,
-      (int, int) step) {
+  /// Emitted events (battles, capture, war end) are appended to [report].
+  String? _warStep(GameController controller, int slot, int unitIndex,
+      (int, int) step, List<gc.GameEvent> report) {
     if (step == (0, 0)) return 'Unpassierbar !';
     try {
-      controller.applyWarAction(gc.WarMove(
+      final result = controller.applyWarAction(gc.WarMove(
           slot: slot, unitIndex: unitIndex, dx: step.$1, dy: step.$2));
+      report.addAll(result.events);
       return null;
     } on gc.ActionException catch (e) {
       return e.message;
@@ -239,7 +281,7 @@ class _GameScreenState extends State<GameScreen> {
                 // Keyed: the war panel / tile-pick banner are inserted as
                 // siblings above, and without a key that recreates this
                 // element and resets the tutorial progress.
-                if (_tutorialActive)
+                if (widget.tutorial)
                   Align(
                     key: const ValueKey('tutorial-overlay'),
                     alignment: Alignment.bottomCenter,
@@ -249,8 +291,10 @@ class _GameScreenState extends State<GameScreen> {
                       maintainState: true,
                       child: TutorialOverlay(
                         controller: controller,
-                        onFinish: () =>
-                            setState(() => _tutorialActive = false),
+                        // Both finishing and quitting leave the practice
+                        // game and return to the main menu (the session
+                        // is ephemeral and never saved).
+                        onFinish: () => Navigator.of(context).pop(),
                         onQuit: () => Navigator.of(context).pop(),
                       ),
                     ),
@@ -346,12 +390,35 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  /// Asks for confirmation, then leaves the game back to the main menu —
+  /// every completed turn is auto-saved, so leaving is always safe.
+  Future<void> _confirmLeaveGame() async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Spiel verlassen?'),
+        content: const Text(
+            'Der letzte abgeschlossene Zug ist gespeichert.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(tr('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Spiel verlassen')),
+        ],
+      ),
+    );
+    if (sure == true && mounted) {
+      Navigator.of(context).maybePop();
+    }
+  }
+
   /// Slim status row, replacing both the old HUD and the top-bar overlay
-  /// (which used to block map tiles): one tappable chip with realm color
-  /// and year/realm (tap for the full "Mein Reich" stats), undo, and end
-  /// turn. Taler and Züge live in the top-right [_resourceChip]. Leaving
-  /// the game lives in Info → "Spiel verlassen" instead of a prominent
-  /// back button.
+  /// (which used to block map tiles): leave-game button, one tappable
+  /// chip with realm color and year/realm (tap for the full "Mein Reich"
+  /// stats), undo, and end turn. Taler and Züge live in the top-right
+  /// [_resourceChip].
   Widget _statusRow(GameController controller) {
     final realmName = gc.countryNames[controller.currentSlot];
     final theme = Theme.of(context);
@@ -360,7 +427,12 @@ class _GameScreenState extends State<GameScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Row(children: [
-          const SizedBox(width: 4),
+          IconButton(
+            onPressed: _confirmLeaveGame,
+            icon: const Icon(Icons.logout),
+            color: theme.colorScheme.error,
+            tooltip: 'Spiel verlassen',
+          ),
           Flexible(
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
@@ -443,6 +515,51 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  /// "Krieg !" orientation popup when the device is handed to the
+  /// defender of a freshly started (or save-resumed) war: names the
+  /// attacker and explains the war controls before the war panel takes
+  /// over. The attacker started the war themselves and needs no briefing.
+  Future<void> _maybeShowWarAlert(
+      GameController controller, int slot) async {
+    final war = controller.state.activeWar;
+    if (war == null ||
+        war.phase != gc.WarPhase.rounds ||
+        war.defenderSlot != slot) {
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(children: [
+          const Icon(Icons.gavel, color: Colors.red),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Krieg !',
+              style: Theme.of(context).textTheme.titleLarge)),
+        ]),
+        content: Text(
+            '${gc.countryNames[war.attackerSlot]} ist mit Armeen in dein '
+            'Land eingefallen !\n\n'
+            'Tippe eine deiner Truppen an (Schild auf farbigem Wappen) '
+            'und dann ein Ziel auf der Karte: feindliche Armeen werden '
+            'angegriffen. Einmal pro Runde kannst du auf feindlichem '
+            'Boden plündern.\n\n'
+            'Der Krieg endet, wenn beide Seiten Frieden wünschen '
+            '(ohne Gebietsänderungen), spätestens im Winter — oder '
+            'sofort, wenn eine Armee den gegnerischen Königssitz '
+            '(rotes Fadenkreuz) erreicht und den Herrscher gefangen '
+            'nimmt.'),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zu den Waffen !'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Hot-seat handoff blocker: hides the predecessor's screen, shows the
   /// recap card, then prompts pending decisions (PROJECT_REQUIREMENTS).
   Widget _handoff(GameController controller) {
@@ -468,6 +585,8 @@ class _GameScreenState extends State<GameScreen> {
               controller.confirmHandoff();
               // Focus the map on the player whose turn begins.
               _game?.focusOnRealm(slot);
+              await _maybeShowWarAlert(controller, slot);
+              if (!mounted) return;
               await showRecapAndDecisions(context, controller, slot);
             },
             child: Padding(

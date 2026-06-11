@@ -208,6 +208,10 @@ void main() {
       final battle =
           result.events.where((e) => e.type == 'battle').toList();
       expect(battle, hasLength(1));
+      // Report payload for the client's battle popup.
+      expect(battle.single.payload['defenderSlot'], 2);
+      expect(battle.single.payload['attackerDestroyed'], isA<bool>());
+      expect(battle.single.payload['defenderDestroyed'], isA<bool>());
       final survivorsA = result.state.realm(1).troops.fold(0, (n, t) => n + t.men);
       final survivorsB = result.state.realm(2).troops.fold(0, (n, t) => n + t.men);
       expect(survivorsA + survivorsB, greaterThan(0));
@@ -277,6 +281,208 @@ void main() {
         throwsA(isA<ActionException>()),
         reason: 'Du hast diese Runde schon geplündert !',
       );
+    });
+
+    test('rules v5: battles bleed — a unit falls within a few engagements',
+        () {
+      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(state.rngSeed))
+          .state;
+      final a = s.realm(1).troops.single;
+      final b = s.realm(2).troops.single;
+      a.x = b.x - 1;
+      a.y = b.y;
+
+      // First encounter: both 50-man units take meaningful losses
+      // (≥ ~15% on open ground; the capital tile defense softens b's).
+      s.activeWar!.movesLeft[1]![0] = 5;
+      var result = applyAction(
+          s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed));
+      s = result.state;
+      final battle = result.events.singleWhere((e) => e.type == 'battle');
+      expect(battle.payload['attackerLosses'], greaterThanOrEqualTo(2),
+          reason: 'no more 0-loss skirmishes');
+      expect(battle.payload['defenderLosses'], greaterThanOrEqualTo(1));
+
+      // Repeated attacks: one side must be wiped out within ~6 fights.
+      var encounters = 1;
+      while (s.realm(1).troops.isNotEmpty &&
+          s.realm(2).troops.isNotEmpty &&
+          encounters < 12) {
+        s.activeWar!.movesLeft[1]![0] = 5;
+        result = applyAction(s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0),
+            Rng(s.rngSeed));
+        s = result.state;
+        encounters += result.events.where((e) => e.type == 'battle').length;
+      }
+      expect(s.realm(1).troops.isEmpty || s.realm(2).troops.isEmpty, isTrue);
+      expect(encounters, lessThanOrEqualTo(8),
+          reason: 'a unit should fall after a few engagements, '
+              'not a dozen skirmishes');
+    });
+
+    test('rules v5: TrainTroop retrains the class for 5 T/man + surcharge',
+        () {
+      final realm = state.realm(1);
+      final treasury = realm.treasury;
+      final men = realm.troops.single.men;
+      var s = applyAction(
+              state,
+              TrainTroop(
+                  slot: 1,
+                  unitIndex: 0,
+                  troopClass: TroopClass.kavallerie),
+              Rng(state.rngSeed))
+          .state;
+      expect(s.realm(1).troops.single.troopClass, TroopClass.kavallerie);
+      expect(s.realm(1).treasury, treasury - (5 * men + 500));
+
+      // Same class again → rejected; Söldner → rejected.
+      expect(
+        () => applyAction(
+            s,
+            TrainTroop(
+                slot: 1, unitIndex: 0, troopClass: TroopClass.kavallerie),
+            Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      s = applyAction(
+              s,
+              HireSoeldner(slot: 1, men: 5, name: 'Garde'),
+              Rng(s.rngSeed))
+          .state;
+      expect(
+        () => applyAction(
+            s,
+            TrainTroop(
+                slot: 1, unitIndex: 1, troopClass: TroopClass.artillerie),
+            Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'Nur reguläre Truppen lassen sich ausbilden !',
+      );
+    });
+
+    test('RenameTroop renames; forbidden at war (snapshots match by name)',
+        () {
+      var s = applyAction(state,
+              RenameTroop(slot: 1, unitIndex: 0, name: ' Erste Garde '),
+              Rng(state.rngSeed))
+          .state;
+      expect(s.realm(1).troops.single.name, 'Erste Garde');
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
+          .state;
+      expect(
+        () => applyAction(s,
+            RenameTroop(slot: 1, unitIndex: 0, name: 'X'), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+        reason: 'Nicht mitten im Krieg !',
+      );
+    });
+
+    test('rules v5: mutual peace is a white peace — no land, no payment',
+        () {
+      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(state.rngSeed))
+          .state;
+      // Attacker occupies the enemy town (war score >> 1000) while the
+      // AI defender sits home → the defender wants peace next round.
+      final enemyTown = s.realm(2).towns.single;
+      final troop = s.realm(1).troops.single;
+      final homeX = troop.x;
+      final homeY = troop.y;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      expect(warScore(s, 1), greaterThanOrEqualTo(1000));
+      final attackerTreasury = s.realm(1).treasury;
+      final defenderTreasury = s.realm(2).treasury;
+
+      s = applyAction(s, WarPeaceWish(slot: 1, wantsPeace: true),
+              Rng(s.rngSeed))
+          .state;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+
+      expect(s.activeWar, isNull);
+      expect(s.events.any((e) => e.type == 'peaceAgreed'), isTrue);
+      expect(s.map.ownerAt(enemyTown.x, enemyTown.y), 2,
+          reason: 'agreed peace must not move any tiles');
+      expect(s.realm(2).towns, hasLength(1));
+      expect(s.realm(1).treasury, attackerTreasury);
+      expect(s.realm(2).treasury, defenderTreasury);
+      expect(s.realm(1).troops.single.x, homeX);
+      expect(s.realm(1).troops.single.y, homeY);
+    });
+
+    test('pre-v5 rules keep the old peace resolution (claim collected)',
+        () {
+      var s = GameState.fromJson(state.toJson()..['rulesVersion'] = 4);
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
+          .state;
+      final enemyTown = s.realm(2).towns.single;
+      final troop = s.realm(1).troops.single;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      s = applyAction(s, WarPeaceWish(slot: 1, wantsPeace: true),
+              Rng(s.rngSeed))
+          .state;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.events.any((e) => e.type == 'peaceAgreed'), isFalse);
+      expect(s.events.any((e) => e.type == 'warWon'), isTrue,
+          reason: 'v4 games still resolve the claim on mutual peace');
+    });
+
+    test('rules v5: a winter win opens the settlement — the winner picks '
+        'tiles', () {
+      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
+              Rng(state.rngSeed))
+          .state;
+      final enemyTown = s.realm(2).towns.single;
+      final troop = s.realm(1).troops.single;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      s.activeWar!.round = 21;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+
+      expect(s.activeWar, isNotNull);
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.winnerSlot, 1);
+      expect(s.map.ownerAt(enemyTown.x, enemyTown.y), 2,
+          reason: 'no auto-conversion — the winner chooses');
+
+      // The bare border tile handed to slot 2 in setUp borders slot 1's
+      // land: annexable for 100 claim points.
+      final map = s.map;
+      int? bx, by;
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) != 2 ||
+              map.buildingAt(x, y) != Building.none) {
+            continue;
+          }
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 1) {
+              bx = x;
+              by = y;
+              break outer;
+            }
+          }
+        }
+      }
+      expect(bx, isNotNull);
+      final claimBefore = s.activeWar!.remainingClaim;
+      s = applyAction(
+              s, SettlementAnnex(slot: 1, x: bx!, y: by!), Rng(s.rngSeed))
+          .state;
+      expect(s.map.ownerAt(bx, by), 1);
+      expect(s.activeWar!.remainingClaim, claimBefore - 100);
+
+      final loserTreasury = s.realm(2).treasury;
+      final rest = s.activeWar!.remainingClaim;
+      s = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.activeWar, isNull);
+      expect(s.realm(2).treasury, loserTreasury - rest,
+          reason: 'unspent claim converts 1:1 into Taler');
     });
 
     test('conquest transfer moves town objects and treasury shares', () {
@@ -497,7 +703,11 @@ void main() {
       s = applyAction(
               s, WarPlunder(slot: 1, x: troop.x, y: troop.y), Rng(s.rngSeed))
           .state;
-      expect(s.events.any((e) => e.type == 'plunder'), isTrue);
+      final plunder = s.events.lastWhere((e) => e.type == 'plunder');
+      // Result numbers for the client's plunder popup.
+      expect(plunder.payload['loot'], isA<int>());
+      expect(plunder.payload['killed'], isA<int>());
+      expect(plunder.payload['destroyed'], isFalse);
     });
 
     test('rules v2: bare land costs 100 in the claim settlement, '

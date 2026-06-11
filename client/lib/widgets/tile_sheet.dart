@@ -145,6 +145,21 @@ Future<void> showTileActionSheet(
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.hafen));
   }
 
+  // "(S)chiff" colony ship (rules v6): a free land tile beyond the own
+  // border — e.g. on an island — can be claimed across the sea from an
+  // own Hafen. The ship is consumed: 700 T, like building one.
+  if (state.rulesVersion >= 6 &&
+      owner == gc.World.niemand &&
+      isLand &&
+      hasMoves &&
+      !_adjacentToOwn(map, slot, x, y) &&
+      realm.tileCount[gc.Building.hafen] >= 1 &&
+      money >= gc.Building.shipCost &&
+      map.shipReachable(slot, x, y)) {
+    act('Schiff aussenden — Feld kolonisieren', '700 T',
+        gc.SendShip(slot: slot, x: x, y: y));
+  }
+
   if (owner == slot &&
       building != gc.Building.none &&
       building != gc.Building.dorf &&
@@ -171,12 +186,17 @@ Future<void> showTileActionSheet(
     }
   }
 
-  // Troop placement onto own tiles — costs 1 movement point like a build.
-  if (owner == slot && realm.troops.isNotEmpty && hasMoves) {
+  // Troop placement onto own tiles — free since rules v3 (older games
+  // still pay 1 movement point like a build).
+  final freeTroopMoves = state.rulesVersion >= 3;
+  if (owner == slot &&
+      realm.troops.isNotEmpty &&
+      (hasMoves || freeTroopMoves)) {
     for (var i = 0; i < realm.troops.length; i++) {
       final troop = realm.troops[i];
       if (troop.x == x && troop.y == y) continue; // already here
-      act('„${troop.name}" hierher ziehen (${troop.men})', '1 MP',
+      act('„${troop.name}" hierher ziehen (${troop.men})',
+          freeTroopMoves ? 'frei' : '1 MP',
           gc.MoveTroop(slot: slot, unitIndex: i, x: x, y: y));
     }
   }

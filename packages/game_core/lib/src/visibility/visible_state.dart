@@ -34,6 +34,8 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
   filtered.assassinationOrders
       .retainWhere((o) => o.sponsorSlot == viewerSlot);
   filtered.events.retainWhere((e) => e.visibleTo(viewerSlot));
+  filtered.recapBaselines
+      .removeWhere((slot, _) => slot != viewerSlot);
 
   // Election internals are hidden information: bribes and cast votes stay
   // on the server/master state only. Each participant's pending decision

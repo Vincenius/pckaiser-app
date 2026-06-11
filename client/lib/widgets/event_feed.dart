@@ -6,8 +6,8 @@ import '../state/game_controller.dart';
 
 const _warTypes = {
   'warDeclared', 'battle', 'rulerCaptured', 'warWon', 'warDraw',
-  'tileConquered', 'plunder', 'peaceWish', 'winterEndsWar', 'claimPaidOut',
-  'forcedMarriage', 'forcedAbdication', 'execution',
+  'tileConquered', 'plunder', 'peaceWish', 'peaceAgreed', 'winterEndsWar',
+  'claimPaidOut', 'forcedMarriage', 'forcedAbdication', 'execution',
 };
 const _dynastyTypes = {
   'wedding', 'birth', 'personDied', 'succession', 'divorce',
@@ -32,6 +32,8 @@ String describeEvent(gc.GameEvent e) {
     'turnUpkeep' => '$realm: Steuern ${p['tax']} T, Ernte '
         '${p['grainYield']}/${p['livestockYield']}, Sold ${p['wages']} T',
     'tileClaimed' => '$realm beansprucht (${p['x']}, ${p['y']})',
+    'shipColonized' =>
+      '$realm kolonisiert (${p['x']}, ${p['y']}) per Schiff',
     'buildingBuilt' => '$realm baut auf (${p['x']}, ${p['y']})',
     'townFounded' => '$realm gründet ${p['name']}',
     'townPromoted' => 'Dem Ort ${p['name']} wurde das '
@@ -66,6 +68,8 @@ String describeEvent(gc.GameEvent e) {
     'warWon' =>
       '$realm gewinnt den Krieg gegen ${gc.countryNames[p['loserSlot'] as int]}',
     'warDraw' => 'Der Krieg endet unentschieden',
+    'peaceAgreed' =>
+      'Friedensschluss — der Krieg endet ohne Gebietsänderungen',
     'winterEndsWar' => 'Der Winter beendet den Krieg',
     'peaceWish' => '$realm wünscht ein Ende des Krieges',
     'tileConquered' => '$realm erobert (${p['x']}, ${p['y']}) von '
@@ -203,19 +207,146 @@ const _trivialTypes = {'tileClaimed', 'buildingBuilt', 'buildingDemolished'};
 /// (warWon/warDraw/winterEndsWar/rulerCaptured); the full feed keeps all.
 const _warDetailTypes = {'battle', 'tileConquered', 'plunder', 'peaceWish'};
 
+/// Rare, personal drama that gets its own popup at turn start (the recap
+/// card then skips it): an assassination hitting your dynasty, the fate
+/// of assassins YOU sent, your coronation.
+bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
+      'assassination' => e.slot == slot,
+      'assassinationFailed' =>
+        e.slot == slot || e.payload['sponsorSlot'] == slot,
+      'crowned' => e.slot == slot,
+      _ => false,
+    };
+
+/// Big news rendered as styled headline rows at the top of the recap.
+bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
+      'warDeclared' ||
+      'rulerCaptured' ||
+      'warWon' ||
+      'warDraw' ||
+      'peaceAgreed' ||
+      'crowned' ||
+      'reformation' ||
+      'ottomanInvasion' ||
+      'assassination' ||
+      'assassinationFailed' ||
+      'totalExtinction' =>
+        true,
+      'earthquake' ||
+      'disease' ||
+      'bankruptcy' ||
+      'internalStrife' ||
+      'realmsMerged' ||
+      'dynastyExtinct' ||
+      'islamicSuccessionCrisis' =>
+        e.slot == slot,
+      _ => false,
+    };
+
+(IconData, Color) _headlineStyle(gc.GameEvent e) => switch (e.type) {
+      'warDeclared' => (Icons.gavel, Colors.red),
+      'rulerCaptured' => (Icons.lock, Colors.red),
+      'warWon' => (Icons.emoji_events, Colors.orange),
+      'warDraw' || 'peaceAgreed' => (Icons.handshake, Colors.green),
+      'crowned' => (Icons.emoji_events, Colors.amber),
+      'reformation' => (Icons.church, Colors.purple),
+      'ottomanInvasion' => (Icons.warning, Colors.red),
+      'assassination' => (Icons.dangerous, Colors.red),
+      'assassinationFailed' => (Icons.report, Colors.orange),
+      'earthquake' => (Icons.warning_amber, Colors.brown),
+      'disease' => (Icons.coronavirus, Colors.red),
+      'bankruptcy' => (Icons.money_off, Colors.red),
+      'internalStrife' => (Icons.local_fire_department, Colors.red),
+      'realmsMerged' => (Icons.merge_type, Colors.green),
+      'dynastyExtinct' => (Icons.heart_broken, Colors.blueGrey),
+      _ => (Icons.campaign, Colors.blueGrey),
+    };
+
+/// Standalone drama popups, shown after pending decisions and before the
+/// recap card (which skips these events). One dialog per event, styled
+/// like the marriage prompt.
+Future<void> showDramaPopups(
+    BuildContext context, GameController controller, int slot) async {
+  final drama = controller
+      .recapFor(slot)
+      .where((e) => _popupWorthy(e, slot))
+      .toList();
+  for (final e in drama) {
+    if (!context.mounted) return;
+    final p = e.payload;
+    final (IconData icon, Color color, String title, String body) =
+        switch (e.type) {
+      'assassination' => (
+          Icons.dangerous,
+          Colors.red,
+          'Attentat !!!',
+          '${p['victim']} wurde von gedungenen Mördern ermordet !',
+        ),
+      'assassinationFailed' when e.slot == slot => (
+          Icons.report,
+          Colors.orange,
+          'Attentat vereitelt !',
+          'Ein Anschlag auf ${p['victim']} ist fehlgeschlagen !'
+              '${(p['caught'] as int? ?? 0) > 0 ? '\nDie gefassten Attentäter gestehen unter Folter: der Auftrag kam aus ${gc.countryNames[p['sponsorSlot'] as int]} !' : ''}',
+        ),
+      'assassinationFailed' => (
+          Icons.report,
+          Colors.orange,
+          'Anschlag fehlgeschlagen',
+          'Deine Attentäter haben ${p['victim']} nicht erwischt'
+              '${(p['caught'] as int? ?? 0) > 0 ? ' — und wurden gefasst ! Dein Auftrag ist nun bekannt !' : '.'}',
+        ),
+      'crowned' => (
+          Icons.emoji_events,
+          Colors.amber,
+          p['office'] == 'kaiser' ? 'Du bist Kaiser !' : 'Du bist Sultan !',
+          '${p['name']} wird '
+              '${p['acclaimed'] == true ? 'ohne Gegenstimme ' : ''}'
+              'zum ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'} gekrönt !',
+        ),
+      _ => (Icons.campaign, Colors.blueGrey, 'Nachricht', describeEvent(e)),
+    };
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 8),
+          Expanded(child: Text(title)),
+        ]),
+        content: Text(body),
+        actions: [
+          FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Weiter')),
+        ],
+      ),
+    );
+  }
+}
+
 /// The "since your last turn" recap card, shown right after the handoff.
-/// Upkeep lines, other players' trivial tile actions and war details are
-/// skipped.
+/// Upkeep lines, other players' trivial tile actions, war details and
+/// popup-worthy drama (already shown by [showDramaPopups]) are skipped;
+/// big news gets styled headline rows above the plain lines.
 Future<void> showRecapCard(
     BuildContext context, GameController controller, int slot) async {
   final recap = controller.recapFor(slot)
       .where((e) =>
           e.type != 'turnUpkeep' &&
           !_warDetailTypes.contains(e.type) &&
-          !(_trivialTypes.contains(e.type) && e.slot != slot))
+          !(_trivialTypes.contains(e.type) && e.slot != slot) &&
+          !_popupWorthy(e, slot))
       .toList();
   controller.markRecapSeen(slot);
   if (recap.isEmpty) return;
+  final headlines =
+      recap.reversed.where((e) => _isHeadline(e, slot)).take(10).toList();
+  final rest = recap.reversed
+      .where((e) => !_isHeadline(e, slot))
+      .take(30)
+      .toList();
   await showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
@@ -223,7 +354,28 @@ Future<void> showRecapCard(
       content: SizedBox(
         width: double.maxFinite,
         child: ListView(shrinkWrap: true, children: [
-          for (final e in recap.reversed.take(30))
+          for (final e in headlines)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(_headlineStyle(e).$1,
+                        color: _headlineStyle(e).$2, size: 22),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${e.year}: ${describeEvent(e)}',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium!
+                            .copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ]),
+            ),
+          if (headlines.isNotEmpty && rest.isNotEmpty)
+            const Divider(height: 16),
+          for (final e in rest)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Text('${e.year}: ${describeEvent(e)}'),
