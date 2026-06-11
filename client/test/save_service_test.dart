@@ -51,6 +51,16 @@ void main() {
     expect(loaded.realms, hasLength(World.realmCount));
   });
 
+  test('loading upgrades an old save to the latest ruleset', () async {
+    final old = GameState.fromJson(
+        minimalState(year: 1007).toJson()..['rulesVersion'] = 1);
+    expect(old.rulesVersion, 1);
+    await saves.save('Alte Regeln', old);
+    final loaded = await saves.load('Alte Regeln');
+    expect(loaded.rulesVersion, currentRulesVersion,
+        reason: 'every game plays the latest rules (versioning policy)');
+  });
+
   test('listSlots returns metadata, most recent first', () async {
     await saves.save('Alt', minimalState(year: 1003),
         now: DateTime(2026, 6, 1));

@@ -116,8 +116,8 @@ class _WarPanelState extends State<WarPanel> {
               selectedTroop == null
                   ? 'Tippe eine deiner Truppen an, um sie zu befehligen.'
                   : '„${selectedTroop.name}" gewählt — tippe ein Ziel auf '
-                      'der Karte: feindliche Armee = Angriff, Königssitz '
-                      '(rotes Fadenkreuz) = Sieg.',
+                      'der Karte: feindliche Armee = Angriff, gegnerischer '
+                      'Königssitz (Fahne) = Sieg.',
               style: theme.textTheme.bodySmall!
                   .copyWith(fontStyle: FontStyle.italic),
               textAlign: TextAlign.center,

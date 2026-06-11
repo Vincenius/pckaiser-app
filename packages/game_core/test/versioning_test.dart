@@ -37,11 +37,19 @@ void main() {
       );
     });
 
-    test('rulesVersion is pinned through save/load and copy', () {
+    test('fromJson and copy preserve rulesVersion faithfully', () {
+      // The decoder never silently changes rules — the latest-rules
+      // policy is applied explicitly via adoptLatestRules at load time.
       final state = sampleState();
       final reloaded = GameState.fromJson(state.toJson());
       expect(reloaded.rulesVersion, state.rulesVersion);
       expect(state.copy().rulesVersion, state.rulesVersion);
+    });
+
+    test('adoptLatestRules upgrades any document to the current rules', () {
+      final json = sampleState().toJson()..['rulesVersion'] = 1;
+      final upgraded = GameState.fromJson(adoptLatestRules(json));
+      expect(upgraded.rulesVersion, currentRulesVersion);
     });
 
     test('migrations run sequentially from the document version up', () {

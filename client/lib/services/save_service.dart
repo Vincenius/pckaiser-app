@@ -126,7 +126,10 @@ class SaveService {
   Future<GameState> load(String slotName) async {
     final doc = jsonDecode(await _fileFor(slotName).readAsString())
         as Map<String, dynamic>;
-    return GameState.fromJson((doc['state'] as Map).cast<String, dynamic>());
+    // Every game plays the latest ruleset (versioning.dart policy): old
+    // saves adopt new gameplay rules on load instead of staying pinned.
+    return GameState.fromJson(adoptLatestRules(
+        (doc['state'] as Map).cast<String, dynamic>()));
   }
 
   Future<bool> exists(String slotName) => _fileFor(slotName).exists();

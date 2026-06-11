@@ -106,17 +106,14 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// Mirrors the war state into the map overlay: pulsing ring on the
-  /// selected unit, crosshair on the war goal (the enemy Königssitz).
+  /// selected unit.
   void _syncWarOverlay(GameController controller, MapGame game) {
     final war = controller.state.activeWar;
     final slot = controller.warHumanSlot;
     if (war == null || slot == null || war.phase != gc.WarPhase.rounds) {
       game.selectedTile = null;
-      game.warTargetTile = null;
       return;
     }
-    final enemy = controller.state.realm(war.opponentOf(slot));
-    game.warTargetTile = (enemy.capitalX, enemy.capitalY);
     final selected = controller.selectedWarUnit;
     final troops = controller.state.realm(slot).troops;
     game.selectedTile = selected != null && selected < troops.length
@@ -548,7 +545,7 @@ class _GameScreenState extends State<GameScreen> {
             'Der Krieg endet, wenn beide Seiten Frieden wünschen '
             '(ohne Gebietsänderungen), spätestens im Winter — oder '
             'sofort, wenn eine Armee den gegnerischen Königssitz '
-            '(rotes Fadenkreuz) erreicht und den Herrscher gefangen '
+            '(Fahne) erreicht und den Herrscher gefangen '
             'nimmt.'),
         actions: [
           FilledButton(

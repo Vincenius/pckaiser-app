@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../services/save_service.dart';
-import 'credits_screen.dart';
+import 'about_screen.dart';
 import 'game_screen.dart';
 import 'setup_screen.dart';
 
@@ -136,13 +136,13 @@ class _HomeScreenState extends State<HomeScreen> {
               for (final slot in _slots) _slotCard(theme, slot),
             ],
             const SizedBox(height: 16),
-            // Small credits link (original game by Martin Gelter, 1992).
+            // Small "About" link: description, version and credits.
             Center(
               child: TextButton(
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const CreditsScreen())),
+                    builder: (_) => const AboutScreen())),
                 child: Text(
-                  tr('credits'),
+                  tr('about'),
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),

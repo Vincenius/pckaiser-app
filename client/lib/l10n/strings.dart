@@ -17,7 +17,12 @@ const Map<String, Map<String, String>> _table = {
         'Start a new game, or learn the basics in the tutorial.',
     'saveNeedsUpdate':
         'Saved with a newer app version — update the app to play it.',
-    'credits': 'Credits',
+    'about': 'About',
+    'aboutDescription':
+        'A mobile remake of the 1992 DOS strategy classic "PC Kaiser": '
+            'lead a small realm in the medieval Holy Roman Empire — '
+            'build, trade, marry, scheme and wage war until the '
+            'electors crown you Kaiser.',
     'creditsOriginal':
         'Original game: "PC Kaiser" by Martin Gelter, 1992.',
     'creditsApp': 'This app: Vincent Will.',
@@ -64,7 +69,12 @@ const Map<String, Map<String, String>> _table = {
     'saveNeedsUpdate':
         'Mit neuerer App-Version gespeichert — App aktualisieren, '
             'um weiterzuspielen.',
-    'credits': 'Credits',
+    'about': 'Über das Spiel',
+    'aboutDescription':
+        'Ein mobiles Remake des DOS-Strategieklassikers „PC Kaiser" von '
+            '1992: Führe ein Kleinstaat-Reich im mittelalterlichen '
+            'Heiligen Römischen Reich — baue, handle, heirate, intrigiere '
+            'und führe Krieg, bis die Kurfürsten dich zum Kaiser wählen.',
     'creditsOriginal':
         'Originalspiel: „PC Kaiser" von Martin Gelter, 1992.',
     'creditsApp': 'App: Vincent Will.',
@@ -91,7 +101,7 @@ const Map<String, Map<String, String>> _table = {
     'investShips': 'Handelsschiffe aussenden',
     'mergeRealms': 'Reiche zusammenlegen',
     // Original menu wording: "Truppe bilden" creates a unit; "Truppe
-    // ausbilden" (the troop sheet's retrain option) sets the class.
+    // ausbilden" (the troop sheet, rules v7) drills quality +1.
     'recruit': 'Truppe bilden',
     'hireSoeldner': 'Söldner anwerben',
     'declareWar': 'Krieg erklären',

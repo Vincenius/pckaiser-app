@@ -160,6 +160,42 @@ Future<void> showTileActionSheet(
         gc.SendShip(slot: slot, x: x, y: y));
   }
 
+  // The same action from the harbor side (the original's "(S)chiff
+  // steuern"): tap an own Hafen, then pick the free land target across
+  // the sea. Shown whenever the Hafen could launch a ship; an invalid
+  // pick keeps the pick alive and explains why (engine message).
+  if (state.rulesVersion >= 6 &&
+      owner == slot &&
+      building == gc.Building.hafen &&
+      hasMoves) {
+    actions.add(ListTile(
+      leading: const Icon(Icons.sailing),
+      title: const Text('Schiff aussenden — Feld kolonisieren'),
+      trailing: const Text('700 T'),
+      subtitle: Text(money < gc.Building.shipCost
+          ? 'Du hast nicht genügend Taler !'
+          : 'Tippe danach ein freies Landfeld über See an'),
+      enabled: money >= gc.Building.shipCost,
+      onTap: () {
+        Navigator.pop(context);
+        controller.startTilePick(
+          hint: 'Schiff aussenden: freies Landfeld über See antippen '
+              '(700 T)',
+          onPick: (px, py) {
+            try {
+              controller
+                  .applyUndoable(gc.SendShip(slot: slot, x: px, y: py));
+              return true;
+            } on gc.ActionException catch (e) {
+              toastError(e);
+              return false;
+            }
+          },
+        );
+      },
+    ));
+  }
+
   if (owner == slot &&
       building != gc.Building.none &&
       building != gc.Building.dorf &&
@@ -183,21 +219,6 @@ Future<void> showTileActionSheet(
           showTroopActions(context, controller, i);
         },
       ));
-    }
-  }
-
-  // Troop placement onto own tiles — free since rules v3 (older games
-  // still pay 1 movement point like a build).
-  final freeTroopMoves = state.rulesVersion >= 3;
-  if (owner == slot &&
-      realm.troops.isNotEmpty &&
-      (hasMoves || freeTroopMoves)) {
-    for (var i = 0; i < realm.troops.length; i++) {
-      final troop = realm.troops[i];
-      if (troop.x == x && troop.y == y) continue; // already here
-      act('„${troop.name}" hierher ziehen (${troop.men})',
-          freeTroopMoves ? 'frei' : '1 MP',
-          gc.MoveTroop(slot: slot, unitIndex: i, x: x, y: y));
     }
   }
 

@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:game_core/game_core.dart' as gc;
 
+import '../app_version.dart';
 import '../l10n/strings.dart';
 
-/// Credits: the original game's author and the author of this remake.
-class CreditsScreen extends StatelessWidget {
-  const CreditsScreen({super.key});
+/// About: a short description of the game, the app and ruleset version,
+/// and the credits (original author + remake author).
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(tr('credits'))),
+      appBar: AppBar(title: Text(tr('about'))),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -25,14 +28,24 @@ class CreditsScreen extends StatelessWidget {
             Text(tr('appTitle'),
                 style: theme.textTheme.headlineSmall
                     ?.copyWith(letterSpacing: 2)),
+            const SizedBox(height: 4),
+            Text(
+              'Version $appVersion · Regelwerk v${gc.currentRulesVersion}',
+              style: theme.textTheme.labelMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 24),
+            Text(tr('aboutDescription'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge),
             const SizedBox(height: 24),
             Text(tr('creditsOriginal'),
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyLarge),
+                style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
             Text(tr('creditsApp'),
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyLarge),
+                style: theme.textTheme.bodyMedium),
           ]),
         ),
       ),

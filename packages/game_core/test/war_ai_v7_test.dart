@@ -60,7 +60,7 @@ void main() {
   });
 
   group('DrillTroop (rules v7)', () {
-    test('+1 quality for 5 T/man, once per unit per turn', () {
+    test('+1 quality for 5 T/man, repeatable within a turn since v8', () {
       final before = state.realm(1).treasury;
       var s = applyAction(
               state, DrillTroop(slot: 1, unitIndex: 0), Rng(state.rngSeed))
@@ -70,11 +70,17 @@ void main() {
       expect(troop.troopClass, TroopClass.infanterie, reason: 'no class change');
       expect(s.realm(1).treasury, before - 5 * 50);
       expect(troop.drilledThisTurn, isTrue);
+
+      // v7 pinned the drill to once per unit per turn; v8 lifted it.
+      final v7 = GameState.fromJson(s.toJson()..['rulesVersion'] = 7);
       expect(
-        () => applyAction(s, DrillTroop(slot: 1, unitIndex: 0), Rng(1)),
+        () => applyAction(v7, DrillTroop(slot: 1, unitIndex: 0), Rng(1)),
         throwsA(isA<ActionException>()),
-        reason: 'once per unit per turn',
+        reason: 'v7: once per unit per turn',
       );
+      s = applyAction(s, DrillTroop(slot: 1, unitIndex: 0), Rng(1)).state;
+      expect(s.realm(1).troops.single.quality, TroopQuality.regular + 2,
+          reason: 'v8: no per-turn limit');
     });
 
     test('drilling raises combat strength', () {

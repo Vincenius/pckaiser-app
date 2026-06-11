@@ -9,11 +9,17 @@
 ///   reshapes (rename, type change, restructure) bump it by one and add a
 ///   migration step to [schemaMigrations]; old documents are migrated
 ///   transparently on load.
-/// - [currentRulesVersion] — the *gameplay rules*. Pinned per game at
-///   creation and never changed afterwards: a running game always plays
-///   under the rules it started with. A rule/balance change bumps this and
-///   gates the new behavior on `state.rulesVersion >= n`, so only games
-///   created after the update use it.
+/// - [currentRulesVersion] — the *gameplay rules*. A rule/balance change
+///   bumps this and gates the new behavior on `state.rulesVersion >= n`.
+///
+///   Policy (changed 2026-06-11 by product decision): every game plays
+///   under the LATEST rules — [adoptLatestRules] upgrades `rulesVersion`
+///   at the save-load boundary (client `SaveService.load` now, the
+///   server's document load later), and new games start at the latest
+///   version anyway. The per-version gates stay in the engine: they
+///   document each change, keep old behavior testable, and are the
+///   re-pinning mechanism should online play ever need rule stability
+///   within a match.
 library;
 
 /// Bump on incompatible JSON reshapes only; add a migration alongside.
@@ -83,7 +89,18 @@ const int currentSchemaVersion = 1;
 ///   (proc_00A316): +1 quality for 5 T/man with no class change; once
 ///   per unit per turn, regulars only, capped at quality 10 [DESIGNED]
 ///   (the v5 `TrainTroop` class retrain stays, relabeled "umrüsten").
-const int currentRulesVersion = 7;
+/// - v8 (2026-06-11): drilling has no per-turn limit anymore — a unit
+///   may drill as often as the treasury allows within one turn; the
+///   quality cap (10) still bounds the total `[DESIGNED]`.
+const int currentRulesVersion = 8;
+
+/// Upgrades a `GameState` JSON document to the latest gameplay rules
+/// (see the library docs: all games always play the latest ruleset).
+/// Applied wherever a saved document is loaded for PLAY — deliberately
+/// not inside `GameState.fromJson`, which must stay a faithful decoder
+/// (tests and tools rebuild old-rules states through it).
+Map<String, dynamic> adoptLatestRules(Map<String, dynamic> stateJson) =>
+    stateJson..['rulesVersion'] = currentRulesVersion;
 
 /// A document from a newer app version than this one understands.
 /// Surfaced to the user as "update the app to load this game" — never

@@ -501,7 +501,8 @@ void showTroopActions(
             },
           ),
         // Drill (rules v7, the original "Truppe ausbilden"): +1 quality
-        // for 5 T/man, class unchanged, once per unit per turn.
+        // for 5 T/man, class unchanged; since rules v8 as often per turn
+        // as the treasury allows.
         if (controller.state.rulesVersion >= 7 && !soeldner)
           ListTile(
             leading: const Icon(Icons.fitness_center),
@@ -510,13 +511,10 @@ void showTroopActions(
                 ? 'Nicht mitten im Krieg !'
                 : troop.quality >= gc.Troop.drillCap
                     ? 'Bereits voll ausgebildet (Qualität ${troop.quality})'
-                    : troop.drilledThisTurn
-                        ? 'In dieser Runde schon ausgebildet'
-                        : '${5 * troop.men} T — Qualität ${troop.quality} → '
-                            '${troop.quality + 1} (einmal pro Runde)'),
+                    : '${5 * troop.men} T — Qualität ${troop.quality} → '
+                        '${troop.quality + 1}'),
             enabled: !atWar &&
                 troop.quality < gc.Troop.drillCap &&
-                !troop.drilledThisTurn &&
                 realm.treasury >= 5 * troop.men,
             onTap: () {
               Navigator.pop(sheetContext);

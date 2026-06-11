@@ -16,7 +16,6 @@ import 'package:flutter/painting.dart'
         RRect,
         Radius,
         Shadow,
-        StrokeCap,
         TextPainter,
         TextSpan,
         TextStyle;
@@ -42,9 +41,6 @@ class MapGame extends FlameGame with ScaleDetector {
 
   /// Tile of the currently selected war unit (pulsing ring); null = none.
   (int, int)? selectedTile;
-
-  /// War goal marker — the enemy Königssitz during a war; null = none.
-  (int, int)? warTargetTile;
 
   gc.GameState _state;
   ui.Picture? _picture;
@@ -286,31 +282,7 @@ class _MapLayer extends PositionComponent with TapCallbacks {
   void render(Canvas canvas) {
     final picture = game._picture;
     if (picture != null) canvas.drawPicture(picture);
-    _renderWarTarget(canvas);
     _renderSelection(canvas);
-  }
-
-  /// Crosshair on the war goal (the enemy Königssitz).
-  void _renderWarTarget(Canvas canvas) {
-    final target = game.warTargetTile;
-    if (target == null) return;
-    final (x, y) = target;
-    final center =
-        Offset((x + 0.5) * tileSize, (y + 0.5) * tileSize);
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFFE53935);
-    canvas.drawCircle(center, tileSize * 0.55, paint);
-    const r = tileSize * 0.55;
-    for (final (dx, dy) in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
-      canvas.drawLine(
-        center + Offset(dx * r * 0.6, dy * r * 0.6),
-        center + Offset(dx * r * 1.3, dy * r * 1.3),
-        paint,
-      );
-    }
   }
 
   /// Pulsing ring around the selected war unit.

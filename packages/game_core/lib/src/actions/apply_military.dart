@@ -129,9 +129,10 @@ List<GameEvent> applyReinforceTroop(
 }
 
 /// "Truppe ausbilden" — drill (§10.2, rules v7): the traced original
-/// training (`proc_00A316`: cost = men × 5, quality counter +1). Once per
-/// unit per turn, regulars only, quality capped at [Troop.drillCap]
-/// `[DESIGNED]`. Pre-v7 games keep playing without it.
+/// training (`proc_00A316`: cost = men × 5, quality counter +1). Regulars
+/// only, quality capped at [Troop.drillCap] `[DESIGNED]`. Pre-v7 games
+/// keep playing without it; v7 limited it to once per unit per turn,
+/// since v8 a unit drills as often as the treasury allows.
 List<GameEvent> applyDrillTroop(
     GameState state, Realm realm, DrillTroop action) {
   if (state.rulesVersion < 7) {
@@ -147,7 +148,7 @@ List<GameEvent> applyDrillTroop(
   if (troop.quality >= Troop.drillCap) {
     throw ActionException('Diese Truppe ist bereits voll ausgebildet !');
   }
-  if (troop.drilledThisTurn) {
+  if (state.rulesVersion < 8 && troop.drilledThisTurn) {
     throw ActionException(
         'Diese Truppe wurde in dieser Runde schon ausgebildet !');
   }
