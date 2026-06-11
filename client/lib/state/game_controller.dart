@@ -104,7 +104,8 @@ class GameController extends ChangeNotifier {
   bool get gameOver =>
       state.events.isNotEmpty &&
       (state.events.last.type == 'gameWon' ||
-          state.events.last.type == 'gameDraw');
+          state.events.last.type == 'gameDraw' ||
+          state.events.last.type == 'humansDefeated');
 
   /// The active war, when the seated player participates in it.
   ActiveWar? get warForCurrentPlayer {

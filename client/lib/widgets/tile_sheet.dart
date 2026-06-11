@@ -178,24 +178,16 @@ Future<void> showTileActionSheet(
       actions.add(ListTile(
         leading: const Icon(Icons.sailing),
         title: const Text('Schiff steuern'),
-        subtitle: const Text('1 Zug pro Wasserfeld — neben einem freien '
-            'Landfeld kann das Schiff kolonisieren'),
+        subtitle: const Text('1 Zug pro Wasserfeld — ein freies Landfeld '
+            'als Ziel gründet dort ein Dorf'),
         enabled: hasMoves,
         onTap: () {
           Navigator.pop(context);
           controller.startTilePick(
-            hint: 'Schiff steuern: Ziel auf dem Wasser antippen '
-                '(1 Zug pro Feld)',
-            onPick: (px, py) {
-              try {
-                controller.applyUndoable(gc.MoveShip(
-                    slot: slot, shipIndex: shipIndex, x: px, y: py));
-                return true;
-              } on gc.ActionException catch (e) {
-                toastError(e);
-                return false;
-              }
-            },
+            hint: 'Schiff steuern: Wasserfeld antippen (1 Zug pro Feld) '
+                '— ein freies Landfeld wird kolonisiert',
+            onPick: (px, py) => _steerShip(
+                context, controller, slot, shipIndex, px, py),
           );
         },
       ));
@@ -302,6 +294,87 @@ Future<void> showTileActionSheet(
       ]),
     ),
   );
+}
+
+/// Tile-pick handler for "Schiff steuern": a water target sails the ship
+/// there; a FREE land target colonizes it in one flow — the ship sails to
+/// the nearest water tile beside the target and founds the Dorf (the
+/// separate "move, then tap the coast" dance is no longer needed).
+/// Returns false to keep the pick active on an invalid target.
+bool _steerShip(BuildContext context, GameController controller, int slot,
+    int shipIndex, int x, int y) {
+  void toast(String message) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  final map = controller.visibleState.map;
+  if (map.isWaterAt(x, y)) {
+    try {
+      controller.applyUndoable(
+          gc.MoveShip(slot: slot, shipIndex: shipIndex, x: x, y: y));
+      return true;
+    } on gc.ActionException catch (e) {
+      toast(e.message);
+      return false;
+    }
+  }
+
+  if (map.ownerAt(x, y) != gc.World.niemand ||
+      map.buildingAt(x, y) != gc.Building.none) {
+    toast('Schiffe fahren nur auf dem Wasser — oder kolonisieren ein '
+        'freies Landfeld !');
+    return false;
+  }
+
+  final realm = controller.currentRealm;
+  final ship = realm.ships[shipIndex];
+  // Nearest water tile orthogonally beside the colony site.
+  var distance = -1;
+  var anchorX = 0;
+  var anchorY = 0;
+  for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+    final wx = x + dx;
+    final wy = y + dy;
+    if (!map.inBounds(wx, wy) || !map.isWaterAt(wx, wy)) continue;
+    final d = map.waterPathLength(ship.x, ship.y, wx, wy);
+    if (d >= 0 && (distance < 0 || d < distance)) {
+      distance = d;
+      anchorX = wx;
+      anchorY = wy;
+    }
+  }
+  if (distance < 0) {
+    toast('Dieses Feld ist über See nicht erreichbar !');
+    return false;
+  }
+  final needed = distance + 1; // the voyage plus the founding Zug
+  if (realm.movementPoints < needed) {
+    toast('Fahrt und Dorfgründung kosten $needed Züge — so viele hast '
+        'du nicht mehr !');
+    return false;
+  }
+
+  // Accept the pick; name dialog and founding continue asynchronously.
+  () async {
+    final name = await _askTownName(context);
+    if (name == null || name.isEmpty) return;
+    try {
+      if (distance > 0) {
+        controller.applyIrreversible(gc.MoveShip(
+            slot: slot, shipIndex: shipIndex, x: anchorX, y: anchorY));
+      }
+      // Founding rolls the starting population — randomized actions
+      // clear the undo stack (PROJECT_REQUIREMENTS).
+      controller.applyIrreversible(gc.ColonizeShip(
+          slot: slot, shipIndex: shipIndex, x: x, y: y, townName: name));
+    } on gc.ActionException catch (e) {
+      toast(e.message);
+    }
+  }();
+  return true;
 }
 
 Future<String?> _askTownName(BuildContext context) {

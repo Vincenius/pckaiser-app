@@ -346,8 +346,13 @@ class _WarPanelState extends State<WarPanel> {
           if (isWinner)
             FilledButton(
               onPressed: () async {
-                controller.applyWarAction(gc.SettlementFinish(slot: slot));
+                final result = controller
+                    .applyWarAction(gc.SettlementFinish(slot: slot));
                 await controller.endWarRound(); // resumes AI advance
+                if (context.mounted) {
+                  await showWarReport(context, result.events,
+                      viewerSlot: slot, title: 'Friedensschluss');
+                }
               },
               child: const Text('Fertig — Rest in Talern'),
             ),

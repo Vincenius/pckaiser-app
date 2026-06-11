@@ -474,18 +474,38 @@ int? capitalOccupier(GameState state, ActiveWar war) {
   return null;
 }
 
+/// Rules v12: the settlement claim is capped at HALF the loser's total
+/// territory settlement value. War scores grow with army strength
+/// squared, so any sizeable army's claim used to dwarf the loser's whole
+/// realm — the winner could annex every reachable tile and the cash
+/// remainder bankrupted the loser on top. With the cap, one lost war
+/// costs at most half the realm (the last tile is never affordable), so
+/// a losing party is never erased by a single war.
+int _cappedClaim(GameState state, int loserSlot, int claim) {
+  if (state.rulesVersion < 12) return claim;
+  final map = state.map;
+  var total = 0;
+  for (var i = 0; i < map.terrain.length; i++) {
+    if (map.owner[i] == loserSlot) {
+      total += settlementTileValue(state, map.building[i]);
+    }
+  }
+  return math.min(claim, total ~/ 2);
+}
+
 /// Rules v9 ruler capture, resolved at ROUND END (was: instantly on the
 /// move): the captor holds the enemy capital when the round ends. The
 /// loser's ruler is captured and coerced (§12), but the realm is no
 /// longer swallowed whole — instead the captor wins the war and SELECTS
 /// loser tiles in the claim settlement, against a claim of their war
-/// score (which includes the +3,000 capital bonus).
+/// score (which includes the +3,000 capital bonus; capped from v12 —
+/// see [_cappedClaim]).
 void _endWarByCapitalOccupation(GameState state, int captorSlot, Rng rng,
     List<GameEvent> events) {
   final war = state.activeWar!;
   final loserSlot = war.opponentOf(captorSlot);
   final capturedRuler = state.person(state.realm(loserSlot).rulerId);
-  final claim = warScore(state, captorSlot);
+  final claim = _cappedClaim(state, loserSlot, warScore(state, captorSlot));
 
   events.add(GameEvent(
     year: state.year,
@@ -713,7 +733,8 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   final winnerSlot =
       scoreAttacker > scoreDefender ? war.attackerSlot : war.defenderSlot;
   final loserSlot = war.opponentOf(winnerSlot);
-  final claim = math.max(scoreAttacker, scoreDefender);
+  final claim =
+      _cappedClaim(state, loserSlot, math.max(scoreAttacker, scoreDefender));
   final loser = state.realm(loserSlot);
 
   var loserValue = 0;
@@ -856,12 +877,22 @@ void _refreshTroopMarkers(GameState state) {
   }
 }
 
-/// A ruler who lost all land loses any Kurfürst seat (§17.2).
+/// A ruler who lost all land loses any Kurfürst seat (§17.2). Losing the
+/// LAST tile also emits a public `realmOverrun` event — both war sides
+/// get an explicit "everything was won/lost" popup in the client instead
+/// of having to read it off the map.
 void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   final owned = loser.tileCount.fold(0, (a, b) => a + b);
-  if (owned == 0 && loser.rulerId != null) {
+  if (owned > 0) return;
+  if (loser.rulerId != null) {
     state.kurfuerstenIds.remove(loser.rulerId);
   }
+  events.add(GameEvent(
+    year: state.year,
+    slot: loser.slot,
+    type: 'realmOverrun',
+    visibility: EventVisibility.public,
+  ));
 }
 
 /// §11.5 plunder during war rounds, once per side per round.

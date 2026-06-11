@@ -146,7 +146,21 @@ const int currentSchemaVersion = 1;
 ///   sides respond, then the round ends" (client and V2 server), and
 ///   `completeTurn` rejects completing a turn over an open war
 ///   (engine-level backstop for the V2 server).
-const int currentRulesVersion = 11;
+/// - v12 (2026-06-11): the war settlement claim is capped at HALF the
+///   loser's total territory settlement value `[DESIGNED]`. The §11.2 war
+///   score grows with the square of army strength, so any sizeable army's
+///   claim dwarfed the loser's whole realm: the winner annexed every
+///   reachable tile and the cash remainder bankrupted the loser on top —
+///   one lost war erased a realm. With the cap a single war costs at most
+///   half the realm's land value (the last tile is never affordable), and
+///   reparations are bounded the same way. Unversioned additions in the
+///   same round: a realm losing its LAST tile in a settlement emits a
+///   public `realmOverrun` event (client popup for both sides); when no
+///   human seat remains, `advanceUntilHuman` ends the game with a public
+///   `humansDefeated` event instead of silently fast-forwarding the
+///   AI-only world for up to 2,000 turns and re-seating the player
+///   centuries later in a foreign (and absurdly rich) realm.
+const int currentRulesVersion = 12;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

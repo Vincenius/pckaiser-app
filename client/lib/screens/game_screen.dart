@@ -602,19 +602,29 @@ class _GameScreenState extends State<GameScreen> {
     final event = controller.state.events.last;
     final slot = event.slot;
     final draw = event.type == 'gameDraw';
+    final defeat = event.type == 'humansDefeated';
     return ColoredBox(
       color: Colors.black87,
       child: Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(draw ? Icons.history_edu : Icons.emoji_events,
-              size: 72, color: Colors.amber),
+          Icon(
+              defeat
+                  ? Icons.cancel
+                  : draw
+                      ? Icons.history_edu
+                      : Icons.emoji_events,
+              size: 72,
+              color: defeat ? Colors.red : Colors.amber),
           const SizedBox(height: 12),
-          Text(tr('gameOver'),
+          Text(tr(defeat ? 'gameLost' : 'gameOver'),
               style: Theme.of(context).textTheme.headlineMedium),
           Text(
-            draw
-                ? 'Alle Dynastien sind erloschen — das Land bleibt herrenlos.'
-                : '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
+            defeat
+                ? 'Keine menschliche Dynastie hält mehr die Macht — '
+                    'eure Herrschaft ist Geschichte.'
+                : draw
+                    ? 'Alle Dynastien sind erloschen — das Land bleibt herrenlos.'
+                    : '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 20),

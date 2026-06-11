@@ -144,3 +144,22 @@ deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
   (gameWon ~1095, 47 wars, 23 captures). War panel shows armed/besieged
   states for both sides; tests pin the v9–v10 instant capture and cover
   the v11 arm/confirm/disarm/troopless cases.
+- **War-balance & defeat round (rules v12, user feedback)**: (1) the
+  settlement claim is capped at HALF the loser's territory settlement
+  value — the §11.2 war score grows ~quadratically with army strength, so
+  any sizeable army's claim used to dwarf the loser's realm (winner
+  annexed everything reachable, the cash remainder bankrupted the loser);
+  the last tile is now never affordable, so one war can't erase a realm.
+  (2) `realmOverrun` event when a settlement leaves the loser with zero
+  tiles — both sides get an explicit "everything won/lost" popup
+  (war report + recap headline). (3) `advanceUntilHuman` ends the game
+  with a `humansDefeated` event the moment no human seat remains (root
+  cause of "lost a war, returned ~200 years later as a rich sole ruler":
+  after the last human dynasty fell to strife/extinction, the loop
+  silently simulated up to 2,000 AI turns and re-seated the player in
+  the surviving AI realm); client shows a defeat screen ("Niederlage!").
+  (4) UX: steering a colony ship onto a FREE land tile now colonizes it
+  in one flow (sail to the nearest adjacent water tile + found the Dorf,
+  voyage + 1 Zug) — engine actions unchanged, pure client chaining; the
+  human winner's settlement finish shows a war-report popup
+  (claim payout / total loss). Tests in `bugfix_v12_test.dart`.

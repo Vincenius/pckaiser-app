@@ -19,8 +19,8 @@ class _ReportEntry {
 /// Event types the report popup covers; everything else stays in the feed.
 const _reportTypes = {
   'battle', 'plunder', 'rulerCaptured', 'capitalHeld', 'tileConquered',
-  'warWon', 'warDraw', 'winterEndsWar', 'claimPaidOut', 'peaceWish',
-  'peaceAgreed',
+  'warWon', 'warDraw', 'winterEndsWar', 'claimPaidOut', 'realmOverrun',
+  'peaceWish', 'peaceAgreed',
   'forcedMarriage', 'forcedAbdication', 'dynastyConverted', 'execution',
   'kurfuerstStripped', 'enemyMoved', 'enemyHolds',
 };
@@ -223,6 +223,20 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
         event.slot == viewerSlot ? Colors.green : Colors.red,
         'Kriegsentschädigung',
         '$realm erhält ${p['amount']} Taler von $from.',
+      );
+
+    case 'realmOverrun':
+      // event.slot is the realm that lost its last tile.
+      final mine = event.slot == viewerSlot;
+      return _ReportEntry(
+        Icons.public_off,
+        mine ? Colors.red : Colors.green,
+        mine ? 'Alles verloren !' : 'Totale Eroberung !',
+        mine
+            ? 'Du hast dein gesamtes Land verloren — dir bleibt kein '
+                'einziges Feld mehr.'
+            : '$realm hat sein gesamtes Land verloren — das Reich ist '
+                'von der Karte getilgt.',
       );
 
     case 'peaceWish':

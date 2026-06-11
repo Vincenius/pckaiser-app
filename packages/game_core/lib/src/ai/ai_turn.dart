@@ -515,15 +515,37 @@ void _fastForwardAiWar(GameState state, Rng rng, List<GameEvent> events) {
 /// after a human ends their turn, run AI action phases and advance the
 /// pipeline until a human's action phase is reached (with all pending
 /// decisions for AIs already auto-resolved), or the game is over.
+///
+/// When NO human seat remains (every human dynasty lost control through
+/// strife, capture, succession crisis or extinction), the game ends right
+/// there with a public `humansDefeated` event. Without this stop the loop
+/// would silently simulate the AI-only world for up to 2,000 turns —
+/// centuries of play — and then drop the player into whichever realm
+/// happened to be current (or an AI "victory"), long after they were out.
 TurnResult advanceUntilHuman(GameState state, Rng rng) {
   var current = state;
   final events = <GameEvent>[];
   var guard = 0;
 
+  bool humanSeated(GameState s) => s.realms.any((r) =>
+      !r.isVacant && s.dynasty(r.slot).status == DynastyStatus.human);
+
   while (guard++ < 2000) {
     if (current.events.isNotEmpty &&
         (current.events.last.type == 'gameWon' ||
             current.events.last.type == 'gameDraw')) {
+      break;
+    }
+    if (!humanSeated(current)) {
+      final defeat = GameEvent(
+        year: current.year,
+        slot: 0,
+        type: 'humansDefeated',
+        visibility: EventVisibility.public,
+      );
+      current = current.copy();
+      current.events.add(defeat);
+      events.add(defeat);
       break;
     }
     final slot = current.currentPlayer;

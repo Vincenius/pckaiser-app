@@ -8,7 +8,8 @@ const _warTypes = {
   'warDeclared', 'battle', 'rulerCaptured', 'capitalHeld', 'warWon',
   'warDraw',
   'tileConquered', 'plunder', 'peaceWish', 'peaceAgreed', 'winterEndsWar',
-  'claimPaidOut', 'forcedMarriage', 'forcedAbdication', 'execution',
+  'claimPaidOut', 'realmOverrun', 'forcedMarriage', 'forcedAbdication',
+  'execution',
 };
 const _dynastyTypes = {
   'wedding', 'birth', 'personDied', 'succession', 'divorce',
@@ -20,7 +21,7 @@ const _worldTypes = {
   'earthquake', 'disease', 'reformation', 'ottomanInvasion',
   'merchantFounder', 'crowned', 'electionStarted', 'electionTie',
   'interregnum', 'newKurfuerst', 'kurfuerstStripped', 'officeHolderDied',
-  'gameWon', 'gameDraw', 'totalExtinction',
+  'gameWon', 'gameDraw', 'totalExtinction', 'humansDefeated',
 };
 
 /// Human-readable line for an event. Falls back to the type name so new
@@ -83,6 +84,9 @@ String describeEvent(gc.GameEvent e) {
         '${gc.countryNames[p['victim'] as int]}',
     'claimPaidOut' => '$realm erhält ${p['amount']} T Kriegsentschädigung '
         'von ${gc.countryNames[p['from'] as int]}',
+    'realmOverrun' => '$realm hat sein gesamtes Land verloren !',
+    'humansDefeated' =>
+      'Keine menschliche Dynastie hält mehr die Macht — das Spiel ist aus',
     'forcedMarriage' =>
       '${p['victor']} erzwingt die Heirat mit ${p['spouse']}',
     'forcedAbdication' => '${p['name']} muss abdanken !',
@@ -239,6 +243,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
       'assassinationFailed' ||
       'totalExtinction' =>
         true,
+      'realmOverrun' => e.slot == slot,
       'earthquake' ||
       'disease' ||
       'bankruptcy' ||
@@ -266,6 +271,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
       'internalStrife' => (Icons.local_fire_department, Colors.red),
       'realmsMerged' => (Icons.merge_type, Colors.green),
       'dynastyExtinct' => (Icons.heart_broken, Colors.blueGrey),
+      'realmOverrun' => (Icons.public_off, Colors.red),
       _ => (Icons.campaign, Colors.blueGrey),
     };
 

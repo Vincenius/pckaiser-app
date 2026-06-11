@@ -84,9 +84,10 @@ final List<TutorialStep> tutorialSteps = [
         'Gebiet baust: Kornfelder (100 T) und Weiden (150 T) ernähren '
         'das Volk, Dörfer (1000 T) bringen Einwohner und Steuern, '
         'Häfen (700 T) erlauben Handelsschiffe. In einem Hafen kannst '
-        'du außerdem ein Schiff kaufen (700 T), es über See steuern '
-        '(1 Zug pro Feld) und neben einem freien Landfeld ein Dorf '
-        'gründen — so kolonisierst du z. B. Inseln.',
+        'du außerdem ein Schiff kaufen (700 T) und über See steuern '
+        '(1 Zug pro Feld) — steuerst du ein freies Landfeld an, '
+        'gründet das Schiff dort ein Dorf: so kolonisierst du '
+        'z. B. Inseln.',
     task: 'Tippe ein freies Feld neben deinem Gebiet an und baue '
         'ein Kornfeld oder eine Weide.',
     isDone: (c, since) =>
