@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/strings.dart' show formatTimestamp;
 import '../services/api_client.dart';
 import '../services/online_service.dart';
 import 'online_match_screen.dart';
@@ -88,7 +89,11 @@ class _OnlineScreenState extends State<OnlineScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Online einrichten'),
+        // Players only ever pick their name — the server address is a
+        // dev concern, shown solely when no build-time URL is set.
+        title: Text(
+          kEnvServerUrl.isEmpty ? 'Online einrichten' : 'Spielernamen wählen',
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -411,7 +416,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
         title: const Text('Online spielen'),
         actions: [
           IconButton(
-            tooltip: 'Server & Name',
+            tooltip: kEnvServerUrl.isEmpty ? 'Server & Name' : 'Spielername',
             onPressed: _configure,
             icon: const Icon(Icons.settings),
           ),
@@ -446,16 +451,15 @@ class _OnlineScreenState extends State<OnlineScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Verbinde dich mit einem PC-Kaiser-Server, erstelle eine '
-            'Partie und teile den Raum-Code — gespielt wird, wenn du '
-            'am Zug bist.',
+            'Wähle deinen Spielernamen, erstelle eine Partie und teile '
+            'den Raum-Code — gespielt wird, wenn du am Zug bist.',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _configure,
-            icon: const Icon(Icons.cloud),
-            label: const Text('Server einrichten'),
+            icon: const Icon(Icons.person),
+            label: const Text('Spielernamen wählen'),
           ),
         ],
       ),
@@ -482,7 +486,6 @@ class _OnlineScreenState extends State<OnlineScreen> {
               'Angemeldet als ${service.displayName}',
               style: theme.textTheme.labelLarge,
             ),
-            subtitle: Text(service.serverUrl ?? ''),
             trailing: TextButton(
               onPressed: _joinMatch,
               child: const Text('Beitreten per Code'),
@@ -508,15 +511,16 @@ class _OnlineScreenState extends State<OnlineScreen> {
               title: Text(switch (m['status'] as String) {
                 'waiting' =>
                   'Wartet auf Spieler (${m['joined']} beigetreten)',
-                'active' =>
-                  m['your_turn'] == true
-                      ? 'Du bist am Zug !'
-                      : 'Warten auf Mitspieler …',
+                'active' => m['your_turn'] == true
+                    ? 'Du bist am Zug !'
+                    : m['awaited_name'] != null
+                        ? '${m['awaited_name']} ist am Zug …'
+                        : 'Warten auf Mitspieler …',
                 _ => 'Beendet',
               }),
               subtitle: Text(
                 'Raum ${m['id']}'
-                '${m['turn_deadline'] != null ? ' — Frist ${m['turn_deadline']}' : ''}',
+                '${m['turn_deadline'] != null ? ' — Frist ${formatTimestamp(m['turn_deadline'] as String)}' : ''}',
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/strings.dart' show formatTimestamp;
 import '../services/api_client.dart';
 import '../services/online_game_session.dart';
 import '../services/online_service.dart';
@@ -159,6 +160,15 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final yourTurn = view['your_turn'] == true;
     final yourSlot = view['your_slot'] as int?;
     final players = (view['players'] as List).cast<Map>();
+    Map? awaitedSeat;
+    for (final p in players) {
+      if (p['player_id'] == view['awaited_player_id']) awaitedSeat = p;
+    }
+    // An older server omits display_name — fall back to the generic
+    // waiting line / plain country names instead of showing "null".
+    final awaitedName = awaitedSeat == null
+        ? null
+        : awaitedSeat['display_name'] as String?;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -178,8 +188,13 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
             title: Text(switch (status) {
               'waiting' =>
                 'Wartet auf Spieler (${players.length} beigetreten)',
-              'active' =>
-                yourTurn ? 'Du bist am Zug !' : 'Warten auf Mitspieler …',
+              'active' => yourTurn
+                  ? 'Du bist am Zug !'
+                  : awaitedName != null
+                      ? '$awaitedName '
+                          '(${gc.countryNames[awaitedSeat!['dynasty_index'] as int]}) '
+                          'ist am Zug …'
+                      : 'Warten auf Mitspieler …',
               _ =>
                 view['winner'] == widget.service.playerId
                     ? 'Sieg ! Die Partie ist beendet.'
@@ -187,7 +202,10 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
             }),
             subtitle: view['turn_deadline'] == null
                 ? null
-                : Text('Zugfrist: ${view['turn_deadline']}'),
+                : Text(
+                    'Zugfrist: '
+                    '${formatTimestamp(view['turn_deadline'] as String)}',
+                  ),
           ),
         ),
         if (status == 'waiting') ...[
@@ -235,8 +253,9 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               size: 18,
             ),
             title: Text(
-              gc.countryNames[p['dynasty_index'] as int] +
-                  (p['dynasty_index'] == yourSlot ? ' (du)' : ''),
+              '${p['display_name'] != null ? '${p['display_name']} — ' : ''}'
+              '${gc.countryNames[p['dynasty_index'] as int]}'
+              '${p['dynasty_index'] == yourSlot ? ' (du)' : ''}',
             ),
             subtitle: Text('Zugreihenfolge ${(p['turn_order'] as int) + 1}'),
           ),
@@ -263,6 +282,15 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               ),
             ),
         ],
+        if (status == 'waiting' &&
+            view['creator_id'] != widget.service.playerId)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              'Warte, bis der Gastgeber das Spiel startet …',
+              textAlign: TextAlign.center,
+            ),
+          ),
         if (status == 'active' && yourTurn)
           FilledButton.icon(
             onPressed: _play,

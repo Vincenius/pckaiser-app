@@ -16,6 +16,8 @@ const Map<String, Map<String, String>> _table = {
     'onlineYourTurn': 'Your turn!',
     'onlineWaitingForPlayers': 'Waiting for players',
     'onlineWaitingForOthers': 'Waiting for the other players …',
+    // Suffixed to the awaited player's name: "Anna is taking her turn …"
+    'onlineIsPlaying': 'is taking their turn …',
     'savedGames': 'Saved games',
     'noSaves': 'No saved games yet.',
     'noSavesHint': 'Start a new game, or learn the basics in the tutorial.',
@@ -71,6 +73,7 @@ const Map<String, Map<String, String>> _table = {
     'onlineYourTurn': 'Du bist am Zug !',
     'onlineWaitingForPlayers': 'Wartet auf Spieler',
     'onlineWaitingForOthers': 'Warten auf Mitspieler …',
+    'onlineIsPlaying': 'ist am Zug …',
     'savedGames': 'Spielstände',
     'noSaves': 'Noch keine Spielstände.',
     'noSavesHint':
@@ -125,3 +128,15 @@ const Map<String, Map<String, String>> _table = {
 /// Translated string for [key]; falls back to English, then the key.
 String tr(String key) =>
     _table[appLocale.value]?[key] ?? _table['en']![key] ?? key;
+
+/// Server timestamps (ISO 8601, UTC) rendered in the device's timezone
+/// and the active locale's date format — e.g. "15.06.2026, 14:30".
+String formatTimestamp(String iso) {
+  final dt = DateTime.tryParse(iso)?.toLocal();
+  if (dt == null) return iso;
+  String two(int n) => n.toString().padLeft(2, '0');
+  final time = '${two(dt.hour)}:${two(dt.minute)}';
+  return appLocale.value == 'de'
+      ? '${two(dt.day)}.${two(dt.month)}.${dt.year}, $time'
+      : '${dt.year}-${two(dt.month)}-${two(dt.day)}, $time';
+}

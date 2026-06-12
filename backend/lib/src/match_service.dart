@@ -318,6 +318,9 @@ class MatchService {
         for (final p in match.players)
           {
             'player_id': p.playerId,
+            'display_name':
+                (await _store.player(p.playerId))?.displayName ??
+                    p.founderName,
             'turn_order': p.turnOrder,
             'dynasty_index': p.slot,
           },
@@ -337,24 +340,32 @@ class MatchService {
     await _requirePlayer(playerId);
     final matches = await _store.matchesForPlayer(playerId);
     matches.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return [
-      for (final m in matches)
-        {
-          'id': m.id,
-          'status': m.status.name,
-          'human_count': m.humanCount,
-          'joined': m.players.length,
-          // Creator = first seat; a waiting match is deleted (not left)
-          // by its creator — drives the lobby's delete/leave labels.
-          'is_creator': m.players.isNotEmpty &&
-              m.players.first.playerId == playerId,
-          'turn_deadline': m.turnDeadline?.toIso8601String(),
-          'your_turn': m.status == MatchStatus.active &&
-              m.stateJson != null &&
-              _awaitedPlayerId(m, _load(m)) == playerId,
-          'updated_at': m.updatedAt.toIso8601String(),
-        },
-    ];
+    final result = <Map<String, dynamic>>[];
+    for (final m in matches) {
+      final awaited = m.status == MatchStatus.active && m.stateJson != null
+          ? _awaitedPlayerId(m, _load(m))
+          : null;
+      result.add({
+        'id': m.id,
+        'status': m.status.name,
+        'human_count': m.humanCount,
+        'joined': m.players.length,
+        // Creator = first seat; a waiting match is deleted (not left)
+        // by its creator — drives the lobby's delete/leave labels.
+        'is_creator':
+            m.players.isNotEmpty && m.players.first.playerId == playerId,
+        'turn_deadline': m.turnDeadline?.toIso8601String(),
+        'your_turn': awaited == playerId,
+        // Whose move it is — lets the lists say "Anna ist am Zug" instead
+        // of a generic waiting line.
+        'awaited_name': awaited == null
+            ? null
+            : (await _store.player(awaited))?.displayName ??
+                m.playerById(awaited)?.founderName,
+        'updated_at': m.updatedAt.toIso8601String(),
+      });
+    }
+    return result;
   }
 
   // --- Turn submission ---------------------------------------------------

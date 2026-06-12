@@ -344,6 +344,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ? '${tr('onlineWaitingForPlayers')} (${m['joined']})'
               : yourTurn
               ? tr('onlineYourTurn')
+              : m['awaited_name'] != null
+              ? '${m['awaited_name']} ${tr('onlineIsPlaying')}'
               : tr('onlineWaitingForOthers'),
         ),
         subtitle: Text('Raum ${m['id']}'),
