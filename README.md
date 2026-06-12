@@ -104,6 +104,11 @@ context), with an Nginx example in `backend/deploy/`:
 docker compose -f backend/deploy/docker-compose.yml up -d --build
 ```
 
+Compose env (set in the shell or in `backend/deploy/.env`):
+`PCKAISER_PORT` — host port the server is published on
+(default 3000, bound to localhost; point Nginx at it), plus
+`FIREBASE_SERVICE_ACCOUNT` as above.
+
 The store is a JSON file store under `STORE_DIR` (one document per match —
 the same `GameState` JSON the client saves locally); swap in PostgreSQL
 behind `lib/src/store.dart` for multi-node setups.

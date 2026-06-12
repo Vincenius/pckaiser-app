@@ -4,6 +4,10 @@
 # FCM: put the base64-encoded service-account JSON into a `.env` file
 # next to this compose file (FIREBASE_SERVICE_ACCOUNT=...); without it
 # push notifications are logged only.
+#
+# PCKAISER_PORT — host port the server is published on (default 3000,
+# localhost only; Nginx proxies to it). Set it in the environment of
+# `docker compose up` or in the same `.env` file.
 services:
   server:
     build:
@@ -11,7 +15,7 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${PCKAISER_PORT:-3000}:3000"
     environment:
       PORT: 3000
       STORE_DIR: /data
