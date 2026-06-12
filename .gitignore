@@ -7,3 +7,7 @@ client/linux/
 
 # game_core is a library package: don't pin its lockfile
 packages/game_core/pubspec.lock
+
+# Secrets: FCM service-account key (README "Push notifications")
+backend/deploy/.env
+*service-account*.json

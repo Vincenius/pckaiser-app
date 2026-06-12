@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:path_provider/path_provider.dart';
 
 import 'api_client.dart';
+import 'push_service.dart';
 
 /// Server URL baked in at build time:
 /// `flutter build --dart-define=PCKAISER_SERVER_URL=https://…` — when
@@ -77,6 +78,29 @@ class OnlineService {
     _profile['display_name'] = displayName;
     _profile['player_id'] = id;
     await _save();
+  }
+
+  /// Push enrolment (ARCHITECTURE.md "FCM"): asks the player for
+  /// notification permission, uploads the FCM token (PATCH /players/:id,
+  /// "token updated on launch") and keeps it fresh on rotation. No-op
+  /// until the profile is configured; push is fire-and-forget, so every
+  /// failure is swallowed — the game works without it.
+  Future<void> syncPushToken() async {
+    final push = PushService.instance;
+    if (push == null || !isConfigured) return;
+    if (!await push.requestPermission()) return;
+
+    Future<void> upload(String token) async {
+      try {
+        await api.updatePlayer(id: playerId!, fcmToken: token);
+      } on Object {
+        // Push is optional; the next launch retries.
+      }
+    }
+
+    final token = await push.token();
+    if (token != null) await upload(token);
+    push.onTokenRefresh(upload);
   }
 
   Future<void> _save() async {

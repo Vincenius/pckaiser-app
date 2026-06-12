@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "830447861119",
+    "project_id": "pckaiser-9642d",
+    "storage_bucket": "pckaiser-9642d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:830447861119:android:31bb9f8ab6cea4403d2e4a",
+        "android_client_info": {
+          "package_name": "com.vincentwill.pckaiser"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKu_7IGyoOD-y59taBPVNb82CifRVfAIc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

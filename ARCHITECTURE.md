@@ -116,6 +116,8 @@ Rejected: parallel war track (shared-state mutation breaks replay), WEGO plans (
 
 HTTP v1 API via a Dart client (service-account creds from env). Send after state save in the turn handler; on failure log and continue (never fail the turn request). Token updated on launch via `PATCH /players/:id`.
 
+Client (`client/lib/services/push_service.dart`, firebase_messaging): permission is requested via the system dialog when the player uses online play (home screen with a configured profile, or right after online setup); the token is uploaded then and on every rotation. Tapping a notification (`data.match_id`) opens the match screen. Push is optional end to end — without the platform Firebase config `PushService.init()` yields nothing and the game runs unchanged (desktop dev builds included); setup steps in README "Push notifications".
+
 ## Project Structure
 
 ```

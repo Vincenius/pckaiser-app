@@ -346,3 +346,26 @@ deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
   release would clip). (4) Action-bar menu "Sonstiges" renamed
   "Dynastie" (EN "Dynasty"), tutorial step text updated. 230 core +
   22 backend + 27 client tests green.
+- **Client push notifications + home-screen online list (user request)**:
+  server-side FCM existed since the V2 backend; this adds the client
+  half. New `client/lib/services/push_service.dart` wrapping
+  firebase_core/firebase_messaging: `PushService.init()` in `main()`
+  yields null on desktop or without the platform Firebase config, so
+  push stays optional end to end (Linux dev builds keep working —
+  verified). Permission is asked via the system dialog when online play
+  is used: on the home screen with a configured profile and right after
+  "Online einrichten"; the token then goes up via the new
+  `ApiClient.updatePlayer` (`PATCH /players/:id`,
+  `OnlineService.syncPushToken`) and re-uploads on rotation
+  (`onTokenRefresh`). Notification taps (cold start + background) carry
+  `data.match_id` and open `OnlineMatchScreen` directly. Android wiring:
+  google-services Gradle plugin applied **only when
+  `client/android/app/google-services.json` exists** (builds never break
+  without Firebase), `POST_NOTIFICATIONS` in the manifest; iOS needs
+  plist + APNs key (README "Push notifications" documents the full
+  Firebase setup incl. server `FIREBASE_SERVICE_ACCOUNT`). Home screen:
+  new "Online-Partien" section between the action buttons and the saved
+  games — non-finished matches, "Du bist am Zug !" entries first with a
+  highlighted icon, 20 s foreground poll like the lobby, tap opens the
+  match; errors are silent there (the online screen reports them). 27
+  client tests + analyze green.

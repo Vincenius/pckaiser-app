@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'l10n/strings.dart';
 import 'screens/home_screen.dart';
+import 'services/push_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Push is optional — yields no service on desktop or without the
+  // Firebase config files (README "Push notifications").
+  await PushService.init();
   runApp(const PcKaiserApp());
 }
 

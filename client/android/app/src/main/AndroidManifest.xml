@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Push notifications (Android 13+): requested at runtime via the
+         system dialog when the player uses online play. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="PC Kaiser"
         android:name="${applicationName}"

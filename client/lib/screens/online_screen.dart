@@ -127,6 +127,9 @@ class _OnlineScreenState extends State<OnlineScreen> {
         serverUrl: urlController.text.trim(),
         displayName: nameController.text.trim(),
       );
+      // First-time setup: ask for notification permission right away and
+      // upload the FCM token (ARCHITECTURE.md "FCM").
+      await service.syncPushToken();
       if (!mounted) return;
       setState(() {});
       await _reload();

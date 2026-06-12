@@ -132,6 +132,41 @@ flutter run -d linux --dart-define=PCKAISER_INSTANCE=2
 (any suffix works — it picks the profile file `pckaiser_online_2.json`,
 so the instance registers as its own player).
 
+## Push notifications (FCM)
+
+Online matches notify the player when it is their turn ("Du bist am
+Zug !"), when a decision awaits them and when war breaks out. Push is
+**strictly optional**: without the Firebase config below the app builds
+and runs normally (the server just logs what it would have sent), and
+the client asks the player for notification permission via the system
+dialog the first time they use online play.
+
+One-time Firebase setup (free Spark plan suffices — FCM costs nothing):
+
+1. Create a project at <https://console.firebase.google.com>.
+2. **Android:** add an Android app with package name
+   `com.vincentwill.pckaiser`, download `google-services.json` and put it
+   at `client/android/app/google-services.json`. That file's presence
+   activates the Google-services Gradle plugin; rebuild the app.
+3. **Server:** Project settings → Service accounts → *Generate new
+   private key*, then pass the JSON base64-encoded to the server:
+
+   ```bash
+   export FIREBASE_SERVICE_ACCOUNT=$(base64 -w0 service-account.json)
+   dart run bin/server.dart          # or set it in backend/deploy/.env
+   ```
+
+4. **iOS** (needs an Apple Developer account): add an iOS app with bundle
+   id `com.vincentwill.pckaiser`, put the downloaded
+   `GoogleService-Info.plist` into `client/ios/Runner/` (add it to the
+   Runner target in Xcode), enable the *Push Notifications* capability
+   and *Background Modes → Remote notifications*, and upload your APNs
+   auth key under Project settings → Cloud Messaging.
+
+Token flow: the client uploads its FCM token on launch and after online
+setup (`PATCH /players/:id`); the server sends via the FCM HTTP-v1 API
+after each saved turn. Tapping a notification opens the match directly.
+
 ## Build the APK / App Bundle
 
 ### Debug-signed build (for quick installs on a test device)

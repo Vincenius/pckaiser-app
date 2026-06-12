@@ -32,6 +32,19 @@ class ApiClient {
     body: {'id': id, 'display_name': displayName, 'fcm_token': fcmToken},
   );
 
+  Future<Map<String, dynamic>> updatePlayer({
+    required String id,
+    String? displayName,
+    String? fcmToken,
+  }) => _request(
+    'PATCH',
+    '/api/v1/players/$id',
+    body: {
+      'display_name': ?displayName,
+      'fcm_token': ?fcmToken,
+    },
+  );
+
   Future<Map<String, dynamic>> createMatch({
     required String playerId,
     required Map<String, dynamic> settings,

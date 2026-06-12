@@ -54,4 +54,6 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Lobby rework: 5-letter room codes, no fixed player count, creator starts the match (`POST /matches/:id/start`)
 - [x] FCM HTTP-v1 push (`FIREBASE_SERVICE_ACCOUNT`, logged stub without it); Docker compose + Nginx example in `backend/deploy/` (backups = volume tar cron, see nginx.conf.example)
 - [x] Leave/delete matches (`POST /matches/:id/leave`): creator deletes a waiting match, leaving a running one hands the realm(s) to the AI (`playerLeft` event); lobby + match-screen UI; `--dart-define=PCKAISER_INSTANCE` for two clients on one desktop
-- [ ] Real-device/system test of an online match (two devices against a deployed server)
+- [x] Client push (firebase_messaging): permission prompt on online setup/launch, token upload via `PATCH /players/:id`, notification tap opens the match; optional — app builds/runs without Firebase config (README "Push notifications")
+- [x] Home screen lists running online matches ("Du bist am Zug !" first, 20 s poll)
+- [ ] Real-device/system test of an online match (two devices against a deployed server, incl. push)

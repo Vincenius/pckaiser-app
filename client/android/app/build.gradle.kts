@@ -6,6 +6,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Firebase push (FCM): active only when the Firebase config exists, so
+// the app keeps building without it — push is optional (README "Push
+// notifications").
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // Release signing: create android/key.properties (NOT committed — see
 // README "Release build") with storeFile/storePassword/keyAlias/keyPassword.
 val keystoreProperties = Properties().apply {

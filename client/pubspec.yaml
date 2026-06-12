@@ -14,6 +14,10 @@ dependencies:
     path: ../packages/game_core
   path_provider: ^2.1.4
   url_launcher: ^6.3.0
+  # Push (ARCHITECTURE.md "FCM") — only active on Android/iOS with the
+  # Firebase config files in place (README "Push notifications").
+  firebase_core: ^4.0.0
+  firebase_messaging: ^16.0.0
 
 dev_dependencies:
   flutter_test:
