@@ -36,7 +36,9 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
   final map = state.map;
   final affected = <int>{};
 
-  for (var y = math.max(0, ey - 10); y <= math.min(map.height - 1, ey + 10); y++) {
+  for (var y = math.max(0, ey - 10);
+      y <= math.min(map.height - 1, ey + 10);
+      y++) {
     for (var x = math.max(0, ex - 10);
         x <= math.min(map.width - 1, ex + 10);
         x++) {
@@ -58,8 +60,7 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
           map.owner[map.index(x, y)] = World.niemand;
           realm.tileCount[building]--;
         case Building.dorf || Building.markt || Building.stadt:
-          final town =
-              realm.towns.firstWhere((t) => t.x == x && t.y == y);
+          final town = realm.towns.firstWhere((t) => t.x == x && t.y == y);
           _damageTown(state, realm, town, rng.nextInt(town.population));
       }
     }
@@ -77,7 +78,7 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
 
 /// §18.1/§18.2 exact town damage shape: `T` victims reduce capacity and
 /// garrison proportionally; the garrison loss is removed from the army.
-/// Rules v10 also cuts the garrison-counted troop units, keeping unit men
+/// Also cuts the garrison-counted troop units, keeping unit men
 /// in sync with `armySize` (the same desync the v2 conquest fix closed).
 void _damageTown(GameState state, Realm realm, Town town, int t) {
   if (town.population <= 0 || t <= 0) return;
@@ -89,7 +90,7 @@ void _damageTown(GameState state, Realm realm, Town town, int t) {
     final cut = math.min(garrisonLoss, town.garrison);
     town.garrison -= cut;
     realm.armySize = math.max(0, realm.armySize - cut);
-    if (state.rulesVersion >= 10) cutGarrisonTroops(realm, cut);
+    cutGarrisonTroops(realm, cut);
   }
   town.population -= t;
   realm.population -= t;
@@ -124,8 +125,8 @@ void _maybeDisease(GameState state, Rng rng, List<GameEvent> events) {
     var guard = 0;
     while (d > 0 && realm.towns.isNotEmpty && guard++ < 1000) {
       final town = realm.towns[rng.nextInt(realm.towns.length)];
-      final t = math.min(
-          town.population > 0 ? rng.nextInt(town.population) : 0, d);
+      final t =
+          math.min(town.population > 0 ? rng.nextInt(town.population) : 0, d);
       _damageTown(state, realm, town, t);
       d -= math.max(1, t);
     }
@@ -157,18 +158,15 @@ void _maybeReformation(GameState state, Rng rng, List<GameEvent> events) {
   if (state.year != state.reformationYear) return;
   final aiSlots = [
     for (final d in state.dynasties)
-      if (d.status == DynastyStatus.ai &&
-          !state.realm(d.index).isVacant)
+      if (d.status == DynastyStatus.ai && !state.realm(d.index).isVacant)
         d.index,
   ];
   int? convertSlot;
   if (aiSlots.isNotEmpty) {
     convertSlot = aiSlots[rng.nextInt(aiSlots.length)];
     state.dynasty(convertSlot).religion = Religion.evangelisch;
-    // Rules v10: §14.4 — incompatible marriages dissolve on conversion.
-    if (state.rulesVersion >= 10) {
-      dyn.divorceIncompatibleCouples(state, convertSlot, events);
-    }
+    // §14.4 — incompatible marriages dissolve on conversion.
+    dyn.divorceIncompatibleCouples(state, convertSlot, events);
   }
   events.add(GameEvent(
     year: state.year,
@@ -197,27 +195,23 @@ void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
     for (final slot in living)
       if (state.dynasty(slot).status == DynastyStatus.ai) slot,
   ];
-  final slot = (aiSlots.isNotEmpty ? aiSlots : living)[
-      rng.nextInt((aiSlots.isNotEmpty ? aiSlots : living).length)];
+  final slot = (aiSlots.isNotEmpty
+      ? aiSlots
+      : living)[rng.nextInt((aiSlots.isNotEmpty ? aiSlots : living).length)];
   final realm = state.realm(slot);
   final dynasty = state.dynasty(slot);
   final ruler = state.person(realm.rulerId);
 
   dynasty.religion = Religion.moslemisch;
   state.kurfuerstenIds.remove(realm.rulerId);
-  // Rules v10: every dynasty member's Kurfürst seat is forfeit, like the
-  // menu and coerced conversions to Islam (§12.1, §17.2).
-  if (state.rulesVersion >= 10) {
-    state.kurfuerstenIds
-        .removeWhere((id) => state.persons[id]?.dynasty == slot);
-  }
+  // Every dynasty member's Kurfürst seat is forfeit, like the menu and
+  // coerced conversions to Islam (§12.1, §17.2).
+  state.kurfuerstenIds.removeWhere((id) => state.persons[id]?.dynasty == slot);
   // Switch to the Muslim title ladder, like every other conversion
   // (§16.1; mirrors `_changeReligion` and `foundReplacementDynasty`).
   switchTitleLadder(realm, Religion.moslemisch);
-  // Rules v10: §14.4 — incompatible marriages dissolve on conversion.
-  if (state.rulesVersion >= 10) {
-    dyn.divorceIncompatibleCouples(state, slot, events);
-  }
+  // §14.4 — incompatible marriages dissolve on conversion.
+  dyn.divorceIncompatibleCouples(state, slot, events);
 
   // The capital town: nearest town to the capital (usually the first Dorf).
   final town = realm.towns.first;
@@ -257,8 +251,8 @@ void _maybeMerchantFounders(GameState state, Rng rng, List<GameEvent> events) {
     if (!realm.isVacant) continue;
     final owned = realm.tileCount.fold(0, (a, b) => a + b);
     if (owned == 0 || rng.nextInt(10) != 0) continue;
-    final founder = foundReplacementDynasty(state, realm.slot, rng, events,
-        treasury: 1000);
+    final founder =
+        foundReplacementDynasty(state, realm.slot, rng, events, treasury: 1000);
     events.add(GameEvent(
       year: state.year,
       slot: realm.slot,
@@ -376,8 +370,8 @@ Person foundReplacementDynasty(
 /// §19.1 internal strife + §19.2 bankruptcy, run in the end-of-turn
 /// elimination check for [slot]. Both are suppressed in the
 /// protect-new-players window.
-void runEliminationChecks(GameState state, int slot, Rng rng,
-    List<GameEvent> events) {
+void runEliminationChecks(
+    GameState state, int slot, Rng rng, List<GameEvent> events) {
   if (newPlayerProtectionActive(state)) return;
   final realm = state.realm(slot);
   final dynasty = state.dynasty(slot);
@@ -410,10 +404,16 @@ void runEliminationChecks(GameState state, int slot, Rng rng,
 
   // §19.2 bankruptcy.
   const thresholds = [
-    10000, 15000, 20000, 30000, 40000, 50000, 75000, 100000,
+    10000,
+    15000,
+    20000,
+    30000,
+    40000,
+    50000,
+    75000,
+    100000,
   ];
-  final base =
-      realm.titleClass > 12 ? realm.titleClass - 12 : realm.titleClass;
+  final base = realm.titleClass > 12 ? realm.titleClass - 12 : realm.titleClass;
   final classIndex = (base >= 9 ? _muslimEquivalent(base) : base) - 1;
   final limit = thresholds[classIndex.clamp(0, 7)];
   if (realm.treasury >= -limit) return;
@@ -441,8 +441,7 @@ void runEliminationChecks(GameState state, int slot, Rng rng,
     if (building == Building.stadt) {
       final x = i % map.width;
       final y = i ~/ map.width;
-      final townIndex =
-          realm.towns.indexWhere((t) => t.x == x && t.y == y);
+      final townIndex = realm.towns.indexWhere((t) => t.x == x && t.y == y);
       if (townIndex >= 0) {
         final town = realm.towns.removeAt(townIndex);
         realm.population -= town.population;

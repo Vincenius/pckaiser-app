@@ -2,13 +2,14 @@ import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
 GameState aiOnlyGame({int seed = 2026}) => startGame(
-    newGame(GameSetup(
-      humans: const [],
-      reformationYear: 1020,
-      ottomanYear: 1040,
-      seed: seed,
-    )),
-    Rng(seed)).state;
+        newGame(GameSetup(
+          humans: const [],
+          reformationYear: 1020,
+          ottomanYear: 1040,
+          seed: seed,
+        )),
+        Rng(seed))
+    .state;
 
 void expectInvariants(GameState state) {
   for (final realm in state.realms) {
@@ -143,11 +144,14 @@ void main() {
       realm.towns.single.troopCapacity = 300;
       realm.troopCapacity = 300;
       var s = applyAction(
-          state,
-          RecruitTroops(
-              slot: 1, men: 250, troopClass: TroopClass.infanterie,
-              name: 'Heer'),
-          Rng(state.rngSeed)).state;
+              state,
+              RecruitTroops(
+                  slot: 1,
+                  men: 250,
+                  troopClass: TroopClass.infanterie,
+                  name: 'Heer'),
+              Rng(state.rngSeed))
+          .state;
 
       // Force the war branch: declare directly, then fast-forward by
       // repeatedly letting the AI act (runAiTurn won't start a second war).
@@ -159,8 +163,8 @@ void main() {
       while (s.activeWar != null && guard++ < 40) {
         final events = <GameEvent>[];
         final copy = s.copy();
-        runAiWarMovement(copy, copy.activeWar!.attackerSlot,
-            Rng(copy.rngSeed), events);
+        runAiWarMovement(
+            copy, copy.activeWar!.attackerSlot, Rng(copy.rngSeed), events);
         if (copy.activeWar != null) {
           runAiWarMovement(copy, copy.activeWar!.defenderSlot,
               Rng(copy.rngSeed + 1), events);
@@ -194,8 +198,7 @@ void main() {
           fail('an AI war was left unresolved');
         }
         state = completeTurn(state, Rng(state.rngSeed)).state;
-        if (state.events.isNotEmpty &&
-            state.events.last.type == 'gameWon') {
+        if (state.events.isNotEmpty && state.events.last.type == 'gameWon') {
           break;
         }
         if (state.year > year) {

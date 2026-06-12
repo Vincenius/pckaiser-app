@@ -182,9 +182,6 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
   realm.soldCattleThisTurn = false;
   realm.investedThisTurn = false;
   realm.proposedMarriageThisTurn = false;
-  for (final troop in realm.troops) {
-    troop.drilledThisTurn = false;
-  }
 
   events.add(GameEvent(
     year: state.year,

@@ -20,8 +20,8 @@ import 'troops.dart';
 
 /// §11.1: starts a war. Prunes empty units, snapshots positions, rolls the
 /// first round's movement allowance.
-ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot,
-    Rng rng) {
+ActiveWar startWar(
+    GameState state, int attackerSlot, int defenderSlot, Rng rng) {
   for (final slot in [attackerSlot, defenderSlot]) {
     final realm = state.realm(slot);
     realm.troops.removeWhere((t) => t.men <= 0);
@@ -33,8 +33,7 @@ ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot,
   for (final slot in [attackerSlot, defenderSlot]) {
     final realm = state.realm(slot);
     war.snapshots[slot] = [
-      for (final t in realm.troops)
-        UnitSnapshot(name: t.name, x: t.x, y: t.y),
+      for (final t in realm.troops) UnitSnapshot(name: t.name, x: t.x, y: t.y),
     ];
   }
   _rollWarMoves(state, war, rng);
@@ -49,8 +48,7 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
   for (final slot in [war.attackerSlot, war.defenderSlot]) {
     final realm = state.realm(slot);
     war.movesLeft[slot] = [
-      for (final _ in realm.troops)
-        rollMovementPoints(realm.titleClass, rng),
+      for (final _ in realm.troops) rollMovementPoints(realm.titleClass, rng),
     ];
   }
 }
@@ -61,14 +59,8 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 /// MULTIPLY the occupant's own losses (a Burg tripled your casualties)
 /// and open ground meant zero casualties ever — wars degenerated into
 /// walking races to the capital. The clone keeps the §10.1 power values
-/// and the one-roll-per-encounter shape, but losses now scale with the
-/// OPPONENT's power and are divided by the defender's tile defense:
-///
-///   losses_side = round(P_opponent × R / (2 × (1 + def_side)))
-///
-/// Rules < v5 keep a single `RandomReal` roll R ∈ [0, 1) per encounter
-/// (battles typically killed 0–3 men, so wars dragged on forever). Rules
-/// v5 decide each encounter: the side with the higher effective strength
+/// and the one-roll-per-encounter shape, but every encounter is DECIDED:
+/// the side with the higher effective strength
 ///
 ///   eff = P × (1 + def / 2) × fortune     (one shared fortune roll,
 ///                                          [0.5, 1.5) vs its mirror)
@@ -79,8 +71,8 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 /// 2–5 engagements; a fortified or clearly stronger side wins most
 /// clashes and grinds the enemy down fast while bleeding slowly. Spec'd
 /// in PROJECT_REQUIREMENTS.md "Rule deviations".
-List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
-    int slotB, Troop b, Rng rng) {
+List<GameEvent> resolveCombat(
+    GameState state, int slotA, Troop a, int slotB, Troop b, Rng rng) {
   int defense(Troop t) {
     var def = 0;
     if (state.map.terrainAt(t.x, t.y) == Terrain.berg) def += 1;
@@ -101,32 +93,24 @@ List<GameEvent> resolveCombat(GameState state, int slotA, Troop a,
   int lossesA;
   int lossesB;
 
-  if (state.rulesVersion >= 5) {
-    final effA = powerA * (1 + defenseA / 2) * (0.5 + r);
-    final effB = powerB * (1 + defenseB / 2) * (1.5 - r);
-    final loserShare = 0.35 + 0.3 * rng.nextReal();
-    final winnerShare = 0.10 + 0.15 * rng.nextReal();
-    int loserLosses(int men) {
-      final losses = math.max(1, (men * loserShare).round());
-      // A remnant under 5 men is wiped — no endless 1-man tail fights.
-      return men - losses < 5 ? men : losses;
-    }
+  final effA = powerA * (1 + defenseA / 2) * (0.5 + r);
+  final effB = powerB * (1 + defenseB / 2) * (1.5 - r);
+  final loserShare = 0.35 + 0.3 * rng.nextReal();
+  final winnerShare = 0.10 + 0.15 * rng.nextReal();
+  int loserLosses(int men) {
+    final losses = math.max(1, (men * loserShare).round());
+    // A remnant under 5 men is wiped — no endless 1-man tail fights.
+    return men - losses < 5 ? men : losses;
+  }
 
-    int winnerLosses(int men) =>
-        math.min(men - 1, (men * winnerShare).round());
+  int winnerLosses(int men) => math.min(men - 1, (men * winnerShare).round());
 
-    if (effA >= effB) {
-      lossesA = winnerLosses(a.men);
-      lossesB = loserLosses(b.men);
-    } else {
-      lossesA = loserLosses(a.men);
-      lossesB = winnerLosses(b.men);
-    }
+  if (effA >= effB) {
+    lossesA = winnerLosses(a.men);
+    lossesB = loserLosses(b.men);
   } else {
-    lossesA =
-        math.min(a.men, (powerB * r / (2 * (1 + defenseA))).round());
-    lossesB =
-        math.min(b.men, (powerA * r / (2 * (1 + defenseB))).round());
+    lossesA = loserLosses(a.men);
+    lossesB = winnerLosses(b.men);
   }
 
   if (lossesA == a.men && lossesB == b.men) {
@@ -184,8 +168,8 @@ void _applyLosses(GameState state, int slot, Troop troop, int losses) {
 /// §11.4 conquest transfer: the tile changes owner; the winner also takes
 /// a treasury and harvest share, doubled on the loser's capital. Town
 /// tiles move their town object between the realms.
-void transferTile(GameState state, int x, int y, int winnerSlot,
-    List<GameEvent> events) {
+void transferTile(
+    GameState state, int x, int y, int winnerSlot, List<GameEvent> events) {
   final map = state.map;
   final loserSlot = map.ownerAt(x, y);
   if (loserSlot == World.niemand || loserSlot == winnerSlot) return;
@@ -206,16 +190,16 @@ void transferTile(GameState state, int x, int y, int winnerSlot,
   }
   final isCapital = loser.capitalX == x && loser.capitalY == y;
   final factor = isCapital ? 2 : 1;
-  if (sum1 > 0 && building < t1.length) {
+  // No share of an EMPTY (or indebted) treasury — the winner must never
+  // inherit a share of the loser's DEBT.
+  if (sum1 > 0 && building < t1.length && loser.treasury > 0) {
     final share = loser.treasury * t1[building] * factor ~/ sum1;
     loser.treasury -= share;
     winner.treasury += share;
   }
   if (sum2 > 0) {
-    final grainShare =
-        loser.grainHarvest * t2[building] * factor ~/ sum2;
-    final cattleShare =
-        loser.livestockHarvest * t2[building] * factor ~/ sum2;
+    final grainShare = loser.grainHarvest * t2[building] * factor ~/ sum2;
+    final cattleShare = loser.livestockHarvest * t2[building] * factor ~/ sum2;
     loser.grainHarvest -= grainShare;
     loser.livestockHarvest -= cattleShare;
     winner.grainHarvest += grainShare;
@@ -226,18 +210,15 @@ void transferTile(GameState state, int x, int y, int winnerSlot,
   loser.tileCount[building]--;
   winner.tileCount[building]++;
 
-  final townIndex =
-      loser.towns.indexWhere((t) => t.x == x && t.y == y);
+  final townIndex = loser.towns.indexWhere((t) => t.x == x && t.y == y);
   if (townIndex >= 0) {
     final town = loser.towns.removeAt(townIndex);
     loser.population -= town.population;
     loser.troopCapacity -= town.troopCapacity;
     loser.armySize = math.max(0, loser.armySize - town.garrison);
-    // Rules v2: the lost garrison also leaves the loser's garrison-counted
-    // units — v1 cut only `armySize` and let unit men drift out of sync.
-    if (state.rulesVersion >= 2) {
-      cutGarrisonTroops(loser, town.garrison);
-    }
+    // The lost garrison also leaves the loser's garrison-counted units —
+    // cutting only `armySize` would let unit men drift out of sync.
+    cutGarrisonTroops(loser, town.garrison);
     town.garrison = 0; // the defenders are gone with the realm
     winner.towns.add(town);
     winner.population += town.population;
@@ -253,47 +234,15 @@ void transferTile(GameState state, int x, int y, int winnerSlot,
   ));
 }
 
-/// Ruler capture under rules < v9 (§11.2): the capturer takes over the
-/// loser's entire realm, then post-war coercion (§12). From v9 on the
-/// capture resolves at round end via [_endWarByCapitalOccupation]
-/// instead — coercion still fires, but the winner selects tiles in the
-/// claim settlement rather than swallowing the realm.
-void endWarByCapture(GameState state, int captorSlot, Rng rng,
-    List<GameEvent> events) {
-  final war = state.activeWar!;
-  final loserSlot = war.opponentOf(captorSlot);
-  final captor = state.realm(captorSlot);
-  final loserRealm = state.realm(loserSlot);
-  final capturedRuler = state.person(loserRealm.rulerId);
-
-  events.add(GameEvent(
-    year: state.year,
-    slot: captorSlot,
-    type: 'rulerCaptured',
-    visibility: EventVisibility.public,
-    payload: {'loserSlot': loserSlot, 'ruler': capturedRuler?.name},
-  ));
-
-  loserRealm.rulerId = captor.rulerId; // slot pointer overwritten (§19)
-  dyn.alignSlotControl(state, loserSlot, captor.rulerId);
-  _returnTroops(state, war, events);
-  state.activeWar = null;
-
-  if (capturedRuler != null) {
-    runCoercion(state, captorSlot, capturedRuler, rng, events);
-  }
-}
-
 /// §12 post-war coercion, checked in order. Convert-or-die and forced
 /// marriage exclude each other (religions differ vs. match); Kaiser
 /// abdication and the Kurfürst seat strip are independent checks on top.
-/// Rules v10 fires every applicable option like the original ("prompt per
-/// applicable option"); earlier rules fired only the first. AI victors
-/// auto-execute; a human victor gets one `coercion` decision per option
-/// (default: apply). A human loser facing convert-or-die gets their own
-/// decision; an AI loser flips a coin.
-void runCoercion(GameState state, int victorSlot, Person capturedRuler,
-    Rng rng, List<GameEvent> events) {
+/// Every applicable option fires, like the original ("prompt per
+/// applicable option"). AI victors auto-execute; a human victor gets one
+/// `coercion` decision per option (default: apply). A human loser facing
+/// convert-or-die gets their own decision; an AI loser flips a coin.
+void runCoercion(GameState state, int victorSlot, Person capturedRuler, Rng rng,
+    List<GameEvent> events) {
   final victorRealm = state.realm(victorSlot);
   final victor = state.person(victorRealm.rulerId);
   if (victor == null) return;
@@ -317,9 +266,6 @@ void runCoercion(GameState state, int victorSlot, Person capturedRuler,
     options.add('stripSeat');
   }
   if (options.isEmpty) return;
-  if (state.rulesVersion < 10 && options.length > 1) {
-    options.removeRange(1, options.length); // pre-v10: first option only
-  }
 
   final humanVictor =
       state.dynasty(victor.dynasty).status == DynastyStatus.human;
@@ -362,8 +308,12 @@ void applyCoercion(GameState state, String option, Person victor,
         ));
         return;
       }
-      applyConvertOrDie(state, capturedRuler,
-          state.dynasty(victor.dynasty).religion, rng.nextInt(2) == 0, rng,
+      applyConvertOrDie(
+          state,
+          capturedRuler,
+          state.dynasty(victor.dynasty).religion,
+          rng.nextInt(2) == 0,
+          rng,
           events);
 
     case 'forcedMarriage':
@@ -415,18 +365,16 @@ void applyConvertOrDie(GameState state, Person capturedRuler, int religion,
         }
       }
     }
-    // Rules v10: like every other conversion, the dynasty's home realm
-    // switches onto the right title ladder (§4/§16.1) and religiously
+    // Like every other conversion, the dynasty's home realm switches
+    // onto the right title ladder (§4/§16.1) and religiously
     // incompatible marriages dissolve (§14.4). Only the HOME slot's
     // ladder switches: the promotion check (§16.2) keys the ladder off
     // the slot dynasty's religion, so an aliased realm (ruled by a
     // member of this dynasty but belonging to an unconverted slot
     // dynasty) must keep its ladder — switching it would strand the
     // title where its own ladder never promotes.
-    if (state.rulesVersion >= 10) {
-      switchTitleLadder(state.realm(dynasty.index), religion);
-      dyn.divorceIncompatibleCouples(state, dynasty.index, events);
-    }
+    switchTitleLadder(state.realm(dynasty.index), religion);
+    dyn.divorceIncompatibleCouples(state, dynasty.index, events);
     events.add(GameEvent(
       year: state.year,
       slot: dynasty.index,
@@ -464,8 +412,7 @@ int? capitalOccupier(GameState state, ActiveWar war) {
   final attacker = occupies(war.attackerSlot);
   final defender = occupies(war.defenderSlot);
   if (attacker && defender) {
-    return warScore(state, war.defenderSlot) >
-            warScore(state, war.attackerSlot)
+    return warScore(state, war.defenderSlot) > warScore(state, war.attackerSlot)
         ? war.defenderSlot
         : war.attackerSlot;
   }
@@ -474,7 +421,7 @@ int? capitalOccupier(GameState state, ActiveWar war) {
   return null;
 }
 
-/// Rules v12: the settlement claim is capped at HALF the loser's total
+/// The settlement claim is capped at HALF the loser's total
 /// territory settlement value. War scores grow with army strength
 /// squared, so any sizeable army's claim used to dwarf the loser's whole
 /// realm — the winner could annex every reachable tile and the cash
@@ -482,7 +429,6 @@ int? capitalOccupier(GameState state, ActiveWar war) {
 /// costs at most half the realm (the last tile is never affordable), so
 /// a losing party is never erased by a single war.
 int _cappedClaim(GameState state, int loserSlot, int claim) {
-  if (state.rulesVersion < 12) return claim;
   final map = state.map;
   var total = 0;
   for (var i = 0; i < map.terrain.length; i++) {
@@ -493,19 +439,26 @@ int _cappedClaim(GameState state, int loserSlot, int claim) {
   return math.min(claim, total ~/ 2);
 }
 
-/// Rules v9 ruler capture, resolved at ROUND END (was: instantly on the
-/// move): the captor holds the enemy capital when the round ends. The
-/// loser's ruler is captured and coerced (§12), but the realm is no
-/// longer swallowed whole — instead the captor wins the war and SELECTS
-/// loser tiles in the claim settlement, against a claim of their war
-/// score (which includes the +3,000 capital bonus; capped from v12 —
-/// see [_cappedClaim]).
-void _endWarByCapitalOccupation(GameState state, int captorSlot, Rng rng,
-    List<GameEvent> events) {
+/// Ruler capture, resolved at ROUND END: the captor holds the enemy
+/// capital when the round ends. The loser's ruler is captured and
+/// coerced (§12), but the realm is not swallowed whole — the captor
+/// wins the war and SELECTS loser tiles in the claim settlement,
+/// against a claim of their war score (which includes the +3,000
+/// capital bonus; capped — see [_cappedClaim]).
+void _endWarByCapitalOccupation(
+    GameState state, int captorSlot, Rng rng, List<GameEvent> events) {
   final war = state.activeWar!;
   final loserSlot = war.opponentOf(captorSlot);
-  final capturedRuler = state.person(state.realm(loserSlot).rulerId);
-  final claim = _cappedClaim(state, loserSlot, warScore(state, captorSlot));
+  final loser = state.realm(loserSlot);
+  final capturedRuler = state.person(loser.rulerId);
+  // The claim covers at least the loser's capital tile (overriding the
+  // half-territory cap if needed): the captor held that very tile to
+  // win — a quick war against a depleted enemy yields a tiny war score,
+  // and the winner could otherwise never take the seat they conquered.
+  final claim = math.max(
+      _cappedClaim(state, loserSlot, warScore(state, captorSlot)),
+      settlementTileValue(
+          state, state.map.buildingAt(loser.capitalX, loser.capitalY)));
 
   events.add(GameEvent(
     year: state.year,
@@ -539,38 +492,33 @@ void _endWarByCapitalOccupation(GameState state, int captorSlot, Rng rng,
 /// (AI unit movement arrives with Phase 5 — until then AI sides hold
 /// position, which makes the traced AI peace rules fire naturally.)
 ///
-/// Rules v9: before anything else, a side holding the enemy capital wins
-/// the war right here (see [_endWarByCapitalOccupation]). Rules v11
-/// tightens this to holding it across TWO consecutive round ends — i.e.
-/// through the opponent's full response round (the v9 check ran after the
-/// AI side's movement, so an AI seizing the capital won before its human
-/// opponent could ever react). The first round end only ARMS the capture
-/// (`war.heldCapitalSlot`, `capitalHeld` event); an opponent with no
-/// troops left cannot respond, so the capture resolves immediately.
+/// Before anything else, a side holding the enemy capital across TWO
+/// consecutive round ends — i.e. through the opponent's full response
+/// round — wins the war right here ([_endWarByCapitalOccupation]). The
+/// first round end only ARMS the capture (`war.heldCapitalSlot`, public
+/// `capitalHeld` event); an opponent with no troops left cannot respond,
+/// so the capture resolves immediately.
 void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
 
-  if (state.rulesVersion >= 9) {
-    final captor = capitalOccupier(state, war);
-    if (captor != null &&
-        (state.rulesVersion < 11 ||
-            captor == war.heldCapitalSlot ||
-            state.realm(war.opponentOf(captor)).troops.isEmpty)) {
-      _endWarByCapitalOccupation(state, captor, rng, events);
-      return;
-    }
-    if (captor != null && captor != war.heldCapitalSlot) {
-      events.add(GameEvent(
-        year: state.year,
-        slot: captor,
-        type: 'capitalHeld',
-        visibility: EventVisibility.public,
-        payload: {'loserSlot': war.opponentOf(captor)},
-      ));
-    }
-    war.heldCapitalSlot = captor;
+  final captor = capitalOccupier(state, war);
+  if (captor != null &&
+      (captor == war.heldCapitalSlot ||
+          state.realm(war.opponentOf(captor)).troops.isEmpty)) {
+    _endWarByCapitalOccupation(state, captor, rng, events);
+    return;
   }
+  if (captor != null && captor != war.heldCapitalSlot) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: captor,
+      type: 'capitalHeld',
+      visibility: EventVisibility.public,
+      payload: {'loserSlot': war.opponentOf(captor)},
+    ));
+  }
+  war.heldCapitalSlot = captor;
 
   // AI peace decisions (§11.2, incl. the original's dead-check quirk: an
   // AI attacker wants peace as soon as its units are back on/at their
@@ -580,8 +528,7 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
     war.setWantsPeace(slot, _aiWantsPeace(state, war, slot));
   }
 
-  if ((war.attackerWantsPeace && war.defenderWantsPeace) ||
-      war.round >= 20) {
+  if ((war.attackerWantsPeace && war.defenderWantsPeace) || war.round >= 20) {
     if (war.round >= 20) {
       events.add(GameEvent(
         year: state.year,
@@ -589,11 +536,10 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
         type: 'winterEndsWar',
         visibility: EventVisibility.public,
       ));
-    } else if (state.rulesVersion >= 5) {
-      // Rules v5: a NEGOTIATED peace is a white peace — status quo ante,
-      // nobody gains tiles or money (under v1–v4 rules the leading side
-      // still collected its full claim, so agreeing to peace could lose
-      // you land). Only a winter-forced end goes to score arbitration.
+    } else {
+      // A NEGOTIATED peace is a white peace — status quo ante, nobody
+      // gains tiles or money. Only a winter-forced end goes to score
+      // arbitration.
       events.add(GameEvent(
         year: state.year,
         slot: 0,
@@ -621,7 +567,7 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
 /// order. Units are snapshotted by name only, and names repeat (every AI
 /// recruit is "Rekruten") — naive name lookup would match every duplicate
 /// to the FIRST snapshot. Entries are null for troops without a snapshot
-/// (e.g. merged in mid-war under pre-v4 rules).
+/// (defensive — merging is forbidden mid-war).
 List<UnitSnapshot?> matchedSnapshots(
     List<Troop> troops, List<UnitSnapshot> snapshots) {
   final used = List<bool>.filled(snapshots.length, false);
@@ -710,9 +656,9 @@ int warScore(GameState state, int slot) {
   return score.round();
 }
 
-/// End-of-war resolution for peace/winter endings (§11.2): decisive
-/// victory converts occupied tiles; a limited victory opens the claim
-/// settlement (interactive for humans, automatic for AI).
+/// End-of-war resolution for winter endings (§11.2): the leading side
+/// wins and opens the claim settlement (interactive for humans,
+/// automatic for AI); equal scores end in a draw.
 void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar!;
   final scoreAttacker = warScore(state, war.attackerSlot);
@@ -735,14 +681,6 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   final loserSlot = war.opponentOf(winnerSlot);
   final claim =
       _cappedClaim(state, loserSlot, math.max(scoreAttacker, scoreDefender));
-  final loser = state.realm(loserSlot);
-
-  var loserValue = 0;
-  for (var i = 0; i < state.map.terrain.length; i++) {
-    if (state.map.owner[i] == loserSlot) {
-      loserValue += Building.value[state.map.building[i]];
-    }
-  }
 
   events.add(GameEvent(
     year: state.year,
@@ -752,24 +690,8 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
     payload: {'claim': claim, 'loserSlot': loserSlot},
   ));
 
-  // Rules < v5: a decisive score auto-converts every occupied tile. From
-  // v5 on EVERY victory opens the claim settlement instead — the winner
-  // chooses which tiles to take (humans tap, AIs auto-settle).
-  if (state.rulesVersion < 5 && claim >= (loserValue * 0.4).round()) {
-    // Decisive: every tile occupied by a winner unit converts.
-    final winner = state.realm(winnerSlot);
-    for (final troop in List.of(winner.troops)) {
-      if (state.map.ownerAt(troop.x, troop.y) == loserSlot) {
-        transferTile(state, troop.x, troop.y, winnerSlot, events);
-      }
-    }
-    _returnTroops(state, war, events);
-    state.activeWar = null;
-    _checkLandLoss(state, loser, events);
-    return;
-  }
-
-  // Victory → claim settlement.
+  // Victory → claim settlement: the winner chooses which tiles to take
+  // (humans tap, AIs auto-settle).
   war.phase = WarPhase.settlement;
   war.winnerSlot = winnerSlot;
   war.remainingClaim = claim;
@@ -778,19 +700,21 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   }
 }
 
-/// What a loser tile costs against the settlement claim. Rules v2: bare
-/// land (building value 0) costs 100 T like a Kornfeld — under v1 rules
-/// value-0 tiles were free, so any limited victory could strip the loser
-/// of every reachable empty tile without spending the claim.
+/// What a loser tile costs against the settlement claim. Bare land
+/// (building value 0) costs 100 T like a Kornfeld — were it free, any
+/// limited victory could strip the loser of every reachable empty tile
+/// without spending the claim.
 int settlementTileValue(GameState state, int building) {
   final value = Building.value[building];
-  if (value == 0 && state.rulesVersion >= 2) return 100;
+  if (value == 0) return 100;
   return value;
 }
 
-/// §11.2 claim settlement, AI path `[APPROX]`: greedily annex affordable
-/// loser tiles adjacent to own land, then take the remainder in cash.
-void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {
+/// Greedy annex pass over the open settlement: every affordable loser
+/// tile bordering the winner's land is taken (annexed tiles extend the
+/// border, so connected territory is swept). Shared by the AI auto-settle
+/// and the human "Ganzes Land übernehmen" shortcut (`SettlementTakeAll`).
+void annexAffordableTiles(GameState state, List<GameEvent> events) {
   final war = state.activeWar!;
   final winnerSlot = war.winnerSlot!;
   final loserSlot = war.opponentOf(winnerSlot);
@@ -811,6 +735,12 @@ void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {
       }
     }
   }
+}
+
+/// §11.2 claim settlement, AI path `[APPROX]`: greedily annex affordable
+/// loser tiles adjacent to own land, then take the remainder in cash.
+void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {
+  annexAffordableTiles(state, events);
   finishSettlement(state, events);
 }
 
@@ -896,8 +826,8 @@ void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
 }
 
 /// §11.5 plunder during war rounds, once per side per round.
-List<GameEvent> plunderTile(GameState state, int plundererSlot, int x,
-    int y, Rng rng) {
+List<GameEvent> plunderTile(
+    GameState state, int plundererSlot, int x, int y, Rng rng) {
   final map = state.map;
   final building = map.buildingAt(x, y);
   final victimSlot = map.ownerAt(x, y);

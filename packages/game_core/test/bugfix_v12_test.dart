@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
@@ -9,18 +11,25 @@ void main() {
 
   setUp(() {
     state = startGame(
-        newGame(GameSetup(
-          humans: [
-            HumanPlayerSetup(
-                founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'A'),
-            HumanPlayerSetup(
-                founderName: 'Berta', gender: 1, countrySlot: 2, dorfName: 'B'),
-          ],
-          reformationYear: 1020,
-          ottomanYear: 1040,
-          seed: 2026,
-        )),
-        Rng(7)).state;
+            newGame(GameSetup(
+              humans: [
+                HumanPlayerSetup(
+                    founderName: 'Anna',
+                    gender: 1,
+                    countrySlot: 1,
+                    dorfName: 'A'),
+                HumanPlayerSetup(
+                    founderName: 'Berta',
+                    gender: 1,
+                    countrySlot: 2,
+                    dorfName: 'B'),
+              ],
+              reformationYear: 1020,
+              ottomanYear: 1040,
+              seed: 2026,
+            )),
+            Rng(7))
+        .state;
     state.year = 1010;
     // Human-vs-human wars are blocked in V1: slot 2 plays AI-controlled.
     state.dynasty(2).status = DynastyStatus.ai;
@@ -31,13 +40,14 @@ void main() {
       realm.towns.single.troopCapacity = 200;
       realm.troopCapacity = 200;
       state = applyAction(
-          state,
-          RecruitTroops(
-              slot: slot,
-              men: 50,
-              troopClass: TroopClass.infanterie,
-              name: 'Heer$slot'),
-          Rng(state.rngSeed)).state;
+              state,
+              RecruitTroops(
+                  slot: slot,
+                  men: 50,
+                  troopClass: TroopClass.infanterie,
+                  name: 'Heer$slot'),
+              Rng(state.rngSeed))
+          .state;
     }
     // Wars need a shared border: hand slot 2 a land tile next to slot 1.
     final map = state.map;
@@ -74,9 +84,9 @@ void main() {
   /// Declares war (slot 1 → slot 2) and parks slot 1's unit on slot 2's
   /// capital; the defender's unit is moved aside first.
   GameState marchOntoCapital(GameState from) {
-    var s = applyAction(from, DeclareWar(slot: 1, targetSlot: 2),
-            Rng(from.rngSeed))
-        .state;
+    var s =
+        applyAction(from, DeclareWar(slot: 1, targetSlot: 2), Rng(from.rngSeed))
+            .state;
     final enemy = s.realm(2);
     enemy.troops.single.x = enemy.towns.single.x;
     enemy.troops.single.y = enemy.towns.single.y;
@@ -90,37 +100,30 @@ void main() {
   }
 
   group('settlement claim cap (rules v12)', () {
-    test('a capital capture claim is capped at half the loser territory '
-        'value', () {
+    test(
+        'a capital capture claim is capped at half the loser territory '
+        'value (the capital-tile floor permitting)', () {
       var s = marchOntoCapital(state);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
       final loserValueBefore = territoryValue(s, 2);
+      final capitalValue = settlementTileValue(
+          s, s.map.buildingAt(s.realm(2).capitalX, s.realm(2).capitalY));
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
 
       expect(s.activeWar!.phase, WarPhase.settlement);
       expect(s.activeWar!.winnerSlot, 1);
+      // The cap is half the loser's territory value; a capture claim is
+      // floored at the capital tile (the captor held that very tile).
       expect(s.activeWar!.remainingClaim,
-          lessThanOrEqualTo(loserValueBefore ~/ 2),
-          reason: 'one lost war may cost at most half the realm');
+          lessThanOrEqualTo(math.max(loserValueBefore ~/ 2, capitalValue)),
+          reason: 'one lost war may cost at most half the realm '
+              '(or the capital tile, whichever is more)');
       expect(s.activeWar!.remainingClaim, greaterThan(0));
     });
 
-    test('under v11 rules the same capture is uncapped', () {
-      final pinned =
-          GameState.fromJson(state.toJson()..['rulesVersion'] = 11);
-      var s = marchOntoCapital(pinned);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      final loserValue = territoryValue(s, 2);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-
-      expect(s.activeWar!.phase, WarPhase.settlement);
-      expect(s.activeWar!.remainingClaim, greaterThan(loserValue ~/ 2),
-          reason: 'pre-v12 the war score dwarfed the loser territory');
-    });
-
     test('a winter score victory is capped the same way', () {
-      var s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
-              Rng(state.rngSeed))
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
       final enemyTown = s.realm(2).towns.single;
       final troop = s.realm(1).troops.single;
@@ -134,42 +137,11 @@ void main() {
       expect(s.activeWar!.remainingClaim,
           lessThanOrEqualTo(loserValueBefore ~/ 2));
     });
-
-    test('the cap leaves the loser the last tile: annexing everything is '
-        'impossible', () {
-      // A loser realm with a single 100-point tile: cap = 50 < 100, so
-      // the tile can never be afforded in the settlement.
-      var s = marchOntoCapital(state);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      // Strip slot 2 down to one bare tile before the capture resolves.
-      final map = s.map;
-      final loser = s.realm(2);
-      var kept = false;
-      for (var i = 0; i < map.terrain.length; i++) {
-        if (map.owner[i] != 2) continue;
-        final isCapital =
-            i == map.index(loser.capitalX, loser.capitalY);
-        if (!kept && !isCapital && map.building[i] == Building.none) {
-          kept = true;
-          continue;
-        }
-        if (isCapital) continue; // capital stays for the capture check
-        loser.tileCount[map.building[i]]--;
-        map.owner[i] = World.niemand;
-      }
-      expect(kept, isTrue);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-
-      expect(s.activeWar!.phase, WarPhase.settlement);
-      // Loser value: capital (5000) + bare tile (100) → cap 2550 < 5000:
-      // the capital itself stays out of reach too.
-      expect(s.activeWar!.remainingClaim,
-          lessThan(settlementTileValue(s, Building.burg)));
-    });
   });
 
   group('realmOverrun event', () {
-    test('finishing a settlement against a landless loser reports the '
+    test(
+        'finishing a settlement against a landless loser reports the '
         'total loss', () {
       var s = marchOntoCapital(state);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
@@ -185,30 +157,23 @@ void main() {
         loser.tileCount[map.building[i]]--;
         map.owner[i] = World.niemand;
       }
-      final result =
-          applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed));
+      final result = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed));
 
       expect(result.events.any((e) => e.type == 'realmOverrun'), isTrue);
-      expect(
-          result.events
-              .firstWhere((e) => e.type == 'realmOverrun')
-              .slot,
-          2);
+      expect(result.events.firstWhere((e) => e.type == 'realmOverrun').slot, 2);
     });
 
     test('a loser with land left does not trigger the event', () {
       var s = marchOntoCapital(state);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      final result =
-          applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed));
+      final result = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed));
       expect(result.events.any((e) => e.type == 'realmOverrun'), isFalse);
     });
   });
 
   group('humansDefeated stop', () {
-    test('advanceUntilHuman ends the game when no human seat remains',
-        () {
+    test('advanceUntilHuman ends the game when no human seat remains', () {
       // Both human dynasties fall to AI control (strife/capture path).
       for (final slot in [1, 2]) {
         state.dynasty(slot).status = DynastyStatus.ai;
@@ -227,10 +192,8 @@ void main() {
     test('a surviving human seat keeps the game running', () {
       final result = advanceUntilHuman(state, Rng(state.rngSeed));
       expect(
-          result.state.events.any((e) => e.type == 'humansDefeated'),
-          isFalse);
-      expect(
-          result.state.dynasty(result.state.currentPlayer).status,
+          result.state.events.any((e) => e.type == 'humansDefeated'), isFalse);
+      expect(result.state.dynasty(result.state.currentPlayer).status,
           DynastyStatus.human);
     });
   });

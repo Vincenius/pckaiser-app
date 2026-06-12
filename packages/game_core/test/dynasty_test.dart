@@ -50,8 +50,7 @@ void main() {
       expect(events.where((e) => e.type == 'personDied'), isEmpty);
     });
 
-    test('after the window, the elderly certainly die and heirs succeed',
-        () {
+    test('after the window, the elderly certainly die and heirs succeed', () {
       final state = startGame(freshGame(), Rng(1)).state;
       state.year = 1010;
       final dynasty = state.dynasty(1);
@@ -77,8 +76,8 @@ void main() {
       expect(events.any((e) => e.type == 'succession'), isTrue);
       // Human dynasty with >1 member would offer a menu — only one member
       // remains here, so no decision is queued.
-      expect(state.pendingDecisions.where((d) => d.type == 'heirChoice'),
-          isEmpty);
+      expect(
+          state.pendingDecisions.where((d) => d.type == 'heirChoice'), isEmpty);
     });
   });
 
@@ -100,6 +99,10 @@ void main() {
       // spouse's dynasty (slot 2) is AI, so slot 1 is now AI-dispatched.
       expect(state.dynasty(1).status, state.dynasty(2).status);
       expect(state.dynasty(1).humanPlayer, state.dynasty(2).humanPlayer);
+      // The gaining house is told prominently (client popup).
+      final inherited = events.singleWhere((e) => e.type == 'realmInherited');
+      expect(inherited.slot, 2);
+      expect((inherited.payload['slots'] as List).cast<int>(), [1]);
     });
 
     test('ruler aliasing: the heir takes ALL the deceased\'s slots', () {
@@ -125,20 +128,23 @@ void main() {
       expect(state.realm(9).rulerId, son.id);
     });
 
-    test('extinct AI dynasty passes everything to a random living ruler',
-        () {
+    test('extinct AI dynasty passes everything to a random living ruler', () {
       final state = startGame(freshGame(), Rng(1)).state;
       state.year = 1010;
       final ruler = state.person(state.realm(2).rulerId)!;
-      handleDeath(state, ruler, Rng(5), []);
+      final events = <GameEvent>[];
+      handleDeath(state, ruler, Rng(5), events);
       final newRuler = state.realm(2).rulerId;
       expect(newRuler, isNotNull);
       expect(newRuler, isNot(ruler.id));
       expect(state.persons.containsKey(newRuler), isTrue);
+      // The inheriting house is told prominently (client popup).
+      final inherited = events.singleWhere((e) => e.type == 'realmInherited');
+      expect(inherited.slot, state.persons[newRuler]!.dynasty);
+      expect((inherited.payload['slots'] as List).cast<int>(), [2]);
     });
 
-    test('Islamic succession crisis flips a human dynasty to AI (§15.5)',
-        () {
+    test('Islamic succession crisis flips a human dynasty to AI (§15.5)', () {
       final state = startGame(freshGame(), Rng(1)).state;
       state.year = 1041;
       final dynasty = state.dynasty(1);
@@ -165,7 +171,8 @@ void main() {
   });
 
   group('marriage (§14)', () {
-    test('proposal to a human dynasty queues a consent decision; accepting '
+    test(
+        'proposal to a human dynasty queues a consent decision; accepting '
         'marries the couple and merges children into the husband', () {
       final state = startGame(freshGame(humanSlots: [1, 2]), Rng(1)).state;
       final groom = state.person(state.realm(2).rulerId)!;
@@ -268,8 +275,8 @@ void main() {
         runDynastyPhase(trial, 1, Rng(seed), events);
         if (events.any((e) => e.type == 'birth')) {
           born = true;
-          final child = trial.persons[
-              trial.persons[husband.id]!.childrenIds.single]!;
+          final child =
+              trial.persons[trial.persons[husband.id]!.childrenIds.single]!;
           expect(child.age, 0, reason: 'original age bug fixed');
           expect(child.dynasty, 1);
           expect(trial.persons[wife.id]!.childrenIds, contains(child.id));
@@ -318,7 +325,57 @@ void main() {
   });
 
   group('heirChoice resilience', () {
-    test('choosing an heir who died in the meantime keeps the provisional '
+    test(
+        'a human ruler death offers the heir menu, and the chosen heir '
+        'is crowned', () {
+      final state = startGame(freshGame(), Rng(1)).state;
+      state.year = 1010;
+      final dynasty = state.dynasty(1);
+      final ruler = state.person(state.realm(1).rulerId)!;
+      final son = Person(
+          id: state.nextPersonId++,
+          name: 'Sohn',
+          age: 20,
+          dynasty: 1,
+          gender: 0);
+      final daughter = Person(
+          id: state.nextPersonId++,
+          name: 'Tochter',
+          age: 18,
+          dynasty: 1,
+          gender: 1);
+      for (final p in [son, daughter]) {
+        state.persons[p.id] = p;
+        dynasty.memberIds.add(p.id);
+        ruler.childrenIds.add(p.id);
+      }
+
+      final events = <GameEvent>[];
+      handleDeath(state, ruler, Rng(5), events);
+
+      // The §15.4 priority heir is crowned provisionally right away…
+      expect(state.realm(1).rulerId, son.id);
+      // …and the human player gets the menu with every member.
+      final decision =
+          state.pendingDecisions.singleWhere((d) => d.type == 'heirChoice');
+      expect(decision.decidingSlot, 1);
+      expect((decision.payload['candidateIds'] as List).cast<int>(),
+          containsAll([son.id, daughter.id]));
+
+      // The player picks the daughter instead — she is re-crowned.
+      final result = applyAction(
+          state,
+          ResolveDecision(
+              slot: 1,
+              decisionId: decision.id,
+              choice: {'heirId': daughter.id}),
+          Rng(state.rngSeed));
+      expect(result.state.realm(1).rulerId, daughter.id);
+      expect(result.state.pendingDecisions, isEmpty);
+    });
+
+    test(
+        'choosing an heir who died in the meantime keeps the provisional '
         'heir without throwing', () {
       final state = startGame(freshGame(), Rng(1)).state;
       final provisional = state.realm(1).rulerId!;

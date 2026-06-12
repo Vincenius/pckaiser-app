@@ -110,15 +110,15 @@ void maybeStartElection(
   final List<Person> candidates;
   if (office == Office.kaiser) {
     electorIds = List.of(state.kurfuerstenIds);
-    // Rules v4: a seated Kurfürst who no longer rules any realm (deposed
+    // A seated Kurfürst who no longer rules any realm (deposed
     // by internal strife, realm captured) keeps the vote but is no longer
     // a candidate — a throne without a realm could never collect the pot.
     candidates = _kurfuerstCandidates(state)
       ..addAll([
         for (final id in state.kurfuerstenIds)
-          if (state.persons[id] != null &&
-              (state.rulesVersion < 4 ||
-                  realmRuledBy(state, id) != null))
+          // Candidates must currently rule a realm — a deposed Kurfürst
+          // must not be electable to a throne with no realm behind it.
+          if (state.persons[id] != null && realmRuledBy(state, id) != null)
             state.persons[id]!,
       ]);
   } else {
@@ -177,8 +177,8 @@ void maybeStartElection(
     for (var i = 0; i < pool.length; i++) pool[i].id: i,
   };
   pool.sort((a, b) {
-    final byScore = _rulerTitleClass(state, b.id)
-        .compareTo(_rulerTitleClass(state, a.id));
+    final byScore =
+        _rulerTitleClass(state, b.id).compareTo(_rulerTitleClass(state, a.id));
     if (byScore != 0) return byScore;
     return shuffledIndex[a.id]!.compareTo(shuffledIndex[b.id]!);
   });
@@ -322,8 +322,9 @@ void advanceElection(GameState state, Rng rng, List<GameEvent> events) {
   _crown(state, election.office, winner, events);
 }
 
-void _crown(GameState state, Office office, Person winner,
-    List<GameEvent> events, {bool acclaimed = false}) {
+void _crown(
+    GameState state, Office office, Person winner, List<GameEvent> events,
+    {bool acclaimed = false}) {
   if (office == Office.kaiser) {
     state.kaiserId = winner.id;
     state.kaiserChronicle.add(ChronicleRecord(

@@ -7,14 +7,16 @@ until one dynasty rules the whole map. 1–16 human players hot-seat on one
 device; the AI plays the rest.
 
 V1 is fully local/offline. The rules engine is a pure Dart package shared
-verbatim with the planned async-multiplayer backend (V2).
+verbatim with the async-multiplayer backend (V2) in `backend/` — release 1
+ships the local game plus the online server and lobby (beta).
 
 ## Repository layout
 
 | Path | What it is |
 |---|---|
-| `client/` | Flutter app (UI, Flame map, save slots) |
+| `client/` | Flutter app (UI, Flame map, save slots, online lobby) |
 | `packages/game_core/` | Pure Dart rules engine — all game logic, no Flutter deps |
+| `backend/` | V2 online server: Dart shelf REST API over game_core |
 | `packages/game_core/tool/sim_report.dart` | Headless 200-year simulation report (dev tool) |
 | `imgs/` | Original tile graphics (38 indices, see §24 of the spec) |
 | `store/` | Store-listing metadata (EN/DE) |
@@ -33,7 +35,8 @@ verbatim with the planned async-multiplayer backend (V2).
   Studio; `flutter doctor` walks you through it).
 - For iOS builds: a Mac with Xcode; standard Flutter iOS setup.
 
-No other services are needed — the game is fully offline.
+No other services are needed — the local game is fully offline. Online
+play (beta) additionally needs a running server (see below).
 
 ## Run locally
 
@@ -74,7 +77,35 @@ cd client
 flutter pub get
 flutter analyze
 flutter test
+
+# Online server
+cd backend
+dart pub get
+dart analyze --fatal-infos
+dart test
 ```
+
+## Run the online server (V2 beta)
+
+```bash
+cd backend
+dart pub get
+dart run bin/server.dart            # PORT (default 3000), STORE_DIR (default ./data)
+```
+
+Or containerized (build from the repository root so `game_core` is in
+context):
+
+```bash
+docker build -f backend/Dockerfile -t pckaiser-server .
+docker run -p 3000:3000 -v pckaiser-data:/data pckaiser-server
+```
+
+The store is a JSON file store under `STORE_DIR` (one document per match —
+the same `GameState` JSON the client saves locally); swap in PostgreSQL
+behind `lib/src/store.dart` for multi-node setups. In the app: home screen
+→ "Online spielen (Beta)" → enter the server URL and a name, create a
+match and share the match ID.
 
 ## Build the APK / App Bundle
 

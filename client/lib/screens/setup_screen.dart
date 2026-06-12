@@ -6,9 +6,9 @@ import 'game_screen.dart';
 
 class _PlayerDraft {
   _PlayerDraft(int defaultSlot)
-      : name = TextEditingController(),
-        dorf = TextEditingController(text: cityNames[defaultSlot - 1]),
-        countrySlot = defaultSlot;
+    : name = TextEditingController(),
+      dorf = TextEditingController(text: cityNames[defaultSlot - 1]),
+      countrySlot = defaultSlot;
 
   final TextEditingController name;
   final TextEditingController dorf;
@@ -72,8 +72,9 @@ class _SetupScreenState extends State<SetupScreen> {
   Future<void> _start() async {
     final error = _validate();
     if (error != null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
     setState(() => _starting = true);
@@ -95,13 +96,15 @@ class _SetupScreenState extends State<SetupScreen> {
     // push + pop (not pushReplacement): replacing this route would resolve
     // the home screen's await immediately, so its save list would refresh
     // before the game exists instead of when the player returns to it.
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GameScreen.create(
-        slotName: _slotName.text.trim(),
-        setup: setup,
-        saves: widget.saves,
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GameScreen.create(
+          slotName: _slotName.text.trim(),
+          setup: setup,
+          saves: widget.saves,
+        ),
       ),
-    ));
+    );
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -114,29 +117,34 @@ class _SetupScreenState extends State<SetupScreen> {
         children: [
           TextField(
             controller: _slotName,
-            decoration:
-                const InputDecoration(labelText: 'Name des Spielstands'),
+            decoration: const InputDecoration(
+              labelText: 'Name des Spielstands',
+            ),
           ),
           const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _reformation,
-                keyboardType: TextInputType.number,
-                decoration:
-                    const InputDecoration(labelText: 'Jahr der Reformation'),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _reformation,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Jahr der Reformation',
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                controller: _ottoman,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    labelText: 'Jahr der Osmanen-Invasion'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _ottoman,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Jahr der Osmanen-Invasion',
+                  ),
+                ),
               ),
-            ),
-          ]),
+            ],
+          ),
           const Divider(height: 32),
           for (var i = 0; i < _players.length; i++) _playerCard(i),
           const SizedBox(height: 8),
@@ -154,7 +162,8 @@ class _SetupScreenState extends State<SetupScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.play_arrow),
             label: const Text('Spiel starten'),
           ),
@@ -169,63 +178,74 @@ class _SetupScreenState extends State<SetupScreen> {
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(children: [
-          Row(children: [
-            Text('Spieler ${i + 1}',
-                style: Theme.of(context).textTheme.titleSmall),
-            const Spacer(),
-            if (_players.length > 1)
-              IconButton(
-                icon: const Icon(Icons.close),
-                tooltip: 'Spieler entfernen',
-                onPressed: () => setState(() => _players.removeAt(i)),
-              ),
-          ]),
-          TextField(
-            controller: p.name,
-            decoration:
-                const InputDecoration(labelText: 'Name des Gründers'),
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(
-              child: SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 0, label: Text('Männlich')),
-                  ButtonSegment(value: 1, label: Text('Weiblich')),
-                ],
-                selected: {p.gender},
-                onSelectionChanged: (s) =>
-                    setState(() => p.gender = s.first),
-              ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Spieler ${i + 1}',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const Spacer(),
+                if (_players.length > 1)
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Spieler entfernen',
+                    onPressed: () => setState(() => _players.removeAt(i)),
+                  ),
+              ],
             ),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(
-              child: DropdownButtonFormField<int>(
-                initialValue: p.countrySlot,
-                decoration: const InputDecoration(labelText: 'Land'),
-                items: [
-                  for (var slot = 1; slot <= 30; slot++)
-                    DropdownMenuItem(
-                        value: slot, child: Text(countryNames[slot])),
-                ],
-                onChanged: (v) => setState(() {
-                  p.countrySlot = v ?? p.countrySlot;
-                  p.dorf.text = cityNames[p.countrySlot - 1];
-                }),
-              ),
+            TextField(
+              controller: p.name,
+              decoration: const InputDecoration(labelText: 'Name des Gründers'),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                controller: p.dorf,
-                decoration: const InputDecoration(labelText: 'Erstes Dorf'),
-              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('Männlich')),
+                      ButtonSegment(value: 1, label: Text('Weiblich')),
+                    ],
+                    selected: {p.gender},
+                    onSelectionChanged: (s) =>
+                        setState(() => p.gender = s.first),
+                  ),
+                ),
+              ],
             ),
-          ]),
-        ]),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    initialValue: p.countrySlot,
+                    decoration: const InputDecoration(labelText: 'Land'),
+                    items: [
+                      for (var slot = 1; slot <= 30; slot++)
+                        DropdownMenuItem(
+                          value: slot,
+                          child: Text(countryNames[slot]),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() {
+                      p.countrySlot = v ?? p.countrySlot;
+                      p.dorf.text = cityNames[p.countrySlot - 1];
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: p.dorf,
+                    decoration: const InputDecoration(labelText: 'Erstes Dorf'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

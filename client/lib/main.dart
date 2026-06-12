@@ -18,7 +18,9 @@ class PcKaiserApp extends StatelessWidget {
         title: tr('appTitle'),
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF6D4C2F), brightness: Brightness.dark),
+            seedColor: const Color(0xFF6D4C2F),
+            brightness: Brightness.dark,
+          ),
           // Accessibility: generous minimum touch targets.
           materialTapTargetSize: MaterialTapTargetSize.padded,
         ),

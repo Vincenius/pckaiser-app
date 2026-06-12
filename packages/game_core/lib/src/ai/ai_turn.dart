@@ -36,8 +36,8 @@ TurnResult runAiTurn(GameState state, int slot, Rng rng) {
   return TurnResult(next, events);
 }
 
-void _act(GameState state, PlayerAction action, Rng rng,
-    List<GameEvent> events) {
+void _act(
+    GameState state, PlayerAction action, Rng rng, List<GameEvent> events) {
   events.addAll(applyActionInPlace(state, action, rng));
 }
 
@@ -49,9 +49,12 @@ void _runAiTurnInPlace(
   // §20.2 Sell harvests at the upper ~40% of each price range; never
   // stockpiles. (§20.3 pot collection already happens in upkeep.)
   if (state.grainPrice > 1.6 && realm.grainHarvest > 0) {
-    _act(state,
-        SellGood(slot: slot, good: MarketGood.grain, amount: realm.grainHarvest),
-        rng, events);
+    _act(
+        state,
+        SellGood(
+            slot: slot, good: MarketGood.grain, amount: realm.grainHarvest),
+        rng,
+        events);
   }
   if (state.cattlePrice > 2.2 && realm.livestockHarvest > 0) {
     _act(
@@ -92,15 +95,19 @@ void _runAiTurnInPlace(
     _act(
         state,
         MergeRealms(
-            slot: slot,
-            sourceSlot: mergeable[rng.nextInt(mergeable.length)]),
+            slot: slot, sourceSlot: mergeable[rng.nextInt(mergeable.length)]),
         rng,
         events);
   }
 
-  // §20.8 War.
+  // §20.8 War. Declaring war costs the aggressor popularity, so a
+  // sensible AI ruler only wars while the people are content — without
+  // this guard, war-hit realms drifted into §19.1 strife collapses
+  // several times as often in the 200-year sim.
+  final warMoodOk = realm.popularity >= 50;
   if ((warFlag || rng.nextInt(20) == 0) &&
       rng.nextInt(7) == 0 &&
+      warMoodOk &&
       state.year > 1009 &&
       !realm.warThisYear &&
       state.activeWar == null &&
@@ -199,8 +206,7 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
           if (map.inBounds(x + dx, y + dy) &&
               map.ownerAt(x + dx, y + dy) == slot &&
               Terrain.isLand(map.terrainAt(x + dx, y + dy))) {
-            return Build(
-                slot: slot, x: x, y: y, building: Building.hafen);
+            return Build(slot: slot, x: x, y: y, building: Building.hafen);
           }
         }
       }
@@ -234,20 +240,25 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
 /// "Rekruten" (it has no troop-name table); a small period-flavor pool
 /// keeps battle reports readable when several AI units fight.
 const aiTroopNames = [
-  'Heerbann', 'Landwehr', 'Reisige', 'Stadtwache', 'Aufgebot',
-  'Bogenschützen', 'Pikeniere', 'Reiterei',
+  'Heerbann',
+  'Landwehr',
+  'Reisige',
+  'Stadtwache',
+  'Aufgebot',
+  'Bogenschützen',
+  'Pikeniere',
+  'Reiterei',
 ];
 
 /// §20.5: each unit gets `random(freeCapacity) + 1` recruits; a realm
 /// without units raises one first [INTERPRETATION — the original AI must
 /// create units to be able to declare war].
-void _reinforce(
-    GameState state, Realm realm, Rng rng, List<GameEvent> events) {
+void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events) {
   final free = realm.troopCapacity - realm.armySize;
   if (realm.troops.isEmpty) {
     if (free > 0 && realm.treasury >= 5 * 10) {
-      final men = math.min(
-          rng.nextInt(free) + 1, math.min(free, realm.treasury ~/ 5));
+      final men =
+          math.min(rng.nextInt(free) + 1, math.min(free, realm.treasury ~/ 5));
       if (men > 0) {
         _act(
             state,
@@ -255,8 +266,8 @@ void _reinforce(
                 slot: realm.slot,
                 men: men,
                 troopClass: TroopClass.infanterie,
-                name: aiTroopNames[(realm.slot + realm.troops.length) %
-                    aiTroopNames.length]),
+                name: aiTroopNames[
+                    (realm.slot + realm.troops.length) % aiTroopNames.length]),
             rng,
             events);
       }
@@ -268,11 +279,10 @@ void _reinforce(
     if (freeNow <= 0) break;
     if (!realm.troops[i].garrisonCounted) continue;
     final wanted = rng.nextInt(freeNow) + 1;
-    final men =
-        math.min(wanted, math.min(freeNow, realm.treasury ~/ 5));
+    final men = math.min(wanted, math.min(freeNow, realm.treasury ~/ 5));
     if (men <= 0) continue;
-    _act(state, ReinforceTroop(slot: realm.slot, unitIndex: i, men: men),
-        rng, events);
+    _act(state, ReinforceTroop(slot: realm.slot, unitIndex: i, men: men), rng,
+        events);
   }
 }
 
@@ -280,8 +290,7 @@ void _reinforce(
 void _adjustGuardsTowardTarget(
     GameState state, Realm realm, Rng rng, List<GameEvent> events) {
   if (realm.treasury < 200) return;
-  final target =
-      math.min(guardCap, rng.nextInt(realm.treasury ~/ 200));
+  final target = math.min(guardCap, rng.nextInt(realm.treasury ~/ 200));
   var delta = target - realm.guardLevel;
   if (delta > 0) {
     delta = math.min(delta, realm.treasury ~/ guardCost);
@@ -337,7 +346,7 @@ int? _pickWarTarget(GameState state, int slot, Rng rng) {
 /// enemy capital; the defender's units walk back to their snapshots.
 /// Returns when the side is out of moves (or the war ended).
 ///
-/// Rules v7 `[DESIGNED]`: the defender fights back — units intercept
+/// `[DESIGNED]`: the AI defender fights back — units intercept
 /// enemy units standing on own territory, and once the enemy army is
 /// wiped out or clearly outmatched they counter-march on the enemy
 /// capital (occupying tiles for war score, capturing the ruler if they
@@ -345,8 +354,8 @@ int? _pickWarTarget(GameState state, int slot, Rng rng) {
 /// the greedy axis step (which strands units on lake shores). Pre-v7
 /// the defender sat at home for the whole war — even with the enemy
 /// army annihilated.
-void runAiWarMovement(GameState state, int slot, Rng rng,
-    List<GameEvent> events) {
+void runAiWarMovement(
+    GameState state, int slot, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
   final realm = state.realm(slot);
@@ -366,16 +375,12 @@ void runAiWarMovement(GameState state, int slot, Rng rng,
       final (tx, ty) = target;
       if (troop.x == tx && troop.y == ty) break;
 
-      final step = state.rulesVersion >= 7
-          ? _bfsStep(state.map, troop.x, troop.y, tx, ty) ??
-              _stepToward(state, troop.x, troop.y, tx, ty)
-          : _stepToward(state, troop.x, troop.y, tx, ty);
+      final step = _bfsStep(state.map, troop.x, troop.y, tx, ty) ??
+          _stepToward(state, troop.x, troop.y, tx, ty);
       if (step == null) break;
       try {
-        events.addAll(applyActionInPlace(
-            state,
-            WarMove(slot: slot, unitIndex: i, dx: step.$1, dy: step.$2),
-            rng));
+        events.addAll(applyActionInPlace(state,
+            WarMove(slot: slot, unitIndex: i, dx: step.$1, dy: step.$2), rng));
       } on ActionException {
         break; // blocked — give up on this unit for this round
       }
@@ -394,26 +399,24 @@ void runAiWarMovement(GameState state, int slot, Rng rng,
     return (enemy.capitalX, enemy.capitalY);
   }
 
-  if (state.rulesVersion >= 7) {
-    // Intercept the nearest intruder on own soil.
-    (int, int)? nearest;
-    var best = 1 << 30;
-    for (final e in enemy.troops) {
-      if (state.map.ownerAt(e.x, e.y) != slot) continue;
-      final d = (e.x - troop.x).abs() + (e.y - troop.y).abs();
-      if (d < best) {
-        best = d;
-        nearest = (e.x, e.y);
-      }
+  // Intercept the nearest intruder on own soil.
+  (int, int)? nearest;
+  var best = 1 << 30;
+  for (final e in enemy.troops) {
+    if (state.map.ownerAt(e.x, e.y) != slot) continue;
+    final d = (e.x - troop.x).abs() + (e.y - troop.y).abs();
+    if (d < best) {
+      best = d;
+      nearest = (e.x, e.y);
     }
-    if (nearest != null) return nearest;
+  }
+  if (nearest != null) return nearest;
 
-    // Counter-offensive once the enemy army is gone or clearly weaker.
-    final own = realm.troops.fold(0.0, (a, t) => a + troopStrength(t));
-    final theirs = enemy.troops.fold(0.0, (a, t) => a + troopStrength(t));
-    if (enemy.troops.isEmpty || own > 1.5 * theirs) {
-      return (enemy.capitalX, enemy.capitalY);
-    }
+  // Counter-offensive once the enemy army is gone or clearly weaker.
+  final own = realm.troops.fold(0.0, (a, t) => a + troopStrength(t));
+  final theirs = enemy.troops.fold(0.0, (a, t) => a + troopStrength(t));
+  if (enemy.troops.isEmpty || own > 1.5 * theirs) {
+    return (enemy.capitalX, enemy.capitalY);
   }
 
   // Walk back home. Distinct snapshot per unit — recomputed because
@@ -486,9 +489,8 @@ void endWarRoundWithAi(GameState state, Rng rng, List<GameEvent> events) {
       runAiWarMovement(state, slot, rng, events);
     }
   }
-  // A pre-v9 AI move can capture mid-march and end the war right here.
-  if (state.activeWar != null &&
-      state.activeWar!.phase == WarPhase.rounds) {
+  // Defensive: should a war end mid-move, stop issuing orders.
+  if (state.activeWar != null && state.activeWar!.phase == WarPhase.rounds) {
     endWarRound(state, rng, events);
   }
 }
@@ -527,8 +529,8 @@ TurnResult advanceUntilHuman(GameState state, Rng rng) {
   final events = <GameEvent>[];
   var guard = 0;
 
-  bool humanSeated(GameState s) => s.realms.any((r) =>
-      !r.isVacant && s.dynasty(r.slot).status == DynastyStatus.human);
+  bool humanSeated(GameState s) => s.realms.any(
+      (r) => !r.isVacant && s.dynasty(r.slot).status == DynastyStatus.human);
 
   while (guard++ < 2000) {
     if (current.events.isNotEmpty &&

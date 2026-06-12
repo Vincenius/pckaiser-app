@@ -51,8 +51,7 @@ void main() {
       expect(realm.movementPoints, inInclusiveRange(1, 6));
       expect(state.kaiserPot, greaterThan(0), reason: 'tribute was paid');
 
-      final upkeep =
-          result.events.where((e) => e.type == 'turnUpkeep').single;
+      final upkeep = result.events.where((e) => e.type == 'turnUpkeep').single;
       expect(upkeep.slot, 1);
       // Treasury follows exactly from the upkeep report.
       expect(
@@ -148,8 +147,13 @@ void main() {
           .firstWhere((e) => e.type == 'turnUpkeep' && e.slot == 2);
       expect(upkeep.payload['potCollected'], pot);
       expect(upkeep.payload['tribute'], 0);
-      expect(state.realm(2).treasury,
-          before + pot + (upkeep.payload['tax'] as int) + (upkeep.payload['harborIncome'] as int) - (upkeep.payload['wages'] as int));
+      expect(
+          state.realm(2).treasury,
+          before +
+              pot +
+              (upkeep.payload['tax'] as int) +
+              (upkeep.payload['harborIncome'] as int) -
+              (upkeep.payload['wages'] as int));
     });
 
     test('wages cost 0.5 T per man', () {
@@ -237,9 +241,8 @@ void main() {
       expect(s.realm(2).tileCount[Building.dorf], 0);
       expect(s.realm(3).towns.single.buildingType, Building.stadt,
           reason: 'Dorf double-promotes through Markt to Stadt');
-      expect(
-          s.events.where((e) =>
-              e.type == 'townPromoted' && e.slot == 3), hasLength(2));
+      expect(s.events.where((e) => e.type == 'townPromoted' && e.slot == 3),
+          hasLength(2));
       expectInvariants(s);
     });
 
@@ -259,8 +262,7 @@ void main() {
   });
 
   group('game end', () {
-    test('total extinction ends the game in a draw instead of crashing',
-        () {
+    test('total extinction ends the game in a draw instead of crashing', () {
       final state = startGame(freshGame(), Rng(11)).state;
       for (final realm in state.realms) {
         realm.rulerId = null;
@@ -280,12 +282,14 @@ void main() {
       realm.grainHarvest = 500;
       state.grainPrice = 2.0;
       final result = applyAction(
-          state, SellGood(slot: 1, good: MarketGood.grain, amount: 100),
+          state,
+          SellGood(slot: 1, good: MarketGood.grain, amount: 100),
           Rng(state.rngSeed));
       expect(result.state.realm(1).grainHarvest, 400);
       expect(result.state.realm(1).treasury, realm.treasury + 200);
       expect(
-        () => applyAction(result.state,
+        () => applyAction(
+            result.state,
             SellGood(slot: 1, good: MarketGood.grain, amount: 1),
             Rng(result.state.rngSeed)),
         throwsA(isA<ActionException>()),
@@ -293,7 +297,8 @@ void main() {
       );
       // Cattle is a separate flag.
       result.state.realm(1).livestockHarvest = 10;
-      final cattle = applyAction(result.state,
+      final cattle = applyAction(
+          result.state,
           SellGood(slot: 1, good: MarketGood.cattle, amount: 10),
           Rng(result.state.rngSeed));
       expect(cattle.state.realm(1).livestockHarvest, 0);
@@ -305,7 +310,8 @@ void main() {
       // 0 must throw too: it would burn the once-per-turn flag for nothing.
       for (final amount in [-1, 0, 51]) {
         expect(
-          () => applyAction(state,
+          () => applyAction(
+              state,
               SellGood(slot: 1, good: MarketGood.grain, amount: amount),
               Rng(state.rngSeed)),
           throwsA(isA<ActionException>()),
@@ -363,8 +369,7 @@ void main() {
   });
 
   group('event log cap', () {
-    test('completeTurn prunes the oldest events past maxRetainedEvents',
-        () {
+    test('completeTurn prunes the oldest events past maxRetainedEvents', () {
       var state = startGame(freshGame(), Rng(1)).state;
       // Inflate the log well past the cap with marker events.
       for (var i = 0; i < maxRetainedEvents + 250; i++) {

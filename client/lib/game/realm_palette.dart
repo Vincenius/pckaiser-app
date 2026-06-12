@@ -16,7 +16,6 @@ class RealmPalette {
     return HSLColor.fromAHSL(1.0, hue, 0.85, lightness).toColor();
   }
 
-
   /// Marks a realm's capital: a flag pole with a pennant in the realm
   /// color (no suitable sprite exists in the original tile set).
   static void paintCapital(Canvas canvas, Rect cell, int slot) {
@@ -49,11 +48,15 @@ class RealmPalette {
   /// along every edge whose neighbor belongs to someone else. Together
   /// with the country-name captions, the borders keep color from being
   /// the only ownership channel (accessibility).
-  static void paintOwnership(Canvas canvas, Rect cell, int slot,
-      {required bool left,
-      required bool top,
-      required bool right,
-      required bool bottom}) {
+  static void paintOwnership(
+    Canvas canvas,
+    Rect cell,
+    int slot, {
+    required bool left,
+    required bool top,
+    required bool right,
+    required bool bottom,
+  }) {
     final color = colorFor(slot);
     canvas.drawRect(cell, Paint()..color = color.withValues(alpha: 0.16));
 

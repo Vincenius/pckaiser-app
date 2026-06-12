@@ -186,20 +186,19 @@ void main() {
         decidingSlot: 1,
         payload: {
           'candidateIds': [1, 2],
-          'nested': {'slots': [1]},
+          'nested': {
+            'slots': [1]
+          },
         },
       ));
       final copy = state.copy();
       (copy.pendingDecisions.last.payload['candidateIds'] as List).add(3);
-      ((copy.pendingDecisions.last.payload['nested'] as Map)['slots']
-              as List)
+      ((copy.pendingDecisions.last.payload['nested'] as Map)['slots'] as List)
           .add(2);
-      expect(
-          state.pendingDecisions.last.payload['candidateIds'], [1, 2],
+      expect(state.pendingDecisions.last.payload['candidateIds'], [1, 2],
           reason: 'undo snapshots must not share payload lists');
       expect(
-          (state.pendingDecisions.last.payload['nested'] as Map)['slots'],
-          [1]);
+          (state.pendingDecisions.last.payload['nested'] as Map)['slots'], [1]);
     });
 
     test('GameEvent.visibleTo respects visibility', () {

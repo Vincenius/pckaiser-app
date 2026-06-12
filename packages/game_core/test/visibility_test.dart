@@ -10,19 +10,24 @@ void main() {
         HumanPlayerSetup(
             founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'Berlin'),
         HumanPlayerSetup(
-            founderName: 'Berta', gender: 1, countrySlot: 2, dorfName: 'Kassel'),
+            founderName: 'Berta',
+            gender: 1,
+            countrySlot: 2,
+            dorfName: 'Kassel'),
       ],
       reformationYear: 1020,
       ottomanYear: 1040,
       seed: 5,
     ));
     state.realm(2).guardLevel = 30;
-    state.realm(1).intelReports.add(IntelReport(
-        targetSlot: 2, year: 1002, values: {'treasury': 990}));
-    state.pendingDecisions.add(PendingDecision(
-        id: 'd1', type: 'marriageConsent', decidingSlot: 2));
-    state.assassinationOrders.add(
-        AssassinationOrder(sponsorSlot: 2, targetSlot: 1, count: 1));
+    state
+        .realm(1)
+        .intelReports
+        .add(IntelReport(targetSlot: 2, year: 1002, values: {'treasury': 990}));
+    state.pendingDecisions.add(
+        PendingDecision(id: 'd1', type: 'marriageConsent', decidingSlot: 2));
+    state.assassinationOrders
+        .add(AssassinationOrder(sponsorSlot: 2, targetSlot: 1, count: 1));
     state.events.addAll([
       GameEvent(
           year: 1000,
@@ -61,8 +66,8 @@ void main() {
             garrisonCounted: false,
             x: realm.capitalX,
             y: realm.capitalY));
-        state.map.troopMarker[
-            state.map.index(realm.capitalX, realm.capitalY)] = 1;
+        state.map.troopMarker[state.map.index(realm.capitalX, realm.capitalY)] =
+            1;
       }
       final map = state.map;
       int markerOf(GameState s, int slot) => s.map.troopMarker[
@@ -131,8 +136,7 @@ void main() {
           reason: 'the master state keeps them');
     });
 
-    test('hides war snapshots and movement budgets from non-participants',
-        () {
+    test('hides war snapshots and movement budgets from non-participants', () {
       state.activeWar = ActiveWar(attackerSlot: 2, defenderSlot: 1)
         ..snapshots[2] = [UnitSnapshot(name: 'Heer', x: 3, y: 4)]
         ..movesLeft[2] = [5];
@@ -160,8 +164,7 @@ void main() {
       final view2 = visibleStateFor(state, 2);
       expect(view2.pendingDecisions.single.id, 'd1');
       expect(view2.assassinationOrders, hasLength(1));
-      expect(view2.events.map((e) => e.type),
-          ['intelGathered', 'warDeclared']);
+      expect(view2.events.map((e) => e.type), ['intelGathered', 'warDeclared']);
     });
 
     test('does not mutate the source state', () {

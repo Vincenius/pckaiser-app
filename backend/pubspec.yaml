@@ -1,0 +1,19 @@
+name: backend
+description: >-
+  PC Kaiser online server (V2): Dart shelf REST API over the shared
+  game_core rules engine. See ARCHITECTURE.md "API (/api/v1)".
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  game_core:
+    path: ../packages/game_core
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

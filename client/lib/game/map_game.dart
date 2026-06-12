@@ -33,8 +33,7 @@ const double tileSize = 32.0;
 /// changes; per-frame rendering is a single drawPicture — comfortably 60
 /// fps even on low-end devices.
 class MapGame extends FlameGame with ScaleDetector {
-  MapGame({required gc.GameState initial, this.onTileTap})
-      : _state = initial;
+  MapGame({required gc.GameState initial, this.onTileTap}) : _state = initial;
 
   /// Called with tile coordinates when the player taps the map.
   void Function(int x, int y)? onTileTap;
@@ -52,15 +51,30 @@ class MapGame extends FlameGame with ScaleDetector {
   /// shoreline variants in land-neighbor-mask order (verified against the
   /// art: 03 land below, 04 land above, 06 land left, 10 land right).
   static const List<int> _terrainSprite = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
   ];
 
   /// Building sprite index per building type. The extracted set is offset
   /// by one against the §24 table: 18 Kornfeld, 19 Weide, 20 Dorf,
   /// 21 Markt, 22 Stadt, 23 Burg, 24 Palast, 25 Hafen (verified visually).
-  static const List<int> _buildingSprite = [
-    -1, 18, 19, 20, 21, 22, 23, 24, 25,
-  ];
+  static const List<int> _buildingSprite = [-1, 18, 19, 20, 21, 22, 23, 24, 25];
 
   static const int _troopSprite = 35; // sword: attacking / idle own troops
   static const int _shieldSprite = 36; // shield: the war's defending side
@@ -75,7 +89,9 @@ class MapGame extends FlameGame with ScaleDetector {
     }
     camera.viewfinder.anchor = Anchor.center;
     camera.viewfinder.position = Vector2(
-        gc.World.mapWidth * tileSize / 2, gc.World.mapHeight * tileSize / 2);
+      gc.World.mapWidth * tileSize / 2,
+      gc.World.mapHeight * tileSize / 2,
+    );
     camera.viewfinder.zoom = 0.5;
     world.add(_MapLayer(this));
     _rebuild();
@@ -116,7 +132,9 @@ class MapGame extends FlameGame with ScaleDetector {
     final fit = math.min(size.x / extentX, size.y / extentY);
     camera.viewfinder.zoom = (fit * 0.8).clamp(0.5, 2.5);
     camera.viewfinder.position = Vector2(
-        (minX + maxX + 1) / 2 * tileSize, (minY + maxY + 1) / 2 * tileSize);
+      (minX + maxX + 1) / 2 * tileSize,
+      (minY + maxY + 1) / 2 * tileSize,
+    );
     _clampCamera();
   }
 
@@ -128,8 +146,12 @@ class MapGame extends FlameGame with ScaleDetector {
 
     for (var y = 0; y < map.height; y++) {
       for (var x = 0; x < map.width; x++) {
-        final cell =
-            Rect.fromLTWH(x * tileSize, y * tileSize, tileSize, tileSize);
+        final cell = Rect.fromLTWH(
+          x * tileSize,
+          y * tileSize,
+          tileSize,
+          tileSize,
+        );
         _drawSprite(canvas, _terrainSprite[map.terrainAt(x, y)], cell, paint);
 
         final building = map.buildingAt(x, y);
@@ -141,11 +163,15 @@ class MapGame extends FlameGame with ScaleDetector {
         if (owner != gc.World.niemand) {
           bool foreign(int nx, int ny) =>
               !map.inBounds(nx, ny) || map.ownerAt(nx, ny) != owner;
-          RealmPalette.paintOwnership(canvas, cell, owner,
-              left: foreign(x - 1, y),
-              top: foreign(x, y - 1),
-              right: foreign(x + 1, y),
-              bottom: foreign(x, y + 1));
+          RealmPalette.paintOwnership(
+            canvas,
+            cell,
+            owner,
+            left: foreign(x - 1, y),
+            top: foreign(x, y - 1),
+            right: foreign(x + 1, y),
+            bottom: foreign(x, y + 1),
+          );
           final realm = _state.realm(owner);
           if (realm.capitalX == x && realm.capitalY == y) {
             RealmPalette.paintCapital(canvas, cell, owner);
@@ -161,25 +187,85 @@ class MapGame extends FlameGame with ScaleDetector {
               ? _shieldSprite
               : _troopSprite;
           canvas.drawCircle(
-              cell.center,
-              tileSize * 0.42,
-              Paint()
-                ..color = RealmPalette.colorFor(troopOwner)
-                    .withValues(alpha: 0.8));
+            cell.center,
+            tileSize * 0.42,
+            Paint()
+              ..color = RealmPalette.colorFor(
+                troopOwner,
+              ).withValues(alpha: 0.8),
+          );
           canvas.drawCircle(
-              cell.center,
-              tileSize * 0.42,
-              Paint()
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = 1.5
-                ..color = const Color(0xEEFFFFFF));
+            cell.center,
+            tileSize * 0.42,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+              ..color = const Color(0xEEFFFFFF),
+          );
           _drawSprite(canvas, sprite, cell.deflate(tileSize / 5), paint);
         }
       }
     }
     _drawShips(canvas, paint);
+    _drawSpiedTroops(canvas, paint);
     _drawRealmLabels(canvas);
     _picture = recorder.endRecording();
+  }
+
+  /// Faded ghost badges for enemy units known from the newest military
+  /// intel report per target (positions as of the spy year). The state is
+  /// the seated player's visible copy, so only their own realm carries
+  /// intel reports. Tiles with a live (visible) troop marker are skipped —
+  /// real knowledge beats stale intel.
+  void _drawSpiedTroops(Canvas canvas, Paint paint) {
+    final map = _state.map;
+    final ghostPaint = Paint()..color = const Color(0x77FFFFFF);
+    for (final realm in _state.realms) {
+      final newestByTarget = <int, gc.IntelReport>{};
+      for (final report in realm.intelReports) {
+        if (report.values.containsKey('unitCount')) {
+          newestByTarget[report.targetSlot] = report; // list is in order
+        }
+      }
+      for (final report in newestByTarget.values) {
+        final units = report.values['unitCount'] ?? 0;
+        for (var i = 0; i < units; i++) {
+          final x = report.values['unit${i}X'];
+          final y = report.values['unit${i}Y'];
+          // Defensive: a report without positions is skipped.
+          if (x == null || y == null || !map.inBounds(x, y)) continue;
+          if (map.troopMarker[map.index(x, y)] != 0) continue;
+          final cell = Rect.fromLTWH(
+            x * tileSize,
+            y * tileSize,
+            tileSize,
+            tileSize,
+          );
+          canvas.drawCircle(
+            cell.center,
+            tileSize * 0.42,
+            Paint()
+              ..color = RealmPalette.colorFor(
+                report.targetSlot,
+              ).withValues(alpha: 0.35),
+          );
+          canvas.drawCircle(
+            cell.center,
+            tileSize * 0.42,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+              ..color = const Color(0x88FFFFFF),
+          );
+          _drawSprite(
+            canvas,
+            _troopSprite,
+            cell.deflate(tileSize / 5),
+            ghostPaint,
+          );
+        }
+      }
+    }
   }
 
   /// Colony ships at sea. The state is the seated player's visible copy:
@@ -189,29 +275,74 @@ class MapGame extends FlameGame with ScaleDetector {
     for (final realm in _state.realms) {
       for (final ship in realm.ships) {
         final cell = Rect.fromLTWH(
-            ship.x * tileSize, ship.y * tileSize, tileSize, tileSize);
+          ship.x * tileSize,
+          ship.y * tileSize,
+          tileSize,
+          tileSize,
+        );
         canvas.drawCircle(
-            cell.center,
-            tileSize * 0.42,
-            Paint()
-              ..color =
-                  RealmPalette.colorFor(realm.slot).withValues(alpha: 0.8));
+          cell.center,
+          tileSize * 0.42,
+          Paint()
+            ..color = RealmPalette.colorFor(realm.slot).withValues(alpha: 0.8),
+        );
         canvas.drawCircle(
-            cell.center,
-            tileSize * 0.42,
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.5
-              ..color = const Color(0xEEFFFFFF));
+          cell.center,
+          tileSize * 0.42,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = const Color(0xEEFFFFFF),
+        );
         _drawSprite(canvas, _shipSprite, cell.deflate(tileSize / 6), paint);
       }
     }
   }
 
-  /// Small country-name caption under each realm's capital flag.
+  /// Small country-name caption per realm: under the capital flag while
+  /// the realm still owns that tile, otherwise on the owned tile nearest
+  /// its territory's centroid. Realms without any land get no label — a
+  /// conquered (or overrun) realm must not haunt the map at its old seat.
   void _drawRealmLabels(Canvas canvas) {
+    final map = _state.map;
+    final owned = <int, List<(int, int)>>{};
+    for (var y = 0; y < map.height; y++) {
+      for (var x = 0; x < map.width; x++) {
+        final owner = map.ownerAt(x, y);
+        if (owner != gc.World.niemand) {
+          owned.putIfAbsent(owner, () => []).add((x, y));
+        }
+      }
+    }
     for (final realm in _state.realms) {
       if (realm.isVacant) continue;
+      final tiles = owned[realm.slot];
+      if (tiles == null || tiles.isEmpty) continue;
+      int labelX;
+      int labelY;
+      if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
+        labelX = realm.capitalX;
+        labelY = realm.capitalY;
+      } else {
+        var cx = 0.0;
+        var cy = 0.0;
+        for (final (x, y) in tiles) {
+          cx += x;
+          cy += y;
+        }
+        cx /= tiles.length;
+        cy /= tiles.length;
+        var best = tiles.first;
+        var bestDist = double.infinity;
+        for (final (x, y) in tiles) {
+          final dist = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = (x, y);
+          }
+        }
+        (labelX, labelY) = best;
+      }
       final painter = TextPainter(
         text: TextSpan(
           text: gc.countryNames[realm.slot],
@@ -229,8 +360,10 @@ class MapGame extends FlameGame with ScaleDetector {
       )..layout();
       painter.paint(
         canvas,
-        Offset((realm.capitalX + 0.5) * tileSize - painter.width / 2,
-            (realm.capitalY + 1) * tileSize + 1),
+        Offset(
+          (labelX + 0.5) * tileSize - painter.width / 2,
+          (labelY + 1) * tileSize + 1,
+        ),
       );
     }
   }
@@ -256,8 +389,10 @@ class MapGame extends FlameGame with ScaleDetector {
   @override
   void onScaleUpdate(ScaleUpdateInfo info) {
     if (info.pointerCount >= 2) {
-      camera.viewfinder.zoom =
-          (_startZoom * info.scale.global.y).clamp(0.35, 6.0);
+      camera.viewfinder.zoom = (_startZoom * info.scale.global.y).clamp(
+        0.35,
+        6.0,
+      );
     } else {
       final delta = info.delta.global;
       camera.viewfinder.position -=
@@ -283,17 +418,18 @@ class MapGame extends FlameGame with ScaleDetector {
       axis(p.y, halfH, mapH),
     );
   }
-
 }
 
 /// World-space map layer: draws the cached picture and receives taps in
 /// world coordinates (the camera transform is applied by Flame).
 class _MapLayer extends PositionComponent with TapCallbacks {
   _MapLayer(this.game)
-      : super(
-          size: Vector2(gc.World.mapWidth * tileSize,
-              gc.World.mapHeight * tileSize),
-        );
+    : super(
+        size: Vector2(
+          gc.World.mapWidth * tileSize,
+          gc.World.mapHeight * tileSize,
+        ),
+      );
 
   final MapGame game;
 
@@ -320,8 +456,12 @@ class _MapLayer extends PositionComponent with TapCallbacks {
     final (x, y) = selected;
     final pulse = 0.5 + 0.5 * math.sin(_time * 5);
     final rect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(x * tileSize, y * tileSize, tileSize, tileSize)
-          .inflate(2 + pulse * 2),
+      Rect.fromLTWH(
+        x * tileSize,
+        y * tileSize,
+        tileSize,
+        tileSize,
+      ).inflate(2 + pulse * 2),
       const Radius.circular(6),
     );
     canvas.drawRRect(

@@ -8,8 +8,12 @@ import 'save_service.dart';
 /// every turn completion"). With [persist] off (the tutorial) the session
 /// is ephemeral: nothing is ever written to disk.
 class LocalGameSession {
-  LocalGameSession(this.slotName, this._state, this._saves,
-      {this.persist = true});
+  LocalGameSession(
+    this.slotName,
+    this._state,
+    this._saves, {
+    this.persist = true,
+  });
 
   /// Creates a new game in [slotName], runs the first upkeep and persists
   /// the initial save (unless [persist] is off).
@@ -28,8 +32,7 @@ class LocalGameSession {
         state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
       state = advanceUntilHuman(state, Rng(state.rngSeed)).state;
     }
-    final session =
-        LocalGameSession(slotName, state, saves, persist: persist);
+    final session = LocalGameSession(slotName, state, saves, persist: persist);
     await session.save();
     return session;
   }
@@ -43,8 +46,9 @@ class LocalGameSession {
     required SaveService saves,
   }) async {
     var state = await saves.load(slotName);
-    final hasHumans = state.dynasties
-        .any((d) => d.status == DynastyStatus.human);
+    final hasHumans = state.dynasties.any(
+      (d) => d.status == DynastyStatus.human,
+    );
     if (hasHumans &&
         state.activeWar == null &&
         state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
@@ -84,7 +88,8 @@ class LocalGameSession {
   /// Runs an in-place mutation (AI war movement, war round advance) on a
   /// copy of the state. Used by the war UI driver.
   List<GameEvent> mutate(
-      void Function(GameState state, Rng rng, List<GameEvent> events) f) {
+    void Function(GameState state, Rng rng, List<GameEvent> events) f,
+  ) {
     final next = _state.copy();
     final rng = Rng(next.rngSeed);
     final events = <GameEvent>[];

@@ -41,8 +41,7 @@ void main() {
   group('ClaimTile', () {
     test('claims an adjacent unowned land tile for 1 movement point', () {
       final (x, y) = claimableTile();
-      final result =
-          applyAction(state, ClaimTile(slot: 1, x: x, y: y), rng);
+      final result = applyAction(state, ClaimTile(slot: 1, x: x, y: y), rng);
       final realm = result.state.realm(1);
       expect(result.state.map.ownerAt(x, y), 1);
       expect(realm.movementPoints, 4);
@@ -115,21 +114,6 @@ void main() {
       expect((realm.troops[0].x, realm.troops[0].y), (x, y));
       expect(realm.movementPoints, 0);
     });
-
-    test('rules v2: relocating still costs 1 movement point', () {
-      final troop = addTroop();
-      final (x, y) = ownTileAwayFrom(troop.x, troop.y);
-      final v2 = GameState.fromJson(state.toJson()..['rulesVersion'] = 2);
-      final result =
-          applyAction(v2, MoveTroop(slot: 1, unitIndex: 0, x: x, y: y), rng);
-      expect(result.state.realm(1).movementPoints, 4);
-      v2.realm(1).movementPoints = 0;
-      expect(
-        () => applyAction(
-            v2, MoveTroop(slot: 1, unitIndex: 0, x: x, y: y), rng),
-        throwsA(isA<ActionException>()),
-      );
-    });
   });
 
   group('Build', () {
@@ -180,8 +164,7 @@ void main() {
           state.realm(1).tileCount[Building.kornfeld] + 1);
     });
 
-    test('still rejects building on unowned land away from own territory',
-        () {
+    test('still rejects building on unowned land away from own territory', () {
       final map = state.map;
       int fx = -1, fy = -1;
       for (var y = 0; y < map.height && fx < 0; y++) {
@@ -217,7 +200,11 @@ void main() {
       final popBefore = s.realm(1).population;
       final result = applyAction(
           s,
-          Build(slot: 1, x: x, y: y, building: Building.dorf,
+          Build(
+              slot: 1,
+              x: x,
+              y: y,
+              building: Building.dorf,
               townName: 'Neustadt'),
           rng);
       final realm = result.state.realm(1);
@@ -228,8 +215,8 @@ void main() {
       expect(realm.population, popBefore + town.population);
       expect(realm.troopCapacity, 50);
       expect(realm.treasury, 0, reason: '1000 T Dorf cost');
-      expect(result.events.map((e) => e.type),
-          ['buildingBuilt', 'townFounded']);
+      expect(
+          result.events.map((e) => e.type), ['buildingBuilt', 'townFounded']);
     });
 
     test('builds a Hafen on unowned coastal water, taking ownership', () {
@@ -240,8 +227,7 @@ void main() {
       outer:
       for (var y = 0; y < map.height; y++) {
         for (var x = 0; x < map.width; x++) {
-          if (!map.isWaterAt(x, y) ||
-              map.ownerAt(x, y) != World.niemand) {
+          if (!map.isWaterAt(x, y) || map.ownerAt(x, y) != World.niemand) {
             continue;
           }
           for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
@@ -260,9 +246,7 @@ void main() {
       final (x, y) = found;
       final hafenBefore = state.realm(1).tileCount[Building.hafen];
       final result = applyAction(
-          state,
-          Build(slot: 1, x: x, y: y, building: Building.hafen),
-          rng);
+          state, Build(slot: 1, x: x, y: y, building: Building.hafen), rng);
       final realm = result.state.realm(1);
       expect(result.state.map.ownerAt(x, y), 1,
           reason: 'the build takes ownership of the coastal water');
@@ -282,9 +266,10 @@ void main() {
         for (var x = map.width - 1; x >= 0; x--) {
           if (map.isWaterAt(x, y) &&
               map.ownerAt(x, y) == World.niemand &&
-              ![for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)])
-                if (map.inBounds(x + dx, y + dy)) map.ownerAt(x + dx, y + dy)]
-                  .contains(1)) {
+              ![
+                for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)])
+                  if (map.inBounds(x + dx, y + dy)) map.ownerAt(x + dx, y + dy)
+              ].contains(1)) {
             corner = (x, y);
             break outer;
           }
@@ -294,15 +279,14 @@ void main() {
       expect(
         () => applyAction(
             state,
-            Build(slot: 1, x: corner.$1, y: corner.$2,
-                building: Building.hafen),
+            Build(
+                slot: 1, x: corner.$1, y: corner.$2, building: Building.hafen),
             rng),
         throwsA(isA<ActionException>()),
       );
     });
 
-    test('a Hafen must touch own LAND — no harbor chains along the coast',
-        () {
+    test('a Hafen must touch own LAND — no harbor chains along the coast', () {
       // Manufactured geography far from the start: own land L, then open
       // water W1, W2 in a row (W2 surrounded by water except W1).
       final map = state.map;
@@ -326,14 +310,14 @@ void main() {
 
       // W1 touches own land → builds fine.
       var s = applyAction(state,
-              Build(slot: 1, x: lx + 1, y: ly, building: Building.hafen),
-              rng)
+              Build(slot: 1, x: lx + 1, y: ly, building: Building.hafen), rng)
           .state;
       expect(s.map.buildingAt(lx + 1, ly), Building.hafen);
 
       // W2 touches only the own Hafen on water → rejected.
       expect(
-        () => applyAction(s,
+        () => applyAction(
+            s,
             Build(slot: 1, x: lx + 2, y: ly, building: Building.hafen),
             Rng(s.rngSeed)),
         throwsA(isA<ActionException>()),
@@ -374,7 +358,9 @@ void main() {
       var fx = -1, fy = -1;
       for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
         final b = map.buildingAt(realm.capitalX + dx, realm.capitalY + dy);
-        if (b == Building.kornfeld || b == Building.weide || b == Building.hafen) {
+        if (b == Building.kornfeld ||
+            b == Building.weide ||
+            b == Building.hafen) {
           fx = realm.capitalX + dx;
           fy = realm.capitalY + dy;
           break;
@@ -383,8 +369,7 @@ void main() {
       if (fx >= 0) {
         final before = map.buildingAt(fx, fy);
         final countBefore = realm.tileCount[before];
-        final result =
-            applyAction(state, Demolish(slot: 1, x: fx, y: fy), rng);
+        final result = applyAction(state, Demolish(slot: 1, x: fx, y: fy), rng);
         expect(result.state.map.buildingAt(fx, fy), Building.none);
         expect(result.state.realm(1).treasury, 900);
         expect(result.state.realm(1).tileCount[before], countBefore - 1);
@@ -407,8 +392,8 @@ void main() {
         reason: 'year 999 < Reformation 1020',
       );
       state.year = 1021;
-      final result = applyAction(state,
-          ChangeReligion(slot: 1, religion: Religion.evangelisch), rng);
+      final result = applyAction(
+          state, ChangeReligion(slot: 1, religion: Religion.evangelisch), rng);
       expect(result.state.dynasty(1).religion, Religion.evangelisch);
       expect(result.state.realm(1).treasury, 500, reason: '500 T cost');
       expect(result.state.realm(1).popularity, 0,
@@ -477,8 +462,7 @@ void main() {
       final troop = result.state.realm(1).troops.single;
       expect((troop.x, troop.y), (town.x, town.y));
       expect(
-          result.state.map.troopMarker[
-              result.state.map.index(town.x, town.y)],
+          result.state.map.troopMarker[result.state.map.index(town.x, town.y)],
           1);
     });
 
@@ -514,8 +498,7 @@ void main() {
         expect(result.state.realm(1).proposedMarriageThisTurn, isFalse,
             reason: 'v5+: does not consume the royal proposal');
         final hans = result.state.persons[9001]!;
-        expect(hans.spouseId, isNotNull,
-            reason: 'a commoner never declines');
+        expect(hans.spouseId, isNotNull, reason: 'a commoner never declines');
         final spouse = result.state.persons[hans.spouseId!]!;
         expect(spouse.dynasty, 1);
         expect(spouse.gender, 1, reason: 'opposite gender');
@@ -531,20 +514,9 @@ void main() {
           Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
       state.dynasty(1).memberIds.add(9001);
       state.realm(1).proposedMarriageThisTurn = true;
-      final result = applyAction(
-          state, MarryCommoner(slot: 1, personId: 9001), Rng(1));
+      final result =
+          applyAction(state, MarryCommoner(slot: 1, personId: 9001), Rng(1));
       expect(result.state.persons[9001]!.spouseId, isNotNull);
-    });
-
-    test('pre-v5: shares the one-proposal-per-turn gate', () {
-      final old = GameState.fromJson(state.toJson()..['rulesVersion'] = 4);
-      old.persons[9001] =
-          Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
-      old.realm(1).proposedMarriageThisTurn = true;
-      expect(
-          () => applyAction(
-              old, MarryCommoner(slot: 1, personId: 9001), Rng(1)),
-          throwsA(isA<ActionException>()));
     });
 
     test('rejects the already married', () {
@@ -562,8 +534,8 @@ void main() {
     test('transfers Taler to another realm', () {
       state.realm(1).treasury = 1000;
       final before = state.realm(2).treasury;
-      final result =
-          applyAction(state, SendMoney(slot: 1, targetSlot: 2, amount: 300), rng);
+      final result = applyAction(
+          state, SendMoney(slot: 1, targetSlot: 2, amount: 300), rng);
       expect(result.state.realm(1).treasury, 700);
       expect(result.state.realm(2).treasury, before + 300);
       expect(result.events.single.type, 'moneySent');
@@ -575,11 +547,17 @@ void main() {
 
     test('rejects self, vacant target, zero amount and missing funds', () {
       state.realm(1).treasury = 100;
-      expect(() => applyAction(state, SendMoney(slot: 1, targetSlot: 1, amount: 10), rng),
+      expect(
+          () => applyAction(
+              state, SendMoney(slot: 1, targetSlot: 1, amount: 10), rng),
           throwsA(isA<ActionException>()));
-      expect(() => applyAction(state, SendMoney(slot: 1, targetSlot: 2, amount: 0), rng),
+      expect(
+          () => applyAction(
+              state, SendMoney(slot: 1, targetSlot: 2, amount: 0), rng),
           throwsA(isA<ActionException>()));
-      expect(() => applyAction(state, SendMoney(slot: 1, targetSlot: 2, amount: 101), rng),
+      expect(
+          () => applyAction(
+              state, SendMoney(slot: 1, targetSlot: 2, amount: 101), rng),
           throwsA(isA<ActionException>()));
     });
   });
@@ -607,8 +585,10 @@ void main() {
       final realm = state.realm(1);
       realm.treasury = 6000;
       expect(
-          () => applyAction(state,
-              RelocateCapital(slot: 1, x: realm.capitalX, y: realm.capitalY), rng),
+          () => applyAction(
+              state,
+              RelocateCapital(slot: 1, x: realm.capitalX, y: realm.capitalY),
+              rng),
           throwsA(isA<ActionException>()));
     });
   });

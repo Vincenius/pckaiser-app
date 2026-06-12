@@ -281,8 +281,12 @@ void _placeStartingCross(
       realm.population += town.population;
       realm.troopCapacity += town.troopCapacity;
     } else {
-      claim(nx, ny,
-          map.terrainAt(nx, ny) == Terrain.berg ? Building.weide : Building.kornfeld);
+      claim(
+          nx,
+          ny,
+          map.terrainAt(nx, ny) == Terrain.berg
+              ? Building.weide
+              : Building.kornfeld);
     }
   }
 }

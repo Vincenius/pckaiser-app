@@ -32,20 +32,17 @@ class Troop {
         garrisonCounted: json['garrisonCounted'] as bool,
         x: json['x'] as int,
         y: json['y'] as int,
-      )..drilledThisTurn = json['drilledThisTurn'] as bool? ?? false;
+      );
 
   String name;
   int men;
 
-  /// Mutable since rules v5: "Truppe ausbilden" retrains the class.
+  /// Mutable: "Truppe umrüsten" retrains the class.
   int troopClass;
 
-  /// Mutable since rules v7: drilling ("ausbilden", proc_00A316) raises
-  /// it by 1 per drill, capped at [drillCap].
+  /// Mutable: drilling ("ausbilden", proc_00A316) raises it by 1 per
+  /// drill, capped at [drillCap].
   int quality;
-
-  /// Drilling is once per unit per turn; reset in turn upkeep.
-  bool drilledThisTurn = false;
 
   /// `[DESIGNED]` quality ceiling for drilled regulars — the original's
   /// counter is unbounded, but unbounded +0.1 power/man at a flat
@@ -66,7 +63,7 @@ class Troop {
         garrisonCounted: garrisonCounted,
         x: x,
         y: y,
-      )..drilledThisTurn = drilledThisTurn;
+      );
 
   Map<String, dynamic> toJson() => {
         'name': name,
@@ -76,6 +73,5 @@ class Troop {
         'garrisonCounted': garrisonCounted,
         'x': x,
         'y': y,
-        'drilledThisTurn': drilledThisTurn,
       };
 }

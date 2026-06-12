@@ -9,12 +9,15 @@ import '../state/game_controller.dart';
 import 'event_feed.dart';
 
 void _toast(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(message)));
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
-void _tryAction(BuildContext context, GameController controller,
-    gc.PlayerAction action, {bool undoable = false}) {
+void _tryAction(
+  BuildContext context,
+  GameController controller,
+  gc.PlayerAction action, {
+  bool undoable = false,
+}) {
   try {
     undoable
         ? controller.applyUndoable(action)
@@ -24,13 +27,11 @@ void _tryAction(BuildContext context, GameController controller,
   }
 }
 
-/// Rules v4 merge gate, mirrored from the engine: no merging while either
-/// realm fights the active war.
+/// Merge gate, mirrored from the engine: no merging while either realm
+/// fights the active war.
 bool _mergeAtWar(gc.GameState state, int slot, int source) {
   final war = state.activeWar;
-  return state.rulesVersion >= 4 &&
-      war != null &&
-      (war.isParticipant(slot) || war.isParticipant(source));
+  return war != null && (war.isParticipant(slot) || war.isParticipant(source));
 }
 
 // --- Commerce ---------------------------------------------------------
@@ -45,85 +46,115 @@ void showCommerceMenu(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: Wrap(children: [
-        ListTile(
-          title: Text(tr('sellGrain')),
-          subtitle: Text(
-              'Überschuß: ${realm.grainHarvest} — Marktpreis ${state.grainPrice.toStringAsFixed(1)} T'),
-          enabled: !realm.soldGrainThisTurn && realm.grainHarvest > 0,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _sellSheet(context, controller, gc.MarketGood.grain,
-                realm.grainHarvest, state.grainPrice);
-          },
-        ),
-        ListTile(
-          title: Text(tr('sellCattle')),
-          subtitle: Text(
-              'Überschuß: ${realm.livestockHarvest} — Marktpreis ${state.cattlePrice.toStringAsFixed(1)} T'),
-          enabled: !realm.soldCattleThisTurn && realm.livestockHarvest > 0,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _sellSheet(context, controller, gc.MarketGood.cattle,
-                realm.livestockHarvest, state.cattlePrice);
-          },
-        ),
-        ListTile(
-          title: Text(tr('investShips')),
-          subtitle: Text(
-              'Maximal: ${realm.tileCount[gc.Building.hafen] * 600} T (Häfen: ${realm.tileCount[gc.Building.hafen]})'),
-          enabled: !realm.investedThisTurn &&
-              realm.tileCount[gc.Building.hafen] > 0,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _investSheet(context, controller);
-          },
-        ),
-        ListTile(
-          title: const Text('Geld schicken'),
-          subtitle: const Text('Taler an ein anderes Land überweisen'),
-          enabled: realm.treasury > 0,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _targetThenAmount(context, controller,
+      child: Wrap(
+        children: [
+          ListTile(
+            title: Text(tr('sellGrain')),
+            subtitle: Text(
+              'Überschuß: ${realm.grainHarvest} — Marktpreis ${state.grainPrice.toStringAsFixed(1)} T',
+            ),
+            enabled: !realm.soldGrainThisTurn && realm.grainHarvest > 0,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _sellSheet(
+                context,
+                controller,
+                gc.MarketGood.grain,
+                realm.grainHarvest,
+                state.grainPrice,
+              );
+            },
+          ),
+          ListTile(
+            title: Text(tr('sellCattle')),
+            subtitle: Text(
+              'Überschuß: ${realm.livestockHarvest} — Marktpreis ${state.cattlePrice.toStringAsFixed(1)} T',
+            ),
+            enabled: !realm.soldCattleThisTurn && realm.livestockHarvest > 0,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _sellSheet(
+                context,
+                controller,
+                gc.MarketGood.cattle,
+                realm.livestockHarvest,
+                state.cattlePrice,
+              );
+            },
+          ),
+          ListTile(
+            title: Text(tr('investShips')),
+            subtitle: Text(
+              'Maximal: ${realm.tileCount[gc.Building.hafen] * 600} T (Häfen: ${realm.tileCount[gc.Building.hafen]})',
+            ),
+            enabled:
+                !realm.investedThisTurn &&
+                realm.tileCount[gc.Building.hafen] > 0,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _investSheet(context, controller);
+            },
+          ),
+          ListTile(
+            title: const Text('Geld schicken'),
+            subtitle: const Text('Taler an ein anderes Land überweisen'),
+            enabled: realm.treasury > 0,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _targetThenAmount(
+                context,
+                controller,
                 max: realm.treasury,
                 titlePrefix: 'Taler',
                 onSubmit: (target, amount) => _tryAction(
-                    context,
-                    controller,
-                    gc.SendMoney(
-                        slot: slot, targetSlot: target, amount: amount),
-                    undoable: true));
-          },
-        ),
-        for (final source in gc.mergeableSlots(controller.state, slot))
-          ListTile(
-            title: Text('${tr('mergeRealms')}: ${gc.countryNames[source]}'),
-            // Rules v4: no merging mid-war (engine gate, mirrored).
-            subtitle: _mergeAtWar(state, slot, source)
-                ? const Text('Nicht mitten im Krieg !')
-                : null,
-            enabled: !_mergeAtWar(state, slot, source),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _tryAction(context, controller,
-                  gc.MergeRealms(slot: slot, sourceSlot: source));
+                  context,
+                  controller,
+                  gc.SendMoney(slot: slot, targetSlot: target, amount: amount),
+                  undoable: true,
+                ),
+              );
             },
           ),
-      ]),
+          for (final source in gc.mergeableSlots(controller.state, slot))
+            ListTile(
+              title: Text('${tr('mergeRealms')}: ${gc.countryNames[source]}'),
+              // No merging mid-war (engine gate, mirrored).
+              subtitle: _mergeAtWar(state, slot, source)
+                  ? const Text('Nicht mitten im Krieg !')
+                  : null,
+              enabled: !_mergeAtWar(state, slot, source),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _tryAction(
+                  context,
+                  controller,
+                  gc.MergeRealms(slot: slot, sourceSlot: source),
+                );
+              },
+            ),
+        ],
+      ),
     ),
   );
 }
 
-void _sellSheet(BuildContext context, GameController controller,
-    gc.MarketGood good, int stock, double price) {
+void _sellSheet(
+  BuildContext context,
+  GameController controller,
+  gc.MarketGood good,
+  int stock,
+  double price,
+) {
   _amountSheet(
     context,
     title: good == gc.MarketGood.grain ? tr('sellGrain') : tr('sellCattle'),
     max: stock,
     detail: (amount) => 'bringt ${(amount * price).round()} T',
-    onSubmit: (amount) => _tryAction(context, controller,
-        gc.SellGood(slot: controller.currentSlot, good: good, amount: amount)),
+    onSubmit: (amount) => _tryAction(
+      context,
+      controller,
+      gc.SellGood(slot: controller.currentSlot, good: good, amount: amount),
+    ),
   );
 }
 
@@ -135,8 +166,11 @@ void _investSheet(BuildContext context, GameController controller) {
     title: tr('investShips'),
     max: cap < realm.treasury ? cap : realm.treasury,
     detail: (amount) => 'Einsatz $amount T — Gewinn oder Verlust',
-    onSubmit: (amount) => _tryAction(context, controller,
-        gc.InvestShips(slot: controller.currentSlot, amount: amount)),
+    onSubmit: (amount) => _tryAction(
+      context,
+      controller,
+      gc.InvestShips(slot: controller.currentSlot, amount: amount),
+    ),
   );
 }
 
@@ -148,9 +182,8 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
   final realm = controller.currentRealm;
   final state = controller.state;
   final freeCapacity = realm.troopCapacity - realm.armySize;
-  // Rules v2: no recruiting/hiring while at war (engine gate, mirrored).
-  final atWar = state.rulesVersion >= 2 &&
-      (state.activeWar?.isParticipant(slot) ?? false);
+  // No recruiting/hiring while at war (engine gate, mirrored).
+  final atWar = state.activeWar?.isParticipant(slot) ?? false;
 
   // The §11.1 war gates, mirrored so the button is disabled (with the
   // reason shown) instead of failing on tap.
@@ -158,79 +191,94 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
   final String? warBlocked = state.year < gc.firstWarYear
       ? 'Kriege sind erst ab dem Jahr 1010 erlaubt !'
       : realm.warThisYear
-          ? 'Du hast dieses Jahr schon einmal Krieg geführt !'
-          : !hasTroops
-              ? 'Du hast nicht genug Truppen !'
-              : state.activeWar != null
-                  ? 'Es tobt bereits ein anderer Krieg !'
-                  : null;
+      ? 'Du hast dieses Jahr schon einmal Krieg geführt !'
+      : !hasTroops
+      ? 'Du hast nicht genug Truppen !'
+      : state.activeWar != null
+      ? 'Es tobt bereits ein anderer Krieg !'
+      : null;
 
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-          title: Text(tr('recruit')),
-          subtitle: Text(atWar
-              ? 'Nicht mitten im Krieg !'
-              : '5 T pro Mann — freie Kapazität: $freeCapacity'),
-          enabled: !atWar && freeCapacity > 0 && realm.treasury >= 5,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            // Position first, then class and amount. Follow-up sheets use
-            // the stable screen [context] — the sheet's own context dies
-            // with the pop and must not leak into later steps.
-            _stationSheet(context, controller,
-                onPicked: (x, y) =>
-                    _recruitSheet(context, controller, x, y));
-          },
-        ),
-        ListTile(
-          title: Text(tr('hireSoeldner')),
-          subtitle: Text(atWar
-              ? 'Nicht mitten im Krieg !'
-              : '50 T pro Mann (plus Sold)'),
-          enabled: !atWar && realm.treasury >= 50,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _stationSheet(context, controller, onPicked: (x, y) {
-              _amountSheet(context,
-                  title: tr('hireSoeldner'),
-                  max: controller.currentRealm.treasury ~/ 50,
-                  detail: (men) => 'kostet ${men * 50} T',
-                  onSubmit: (men) => _tryAction(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          ListTile(
+            title: Text(tr('recruit')),
+            subtitle: Text(
+              atWar
+                  ? 'Nicht mitten im Krieg !'
+                  : '5 T pro Mann — freie Kapazität: $freeCapacity',
+            ),
+            enabled: !atWar && freeCapacity > 0 && realm.treasury >= 5,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              // Position first, then class and amount. Follow-up sheets use
+              // the stable screen [context] — the sheet's own context dies
+              // with the pop and must not leak into later steps.
+              _stationSheet(
+                context,
+                controller,
+                onPicked: (x, y) => _recruitSheet(context, controller, x, y),
+              );
+            },
+          ),
+          ListTile(
+            title: Text(tr('hireSoeldner')),
+            subtitle: Text(
+              atWar ? 'Nicht mitten im Krieg !' : '50 T pro Mann (plus Sold)',
+            ),
+            enabled: !atWar && realm.treasury >= 50,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _stationSheet(
+                context,
+                controller,
+                onPicked: (x, y) {
+                  _amountSheet(
+                    context,
+                    title: tr('hireSoeldner'),
+                    max: controller.currentRealm.treasury ~/ 50,
+                    detail: (men) => 'kostet ${men * 50} T',
+                    onSubmit: (men) => _tryAction(
                       context,
                       controller,
                       gc.HireSoeldner(
-                          slot: slot,
-                          men: men,
-                          name: 'Söldner',
-                          x: x,
-                          y: y)));
-            });
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.groups_2),
-          title: Text('Truppenliste (${realm.troops.length})'),
-          subtitle: Text('Armee: ${realm.armySize} Mann'),
-          enabled: realm.troops.isNotEmpty,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _showTroopList(context, controller);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.gavel),
-          title: Text(tr('declareWar')),
-          subtitle: Text(warBlocked ?? 'Einmal pro Jahr — nur Nachbarn'),
-          enabled: warBlocked == null,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _declareWarSheet(context, controller);
-          },
-        ),
-      ]),
+                        slot: slot,
+                        men: men,
+                        name: 'Söldner',
+                        x: x,
+                        y: y,
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.groups_2),
+            title: Text('Truppenliste (${realm.troops.length})'),
+            subtitle: Text('Armee: ${realm.armySize} Mann'),
+            enabled: realm.troops.isNotEmpty,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showTroopList(context, controller);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.gavel),
+            title: Text(tr('declareWar')),
+            subtitle: Text(warBlocked ?? 'Einmal pro Jahr — nur Nachbarn'),
+            enabled: warBlocked == null,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _declareWarSheet(context, controller);
+            },
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -238,55 +286,71 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
 /// Position picker for a new unit ("ask for the place first"): the
 /// capital directly, or any own map tile via "Feld auswählen" — the
 /// sheet closes, the player taps the tile, then the unit is configured.
-void _stationSheet(BuildContext context, GameController controller,
-    {required void Function(int x, int y) onPicked}) {
+void _stationSheet(
+  BuildContext context,
+  GameController controller, {
+  required void Function(int x, int y) onPicked,
+}) {
   final realm = controller.currentRealm;
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-            title: Text('Wo soll die Truppe stationiert werden?',
-                style: Theme.of(sheetContext).textTheme.titleMedium)),
-        const Divider(height: 1),
-        ListTile(
-          leading: const Icon(Icons.flag),
-          title: const Text('Hauptsitz'),
-          subtitle:
-              Text('Feld (${realm.capitalX + 1}, ${realm.capitalY + 1})'),
-          onTap: () {
-            Navigator.pop(sheetContext);
-            onPicked(realm.capitalX, realm.capitalY);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.touch_app),
-          title: const Text('Feld auswählen'),
-          subtitle: const Text('Ein eigenes Feld auf der Karte antippen'),
-          onTap: () {
-            Navigator.pop(sheetContext);
-            controller.startTilePick(
-              hint: 'Feld für die neue Truppe antippen',
-              onPick: (x, y) {
-                if (controller.state.map.ownerAt(x, y) !=
-                    controller.currentSlot) {
-                  _toast(context,
-                      'Du musst deine Truppen auf deinem Territorium stationieren !');
-                  return false;
-                }
-                onPicked(x, y);
-                return true;
-              },
-            );
-          },
-        ),
-      ]),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          ListTile(
+            title: Text(
+              'Wo soll die Truppe stationiert werden?',
+              style: Theme.of(sheetContext).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.flag),
+            title: const Text('Hauptsitz'),
+            subtitle: Text(
+              'Feld (${realm.capitalX + 1}, ${realm.capitalY + 1})',
+            ),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              onPicked(realm.capitalX, realm.capitalY);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.touch_app),
+            title: const Text('Feld auswählen'),
+            subtitle: const Text('Ein eigenes Feld auf der Karte antippen'),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              controller.startTilePick(
+                hint: 'Feld für die neue Truppe antippen',
+                onPick: (x, y) {
+                  if (controller.state.map.ownerAt(x, y) !=
+                      controller.currentSlot) {
+                    _toast(
+                      context,
+                      'Du musst deine Truppen auf deinem Territorium stationieren !',
+                    );
+                    return false;
+                  }
+                  onPicked(x, y);
+                  return true;
+                },
+              );
+            },
+          ),
+        ],
+      ),
     ),
   );
 }
 
 void _recruitSheet(
-    BuildContext context, GameController controller, int x, int y) {
+  BuildContext context,
+  GameController controller,
+  int x,
+  int y,
+) {
   final slot = controller.currentSlot;
   final realm = controller.currentRealm;
   var troopClass = gc.TroopClass.infanterie;
@@ -299,64 +363,70 @@ void _recruitSheet(
         // 5 T per man plus the one-time class surcharge — the slider only
         // offers what the quarters and the treasury can carry.
         final maxMen = math.min(
-            realm.troopCapacity - realm.armySize,
-            (realm.treasury - gc.classSurcharge(troopClass)) ~/ 5);
+          realm.troopCapacity - realm.armySize,
+          (realm.treasury - gc.classSurcharge(troopClass)) ~/ 5,
+        );
         return SafeArea(
           child: Padding(
             // Keep the sheet above the on-screen keyboard.
             padding: EdgeInsets.only(
-                bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: nameController,
-                  maxLength: 20,
-                  decoration: const InputDecoration(
-                    labelText: 'Name der Truppe',
-                    counterText: '',
-                    isDense: true,
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: TextField(
+                    controller: nameController,
+                    maxLength: 20,
+                    decoration: const InputDecoration(
+                      labelText: 'Name der Truppe',
+                      counterText: '',
+                      isDense: true,
+                    ),
                   ),
                 ),
-              ),
-              SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 0, label: Text('Infanterie +0')),
-                  ButtonSegment(value: 1, label: Text('Kavallerie +500')),
-                  ButtonSegment(value: 2, label: Text('Artillerie +1000')),
-                ],
-                selected: {troopClass},
-                onSelectionChanged: (s) =>
-                    setState(() => troopClass = s.first),
-              ),
-              if (maxMen < 1)
-                const ListTile(
-                    title: Text('Du hast nicht genügend Taler !'))
-              else
-                _AmountSlider(
-                  key: ValueKey(troopClass),
-                  title: tr('recruit'),
-                  max: maxMen,
-                  detail: (men) =>
-                      'kostet ${5 * men + gc.classSurcharge(troopClass)} T'
-                      ' — Stärke ${(men * (3 * troopClass + gc.TroopQuality.regular) / 10).round()}',
-                  onSubmit: (men) {
-                    Navigator.pop(sheetContext);
-                    _tryAction(
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('Infanterie +0')),
+                    ButtonSegment(value: 1, label: Text('Kavallerie +500')),
+                    ButtonSegment(value: 2, label: Text('Artillerie +1000')),
+                  ],
+                  selected: {troopClass},
+                  onSelectionChanged: (s) =>
+                      setState(() => troopClass = s.first),
+                ),
+                if (maxMen < 1)
+                  const ListTile(title: Text('Du hast nicht genügend Taler !'))
+                else
+                  _AmountSlider(
+                    key: ValueKey(troopClass),
+                    title: tr('recruit'),
+                    max: maxMen,
+                    detail: (men) =>
+                        'kostet ${5 * men + gc.classSurcharge(troopClass)} T'
+                        ' — Stärke ${(men * (3 * troopClass + gc.TroopQuality.regular) / 10).round()}',
+                    onSubmit: (men) {
+                      Navigator.pop(sheetContext);
+                      _tryAction(
                         context,
                         controller,
                         gc.RecruitTroops(
-                            slot: slot,
-                            men: men,
-                            troopClass: troopClass,
-                            name: nameController.text.trim().isEmpty
-                                ? 'Rekruten'
-                                : nameController.text.trim(),
-                            x: x,
-                            y: y));
-                  },
-                ),
-            ]),
+                          slot: slot,
+                          men: men,
+                          troopClass: troopClass,
+                          name: nameController.text.trim().isEmpty
+                              ? 'Rekruten'
+                              : nameController.text.trim(),
+                          x: x,
+                          y: y,
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -370,28 +440,36 @@ void _showTroopList(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-            title: Text('Truppenliste — Armee: ${realm.armySize} Mann',
-                style: Theme.of(sheetContext).textTheme.titleMedium)),
-        const Divider(height: 1),
-        for (var i = 0; i < realm.troops.length; i++)
+      child: ListView(
+        shrinkWrap: true,
+        children: [
           ListTile(
-            leading: const Icon(Icons.groups_2),
             title: Text(
-                '${realm.troops[i].name} — ${realm.troops[i].men} Mann'),
-            subtitle: Text(
+              'Truppenliste — Armee: ${realm.armySize} Mann',
+              style: Theme.of(sheetContext).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          for (var i = 0; i < realm.troops.length; i++)
+            ListTile(
+              leading: const Icon(Icons.groups_2),
+              title: Text(
+                '${realm.troops[i].name} — ${realm.troops[i].men} Mann',
+              ),
+              subtitle: Text(
                 '${['Infanterie', 'Kavallerie', 'Artillerie'][realm.troops[i].troopClass]}'
                 '${realm.troops[i].quality == gc.TroopQuality.soeldner ? ' (Söldner)' : ''}'
                 ' — Stärke ${gc.troopStrength(realm.troops[i]).round()}'
-                ' — Feld (${realm.troops[i].x + 1}, ${realm.troops[i].y + 1})'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              showTroopActions(context, controller, i);
-            },
-          ),
-      ]),
+                ' — Feld (${realm.troops[i].x + 1}, ${realm.troops[i].y + 1})',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                showTroopActions(context, controller, i);
+              },
+            ),
+        ],
+      ),
     ),
   );
 }
@@ -399,174 +477,224 @@ void _showTroopList(BuildContext context, GameController controller) {
 /// Per-unit info & edit sheet (§10.2): verlegen, verstärken, vereinigen,
 /// auflösen. Public — the tile sheet opens it when tapping a stationed army.
 void showTroopActions(
-    BuildContext context, GameController controller, int index) {
+  BuildContext context,
+  GameController controller,
+  int index,
+) {
   // The screen's context — onPick of the move tile fires long after the
   // sheet (and its builder context) is gone.
   final screenContext = context;
   final slot = controller.currentSlot;
-  final realm = controller.currentRealm;
-  final troop = realm.troops[index];
-  final soeldner = troop.quality == gc.TroopQuality.soeldner;
-  final costPerMan = soeldner ? 50 : 5;
-  final affordable = realm.treasury ~/ costPerMan;
-  final capacity = realm.troopCapacity - realm.armySize;
-  final maxReinforce =
-      soeldner ? affordable : (capacity < affordable ? capacity : affordable);
-  // Merging/disbanding is forbidden while at war (the war state is keyed
-  // to the troop list) — mirror the engine gate so the options grey out.
-  // Rules v2 widens the gate to reinforcing as well.
-  final atWar = controller.state.activeWar?.isParticipant(slot) ?? false;
-  final reinforceBlocked = atWar && controller.state.rulesVersion >= 2;
-  final mergeTargets = [
-    for (var i = 0; i < realm.troops.length; i++)
-      if (i != index &&
-          realm.troops[i].troopClass == troop.troopClass &&
-          realm.troops[i].quality == troop.quality)
-        i,
-  ];
   showModalBottomSheet<void>(
     context: context,
-    builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-          title: Text('${troop.name} — ${troop.men} Mann',
-              style: Theme.of(sheetContext).textTheme.titleMedium),
-          subtitle: Text(
-              '${['Infanterie', 'Kavallerie', 'Artillerie'][troop.troopClass]}'
-              '${soeldner ? ' (Söldner)' : ''}'
-              ' — Stärke ${gc.troopStrength(troop).round()}'
-              ' — Feld (${troop.x + 1}, ${troop.y + 1})'),
-        ),
-        const Divider(height: 1),
-        ListTile(
-          leading: const Icon(Icons.open_with),
-          title: const Text('Truppe verlegen'),
-          // Rules v3: relocating troops is free; older games still pay.
-          subtitle: Text(controller.state.rulesVersion >= 3
-              ? 'Kostenlos — Zielfeld auf der Karte antippen'
-              : realm.movementPoints < 1
-                  ? 'Du hast keine Züge mehr !'
-                  : '1 Zug — Zielfeld auf der Karte antippen'),
-          enabled: controller.state.rulesVersion >= 3 ||
-              realm.movementPoints >= 1,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            controller.startTilePick(
-              hint: 'Zielfeld für „${troop.name}" antippen',
-              onPick: (x, y) {
-                try {
-                  controller.applyUndoable(gc.MoveTroop(
-                      slot: slot, unitIndex: index, x: x, y: y));
-                  return true;
-                } on gc.ActionException catch (e) {
-                  if (screenContext.mounted) _toast(screenContext, e.message);
-                  return false;
-                }
-              },
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.group_add),
-          title: const Text('Truppe verstärken'),
-          subtitle: Text(reinforceBlocked
-              ? 'Nicht mitten im Krieg !'
-              : '$costPerMan T pro Mann'),
-          enabled: !reinforceBlocked && maxReinforce > 0,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _amountSheet(context,
-                title: 'Truppe verstärken',
-                max: maxReinforce,
-                detail: (men) => 'kostet ${men * costPerMan} T',
-                onSubmit: (men) => _tryAction(context, controller,
-                    gc.ReinforceTroop(slot: slot, unitIndex: index, men: men)));
-          },
-        ),
-        for (final other in mergeTargets)
-          ListTile(
-            leading: const Icon(Icons.merge),
-            title: Text('Vereinigen mit „${realm.troops[other].name}" '
-                '(${realm.troops[other].men} Mann)'),
-            subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
-            enabled: !atWar,
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _tryAction(
-                  context,
-                  controller,
-                  gc.MergeTroops(
-                      slot: slot, fromIndex: index, toIndex: other),
-                  undoable: true);
-            },
+    // Rebuilt on every controller change: drilling keeps the sheet open
+    // (the player drills repeatedly), so cost/quality lines must refresh
+    // in place.
+    builder: (sheetContext) => ListenableBuilder(
+      listenable: controller,
+      builder: (sheetContext, _) {
+        final realm = controller.currentRealm;
+        if (index >= realm.troops.length) {
+          // The unit is gone (e.g. undone recruit) — nothing to show.
+          return const SafeArea(child: SizedBox(height: 80));
+        }
+        final troop = realm.troops[index];
+        final soeldner = troop.quality == gc.TroopQuality.soeldner;
+        final costPerMan = soeldner ? 50 : 5;
+        final affordable = realm.treasury ~/ costPerMan;
+        final capacity = realm.troopCapacity - realm.armySize;
+        final maxReinforce = soeldner
+            ? affordable
+            : (capacity < affordable ? capacity : affordable);
+        // Merging/disbanding is forbidden while at war (the war state is
+        // keyed to the troop list) — mirror the engine gate so the options
+        // grey out (the gate covers reinforcing as well).
+        final atWar = controller.state.activeWar?.isParticipant(slot) ?? false;
+        final reinforceBlocked = atWar;
+        final mergeTargets = [
+          for (var i = 0; i < realm.troops.length; i++)
+            if (i != index &&
+                realm.troops[i].troopClass == troop.troopClass &&
+                realm.troops[i].quality == troop.quality)
+              i,
+        ];
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                title: Text(
+                  '${troop.name} — ${troop.men} Mann',
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
+                subtitle: Text(
+                  '${['Infanterie', 'Kavallerie', 'Artillerie'][troop.troopClass]}'
+                  '${soeldner ? ' (Söldner)' : ''}'
+                  ' — Stärke ${gc.troopStrength(troop).round()}'
+                  ' — Feld (${troop.x + 1}, ${troop.y + 1})',
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.open_with),
+                title: const Text('Truppe verlegen'),
+                // Relocating troops is free — only building costs Züge.
+                subtitle: const Text(
+                  'Kostenlos — Zielfeld auf der Karte antippen',
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  controller.startTilePick(
+                    hint: 'Zielfeld für „${troop.name}" antippen',
+                    onPick: (x, y) {
+                      try {
+                        controller.applyUndoable(
+                          gc.MoveTroop(
+                            slot: slot,
+                            unitIndex: index,
+                            x: x,
+                            y: y,
+                          ),
+                        );
+                        return true;
+                      } on gc.ActionException catch (e) {
+                        if (screenContext.mounted) {
+                          _toast(screenContext, e.message);
+                        }
+                        return false;
+                      }
+                    },
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.group_add),
+                title: const Text('Truppe verstärken'),
+                subtitle: Text(
+                  reinforceBlocked
+                      ? 'Nicht mitten im Krieg !'
+                      : '$costPerMan T pro Mann',
+                ),
+                enabled: !reinforceBlocked && maxReinforce > 0,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _amountSheet(
+                    context,
+                    title: 'Truppe verstärken',
+                    max: maxReinforce,
+                    detail: (men) => 'kostet ${men * costPerMan} T',
+                    onSubmit: (men) => _tryAction(
+                      context,
+                      controller,
+                      gc.ReinforceTroop(slot: slot, unitIndex: index, men: men),
+                    ),
+                  );
+                },
+              ),
+              for (final other in mergeTargets)
+                ListTile(
+                  leading: const Icon(Icons.merge),
+                  title: Text(
+                    'Vereinigen mit „${realm.troops[other].name}" '
+                    '(${realm.troops[other].men} Mann)',
+                  ),
+                  subtitle: atWar
+                      ? const Text('Nicht mitten im Krieg !')
+                      : null,
+                  enabled: !atWar,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _tryAction(
+                      context,
+                      controller,
+                      gc.MergeTroops(
+                        slot: slot,
+                        fromIndex: index,
+                        toIndex: other,
+                      ),
+                      undoable: true,
+                    );
+                  },
+                ),
+              // Drill (the original "Truppe ausbilden"): +1 quality
+              // for 5 T/man, class unchanged; as often per turn
+              // as the treasury allows.
+              if (!soeldner)
+                ListTile(
+                  leading: const Icon(Icons.fitness_center),
+                  title: const Text('Truppe ausbilden'),
+                  subtitle: Text(
+                    atWar
+                        ? 'Nicht mitten im Krieg !'
+                        : troop.quality >= gc.Troop.drillCap
+                        ? 'Bereits voll ausgebildet (Qualität ${troop.quality})'
+                        : '${5 * troop.men} T — Qualität ${troop.quality} → '
+                              '${troop.quality + 1}',
+                  ),
+                  enabled:
+                      !atWar &&
+                      troop.quality < gc.Troop.drillCap &&
+                      realm.treasury >= 5 * troop.men,
+                  // The sheet stays open: drilling is repeatable and
+                  // the ListenableBuilder refreshes quality/cost in place.
+                  onTap: () => _tryAction(
+                    context,
+                    controller,
+                    gc.DrillTroop(slot: slot, unitIndex: index),
+                    undoable: true,
+                  ),
+                ),
+              if (!soeldner)
+                ListTile(
+                  leading: const Icon(Icons.military_tech),
+                  title: const Text('Truppe umrüsten'),
+                  subtitle: Text(
+                    atWar
+                        ? 'Nicht mitten im Krieg !'
+                        : 'Gattung wechseln — 5 T pro Mann plus Aufpreis',
+                  ),
+                  enabled: !atWar,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _trainSheet(context, controller, index);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.drive_file_rename_outline),
+                title: const Text('Truppe umbenennen'),
+                subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
+                enabled: !atWar,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _renameTroopDialog(context, controller, index);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Truppe auflösen'),
+                subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
+                enabled: !atWar,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _tryAction(
+                    context,
+                    controller,
+                    gc.DisbandTroop(slot: slot, unitIndex: index),
+                    undoable: true,
+                  );
+                },
+              ),
+            ],
           ),
-        // Drill (rules v7, the original "Truppe ausbilden"): +1 quality
-        // for 5 T/man, class unchanged; since rules v8 as often per turn
-        // as the treasury allows.
-        if (controller.state.rulesVersion >= 7 && !soeldner)
-          ListTile(
-            leading: const Icon(Icons.fitness_center),
-            title: const Text('Truppe ausbilden'),
-            subtitle: Text(atWar
-                ? 'Nicht mitten im Krieg !'
-                : troop.quality >= gc.Troop.drillCap
-                    ? 'Bereits voll ausgebildet (Qualität ${troop.quality})'
-                    : '${5 * troop.men} T — Qualität ${troop.quality} → '
-                        '${troop.quality + 1}'),
-            enabled: !atWar &&
-                troop.quality < gc.Troop.drillCap &&
-                realm.treasury >= 5 * troop.men,
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _tryAction(context, controller,
-                  gc.DrillTroop(slot: slot, unitIndex: index),
-                  undoable: true);
-            },
-          ),
-        if (controller.state.rulesVersion >= 5 && !soeldner)
-          ListTile(
-            leading: const Icon(Icons.military_tech),
-            title: const Text('Truppe umrüsten'),
-            subtitle: Text(atWar
-                ? 'Nicht mitten im Krieg !'
-                : 'Gattung wechseln — 5 T pro Mann plus Aufpreis'),
-            enabled: !atWar,
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _trainSheet(context, controller, index);
-            },
-          ),
-        ListTile(
-          leading: const Icon(Icons.drive_file_rename_outline),
-          title: const Text('Truppe umbenennen'),
-          subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
-          enabled: !atWar,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _renameTroopDialog(context, controller, index);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.delete_outline),
-          title: const Text('Truppe auflösen'),
-          subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
-          enabled: !atWar,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _tryAction(context, controller,
-                gc.DisbandTroop(slot: slot, unitIndex: index),
-                undoable: true);
-          },
-        ),
-      ]),
+        );
+      },
     ),
   );
 }
 
-/// "Truppe umrüsten" (rules v5): retrain to another class — 5 T/man plus
+/// "Truppe umrüsten": retrain to another class — 5 T/man plus
 /// the class surcharge; the new strength is shown per option.
-void _trainSheet(
-    BuildContext context, GameController controller, int index) {
+void _trainSheet(BuildContext context, GameController controller, int index) {
   final slot = controller.currentSlot;
   final realm = controller.currentRealm;
   final troop = realm.troops[index];
@@ -574,45 +702,60 @@ void _trainSheet(
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          ListTile(
             title: Text(
-                '„${troop.name}" umrüsten — aktuelle Stärke '
-                '${gc.troopStrength(troop).round()}',
-                style: Theme.of(sheetContext).textTheme.titleMedium)),
-        const Divider(height: 1),
-        for (var cls = gc.TroopClass.infanterie;
+              '„${troop.name}" umrüsten — aktuelle Stärke '
+              '${gc.troopStrength(troop).round()}',
+              style: Theme.of(sheetContext).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          for (
+            var cls = gc.TroopClass.infanterie;
             cls <= gc.TroopClass.artillerie;
-            cls++)
-          if (cls != troop.troopClass)
-            Builder(builder: (sheetContext) {
-              final cost = 5 * troop.men + gc.classSurcharge(cls);
-              final newStrength =
-                  (troop.men * (3 * cls + troop.quality) / 10).round();
-              return ListTile(
-                leading: const Icon(Icons.military_tech),
-                title: Text('Zu ${classNames[cls]} umrüsten'),
-                subtitle:
-                    Text('kostet $cost T — neue Stärke $newStrength'),
-                enabled: realm.treasury >= cost,
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _tryAction(
-                      context,
-                      controller,
-                      gc.TrainTroop(
-                          slot: slot, unitIndex: index, troopClass: cls),
-                      undoable: true);
+            cls++
+          )
+            if (cls != troop.troopClass)
+              Builder(
+                builder: (sheetContext) {
+                  final cost = 5 * troop.men + gc.classSurcharge(cls);
+                  final newStrength =
+                      (troop.men * (3 * cls + troop.quality) / 10).round();
+                  return ListTile(
+                    leading: const Icon(Icons.military_tech),
+                    title: Text('Zu ${classNames[cls]} umrüsten'),
+                    subtitle: Text('kostet $cost T — neue Stärke $newStrength'),
+                    enabled: realm.treasury >= cost,
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _tryAction(
+                        context,
+                        controller,
+                        gc.TrainTroop(
+                          slot: slot,
+                          unitIndex: index,
+                          troopClass: cls,
+                        ),
+                        undoable: true,
+                      );
+                    },
+                  );
                 },
-              );
-            }),
-      ]),
+              ),
+        ],
+      ),
     ),
   );
 }
 
 void _renameTroopDialog(
-    BuildContext context, GameController controller, int index) {
+  BuildContext context,
+  GameController controller,
+  int index,
+) {
   final troop = controller.currentRealm.troops[index];
   final nameController = TextEditingController(text: troop.name);
   showDialog<void>(
@@ -620,22 +763,28 @@ void _renameTroopDialog(
     builder: (dialogContext) => AlertDialog(
       title: const Text('Truppe umbenennen'),
       content: TextField(
-          controller: nameController, maxLength: 20, autofocus: true),
+        controller: nameController,
+        maxLength: 20,
+        autofocus: true,
+      ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(tr('cancel'))),
+          onPressed: () => Navigator.pop(dialogContext),
+          child: Text(tr('cancel')),
+        ),
         FilledButton(
           onPressed: () {
             Navigator.pop(dialogContext);
             _tryAction(
-                context,
-                controller,
-                gc.RenameTroop(
-                    slot: controller.currentSlot,
-                    unitIndex: index,
-                    name: nameController.text),
-                undoable: true);
+              context,
+              controller,
+              gc.RenameTroop(
+                slot: controller.currentSlot,
+                unitIndex: index,
+                name: nameController.text,
+              ),
+              undoable: true,
+            );
           },
           child: const Text('OK'),
         ),
@@ -652,52 +801,65 @@ void _declareWarSheet(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        if (neighbors.isEmpty)
-          const ListTile(
-              title: Text('Du hast keine gemeinsame Grenze '
-                  'mit einem anderen Reich !')),
-        for (final realm in state.realms)
-          if (realm.slot != slot &&
-              !realm.isVacant &&
-              // No war against a slot your own ruler already holds.
-              realm.rulerId != controller.currentRealm.rulerId &&
-              // V1: human-vs-human wars wait for the online war clock.
-              controller.state.dynasty(realm.slot).status !=
-                  gc.DynastyStatus.human &&
-              neighbors.contains(realm.slot))
-            ListTile(
-              title: Text(gc.countryNames[realm.slot]),
-              subtitle:
-                  Text(state.person(realm.rulerId)?.name ?? 'unbekannt'),
-              onTap: () async {
-                // Confirm on the stable screen [context]: the sheet's own
-                // context is unmounted once its exit animation ends, so a
-                // mounted-check on it after the dialog would silently
-                // swallow the war declaration.
-                Navigator.pop(sheetContext);
-                final sure = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text(
-                        '${tr('declareWar')}: ${gc.countryNames[realm.slot]}?'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: Text(tr('cancel'))),
-                      FilledButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: Text(tr('declareWar'))),
-                    ],
-                  ),
-                );
-                if (sure == true && context.mounted) {
-                  _tryAction(context, controller,
-                      gc.DeclareWar(slot: slot, targetSlot: realm.slot));
-                }
-              },
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          if (neighbors.isEmpty)
+            const ListTile(
+              title: Text(
+                'Du hast keine gemeinsame Grenze '
+                'mit einem anderen Reich !',
+              ),
             ),
-      ]),
+          for (final realm in state.realms)
+            if (realm.slot != slot &&
+                !realm.isVacant &&
+                // No war against a slot your own ruler already holds.
+                realm.rulerId != controller.currentRealm.rulerId &&
+                // V1: human-vs-human wars wait for the online war clock.
+                controller.state.dynasty(realm.slot).status !=
+                    gc.DynastyStatus.human &&
+                neighbors.contains(realm.slot))
+              ListTile(
+                title: Text(gc.countryNames[realm.slot]),
+                subtitle: Text(
+                  state.person(realm.rulerId)?.name ?? 'unbekannt',
+                ),
+                onTap: () async {
+                  // Confirm on the stable screen [context]: the sheet's own
+                  // context is unmounted once its exit animation ends, so a
+                  // mounted-check on it after the dialog would silently
+                  // swallow the war declaration.
+                  Navigator.pop(sheetContext);
+                  final sure = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text(
+                        '${tr('declareWar')}: ${gc.countryNames[realm.slot]}?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: Text(tr('cancel')),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: Text(tr('declareWar')),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (sure == true && context.mounted) {
+                    _tryAction(
+                      context,
+                      controller,
+                      gc.DeclareWar(slot: slot, targetSlot: realm.slot),
+                    );
+                  }
+                },
+              ),
+        ],
+      ),
     ),
   );
 }
@@ -713,148 +875,191 @@ void showEspionageMenu(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: Wrap(children: [
-        ListTile(
-          title: const Text('Daten ausspionieren'),
-          subtitle: Text('${gc.economySpyCost} T pro Agent'),
-          enabled: realm.treasury >= gc.economySpyCost,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _spySheet(context, controller, gc.SpyKind.economy);
-          },
-        ),
-        ListTile(
-          title: const Text('Truppen ausspionieren'),
-          subtitle: Text('${gc.militarySpyCost} T pro Agent'),
-          enabled: realm.treasury >= gc.militarySpyCost,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _spySheet(context, controller, gc.SpyKind.military);
-          },
-        ),
-        ListTile(
-          title: const Text('Anschlag verüben'),
-          subtitle: Text('${gc.assassinCost} T pro Agent'),
-          enabled: realm.treasury >= gc.assassinCost,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _assassinSheet(context, controller);
-          },
-        ),
-        ListTile(
-          title: Text(
-              '${tr('guards')}: ${realm.guardLevel} / ${gc.guardCap}'),
-          subtitle: Text('${gc.guardCost} T pro Mann'),
-          enabled: (realm.guardLevel < gc.guardCap &&
-                  realm.treasury >= gc.guardCost) ||
-              realm.guardLevel > 0,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _amountSheet(context,
+      child: Wrap(
+        children: [
+          ListTile(
+            title: const Text('Daten ausspionieren'),
+            subtitle: Text('${gc.economySpyCost} T pro Agent'),
+            enabled: realm.treasury >= gc.economySpyCost,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _spySheet(context, controller, gc.SpyKind.economy);
+            },
+          ),
+          ListTile(
+            title: const Text('Truppen ausspionieren'),
+            subtitle: Text('${gc.militarySpyCost} T pro Agent'),
+            enabled: realm.treasury >= gc.militarySpyCost,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _spySheet(context, controller, gc.SpyKind.military);
+            },
+          ),
+          ListTile(
+            title: const Text('Anschlag verüben'),
+            subtitle: Text('${gc.assassinCost} T pro Agent'),
+            enabled: realm.treasury >= gc.assassinCost,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _assassinSheet(context, controller);
+            },
+          ),
+          ListTile(
+            title: Text(
+              '${tr('guards')}: ${realm.guardLevel} / ${gc.guardCap}',
+            ),
+            subtitle: Text('${gc.guardCost} T pro Mann'),
+            enabled:
+                (realm.guardLevel < gc.guardCap &&
+                    realm.treasury >= gc.guardCost) ||
+                realm.guardLevel > 0,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _amountSheet(
+                context,
                 title: tr('guards'),
                 max: gc.guardCap - controller.currentRealm.guardLevel,
                 allowNegative: controller.currentRealm.guardLevel,
                 detail: (delta) => delta > 0
                     ? 'kostet ${delta * gc.guardCost} T'
                     : 'Entlassen ist kostenlos',
-                onSubmit: (delta) => _tryAction(context, controller,
-                    gc.AdjustGuards(slot: slot, delta: delta)));
-          },
-        ),
-      ]),
+                onSubmit: (delta) => _tryAction(
+                  context,
+                  controller,
+                  gc.AdjustGuards(slot: slot, delta: delta),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     ),
   );
 }
 
 void _spySheet(
-    BuildContext context, GameController controller, gc.SpyKind kind) {
+  BuildContext context,
+  GameController controller,
+  gc.SpyKind kind,
+) {
   final costPerAgent = kind == gc.SpyKind.economy
       ? gc.economySpyCost
       : gc.militarySpyCost;
   // No more agents than the treasury can pay (engine cap stays at 30).
-  _targetThenAmount(context, controller,
-      max: math.min(30, controller.currentRealm.treasury ~/ costPerAgent),
-      detail: (agents) => 'kostet ${agents * costPerAgent} T',
-      onSubmit: (target, agents) {
-    final gc.ActionResult result;
-    try {
-      result = controller.applyIrreversible(gc.SpyMission(
-          slot: controller.currentSlot,
-          targetSlot: target,
-          agents: agents,
-          spyKind: kind));
-    } on gc.ActionException catch (e) {
-      _toast(context, e.message);
-      return;
-    }
-    // The mission resolves within the action — confirm the dispatch and
-    // reveal the outcome after a short suspense beat.
-    final failed = result.events.any((e) => e.type == 'missionFailed');
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => _SuspenseRevealDialog(
-        title: 'Spionage — ${gc.countryNames[target]}',
-        waitingText: 'Die Spione sind unterwegs …',
-        resultText: failed
-            ? 'Die Mission ist gescheitert !'
-            : 'Mission erfolgreich ! Den Bericht findest du unter '
-                'Info → Dynastien.',
-        success: !failed,
-      ),
-    );
-  });
+  _targetThenAmount(
+    context,
+    controller,
+    max: math.min(30, controller.currentRealm.treasury ~/ costPerAgent),
+    detail: (agents) =>
+        'kostet ${agents * costPerAgent} T — mehr '
+        'Agenten, bessere Chancen',
+    onSubmit: (target, agents) {
+      final gc.ActionResult result;
+      try {
+        result = controller.applyIrreversible(
+          gc.SpyMission(
+            slot: controller.currentSlot,
+            targetSlot: target,
+            agents: agents,
+            spyKind: kind,
+          ),
+        );
+      } on gc.ActionException catch (e) {
+        _toast(context, e.message);
+        return;
+      }
+      // The mission resolves within the action — confirm the dispatch and
+      // reveal the outcome after a short suspense beat. On a failure with
+      // caught agents the original's torture line tells the player their
+      // cover is blown (the target realm learns the sponsor).
+      gc.GameEvent? failure;
+      for (final e in result.events) {
+        if (e.type == 'missionFailed') failure = e;
+      }
+      final caught = failure?.payload['caught'] as int? ?? 0;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _SuspenseRevealDialog(
+          title: 'Spionage — ${gc.countryNames[target]}',
+          waitingText: 'Die Spione sind unterwegs …',
+          resultText: failure != null
+              ? (caught > 0
+                    ? 'Die Mission ist gescheitert ! '
+                          '${caught == 1 ? 'Einer deiner Spione wurde gefangengenommen — er gesteht' : '$caught deiner Spione wurden gefangengenommen — einer gesteht'} '
+                          'unter Folter, aus '
+                          '${gc.countryNames[controller.currentSlot]} '
+                          'geschickt worden zu sein !!!'
+                    : 'Deine Spione konnten nichts in Erfahrung bringen !')
+              : 'Mission erfolgreich ! Den Bericht findest du unter '
+                    'Info → Dynastien.',
+          success: failure == null,
+        ),
+      );
+    },
+  );
 }
 
 void _assassinSheet(BuildContext context, GameController controller) {
   // No more agents than the treasury can pay (engine cap stays at 30).
-  _targetThenAmount(context, controller,
-      max: math.min(
-          30, controller.currentRealm.treasury ~/ gc.assassinCost),
-      detail: (agents) => 'kostet ${agents * gc.assassinCost} T',
-      onSubmit: (target, agents) async {
-    final sure = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-            'Anschlag auf ${gc.countryNames[target]} — wirklich?'),
-        actions: [
-          TextButton(
+  _targetThenAmount(
+    context,
+    controller,
+    max: math.min(30, controller.currentRealm.treasury ~/ gc.assassinCost),
+    detail: (agents) =>
+        'kostet ${agents * gc.assassinCost} T — mehr '
+        'Agenten, bessere Chancen',
+    onSubmit: (target, agents) async {
+      final sure = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Anschlag auf ${gc.countryNames[target]} — wirklich?'),
+          actions: [
+            TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text(tr('cancel'))),
-          FilledButton(
+              child: Text(tr('cancel')),
+            ),
+            FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('OK')),
-        ],
-      ),
-    );
-    if (sure != true || !context.mounted) return;
-    try {
-      controller.applyIrreversible(gc.OrderAssassination(
-          slot: controller.currentSlot,
-          targetSlot: target,
-          agents: agents));
-    } on gc.ActionException catch (e) {
-      _toast(context, e.message);
-      return;
-    }
-    // Assassinations resolve later (event phase) — confirm the dispatch
-    // so the player knows the order went through.
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Anschlag in Auftrag gegeben'),
-        content: const Text('Die Attentäter sind auf dem Weg !!!\n\n'
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      if (sure != true || !context.mounted) return;
+      try {
+        controller.applyIrreversible(
+          gc.OrderAssassination(
+            slot: controller.currentSlot,
+            targetSlot: target,
+            agents: agents,
+          ),
+        );
+      } on gc.ActionException catch (e) {
+        _toast(context, e.message);
+        return;
+      }
+      // Assassinations resolve later (event phase) — confirm the dispatch
+      // so the player knows the order went through.
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Anschlag in Auftrag gegeben'),
+          content: const Text(
+            'Die Attentäter sind auf dem Weg !!!\n\n'
             'Ob der Anschlag gelingt, erfährst du in einem der '
-            'nächsten Züge.'),
-        actions: [
-          FilledButton(
+            'nächsten Züge.',
+          ),
+          actions: [
+            FilledButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('OK')),
-        ],
-      ),
-    );
-  });
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 // --- Misc & Info ------------------------------------------------------
@@ -864,113 +1069,123 @@ void showMiscMenu(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final state = controller.state;
   final realm = controller.currentRealm;
-  final capitalLost =
-      state.map.ownerAt(realm.capitalX, realm.capitalY) != slot;
-  final hasProposer = state.persons.values
-      .any((p) => p.dynasty == slot && _marriageable(p));
+  final capitalLost = state.map.ownerAt(realm.capitalX, realm.capitalY) != slot;
+  final hasProposer = state.persons.values.any(
+    (p) => p.dynasty == slot && _marriageable(p),
+  );
   final String? marriageBlocked = realm.proposedMarriageThisTurn
       ? 'Nur ein Heiratsantrag pro Zug !'
       : !hasProposer
-          ? 'Niemand in deiner Dynastie kann heiraten !'
-          : null;
-  // Rules v5+: commoner marriage is always available — only the
-  // royal proposal is limited to one per turn.
-  final String? commonerBlocked = state.rulesVersion >= 5
-      ? (hasProposer ? null : 'Niemand in deiner Dynastie kann heiraten !')
-      : marriageBlocked;
+      ? 'Niemand in deiner Dynastie kann heiraten !'
+      : null;
+  // Commoner marriage is always available — only the royal proposal is
+  // limited to one per turn.
+  final String? commonerBlocked = hasProposer
+      ? null
+      : 'Niemand in deiner Dynastie kann heiraten !';
   // Follow-up sheets use the stable screen [context] — the sheet's own
   // context dies with the pop (see showMilitaryMenu).
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: Wrap(children: [
-        ListTile(
-          leading: const Icon(Icons.people),
-          title: const Text('Dynastie'),
-          subtitle: Text(
+      child: Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.people),
+            title: const Text('Dynastie'),
+            subtitle: Text(
               '${state.dynasty(slot).memberIds.length} Mitglieder — '
-              'fremde Dynastien über Info → Dynastien'),
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _showDynastyOf(context, controller, slot);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.favorite_border),
-          title: Text(tr('proposeMarriage')),
-          subtitle: marriageBlocked == null ? null : Text(marriageBlocked),
-          enabled: marriageBlocked == null,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _showMarriageProposers(context, controller);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.favorite),
-          title: const Text('Bürgerlich heiraten'),
-          subtitle: Text(commonerBlocked ??
-              'Eine Person aus dem Volk heiraten'),
-          enabled: commonerBlocked == null,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _showCommonerMarriage(context, controller);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.location_city),
-          title: const Text('Sitz verlegen'),
-          subtitle: Text(capitalLost
-              ? '5000 T — eigene Stadt, Burg oder Palast wählen'
-              : 'Nur möglich, wenn der Sitz verloren ist'),
-          enabled: capitalLost,
-          onTap: () {
-            Navigator.pop(sheetContext);
-            _showRelocateCapital(context, controller);
-          },
-        ),
-        // §15.2 religion availability: evangelisch only after the
-        // Reformation, moslemisch only after the Ottoman invasion —
-        // hidden entirely until then (mirrors the core gates).
-        for (final (religion, name, cost, available) in [
-          (gc.Religion.katholisch, 'katholisch', 0, true),
-          (
-            gc.Religion.evangelisch,
-            'evangelisch',
-            500,
-            state.year > state.reformationYear
-          ),
-          (
-            gc.Religion.moslemisch,
-            'moslemisch',
-            1000,
-            state.year > state.ottomanYear
-          ),
-        ])
-          if (available && state.dynasty(slot).religion != religion)
-            ListTile(
-              title: Text('Religion: $name'),
-              trailing: Text('$cost T, −70 ${tr('popularity')}'),
-              enabled: realm.treasury >= cost,
-              onTap: () {
-                Navigator.pop(context);
-                _tryAction(context, controller,
-                    gc.ChangeReligion(slot: slot, religion: religion));
-              },
+              'fremde Dynastien über Info → Dynastien',
             ),
-        ListTile(
-          title: const Text('Kurfürsten'),
-          subtitle: Text(state.kurfuerstenIds
-              .map((id) => state.persons[id]?.name ?? '?')
-              .join(', ')),
-        ),
-      ]),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showDynastyOf(context, controller, slot);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.favorite_border),
+            title: Text(tr('proposeMarriage')),
+            subtitle: marriageBlocked == null ? null : Text(marriageBlocked),
+            enabled: marriageBlocked == null,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showMarriageProposers(context, controller);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.favorite),
+            title: const Text('Bürgerlich heiraten'),
+            subtitle: Text(
+              commonerBlocked ?? 'Eine Person aus dem Volk heiraten',
+            ),
+            enabled: commonerBlocked == null,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showCommonerMarriage(context, controller);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.location_city),
+            title: const Text('Sitz verlegen'),
+            subtitle: Text(
+              capitalLost
+                  ? '5000 T — eigene Stadt, Burg oder Palast wählen'
+                  : 'Nur möglich, wenn der Sitz verloren ist',
+            ),
+            enabled: capitalLost,
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _showRelocateCapital(context, controller);
+            },
+          ),
+          // §15.2 religion availability: evangelisch only after the
+          // Reformation, moslemisch only after the Ottoman invasion —
+          // hidden entirely until then (mirrors the core gates).
+          for (final (religion, name, cost, available) in [
+            (gc.Religion.katholisch, 'katholisch', 0, true),
+            (
+              gc.Religion.evangelisch,
+              'evangelisch',
+              500,
+              state.year > state.reformationYear,
+            ),
+            (
+              gc.Religion.moslemisch,
+              'moslemisch',
+              1000,
+              state.year > state.ottomanYear,
+            ),
+          ])
+            if (available && state.dynasty(slot).religion != religion)
+              ListTile(
+                title: Text('Religion: $name'),
+                trailing: Text('$cost T, −70 ${tr('popularity')}'),
+                enabled: realm.treasury >= cost,
+                onTap: () {
+                  Navigator.pop(context);
+                  _tryAction(
+                    context,
+                    controller,
+                    gc.ChangeReligion(slot: slot, religion: religion),
+                  );
+                },
+              ),
+          ListTile(
+            title: const Text('Kurfürsten'),
+            subtitle: Text(
+              state.kurfuerstenIds
+                  .map((id) => state.persons[id]?.name ?? '?')
+                  .join(', '),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
 
 /// "Sitz verlegen" (§6.2): pick one of the own Stadt/Burg/Palast tiles.
-void _showRelocateCapital(
-    BuildContext context, GameController controller) {
+void _showRelocateCapital(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final state = controller.state;
   final map = state.map;
@@ -983,34 +1198,38 @@ void _showRelocateCapital(
   for (var y = 0; y < map.height; y++) {
     for (var x = 0; x < map.width; x++) {
       final building = map.buildingAt(x, y);
-      if (map.ownerAt(x, y) == slot &&
-          buildingNames.containsKey(building)) {
+      if (map.ownerAt(x, y) == slot && buildingNames.containsKey(building)) {
         candidates.add((x, y, building));
       }
     }
   }
   if (candidates.isEmpty) {
-    _toast(context,
-        'Du brauchst eine eigene Stadt, Burg oder einen Palast !');
+    _toast(context, 'Du brauchst eine eigene Stadt, Burg oder einen Palast !');
     return;
   }
   showModalBottomSheet<void>(
     context: context,
     builder: (context) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        for (final (x, y, building) in candidates)
-          ListTile(
-            leading: const Icon(Icons.location_city),
-            title: Text('${buildingNames[building]} (${x + 1}, ${y + 1})'),
-            trailing: const Text('5000 T'),
-            onTap: () {
-              Navigator.pop(context);
-              _tryAction(context, controller,
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final (x, y, building) in candidates)
+            ListTile(
+              leading: const Icon(Icons.location_city),
+              title: Text('${buildingNames[building]} (${x + 1}, ${y + 1})'),
+              trailing: const Text('5000 T'),
+              onTap: () {
+                Navigator.pop(context);
+                _tryAction(
+                  context,
+                  controller,
                   gc.RelocateCapital(slot: slot, x: x, y: y),
-                  undoable: true);
-            },
-          ),
-      ]),
+                  undoable: true,
+                );
+              },
+            ),
+        ],
+      ),
     ),
   );
 }
@@ -1018,8 +1237,7 @@ void _showRelocateCapital(
 /// Dynasty overview ("Dynastien-Info"): every living member of [slot]'s
 /// dynasty with age, spouse and children. Dynasty composition is public
 /// information, so foreign dynasties may be viewed too.
-void _showDynastyOf(
-    BuildContext context, GameController controller, int slot) {
+void _showDynastyOf(BuildContext context, GameController controller, int slot) {
   final state = controller.state;
   final members = [
     for (final id in state.dynasty(slot).memberIds)
@@ -1031,25 +1249,32 @@ void _showDynastyOf(
     builder: (context) => SafeArea(
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.6,
-        child: ListView(children: [
-          ListTile(
-            title: Text('Dynastie von ${gc.countryNames[slot]}',
-                style: Theme.of(context).textTheme.titleMedium),
-          ),
-          const Divider(height: 1),
-          for (final p in members)
+        child: ListView(
+          children: [
             ListTile(
-              leading: Icon(p.isMale ? Icons.male : Icons.female),
               title: Text(
-                  '${p.name} (${p.age})'
-                  '${state.realm(slot).rulerId == p.id ? ' — ${gc.titleName(state.realm(slot).titleClass)}' : ''}'),
-              subtitle: Text([
-                _spouseLine(state, p),
-                if (p.childrenIds.isNotEmpty)
-                  '${p.childrenIds.length} ${p.childrenIds.length == 1 ? 'Kind' : 'Kinder'}',
-              ].join(' — ')),
+                'Dynastie von ${gc.countryNames[slot]}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
-        ]),
+            const Divider(height: 1),
+            for (final p in members)
+              ListTile(
+                leading: Icon(p.isMale ? Icons.male : Icons.female),
+                title: Text(
+                  '${p.name} (${p.age})'
+                  '${state.realm(slot).rulerId == p.id ? ' — ${gc.titleName(state.realm(slot).titleClass)}' : ''}',
+                ),
+                subtitle: Text(
+                  [
+                    _spouseLine(state, p),
+                    if (p.childrenIds.isNotEmpty)
+                      '${p.childrenIds.length} ${p.childrenIds.length == 1 ? 'Kind' : 'Kinder'}',
+                  ].join(' — '),
+                ),
+              ),
+          ],
+        ),
       ),
     ),
   );
@@ -1072,8 +1297,7 @@ String _spouseLine(gc.GameState state, gc.Person p) {
 bool _marriageable(gc.Person p) => p.spouseId == null && p.age >= 14;
 
 /// Step 1 of "Heirat vorschlagen" (§14.1): pick the own dynasty member.
-void _showMarriageProposers(
-    BuildContext context, GameController controller) {
+void _showMarriageProposers(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final state = controller.state;
   final proposers = [
@@ -1087,31 +1311,39 @@ void _showMarriageProposers(
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-          title: Text(tr('proposeMarriage'),
-              style: Theme.of(sheetContext).textTheme.titleMedium),
-          subtitle: const Text('Wer aus deiner Dynastie soll heiraten?'),
-        ),
-        const Divider(height: 1),
-        for (final p in proposers)
+      child: ListView(
+        shrinkWrap: true,
+        children: [
           ListTile(
-            leading: Icon(p.isMale ? Icons.male : Icons.female),
-            title: Text('${p.name} (${p.age})'),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _showMarriageCandidates(context, controller, p);
-            },
+            title: Text(
+              tr('proposeMarriage'),
+              style: Theme.of(sheetContext).textTheme.titleMedium,
+            ),
+            subtitle: const Text('Wer aus deiner Dynastie soll heiraten?'),
           ),
-      ]),
+          const Divider(height: 1),
+          for (final p in proposers)
+            ListTile(
+              leading: Icon(p.isMale ? Icons.male : Icons.female),
+              title: Text('${p.name} (${p.age})'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showMarriageCandidates(context, controller, p);
+              },
+            ),
+        ],
+      ),
     ),
   );
 }
 
 /// Step 2: pick the partner. Mirrors the §14.1 eligibility rules so only
 /// proposals that `applyAction` would accept are offered.
-void _showMarriageCandidates(BuildContext context,
-    GameController controller, gc.Person proposer) {
+void _showMarriageCandidates(
+  BuildContext context,
+  GameController controller,
+  gc.Person proposer,
+) {
   final slot = controller.currentSlot;
   final state = controller.state;
   final religion = state.dynasty(slot).religion;
@@ -1131,37 +1363,43 @@ void _showMarriageCandidates(BuildContext context,
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-          title: Text('Partner für ${proposer.name} (${proposer.age})',
-              style: Theme.of(sheetContext).textTheme.titleMedium),
-        ),
-        const Divider(height: 1),
-        for (final p in candidates)
+      child: ListView(
+        shrinkWrap: true,
+        children: [
           ListTile(
-            leading: Icon(p.isMale ? Icons.male : Icons.female),
-            title: Text('${p.name} (${p.age})'),
-            subtitle: Text(gc.countryNames[p.dynasty]),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _proposeAndReveal(
+            title: Text(
+              'Partner für ${proposer.name} (${proposer.age})',
+              style: Theme.of(sheetContext).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          for (final p in candidates)
+            ListTile(
+              leading: Icon(p.isMale ? Icons.male : Icons.female),
+              title: Text('${p.name} (${p.age})'),
+              subtitle: Text(gc.countryNames[p.dynasty]),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _proposeAndReveal(
                   context,
                   controller,
                   gc.ProposeMarriage(
-                      slot: slot,
-                      proposerId: proposer.id,
-                      targetId: p.id));
-            },
-          ),
-      ]),
+                    slot: slot,
+                    proposerId: proposer.id,
+                    targetId: p.id,
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
     ),
   );
 }
 
 /// "(B)ürgerlich heiraten": pick the dynasty member, then roll the 25%
 /// commoner acceptance with the reveal modal.
-void _showCommonerMarriage(
-    BuildContext context, GameController controller) {
+void _showCommonerMarriage(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final state = controller.state;
   final proposers = [
@@ -1175,24 +1413,32 @@ void _showCommonerMarriage(
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-          title: Text('Bürgerlich heiraten',
-              style: Theme.of(sheetContext).textTheme.titleMedium),
-          subtitle: const Text('Wer aus deiner Dynastie soll heiraten?'),
-        ),
-        const Divider(height: 1),
-        for (final p in proposers)
+      child: ListView(
+        shrinkWrap: true,
+        children: [
           ListTile(
-            leading: Icon(p.isMale ? Icons.male : Icons.female),
-            title: Text('${p.name} (${p.age})'),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _proposeAndReveal(context, controller,
-                  gc.MarryCommoner(slot: slot, personId: p.id));
-            },
+            title: Text(
+              'Bürgerlich heiraten',
+              style: Theme.of(sheetContext).textTheme.titleMedium,
+            ),
+            subtitle: const Text('Wer aus deiner Dynastie soll heiraten?'),
           ),
-      ]),
+          const Divider(height: 1),
+          for (final p in proposers)
+            ListTile(
+              leading: Icon(p.isMale ? Icons.male : Icons.female),
+              title: Text('${p.name} (${p.age})'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _proposeAndReveal(
+                  context,
+                  controller,
+                  gc.MarryCommoner(slot: slot, personId: p.id),
+                );
+              },
+            ),
+        ],
+      ),
     ),
   );
 }
@@ -1200,8 +1446,11 @@ void _showCommonerMarriage(
 /// Applies the proposal and reveals the answer in a modal — with a short
 /// suspense beat before "Angenommen !" / "Abgelehnt !". A human target
 /// answers at their next turn instead (pending decision).
-Future<void> _proposeAndReveal(BuildContext context,
-    GameController controller, gc.PlayerAction action) async {
+Future<void> _proposeAndReveal(
+  BuildContext context,
+  GameController controller,
+  gc.PlayerAction action,
+) async {
   final gc.ActionResult result;
   try {
     result = controller.applyIrreversible(action);
@@ -1219,12 +1468,15 @@ Future<void> _proposeAndReveal(BuildContext context,
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Heiratsantrag'),
-        content: const Text('Der Antrag wird überbracht — die Antwort '
-            'folgt im nächsten Zug.'),
+        content: const Text(
+          'Der Antrag wird überbracht — die Antwort '
+          'folgt im nächsten Zug.',
+        ),
         actions: [
           FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
@@ -1291,16 +1543,18 @@ class _SuspenseRevealDialogState extends State<_SuspenseRevealDialog> {
                 widget.resultText,
                 key: const ValueKey('answer'),
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: widget.success ? Colors.green : Colors.red),
+                  color: widget.success ? Colors.green : Colors.red,
+                ),
               )
             : Row(
                 key: const ValueKey('waiting'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                   const SizedBox(width: 12),
                   Flexible(child: Text(widget.waitingText)),
                 ],
@@ -1308,8 +1562,7 @@ class _SuspenseRevealDialogState extends State<_SuspenseRevealDialog> {
       ),
       actions: [
         FilledButton(
-          onPressed:
-              _revealed ? () => Navigator.pop(context) : null,
+          onPressed: _revealed ? () => Navigator.pop(context) : null,
           child: const Text('OK'),
         ),
       ],
@@ -1327,62 +1580,70 @@ void showInfoMenu(BuildContext context, GameController controller) {
     builder: (sheetContext) => SafeArea(
       child: SizedBox(
         height: MediaQuery.of(sheetContext).size.height * 0.75,
-        child: ListView(children: [
-          // "Mein Reich" — the stats that used to crowd the HUD.
-          ListTile(
-            title: Text(
+        child: ListView(
+          children: [
+            // "Mein Reich" — the stats that used to crowd the HUD.
+            ListTile(
+              title: Text(
                 'Mein Reich — ${gc.countryNames[realm.slot]}'
                 '${state.person(realm.rulerId) == null ? '' : ' (${gc.titleName(realm.titleClass)} ${state.person(realm.rulerId)!.name})'}',
-                style: Theme.of(sheetContext).textTheme.titleMedium),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Wrap(spacing: 16, runSpacing: 4, children: [
-                Text('${tr('treasury')}: ${realm.treasury} T'),
-                Text('${tr('population')}: ${realm.population}'),
-                Text(
-                    '${tr('food')}: ${realm.grainHarvest + realm.livestockHarvest}'),
-                Text('${tr('popularity')}: ${realm.popularity}'),
-                Text('Armee: ${realm.armySize}'),
-                Text('${tr('guards')}: ${realm.guardLevel}'),
-                Text('${tr('moves')}: ${realm.movementPoints}'),
-              ]),
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(
+                  spacing: 16,
+                  runSpacing: 4,
+                  children: [
+                    Text('${tr('treasury')}: ${realm.treasury} T'),
+                    Text('${tr('population')}: ${realm.population}'),
+                    Text(
+                      '${tr('food')}: ${realm.grainHarvest + realm.livestockHarvest}',
+                    ),
+                    Text('${tr('popularity')}: ${realm.popularity}'),
+                    Text('Armee: ${realm.armySize}'),
+                    Text('${tr('guards')}: ${realm.guardLevel}'),
+                    Text('${tr('moves')}: ${realm.movementPoints}'),
+                  ],
+                ),
+              ),
             ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.article),
-            title: Text(tr('eventFeed')),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              showEventFeed(context, controller);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.home_work),
-            title: Text('Siedlungen (${realm.towns.length})'),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _showSettlements(context, controller);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.people),
-            title: const Text('Dynastien'),
-            subtitle: const Text('Alle Reiche und ihre Herrscherhäuser'),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _showDynasties(context, controller);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.history_edu),
-            title: Text(tr('chronicle')),
-            subtitle: const Text('Alle bisherigen Kaiser und Sultane'),
-            onTap: () {
-              Navigator.pop(sheetContext);
-              _showChronicle(context, controller);
-            },
-          ),
-        ]),
+            ListTile(
+              leading: const Icon(Icons.article),
+              title: Text(tr('eventFeed')),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                showEventFeed(context, controller);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.home_work),
+              title: Text('Siedlungen (${realm.towns.length})'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showSettlements(context, controller);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people),
+              title: const Text('Dynastien'),
+              subtitle: const Text('Alle Reiche und ihre Herrscherhäuser'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showDynasties(context, controller);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history_edu),
+              title: Text(tr('chronicle')),
+              subtitle: const Text('Alle bisherigen Kaiser und Sultane'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showChronicle(context, controller);
+              },
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -1399,24 +1660,32 @@ void _showSettlements(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (context) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-            title: Text('Siedlungen von ${gc.countryNames[realm.slot]}',
-                style: Theme.of(context).textTheme.titleMedium)),
-        const Divider(height: 1),
-        if (realm.towns.isEmpty)
-          const ListTile(title: Text('Du hast keine Siedlungen !')),
-        for (final town in realm.towns)
+      child: ListView(
+        shrinkWrap: true,
+        children: [
           ListTile(
-            leading: const Icon(Icons.home_work),
             title: Text(
-                '${town.name} — ${tierNames[town.buildingType] ?? '?'}'),
-            subtitle: Text(
+              'Siedlungen von ${gc.countryNames[realm.slot]}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          if (realm.towns.isEmpty)
+            const ListTile(title: Text('Du hast keine Siedlungen !')),
+          for (final town in realm.towns)
+            ListTile(
+              leading: const Icon(Icons.home_work),
+              title: Text(
+                '${town.name} — ${tierNames[town.buildingType] ?? '?'}',
+              ),
+              subtitle: Text(
                 '${town.population} Einwohner — Garnison '
                 '${town.garrison}/${town.troopCapacity} — '
-                'Feld (${town.x + 1}, ${town.y + 1})'),
-          ),
-      ]),
+                'Feld (${town.x + 1}, ${town.y + 1})',
+              ),
+            ),
+        ],
+      ),
     ),
   );
 }
@@ -1431,27 +1700,34 @@ void _showChronicle(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (context) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-            title: Text(tr('chronicle'),
-                style: Theme.of(context).textTheme.titleMedium)),
-        const Divider(height: 1),
-        if (state.kaiserChronicle.isEmpty && state.sultanChronicle.isEmpty)
-          const ListTile(
-              title: Text('Noch wurde kein Kaiser gekrönt.')),
-        if (state.kaiserChronicle.isNotEmpty)
+      child: ListView(
+        shrinkWrap: true,
+        children: [
           ListTile(
+            title: Text(
+              tr('chronicle'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          if (state.kaiserChronicle.isEmpty && state.sultanChronicle.isEmpty)
+            const ListTile(title: Text('Noch wurde kein Kaiser gekrönt.')),
+          if (state.kaiserChronicle.isNotEmpty)
+            ListTile(
               title: const Text('Kaiser'),
-              subtitle: Text([
-                for (final r in state.kaiserChronicle) line(r),
-              ].join('\n'))),
-        if (state.sultanChronicle.isNotEmpty)
-          ListTile(
+              subtitle: Text(
+                [for (final r in state.kaiserChronicle) line(r)].join('\n'),
+              ),
+            ),
+          if (state.sultanChronicle.isNotEmpty)
+            ListTile(
               title: const Text('Sultane'),
-              subtitle: Text([
-                for (final r in state.sultanChronicle) line(r),
-              ].join('\n'))),
-      ]),
+              subtitle: Text(
+                [for (final r in state.sultanChronicle) line(r)].join('\n'),
+              ),
+            ),
+        ],
+      ),
     ),
   );
 }
@@ -1464,11 +1740,7 @@ void _showDynasties(BuildContext context, GameController controller) {
   final state = controller.visibleState;
   final rows = [
     for (final realm in state.realms)
-      if (!realm.isVacant)
-        (
-          realm,
-          realm.tileCount.fold(0, (a, b) => a + b),
-        ),
+      if (!realm.isVacant) (realm, realm.tileCount.fold(0, (a, b) => a + b)),
   ]..sort((a, b) => b.$2.compareTo(a.$2));
   showModalBottomSheet<void>(
     context: context,
@@ -1476,37 +1748,47 @@ void _showDynasties(BuildContext context, GameController controller) {
     builder: (sheetContext) => SafeArea(
       child: SizedBox(
         height: MediaQuery.of(sheetContext).size.height * 0.6,
-        child: ListView(children: [
-          ListTile(
-              title: Text('Dynastien — Reiche nach Größe',
-                  style: Theme.of(sheetContext).textTheme.titleMedium)),
-          const Divider(height: 1),
-          for (var i = 0; i < rows.length; i++)
+        child: ListView(
+          children: [
             ListTile(
-              leading: Text('${i + 1}.',
-                  style: Theme.of(sheetContext).textTheme.titleSmall),
               title: Text(
+                'Dynastien — Reiche nach Größe',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            for (var i = 0; i < rows.length; i++)
+              ListTile(
+                leading: Text(
+                  '${i + 1}.',
+                  style: Theme.of(sheetContext).textTheme.titleSmall,
+                ),
+                title: Text(
                   '${gc.countryNames[rows[i].$1.slot]}'
                   '${rows[i].$1.slot == controller.currentSlot ? ' (du)' : ''}'
-                  ' — ${state.person(rows[i].$1.rulerId)?.name ?? '?'}'),
-              subtitle: Text(
+                  ' — ${state.person(rows[i].$1.rulerId)?.name ?? '?'}',
+                ),
+                subtitle: Text(
                   '${rows[i].$2} Felder — ${rows[i].$1.towns.length} Siedlungen\n'
-                  '${_realmInfoLine(controller, rows[i].$1)}'),
-              isThreeLine: true,
-              trailing: const Icon(Icons.people, size: 18),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _showDynastyOf(context, controller, rows[i].$1.slot);
-              },
-            ),
-        ]),
+                  '${_realmInfoLine(controller, rows[i].$1)}',
+                ),
+                isThreeLine: true,
+                trailing: const Icon(Icons.people, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showDynastyOf(context, controller, rows[i].$1.slot);
+                },
+              ),
+          ],
+        ),
       ),
     ),
   );
 }
 
 /// Own realm: full numbers. Foreign realms: only public data plus the
-/// newest intel report, if any (hidden information).
+/// newest economy and military intel reports, if any (hidden
+/// information), written out as readable text.
 String _realmInfoLine(GameController controller, gc.Realm realm) {
   final own = realm.slot == controller.currentSlot;
   final title = gc.titleName(realm.titleClass);
@@ -1514,27 +1796,57 @@ String _realmInfoLine(GameController controller, gc.Realm realm) {
     return '$title — ${realm.population} Einwohner, ${realm.treasury} T, '
         'Armee ${realm.armySize}';
   }
-  final intel = controller.currentRealm.intelReports
-      .where((r) => r.targetSlot == realm.slot)
-      .toList();
-  if (intel.isEmpty) {
+  // Newest report per kind (the list is in chronological order).
+  gc.IntelReport? economy;
+  gc.IntelReport? military;
+  for (final report in controller.currentRealm.intelReports) {
+    if (report.targetSlot != realm.slot) continue;
+    if (report.values.containsKey('unitCount')) {
+      military = report;
+    } else {
+      economy = report;
+    }
+  }
+  if (economy == null && military == null) {
     return '$title — keine Informationen (Spione aussenden!)';
   }
-  final latest = intel.last;
-  final values = latest.values.entries
-      .map((e) => '${e.key} ~${e.value}')
-      .join(', ');
-  return '$title — Stand ${latest.year}: $values';
+  final lines = <String>[
+    title,
+    if (economy != null) _intelText(economy),
+    if (military != null) _intelText(military),
+  ];
+  return lines.join('\n');
+}
+
+/// One intel report as a readable German line ("Spionage Anno X: …").
+String _intelText(gc.IntelReport report) {
+  final v = report.values;
+  final parts = <String>[
+    if (v.containsKey('unitCount'))
+      v['unitCount'] == 0
+          ? 'keine Truppen'
+          : '${v['unitCount']} Truppe${v['unitCount'] == 1 ? '' : 'n'} '
+                '(auf der Karte sichtbar)',
+    if (v.containsKey('treasury')) 'Schatzkammer ~${v['treasury']} T',
+    if (v.containsKey('grainStock')) 'Korn ~${v['grainStock']}',
+    if (v.containsKey('livestockStock')) 'Vieh ~${v['livestockStock']}',
+    if (v.containsKey('population')) '~${v['population']} Einwohner',
+    if (v.containsKey('armySize')) 'Armee ~${v['armySize']} Mann',
+    if (v.containsKey('guardLevel')) 'Spionageabwehr ~${v['guardLevel']}',
+  ];
+  return 'Spionage Anno ${report.year}: ${parts.join(', ')}';
 }
 
 // --- Shared amount pickers ---------------------------------------------
 
-void _amountSheet(BuildContext context,
-    {required String title,
-    required int max,
-    int allowNegative = 0,
-    String Function(int amount)? detail,
-    required void Function(int amount) onSubmit}) {
+void _amountSheet(
+  BuildContext context, {
+  required String title,
+  required int max,
+  int allowNegative = 0,
+  String Function(int amount)? detail,
+  required void Function(int amount) onSubmit,
+}) {
   if (max <= 0 && allowNegative <= 0) return;
   showModalBottomSheet<void>(
     context: context,
@@ -1553,32 +1865,40 @@ void _amountSheet(BuildContext context,
   );
 }
 
-void _targetThenAmount(BuildContext context, GameController controller,
-    {required int max,
-    String titlePrefix = 'Agenten',
-    String Function(int amount)? detail,
-    required void Function(int targetSlot, int amount) onSubmit}) {
+void _targetThenAmount(
+  BuildContext context,
+  GameController controller, {
+  required int max,
+  String titlePrefix = 'Agenten',
+  String Function(int amount)? detail,
+  required void Function(int targetSlot, int amount) onSubmit,
+}) {
   final state = controller.visibleState;
   // [context] must be the stable screen context: the follow-up sheet and
   // the caller's onSubmit run long after this sheet's own context died.
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        for (final realm in state.realms)
-          if (realm.slot != controller.currentSlot && !realm.isVacant)
-            ListTile(
-              title: Text(gc.countryNames[realm.slot]),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _amountSheet(context,
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final realm in state.realms)
+            if (realm.slot != controller.currentSlot && !realm.isVacant)
+              ListTile(
+                title: Text(gc.countryNames[realm.slot]),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _amountSheet(
+                    context,
                     title: '$titlePrefix → ${gc.countryNames[realm.slot]}',
                     max: max,
                     detail: detail,
-                    onSubmit: (amount) => onSubmit(realm.slot, amount));
-              },
-            ),
-      ]),
+                    onSubmit: (amount) => onSubmit(realm.slot, amount),
+                  );
+                },
+              ),
+        ],
+      ),
     ),
   );
 }
@@ -1611,8 +1931,7 @@ class _AmountSlider extends StatefulWidget {
 }
 
 class _AmountSliderState extends State<_AmountSlider> {
-  late double _value =
-      widget.max > 0 ? (widget.max / 2).ceilToDouble() : 0;
+  late double _value = widget.max > 0 ? (widget.max / 2).ceilToDouble() : 0;
 
   @override
   Widget build(BuildContext context) {
@@ -1620,35 +1939,47 @@ class _AmountSliderState extends State<_AmountSlider> {
     final min = widget.min.toDouble();
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('${widget.title}: ${_value.round()}',
-            style: Theme.of(context).textTheme.titleMedium),
-        if (widget.detail != null)
-          Text(widget.detail!(_value.round()),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${widget.title}: ${_value.round()}',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          if (widget.detail != null)
+            Text(
+              widget.detail!(_value.round()),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        Slider(
-          value: _value.clamp(min, max),
-          min: min,
-          max: max <= min ? min + 1 : max,
-          divisions:
-              (max - min) > 0 && (max - min) <= 1000 ? (max - min).round() : null,
-          onChanged: (v) => setState(() => _value = v),
-        ),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Zurück'),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          Slider(
+            value: _value.clamp(min, max),
+            min: min,
+            max: max <= min ? min + 1 : max,
+            divisions: (max - min) > 0 && (max - min) <= 1000
+                ? (max - min).round()
+                : null,
+            onChanged: (v) => setState(() => _value = v),
           ),
-          const SizedBox(width: 12),
-          FilledButton(
-            onPressed: _value.round() == 0
-                ? null
-                : () => widget.onSubmit(_value.round()),
-            child: const Text('OK'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Zurück'),
+              ),
+              const SizedBox(width: 12),
+              FilledButton(
+                onPressed: _value.round() == 0
+                    ? null
+                    : () => widget.onSubmit(_value.round()),
+                child: const Text('OK'),
+              ),
+            ],
           ),
-        ]),
-      ]),
+        ],
+      ),
     );
   }
 }

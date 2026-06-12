@@ -65,8 +65,7 @@ void main() {
       expect(state.kaiserChronicle.single.accessionYear, 1010);
       expect(state.kaiserChronicle.single.deathYear, isNull);
       expect(state.activeElection, isNull);
-      expect(
-          state.events.any((e) => e.type == 'crowned'), isTrue);
+      expect(state.events.any((e) => e.type == 'crowned'), isTrue);
     });
 
     test('human finalist bribes and human elector votes via decisions', () {
@@ -82,13 +81,12 @@ void main() {
       advanceElection(state, Rng(3), events);
 
       // The human finalist owes a bribery decision.
-      final bribe = state.pendingDecisions
-          .singleWhere((d) => d.type == 'electionBribe');
+      final bribe =
+          state.pendingDecisions.singleWhere((d) => d.type == 'electionBribe');
       expect(bribe.decidingSlot, 1);
       final finalistId = bribe.payload['finalistId'] as int;
       final electorIds = (bribe.payload['electorIds'] as List).cast<int>();
-      final targetElector =
-          electorIds.firstWhere((e) => e != finalistId);
+      final targetElector = electorIds.firstWhere((e) => e != finalistId);
 
       var result = applyAction(
           state,
@@ -131,16 +129,14 @@ void main() {
       // AI finalists bribed instantly; human electors (slots 1 & 2) hold
       // the result open.
       expect(state.kaiserId, isNull);
-      final votes = state.pendingDecisions
-          .where((d) => d.type == 'electorVote')
-          .toList();
+      final votes =
+          state.pendingDecisions.where((d) => d.type == 'electorVote').toList();
       expect(votes, hasLength(2));
       expect(state.activeElection, isNotNull);
 
       var s = state;
       for (final vote in votes) {
-        final finalists =
-            (vote.payload['finalistIds'] as List).cast<int>();
+        final finalists = (vote.payload['finalistIds'] as List).cast<int>();
         s = applyAction(
                 s,
                 ResolveDecision(
@@ -156,14 +152,13 @@ void main() {
   });
 
   group('chronicle & epithets (§17.5)', () {
-    test('a Kaiser dying in office closes the record, maybe with epithet',
-        () {
+    test('a Kaiser dying in office closes the record, maybe with epithet', () {
       final state = startGame(freshGame(), Rng(1)).state;
       state.year = 1010;
       final kaiser = state.person(state.realm(2).rulerId)!;
       state.kaiserId = kaiser.id;
-      state.kaiserChronicle.add(
-          ChronicleRecord(name: kaiser.name, accessionYear: 1005));
+      state.kaiserChronicle
+          .add(ChronicleRecord(name: kaiser.name, accessionYear: 1005));
 
       handleDeath(state, kaiser, Rng(4), []);
 
@@ -172,8 +167,7 @@ void main() {
       expect(record.deathYear, 1010);
       // Epithet is a 50% roll — whichever way, it must come from a pool.
       if (record.epithet != null) {
-        expect(
-            epithetPools.any((p) => p.contains(record.epithet)), isTrue);
+        expect(epithetPools.any((p) => p.contains(record.epithet)), isTrue);
       }
     });
 
@@ -185,8 +179,8 @@ void main() {
         final kaiser = state.person(state.realm(2).rulerId)!;
         state.kaiserId = kaiser.id;
         state.realm(2).popularity = 90;
-        state.kaiserChronicle.add(
-            ChronicleRecord(name: kaiser.name, accessionYear: 1010));
+        state.kaiserChronicle
+            .add(ChronicleRecord(name: kaiser.name, accessionYear: 1010));
         closeChronicleIfOfficeHolder(state, kaiser, Rng(seed), []);
         final epithet = state.kaiserChronicle.single.epithet;
         if (epithet != null) {
@@ -205,9 +199,7 @@ void main() {
       state.pendingDecisions.add(PendingDecision(
           id: 'd1', type: 'childName', decidingSlot: 2, payload: const {}));
       expect(
-        () => applyAction(
-            state,
-            ResolveDecision(slot: 1, decisionId: 'd1'),
+        () => applyAction(state, ResolveDecision(slot: 1, decisionId: 'd1'),
             Rng(state.rngSeed)),
         throwsA(isA<ActionException>()),
       );
@@ -247,8 +239,8 @@ void main() {
       final events = <GameEvent>[];
       maybeStartElection(state, Office.kaiser, Rng(3), events);
       advanceElection(state, Rng(3), events);
-      final bribe = state.pendingDecisions
-          .singleWhere((d) => d.type == 'electionBribe');
+      final bribe =
+          state.pendingDecisions.singleWhere((d) => d.type == 'electionBribe');
       final electorIds = (bribe.payload['electorIds'] as List).cast<int>();
       final finalistId = bribe.payload['finalistId'] as int;
       final target = electorIds.firstWhere((e) => e != finalistId);

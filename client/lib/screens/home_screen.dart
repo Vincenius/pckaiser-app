@@ -4,6 +4,7 @@ import '../l10n/strings.dart';
 import '../services/save_service.dart';
 import 'about_screen.dart';
 import 'game_screen.dart';
+import 'online_screen.dart';
 import 'setup_screen.dart';
 
 /// Landing screen: hero header, the two primary actions (new game and
@@ -39,18 +40,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openGame(String slotName) async {
     final saves = _saves;
     if (saves == null) return;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GameScreen.resume(slotName: slotName, saves: saves),
-    ));
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GameScreen.resume(slotName: slotName, saves: saves),
+      ),
+    );
     _load();
   }
 
   Future<void> _newGame() async {
     final saves = _saves;
     if (saves == null) return;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => SetupScreen(saves: saves),
-    ));
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => SetupScreen(saves: saves)));
     _load();
   }
 
@@ -58,9 +61,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _tutorial() async {
     final saves = _saves;
     if (saves == null) return;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GameScreen.tutorial(saves: saves),
-    ));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => GameScreen.tutorial(saves: saves)),
+    );
     _load();
   }
 
@@ -71,11 +74,13 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text('„${slot.name}" löschen?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(tr('cancel'))),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr('cancel')),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Löschen')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Löschen'),
+          ),
         ],
       ),
     );
@@ -99,8 +104,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Language toggle (German default, English optional).
                 onPressed: () =>
                     appLocale.value = appLocale.value == 'en' ? 'de' : 'en',
-                child: Text(appLocale.value.toUpperCase(),
-                    semanticsLabel: 'Sprache'),
+                child: Text(
+                  appLocale.value.toUpperCase(),
+                  semanticsLabel: 'Sprache',
+                ),
               ),
             ),
             _header(theme),
@@ -122,6 +129,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text(tr('tutorial')),
               ),
             ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const OnlineScreen()),
+              ),
+              icon: const Icon(Icons.cloud),
+              label: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(tr('online')),
+              ),
+            ),
             const SizedBox(height: 28),
             if (_saves == null)
               const Padding(
@@ -139,12 +157,14 @@ class _HomeScreenState extends State<HomeScreen> {
             // Small "About" link: description, version and credits.
             Center(
               child: TextButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const AboutScreen())),
+                onPressed: () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const AboutScreen())),
                 child: Text(
                   tr('about'),
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -156,47 +176,61 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _header(ThemeData theme) {
-    return Column(children: [
-      const SizedBox(height: 16),
-      CircleAvatar(
-        radius: 40,
-        backgroundColor: theme.colorScheme.primaryContainer,
-        child: Icon(Icons.castle,
-            size: 44, color: theme.colorScheme.onPrimaryContainer),
-      ),
-      const SizedBox(height: 14),
-      Text(
-        tr('appTitle'),
-        textAlign: TextAlign.center,
-        style: theme.textTheme.headlineMedium
-            ?.copyWith(letterSpacing: 2, fontWeight: FontWeight.w600),
-      ),
-      const SizedBox(height: 4),
-      Text(
-        tr('tagline'),
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodyMedium
-            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-      ),
-    ]);
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        CircleAvatar(
+          radius: 40,
+          backgroundColor: theme.colorScheme.primaryContainer,
+          child: Icon(
+            Icons.castle,
+            size: 44,
+            color: theme.colorScheme.onPrimaryContainer,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          tr('appTitle'),
+          textAlign: TextAlign.center,
+          style: theme.textTheme.headlineMedium?.copyWith(
+            letterSpacing: 2,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          tr('tagline'),
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _emptyState(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(children: [
-        Icon(Icons.history_edu,
-            size: 40, color: theme.colorScheme.onSurfaceVariant),
-        const SizedBox(height: 8),
-        Text(tr('noSaves'), style: theme.textTheme.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          tr('noSavesHint'),
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-        ),
-      ]),
+      child: Column(
+        children: [
+          Icon(
+            Icons.history_edu,
+            size: 40,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 8),
+          Text(tr('noSaves'), style: theme.textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            tr('noSavesHint'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -210,19 +244,25 @@ class _HomeScreenState extends State<HomeScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         leading: CircleAvatar(
           backgroundColor: theme.colorScheme.surfaceContainerHighest,
-          child: Icon(needsUpdate ? Icons.system_update : Icons.castle,
-              size: 22, color: theme.colorScheme.onSurfaceVariant),
+          child: Icon(
+            needsUpdate ? Icons.system_update : Icons.castle,
+            size: 22,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         title: Text(slot.name),
-        subtitle: Text(needsUpdate
-            ? tr('saveNeedsUpdate')
-            // Older saves carry no player names — fall back to the count.
-            : 'Anno ${slot.year} · '
-                '${slot.playerNames.isEmpty ? '${slot.humanCount} Spieler' : slot.playerNames.join(', ')} · '
-                '${slot.savedAt.toLocal().toString().substring(0, 16)}'),
+        subtitle: Text(
+          needsUpdate
+              ? tr('saveNeedsUpdate')
+              // Older saves carry no player names — fall back to the count.
+              : 'Anno ${slot.year} · '
+                    '${slot.playerNames.isEmpty ? '${slot.humanCount} Spieler' : slot.playerNames.join(', ')} · '
+                    '${slot.savedAt.toLocal().toString().substring(0, 16)}',
+        ),
         onTap: needsUpdate
-            ? () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(tr('saveNeedsUpdate'))))
+            ? () => ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(tr('saveNeedsUpdate'))))
             : () => _openGame(slot.name),
         trailing: IconButton(
           icon: const Icon(Icons.delete_outline),

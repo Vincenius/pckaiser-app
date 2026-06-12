@@ -77,8 +77,7 @@ FoodReport runFoodAndPopulation(
     town.troopCapacity = math.max(0, town.troopCapacity + delta ~/ 4);
   }
   realm.population += totalDelta;
-  realm.troopCapacity =
-      realm.towns.fold(0, (sum, t) => sum + t.troopCapacity);
+  realm.troopCapacity = realm.towns.fold(0, (sum, t) => sum + t.troopCapacity);
   report.populationDelta = totalDelta;
 
   // §8.2 Famine: soldiers desert/die.
@@ -112,8 +111,7 @@ FoodReport runFoodAndPopulation(
 
 /// §8.3 town transitions: Marktrecht at 500, Stadtrecht at 1000, death
 /// below 5 inhabitants (tile reverts to Kornfeld/Weide by terrain).
-void _runTownTransitions(
-    GameState state, Realm realm, List<GameEvent> events) {
+void _runTownTransitions(GameState state, Realm realm, List<GameEvent> events) {
   final map = state.map;
   for (var i = realm.towns.length - 1; i >= 0; i--) {
     final town = realm.towns[i];

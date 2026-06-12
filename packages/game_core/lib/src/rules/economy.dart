@@ -27,10 +27,8 @@ EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
   realm.lastTax = report.tax;
 
   // §17.5: the office holder collects the whole pot on their own turn.
-  final isKaiser =
-      state.kaiserId != null && realm.rulerId == state.kaiserId;
-  final isSultan =
-      state.sultanId != null && realm.rulerId == state.sultanId;
+  final isKaiser = state.kaiserId != null && realm.rulerId == state.kaiserId;
+  final isSultan = state.sultanId != null && realm.rulerId == state.sultanId;
   if (isKaiser) {
     report.potCollected += state.kaiserPot;
     realm.treasury += state.kaiserPot;

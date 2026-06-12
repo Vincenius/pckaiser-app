@@ -19,8 +19,7 @@ class PendingDecision {
         id: json['id'] as String,
         type: json['type'] as String,
         decidingSlot: json['decidingSlot'] as int,
-        payload:
-            (json['payload'] as Map?)?.cast<String, dynamic>() ?? const {},
+        payload: (json['payload'] as Map?)?.cast<String, dynamic>() ?? const {},
         deadline: json['deadline'] as String?,
       );
 

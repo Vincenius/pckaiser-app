@@ -7,16 +7,20 @@ import 'package:test/test.dart';
 /// merge bookkeeping fix (ships + intel).
 void main() {
   GameState freshState() => startGame(
-      newGame(GameSetup(
-        humans: [
-          HumanPlayerSetup(
-              founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'A'),
-        ],
-        reformationYear: 1020,
-        ottomanYear: 1040,
-        seed: 2026,
-      )),
-      Rng(7)).state;
+          newGame(GameSetup(
+            humans: [
+              HumanPlayerSetup(
+                  founderName: 'Anna',
+                  gender: 1,
+                  countrySlot: 1,
+                  dorfName: 'A'),
+            ],
+            reformationYear: 1020,
+            ottomanYear: 1040,
+            seed: 2026,
+          )),
+          Rng(7))
+      .state;
 
   group('rules v10: §12 coercion fires every applicable option', () {
     /// Same religion, marriage made inapplicable via the age gap — the
@@ -54,18 +58,6 @@ void main() {
       expect(options, containsAll(['abdication', 'stripSeat']));
       expect(options.toSet().length, options.length,
           reason: 'distinct decisions, one per option');
-    });
-
-    test('pre-v10 rules keep firing only the first option', () {
-      final (built, _) = coercionState(victorSlot: 2);
-      final state = GameState.fromJson(built.toJson()..['rulesVersion'] = 9);
-      final captured = state.person(state.realm(3).rulerId)!;
-      final events = <GameEvent>[];
-      runCoercion(state, 2, captured, Rng(1), events);
-
-      expect(events.any((e) => e.type == 'forcedAbdication'), isTrue);
-      expect(state.kurfuerstenIds, contains(captured.id),
-          reason: 'old games keep the old single-option behavior');
     });
   });
 
@@ -126,8 +118,7 @@ void main() {
           reason: 'only the captured ruler\'s own crown is forfeit');
     });
 
-    test('menu conversion to Islam strips every member\'s Kurfürst seat',
-        () {
+    test('menu conversion to Islam strips every member\'s Kurfürst seat', () {
       final state = freshState();
       state.year = 1050; // past the Ottoman year — Islam available
       final realm = state.realm(3);
@@ -145,30 +136,16 @@ void main() {
       state.realm(6).rulerId = member.id;
       state.kurfuerstenIds.addAll([realm.rulerId!, member.id]);
 
-      final next = applyAction(state,
-          ChangeReligion(slot: 3, religion: Religion.moslemisch),
-          Rng(state.rngSeed)).state;
+      final next = applyAction(
+              state,
+              ChangeReligion(slot: 3, religion: Religion.moslemisch),
+              Rng(state.rngSeed))
+          .state;
 
       expect(next.kurfuerstenIds, isNot(contains(realm.rulerId)));
       expect(next.kurfuerstenIds, isNot(contains(member.id)),
           reason: 'the whole dynasty converted — no member may keep a '
               'Kurfürst seat (§17.2 keys on the home-dynasty religion)');
-    });
-
-    test('pre-v10 conversion leaves title and marriage untouched', () {
-      final built = freshState();
-      final state = GameState.fromJson(built.toJson()..['rulesVersion'] = 9);
-      final captured = state.person(state.realm(3).rulerId)!;
-      final spouse = state.person(state.realm(4).rulerId)!;
-      captured.spouseId = spouse.id;
-      spouse.spouseId = captured.id;
-      state.realm(3).titleClass = 5;
-
-      applyConvertOrDie(
-          state, captured, Religion.moslemisch, true, Rng(1), <GameEvent>[]);
-
-      expect(state.realm(3).titleClass, 5);
-      expect(captured.spouseId, spouse.id);
     });
   });
 
@@ -181,11 +158,14 @@ void main() {
       realm.towns.single.troopCapacity = 200;
       realm.troopCapacity = 200;
       var s = applyAction(
-          state,
-          RecruitTroops(
-              slot: 1, men: 150, troopClass: TroopClass.infanterie,
-              name: 'Heer'),
-          Rng(state.rngSeed)).state;
+              state,
+              RecruitTroops(
+                  slot: 1,
+                  men: 150,
+                  troopClass: TroopClass.infanterie,
+                  name: 'Heer'),
+              Rng(state.rngSeed))
+          .state;
       // Force the unconditional disease trigger (> 250 persons).
       for (var i = 0; i < 260; i++) {
         final p = Person(
@@ -224,10 +204,10 @@ void main() {
       alignSlotControl(state, 3, ruler1);
       state.realm(3).ships.add(Ship(x: 5, y: 5));
       state.realm(3).intelReports.add(IntelReport(
-        targetSlot: 7,
-        year: state.year,
-        values: const {'treasury': 1234},
-      ));
+            targetSlot: 7,
+            year: state.year,
+            values: const {'treasury': 1234},
+          ));
 
       final next = applyAction(
               state, MergeRealms(slot: 1, sourceSlot: 3), Rng(state.rngSeed))

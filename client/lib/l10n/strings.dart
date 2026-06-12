@@ -11,20 +11,19 @@ const Map<String, Map<String, String>> _table = {
     'tagline': 'From knight to emperor — conquer the realm',
     'newGame': 'New game',
     'tutorial': 'Tutorial — learn the game',
+    'online': 'Play online (beta)',
     'savedGames': 'Saved games',
     'noSaves': 'No saved games yet.',
-    'noSavesHint':
-        'Start a new game, or learn the basics in the tutorial.',
+    'noSavesHint': 'Start a new game, or learn the basics in the tutorial.',
     'saveNeedsUpdate':
         'Saved with a newer app version — update the app to play it.',
     'about': 'About',
     'aboutDescription':
         'A mobile remake of the 1992 DOS strategy classic "PC Kaiser": '
-            'lead a small realm in the medieval Holy Roman Empire — '
-            'build, trade, marry, scheme and wage war until the '
-            'electors crown you Kaiser.',
-    'creditsOriginal':
-        'Original game: "PC Kaiser" by Martin Gelter, 1992.',
+        'lead a small realm in the medieval Holy Roman Empire — '
+        'build, trade, marry, scheme and wage war until the '
+        'electors crown you Kaiser.',
+    'creditsOriginal': 'Original game: "PC Kaiser" by Martin Gelter, 1992.',
     'creditsApp': 'This app: Vincent Will.',
     'resume': 'Resume',
     'endTurn': 'End turn',
@@ -63,21 +62,21 @@ const Map<String, Map<String, String>> _table = {
     'tagline': 'Vom Ritter zum Kaiser — erobere das Reich',
     'newGame': 'Neues Spiel',
     'tutorial': 'Tutorial — das Spiel lernen',
+    'online': 'Online spielen (Beta)',
     'savedGames': 'Spielstände',
     'noSaves': 'Noch keine Spielstände.',
     'noSavesHint':
         'Starte ein neues Spiel — oder lerne die Grundlagen im Tutorial.',
     'saveNeedsUpdate':
         'Mit neuerer App-Version gespeichert — App aktualisieren, '
-            'um weiterzuspielen.',
+        'um weiterzuspielen.',
     'about': 'Über das Spiel',
     'aboutDescription':
         'Ein mobiles Remake des DOS-Strategieklassikers „PC Kaiser" von '
-            '1992: Führe ein Kleinstaat-Reich im mittelalterlichen '
-            'Heiligen Römischen Reich — baue, handle, heirate, intrigiere '
-            'und führe Krieg, bis die Kurfürsten dich zum Kaiser wählen.',
-    'creditsOriginal':
-        'Originalspiel: „PC Kaiser" von Martin Gelter, 1992.',
+        '1992: Führe ein Kleinstaat-Reich im mittelalterlichen '
+        'Heiligen Römischen Reich — baue, handle, heirate, intrigiere '
+        'und führe Krieg, bis die Kurfürsten dich zum Kaiser wählen.',
+    'creditsOriginal': 'Originalspiel: „PC Kaiser" von Martin Gelter, 1992.',
     'creditsApp': 'App: Vincent Will.',
     'resume': 'Fortsetzen',
     'endTurn': 'Zug beenden',
@@ -102,7 +101,7 @@ const Map<String, Map<String, String>> _table = {
     'investShips': 'Handelsschiffe aussenden',
     'mergeRealms': 'Reiche zusammenlegen',
     // Original menu wording: "Truppe bilden" creates a unit; "Truppe
-    // ausbilden" (the troop sheet, rules v7) drills quality +1.
+    // ausbilden" (the troop sheet) drills quality +1.
     'recruit': 'Truppe bilden',
     'hireSoeldner': 'Söldner anwerben',
     'declareWar': 'Krieg erklären',

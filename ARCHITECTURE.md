@@ -66,7 +66,7 @@ Responses `{data, error}`; 400 validation, 403 wrong turn, 404 missing.
 Two version numbers travel inside every `GameState` JSON (`game_core/src/state/versioning.dart`):
 
 - **`schemaVersion`** — JSON shape. Additive changes (new field + `fromJson` default) never bump it; incompatible reshapes bump it and add a `schemaMigrations` step. `GameState.fromJson` migrates old documents on every load path. Newer-than-supported documents throw `UnsupportedSchemaVersionException` → shown as "update the app".
-- **`rulesVersion`** — gameplay rules. Changes bump `currentRulesVersion` and gate on `state.rulesVersion >= n`. **Policy (2026-06-11): every game plays the latest rules** — `adoptLatestRules` upgrades the document at the save-load boundary (client `SaveService.load` now, server document load later). The gates document each change, keep old behavior testable (`fromJson` never silently upgrades), and are the re-pinning mechanism if online ever needs mid-match stability.
+- **`rulesVersion`** — gameplay rules. Changes bump `currentRulesVersion` and gate on `state.rulesVersion >= n` until the next release consolidates the gates. **Policy: every game plays the latest rules** — `adoptLatestRules` upgrades the document at the save-load boundary (client `SaveService.load`, server document load). Release 1 ships ruleset **v1**: the fourteen pre-release iterations were consolidated into the baseline (history in `docs/HISTORY.md`).
 
 Online additionally: API changes additive within `/api/v1`; the server reports a minimum client version so outdated clients get a friendly update prompt.
 
@@ -111,9 +111,24 @@ HTTP v1 API via a Dart client (service-account creds from env). Send after state
 
 ```
 /packages/game_core   # shared pure Dart rules engine (above)
-/backend              # Dart shelf: bin/server.dart, routes/, services/ (fcm, db, timeout_job), Dockerfile (V2)
-/client               # Flutter: services/, game/ (Flame), screens/, widgets/, tutorial/ — all rules from game_core
+/backend              # Dart shelf server (V2): lib/src/{api,match_service,store,models,push_service}.dart, bin/server.dart, Dockerfile
+/client               # Flutter: services/ (incl. api_client + online_service), game/ (Flame), screens/ (incl. online lobby), widgets/, tutorial/
 ```
+
+### V2 implementation status
+
+The server is implemented (`backend/`): players/matches/join/turn/list
+endpoints, per-requester `visibleStateFor` filtering, the full turn flow
+(apply → AI advance → win check → deadline → push hook), the timeout
+sweep, and a single-node JSON **file store** behind the `GameStore`
+interface (PostgreSQL slots in behind the same interface; FCM is a logged
+stub behind `PushService` until credentials are wired up). The client
+ships the online foundation: device identity, `ApiClient`, and the lobby
+(create / join by match ID / list with turn status, polling). **Remaining
+milestone:** the in-match play screen against the server — actions must
+round-trip (the client cannot roll dice: `rngSeed` never leaves the
+server), so the synchronous `GameController` action path needs an async
+session variant.
 
 ## Backend env & infra (V2)
 

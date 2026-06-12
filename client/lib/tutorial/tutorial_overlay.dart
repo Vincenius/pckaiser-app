@@ -70,15 +70,19 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Tutorial beenden?'),
-        content: const Text('Du kehrst zum Hauptmenü zurück. Die '
-            'Übungspartie wird nicht gespeichert.'),
+        content: const Text(
+          'Du kehrst zum Hauptmenü zurück. Die '
+          'Übungspartie wird nicht gespeichert.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(tr('cancel'))),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr('cancel')),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Beenden')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Beenden'),
+          ),
         ],
       ),
     );
@@ -97,14 +101,19 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
           onTap: () => setState(() => _minimized = false),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.school, size: 18),
-              const SizedBox(width: 8),
-              Text('Tutorial ${_index + 1}/${tutorialSteps.length}',
-                  style: theme.textTheme.labelLarge),
-              const SizedBox(width: 4),
-              const Icon(Icons.expand_less, size: 18),
-            ]),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.school, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Tutorial ${_index + 1}/${tutorialSteps.length}',
+                  style: theme.textTheme.labelLarge,
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_less, size: 18),
+              ],
+            ),
           ),
         ),
       );
@@ -121,55 +130,63 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                const Icon(Icons.school, size: 18),
-                const SizedBox(width: 8),
-                Text(
+              Row(
+                children: [
+                  const Icon(Icons.school, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
                     'Tutorial — Schritt ${_index + 1} von '
                     '${tutorialSteps.length}',
-                    style: theme.textTheme.labelMedium),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.expand_more, size: 20),
-                  tooltip: 'Minimieren',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => _minimized = true),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  tooltip: 'Tutorial beenden',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: _confirmExit,
-                ),
-              ]),
+                    style: theme.textTheme.labelMedium,
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.expand_more, size: 20),
+                    tooltip: 'Minimieren',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _minimized = true),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    tooltip: 'Tutorial beenden',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _confirmExit,
+                  ),
+                ],
+              ),
               Text(_step.title, style: theme.textTheme.titleMedium),
               const SizedBox(height: 4),
               Text(_step.body, style: theme.textTheme.bodySmall),
               const SizedBox(height: 8),
               if (_step.task != null)
-                Row(children: [
-                  Icon(Icons.touch_app,
-                      size: 18, color: theme.colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _step.task!,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.primary),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.touch_app,
+                      size: 18,
+                      color: theme.colorScheme.primary,
                     ),
-                  ),
-                  TextButton(
-                    onPressed: _advance,
-                    child: const Text('Überspringen'),
-                  ),
-                ])
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _step.task!,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _advance,
+                      child: const Text('Überspringen'),
+                    ),
+                  ],
+                )
               else
                 Align(
                   alignment: Alignment.centerRight,
                   child: FilledButton(
                     onPressed: _isLast ? widget.onFinish : _advance,
-                    child: Text(
-                        _isLast ? 'Tutorial abschließen' : 'Weiter'),
+                    child: Text(_isLast ? 'Tutorial abschließen' : 'Weiter'),
                   ),
                 ),
             ],

@@ -73,13 +73,13 @@ class Realm {
         towns: (json['towns'] as List?)
             ?.map((t) => Town.fromJson((t as Map).cast<String, dynamic>()))
             .toList(),
-        // Additive field (rules v9) — older saves have no ships.
+        // Additive field — older saves have no ships.
         ships: (json['ships'] as List?)
             ?.map((s) => Ship.fromJson((s as Map).cast<String, dynamic>()))
             .toList(),
         intelReports: (json['intelReports'] as List?)
-            ?.map((r) =>
-                IntelReport.fromJson((r as Map).cast<String, dynamic>()))
+            ?.map(
+                (r) => IntelReport.fromJson((r as Map).cast<String, dynamic>()))
             .toList(),
       );
 
@@ -142,7 +142,7 @@ class Realm {
   final List<Troop> troops;
   final List<Town> towns;
 
-  /// Colony ships at sea (rules v9). Hidden information like [troops].
+  /// Colony ships at sea. Hidden information like [troops].
   final List<Ship> ships;
 
   /// Espionage results owned by this realm — private, hidden-information

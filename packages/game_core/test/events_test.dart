@@ -1,18 +1,23 @@
 import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
-GameState freshGame({int seed = 2026, int reformation = 1020, int ottoman = 1040}) =>
+GameState freshGame(
+        {int seed = 2026, int reformation = 1020, int ottoman = 1040}) =>
     startGame(
-        newGame(GameSetup(
-          humans: [
-            HumanPlayerSetup(
-                founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'A'),
-          ],
-          reformationYear: reformation,
-          ottomanYear: ottoman,
-          seed: seed,
-        )),
-        Rng(seed)).state;
+            newGame(GameSetup(
+              humans: [
+                HumanPlayerSetup(
+                    founderName: 'Anna',
+                    gender: 1,
+                    countrySlot: 1,
+                    dorfName: 'A'),
+              ],
+              reformationYear: reformation,
+              ottomanYear: ottoman,
+              seed: seed,
+            )),
+            Rng(seed))
+        .state;
 
 void main() {
   group('Reformation & Ottoman invasion (§18.3/§18.4)', () {
@@ -27,9 +32,8 @@ void main() {
       }
       expect(s.year, s.reformationYear);
       expect(s.events.any((e) => e.type == 'reformation'), isTrue);
-      final protestant = s.dynasties
-          .where((d) => d.religion == Religion.evangelisch)
-          .toList();
+      final protestant =
+          s.dynasties.where((d) => d.religion == Religion.evangelisch).toList();
       expect(protestant, hasLength(1));
       expect(protestant.single.status, DynastyStatus.ai);
       expect(events, isEmpty);
@@ -43,9 +47,8 @@ void main() {
         s = completeTurn(s, Rng(s.rngSeed)).state;
       }
       expect(s.year, s.ottomanYear);
-      final muslim = s.dynasties
-          .where((d) => d.religion == Religion.moslemisch)
-          .toList();
+      final muslim =
+          s.dynasties.where((d) => d.religion == Religion.moslemisch).toList();
       expect(muslim, hasLength(1));
       final realm = s.realm(muslim.single.index);
       final janitscharen =
@@ -156,7 +159,8 @@ void main() {
       expect(realm.tileCount[Building.burg], 0);
     });
 
-    test('bankruptcy seizure removes the seized town\'s garrison without '
+    test(
+        'bankruptcy seizure removes the seized town\'s garrison without '
         'double-cutting other garrisons', () {
       final state = freshGame();
       state.year = 1010;
@@ -170,8 +174,7 @@ void main() {
       town.buildingType = Building.stadt;
       town.troopCapacity = 50;
       town.garrison = 20;
-      realm.troopCapacity =
-          realm.towns.fold(0, (n, t) => n + t.troopCapacity);
+      realm.troopCapacity = realm.towns.fold(0, (n, t) => n + t.troopCapacity);
       realm.armySize = 20;
       realm.troops.add(Troop(
           name: 'Garde',
@@ -229,8 +232,7 @@ void main() {
   });
 
   group('disease mercy rule (§18.2 [DEVIATION])', () {
-    test('the last living member of a dynasty always survives an outbreak',
-        () {
+    test('the last living member of a dynasty always survives an outbreak', () {
       for (var seed = 0; seed < 10; seed++) {
         final state = freshGame(seed: 2026);
         state.year = 1010; // protection window over

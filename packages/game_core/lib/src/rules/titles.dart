@@ -18,11 +18,18 @@ int prestigeScore(Realm realm) =>
 /// Promotion thresholds by (titleClass, minimum score); the ladder floor
 /// (Ritter/Scheich) has none. Titles never demote.
 const List<(int, int)> _christianLadder = [
-  (2, 15000), (3, 20000), (4, 30000), (5, 40000), (6, 50000),
-  (7, 75000), (8, 100000),
+  (2, 15000),
+  (3, 20000),
+  (4, 30000),
+  (5, 40000),
+  (6, 50000),
+  (7, 75000),
+  (8, 100000),
 ];
 const List<(int, int)> _muslimLadder = [
-  (10, 20000), (11, 50000), (12, 80000),
+  (10, 20000),
+  (11, 50000),
+  (12, 80000),
 ];
 
 /// Switches a realm's title onto the other religion's ladder when its
@@ -42,13 +49,11 @@ void switchTitleLadder(Realm realm, int religion) {
 
 /// §16.2 promotion check ("checked every turn, every player"): promotes
 /// the realm's title when the prestige score reaches a higher class.
-void checkTitlePromotion(GameState state, Realm realm,
-    List<GameEvent> events) {
+void checkTitlePromotion(GameState state, Realm realm, List<GameEvent> events) {
   if (realm.isVacant) return;
   final female = realm.titleClass > 12;
   final current = female ? realm.titleClass - 12 : realm.titleClass;
-  final muslim =
-      state.dynasty(realm.slot).religion == Religion.moslemisch;
+  final muslim = state.dynasty(realm.slot).religion == Religion.moslemisch;
   final ladder = muslim ? _muslimLadder : _christianLadder;
 
   final score = prestigeScore(realm);

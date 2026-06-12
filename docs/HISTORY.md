@@ -1,7 +1,7 @@
 # Decision & Fix History
 
 Dated log of decisions, review rounds and fixes — kept for lookups.
-Rules-version changes (v2–v10) are documented in detail in
+Rules-version changes (v2–v14) are documented in detail in
 `packages/game_core/lib/src/state/versioning.dart` (changelog) and the
 deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
@@ -163,3 +163,116 @@ deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
   voyage + 1 Zug) — engine actions unchanged, pure client chaining; the
   human winner's settlement finish shows a war-report popup
   (claim payout / total loss). Tests in `bugfix_v12_test.dart`.
+
+## 2026-06-12
+
+- **UX & balance round (user feedback, rules v13)**: (1) militarism costs
+  popularity `[DESIGNED]` — war declaration −5 (attacker), levies
+  (recruit/Söldner) −(1 + men/200), both floored at 25 so the §19.1
+  strife revolution (< 20) stays food-driven; the traced original (§8.4)
+  only knows food satisfaction + balance nudge + religion −70, armies
+  hurt the stat merely indirectly, but players expect levies/wars to
+  matter. Tuned on multi-seed 200-year sims: war at −10 (or no floor)
+  collapsed AI realms into strife 5–9× as often; −5 + floor + a
+  popularity-aware AI (§20.8 only wars at ≥ 50) lands at ~3× with a
+  healthy world (102 wars, 67 captures, 7 realms alive in 1200). (2) A
+  capture victory's claim is at least the loser's CAPITAL tile settlement
+  value (overrides the v12 cap): a quick war against a troopless enemy
+  yielded a claim below the Burg's 5,000, so the winner couldn't take the
+  seat they conquered. Client: turn-start §21.1 status report popup
+  (income, Beliebtheit + tier text, buildable fields — shown before
+  decisions/recap); event feed redesigned (year groups newest-first,
+  chronological top-down within a year, "Wichtig" default filter, icons);
+  recap card now chronological (was newest-first, reading "A gewinnt →
+  A erklärt Krieg" backwards); top-right vitals stacked vertically with
+  Beliebtheit; status-row year never truncates ("Anno 1…"); the troop
+  sheet stays open while drilling (rebuilds via ListenableBuilder); the
+  war settlement panel is collapsible so it no longer blocks tapping
+  northern map tiles.
+
+- **War/espionage round 2 (user feedback, rules v14)**: (1) conquest never
+  transfers DEBT — the §11.4 tile treasury share is skipped while the
+  loser's treasury is ≤ 0 (annexing an indebted realm's capital used to
+  hand the winner a doubled debt share: "won the war, ended −5,000 T").
+  (2) `SettlementTakeAll` ("Ganzes Land übernehmen"): one action runs the
+  AI's greedy annex loop for a human winner and finishes the settlement;
+  the client offers the button when the claim covers the loser's whole
+  territory value. (3) Espionage rebalance `[DESIGNED]`: the defense
+  catches at most `min(defenseRoll, random(agents+1))` agents (a high
+  guard level could wipe whole missions outright — vs a rich AI's 50
+  guards ~70% failed before any roll), and success scales with the
+  survivors (military `random(50) < min(45, 15+2s)`, assassination
+  `random(50) < min(40, 10+s)`); slider hint "mehr Agenten, bessere
+  Chancen". (4) Military intel stores spied unit positions; the client
+  draws the spied army as faded ghost badges (snapshot of the spy year,
+  hidden where live troops are visible) and the tile sheet shows
+  "~N Mann <Klasse> — Stand Anno X". (5) Map-bug fix: realm name labels
+  now anchor to OWNED land (capital while owned, else the tile nearest
+  the territory centroid; no label without land) — a conquered seat no
+  longer shows the dead realm's name on the winner's land. (6) War panel
+  slimmed: Kriegspunkte scoreboard and the instruction paragraph removed
+  (winter rule lives in the round-counter tooltip). Verified existing
+  behavior: assassinating a sole-member royal house passes ALL its slots
+  to a random living ruler (`dynastyExtinct`, control follows the
+  inheritor); with relatives the §15.4 heir priority applies — pinned in
+  `bugfix_v14_test.dart`. Sim healthy (67 wars, 6 strife, 2 realms at
+  1200).
+
+- **Polish round (user feedback, same day)**: (1) intel reports written
+  out as German text (menus `_intelText`: "Spionage Anno X: Schatzkammer
+  ~N T, Korn ~N, …"; Dynastien info shows the newest economy AND military
+  report instead of raw `unitCount`/`armySize` key dumps). (2) Movement
+  scaling vs original VERIFIED — already faithful: §6.3 roll is
+  `titleClassEquivalent + random(6)` and titles rise with the §16.2
+  prestige score (population, treasury, Häfen/Burgen/Paläste), so bigger
+  realms do get more Züge; tutorial + turn report now say so. (3) Failed
+  espionage uses the original §13.3 torture wording ("… gesteht unter
+  Folter, aus X geschickt worden zu sein !!!"); with caught agents the
+  `missionFailed` event is now participants-visible `[DESIGNED]` — the
+  TARGET realm learns the sponsor (recap headline), like failed
+  assassinations always did; a wiped mission without catches reads
+  "konnten nichts in Erfahrung bringen" (§13.1). (4) Human heir choice on
+  a ruler's death VERIFIED — already implemented (provisional §15.4 heir
+  + `heirChoice` menu for human dynasties with >1 member, re-crowning on
+  resolve); positive end-to-end path now pinned in dynasty_test.
+
+- **Inheritance & coercion-timing round (user feedback, same day)**:
+  (1) new public `realmInherited` event, emitted from the GAINING house's
+  side on both §15.4 cross-dynasty paths (spouse inheritance; extinction →
+  random living ruler) with the inherited slot list — the client shows an
+  "Erbschaft !" drama popup at the inheritor's turn start, a recap
+  headline and a feed line ("Durch Erbfolge fällt X an …"); previously a
+  quiet `succession`/`dynastyExtinct` line from the DEAD realm's side was
+  all there was, and players only noticed when seated at the new realm.
+  (2) Pending decisions born from a war resolution (coercion: Abdanken /
+  Kurfürstensitz aberkennen / Bekehrung, convert-or-die for a losing
+  human) are prompted IMMEDIATELY after the war report — new shared
+  `promptDecisionsFor` in decisions.dart, called after "Runde beenden"
+  (capture resolution), settlement finish, take-all and the mid-march
+  capture path; they used to wait for the next turn's start (engine
+  `ResolveDecision` never required the active turn, so this is
+  client-flow only).
+
+- **Release-1 cut + V2 server (user request)**: (1) GitHub link on the
+  About page (url_launcher). (2) Versioning consolidated for the first
+  release: ALL `rulesVersion` gates removed from engine and client (the
+  latest behavior is the only behavior), `currentRulesVersion` reset to
+  **1** as the release-1 baseline (pre-release history stays in this
+  file), the retired `SendShip` action and the vestigial
+  `Troop.drilledThisTurn` flag deleted, old-version-pinned tests removed
+  (226 engine tests remain green; sim byte-identical before/after).
+  (3) Final review: 5-seed 200-year sims with periodic JSON round-trips —
+  no crashes, no drift; stale version markers stripped from comments.
+  (4) **V2 online server implemented** (`backend/`): shelf REST API per
+  ARCHITECTURE (players, create/join with founder setup + slot
+  assignment, per-requester visibleStateFor filtering, turn submission
+  incl. out-of-turn ResolveDecision and the endWarRoundWithAi war-round
+  entry point, post-war AI resume, win/finish + winner mapping, turn
+  deadlines + timeout sweep with AI/default fallbacks, push hooks as a
+  logged stub) on a GameStore interface (in-memory + atomic JSON file
+  store; PostgreSQL later), Dockerfile; 13 server tests. Client: device
+  UUID identity + ApiClient + online lobby (configure server/name,
+  create match with timer + share ID, join by ID, list with "Du bist am
+  Zug", 20 s polling). Remaining V2 milestone: the in-match play screen —
+  async action round-trips (client cannot roll dice; rngSeed never
+  leaves the server).

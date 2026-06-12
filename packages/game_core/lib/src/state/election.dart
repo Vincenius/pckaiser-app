@@ -16,13 +16,11 @@ class ActiveElection {
         bribes = bribes ?? {},
         votes = votes ?? {};
 
-  factory ActiveElection.fromJson(Map<String, dynamic> json) =>
-      ActiveElection(
+  factory ActiveElection.fromJson(Map<String, dynamic> json) => ActiveElection(
         office: Office.values.byName(json['office'] as String),
         finalistIds: (json['finalistIds'] as List).cast<int>(),
         electorIds: (json['electorIds'] as List).cast<int>(),
-        bribesDone:
-            (json['bribesDone'] as List?)?.cast<int>().toSet(),
+        bribesDone: (json['bribesDone'] as List?)?.cast<int>().toSet(),
         bribes: {
           for (final e in ((json['bribes'] as Map?) ?? {}).entries)
             int.parse(e.key as String): {

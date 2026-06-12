@@ -45,8 +45,10 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Update-safe versioning (schema migrations + rules gates + latest-rules adoption; see versioning.dart)
 
 ## Phase 8 — Online Mode (V2)
-- [ ] Dart shelf backend: players/matches routes, JSONB state, turn endpoint (ARCHITECTURE.md)
-- [ ] Server-side simulation advance; `visibleStateFor` on all responses
-- [ ] Host match settings + turn timers; timeout job + reminder push
-- [ ] Human-vs-human war clock (pending decisions + `war_round_timeout`, delegate-to-AI, WAR_STARTED push)
-- [ ] FCM push, match lifecycle, Docker + Nginx deployment, backups
+- [x] Dart shelf backend (`backend/`): players/matches routes, state documents, turn endpoint (ARCHITECTURE.md) — JSON file store behind `GameStore` (PostgreSQL later)
+- [x] Server-side simulation advance; `visibleStateFor` on all responses
+- [x] Host match settings + turn timers; timeout sweep (reminder push pending FCM)
+- [x] Client online foundation: device identity, `ApiClient`, lobby (create/join/list, polling)
+- [ ] In-match play screen against the server (async action round-trips — rngSeed never leaves the server)
+- [ ] Human-vs-human war clock (pending decisions + `war_round_timeout`, delegate-to-AI, WAR_STARTED push) — engine still blocks human-vs-human wars
+- [ ] FCM push (interface + logged stub exist), Nginx deployment, backups — Dockerfile ready

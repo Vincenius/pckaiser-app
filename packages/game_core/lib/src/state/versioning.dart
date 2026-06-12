@@ -2,7 +2,7 @@
 ///
 /// Two independent version numbers travel inside every `GameState` JSON
 /// document, so app updates never break existing games — local saves now,
-/// online matches later (both store the exact same document):
+/// online matches too (both store the exact same document):
 ///
 /// - [currentSchemaVersion] — the *shape* of the JSON. Additive changes
 ///   (new field with a default in `fromJson`) never bump it. Incompatible
@@ -12,155 +12,30 @@
 /// - [currentRulesVersion] — the *gameplay rules*. A rule/balance change
 ///   bumps this and gates the new behavior on `state.rulesVersion >= n`.
 ///
-///   Policy (changed 2026-06-11 by product decision): every game plays
-///   under the LATEST rules — [adoptLatestRules] upgrades `rulesVersion`
-///   at the save-load boundary (client `SaveService.load` now, the
-///   server's document load later), and new games start at the latest
-///   version anyway. The per-version gates stay in the engine: they
-///   document each change, keep old behavior testable, and are the
-///   re-pinning mechanism should online play ever need rule stability
-///   within a match.
+///   Policy: every game plays under the LATEST rules — [adoptLatestRules]
+///   upgrades `rulesVersion` at the save-load boundary (client
+///   `SaveService.load`, the server's document load), and new games start
+///   at the latest version anyway. Per-version gates exist only while a
+///   change is fresh: they document it, keep the old behavior testable,
+///   and are the re-pinning mechanism should online play ever need rule
+///   stability within a match.
 library;
 
 /// Bump on incompatible JSON reshapes only; add a migration alongside.
 const int currentSchemaVersion = 1;
 
 /// Bump on gameplay rule/balance changes; gate the change on
-/// `state.rulesVersion` so running games keep their original rules.
+/// `state.rulesVersion` until the next release consolidates the gates.
 ///
-/// Changelog:
-/// - v2 (2026-06-10): bare land costs 100 T in war claim settlements
-///   (was 0 — any limited victory could strip the loser of all empty
-///   tiles for free); war plunder only hits the war opponent (was: any
-///   foreign realm a unit reached); recruiting, hiring Söldner,
-///   reinforcing and peacetime troop moves are blocked while at war
-///   (matching the existing merge/disband gate); a conquered town's
-///   garrison is also removed from the loser's garrison-counted units.
-/// - v3 (2026-06-11): peacetime troop moves (`MoveTroop`) no longer cost
-///   a movement point — only building/claiming/demolishing consume Züge.
-/// - v4 (2026-06-11): ruler capture requires the enemy capital tile to
-///   still be OWNED by the enemy (was: coordinates only — a realm whose
-///   capital tile had been conquered/seized earlier could be captured by
-///   stepping onto a tile the attacker already owned); moving onto a tile
-///   with several stacked enemy units fights them ALL, one after another
-///   (was: only the first, then free co-location); an assassination whose
-///   agents were all caught always fails (was: still 30%); `MergeRealms`
-///   is blocked while either realm is in the active war (same reason as
-///   the v2 recruit/reinforce gate — merged-in troops desync the war
-///   bookkeeping); Kaiser-election candidates must currently rule a realm
-///   (was: a deposed Kurfürst could be elected and hold a throne with no
-///   realm to collect the pot).
-/// - v5 (2026-06-11): war overhaul — (1) every army-vs-army encounter is
-///   DECIDED: the side with the higher `P × (1+def/2) × fortune` wins
-///   the clash, the loser takes 35–65% casualties (remnants under 5 men
-///   are wiped), the winner 10–25% and always survives — a unit falls
-///   after ~2–5 engagements (was: a single power-scaled roll that
-///   typically killed 0–3 men, dragging wars on forever; the original's
-///   combat was even more cosmetic — losses `P × def × 0.2 × R`,
-///   R ∈ [0, 0.1), zero on open ground — its wars were walking races
-///   decided by the score);
-///   (2) mutual peace is a WHITE peace: both sides return home, no
-///   tiles, no claim, no payment (was: the leading side collected its
-///   full claim, auto-converting occupied tiles on a decisive score —
-///   agreeing to peace could lose you land); (3) a war decided by winter
-///   always opens the claim settlement, where the winner SELECTS which
-///   loser tiles to annex (was: a decisive score auto-converted every
-///   occupied tile with no choice) — ruler capture still takes the whole
-///   realm; (4) the `TrainTroop` action (original "Truppe ausbilden"):
-///   retrain a regular unit to another class for 5 T/man plus the class
-///   surcharge (Kavallerie +500, Artillerie +1,000); (5) "Bürgerlich
-///   heiraten" is always available: it no longer checks or consumes the
-///   one-royal-proposal-per-turn gate (was: both marriage actions shared
-///   it — a rejected royal proposal locked out commoner marriage too).
-/// - v6 (2026-06-11): the original's "(S)chiff" colony ship (`SendShip`,
-///   manual: send ships from a Hafen to colonize e.g. uninhabited
-///   islands; disassembly proc_005D2B: flat 700 T, ship consumed): claim
-///   any free land tile reachable over open water from an own Hafen for
-///   700 T + 1 movement point. Pre-v6 games keep playing without it
-///   (new capability = balance change).
-/// - v7 (2026-06-11): (1) the AI war defender fights back — units
-///   intercept enemy units standing on own territory and, once the
-///   enemy army is wiped out or clearly outmatched (>1.5× strength),
-///   counter-march on the enemy capital (was: defenders only ever
-///   walked back to their pre-war spots, so a beaten attacker faced an
-///   enemy that "never moved"); AI war pathing uses a BFS around water
-///   (was: greedy axis step that stranded units on lake shores);
-///   (2) `DrillTroop` — the traced original "Truppe ausbilden"
-///   (proc_00A316): +1 quality for 5 T/man with no class change; once
-///   per unit per turn, regulars only, capped at quality 10 [DESIGNED]
-///   (the v5 `TrainTroop` class retrain stays, relabeled "umrüsten").
-/// - v8 (2026-06-11): drilling has no per-turn limit anymore — a unit
-///   may drill as often as the treasury allows within one turn; the
-///   quality cap (10) still bounds the total `[DESIGNED]`.
-/// - v9 (2026-06-11): (1) manually steered colony ships — `BuyShip`
-///   (700 T + 1 Zug, spawns on an own Hafen), `MoveShip` (player picks
-///   the destination; shortest all-water route, 1 Zug per water tile —
-///   the original's "(S)chiff steuern" cost), `ColonizeShip` (a free
-///   land tile next to the ship becomes a named Dorf; the ship is
-///   consumed). Replaces the v6 tap-target `SendShip`, which v9 rejects.
-///   Ships live on the realm (`Realm.ships`, additive field) and are
-///   hidden information like troops. (2) Ruler capture resolves at war
-///   ROUND END: a unit must HOLD the (still enemy-owned) enemy capital
-///   when the round ends (was: stepping onto the tile ended the war
-///   mid-march). (3) A capture victory no longer swallows the loser's
-///   whole realm silently — the captured ruler is still coerced (§12),
-///   but the winner now picks the spoils in the claim settlement
-///   (claim = the winner's war score incl. the +3,000 capital bonus),
-///   selecting loser tiles by their cost.
-/// - v10 (2026-06-11): original-fidelity round — (1) §12 post-war
-///   coercion checks EVERY applicable option in order, as the original
-///   does (convert-or-die / forced marriage, then Kaiser abdication,
-///   then Kurfürst seat strip; was: only the first applicable option
-///   fired, so e.g. a captured Kaiser of another religion never had to
-///   abdicate); (2) a coerced conversion (§12.1) switches the dynasty's
-///   HOME realm onto the right title ladder (§4/§16.1 — only the home
-///   slot: the promotion check keys the ladder off the slot dynasty's
-///   religion, so aliased realms keep theirs) and dissolves religiously
-///   incompatible marriages (§14.4) — previously only the menu religion
-///   change did; the Reformation and Ottoman-invasion conversions now
-///   dissolve incompatible marriages too; (3) every conversion to Islam
-///   (menu, Ottoman invasion) strips ALL the dynasty's Kurfürst seats,
-///   like the coerced conversion already did (was: only the acting
-///   ruler's seat — a member ruling an inherited slot kept voting);
-///   (4) earthquake and disease town damage removes the garrison loss
-///   from the garrison-counted troop units as well (was: only `armySize`
-///   and the town garrison shrank, so unit men drifted out of sync — the
-///   same desync the v2 conquest fix addressed). Unversioned bookkeeping
-///   fixes in the same round: "Reiche zusammenlegen" moves the source
-///   realm's colony ships and intel reports to the surviving realm (they
-///   were silently lost); a stale abdication coercion can no longer
-///   depose a successor Kaiser (only the captured ruler's own crown is
-///   forfeit); the AI no longer tries to declare war on a slot its own
-///   ruler already holds, and its harbor picks honor the own-LAND
-///   adjacency rule.
-/// - v11 (2026-06-11): ruler capture must be held through the enemy's
-///   FULL response round — occupying the enemy capital at a round end
-///   only ARMS the capture (`ActiveWar.heldCapitalSlot`, additive field;
-///   public `capitalHeld` event); holding it at the NEXT round end too
-///   resolves it. Exception: an opponent with no troops left cannot
-///   respond, so the capture resolves immediately. Fixes the v9
-///   asymmetry where the round-end check ran after the AI side's
-///   movement — an AI seizing a human defender's capital won in the same
-///   "Runde beenden" tap, with no chance to retake the seat. Same round:
-///   `endWarRoundWithAi` becomes the one engine entry point for "AI
-///   sides respond, then the round ends" (client and V2 server), and
-///   `completeTurn` rejects completing a turn over an open war
-///   (engine-level backstop for the V2 server).
-/// - v12 (2026-06-11): the war settlement claim is capped at HALF the
-///   loser's total territory settlement value `[DESIGNED]`. The §11.2 war
-///   score grows with the square of army strength, so any sizeable army's
-///   claim dwarfed the loser's whole realm: the winner annexed every
-///   reachable tile and the cash remainder bankrupted the loser on top —
-///   one lost war erased a realm. With the cap a single war costs at most
-///   half the realm's land value (the last tile is never affordable), and
-///   reparations are bounded the same way. Unversioned additions in the
-///   same round: a realm losing its LAST tile in a settlement emits a
-///   public `realmOverrun` event (client popup for both sides); when no
-///   human seat remains, `advanceUntilHuman` ends the game with a public
-///   `humansDefeated` event instead of silently fast-forwarding the
-///   AI-only world for up to 2,000 turns and re-seating the player
-///   centuries later in a foreign (and absurdly rich) realm.
-const int currentRulesVersion = 12;
+/// v1 is the RELEASE 1 baseline. The fourteen pre-release iterations
+/// (combat rework, white peace, manually steered colony ships, the AI
+/// war defender, drilling, round-end ruler capture with claim
+/// settlement, coercion/conversion fidelity, the half-territory claim
+/// cap with capital floor, militarism popularity costs, debt-free
+/// conquest, take-all settlement, agent-scaled espionage, and the war
+/// bookkeeping gates) were consolidated into this baseline before the
+/// first release — their history lives in docs/HISTORY.md.
+const int currentRulesVersion = 1;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

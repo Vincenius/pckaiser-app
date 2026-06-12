@@ -48,8 +48,8 @@ sealed class PlayerAction {
         WarPeaceWish.kind => WarPeaceWish.fromJson(json),
         WarEndRound.kind => WarEndRound.fromJson(json),
         SettlementAnnex.kind => SettlementAnnex.fromJson(json),
+        SettlementTakeAll.kind => SettlementTakeAll.fromJson(json),
         SettlementFinish.kind => SettlementFinish.fromJson(json),
-        SendShip.kind => SendShip.fromJson(json),
         BuyShip.kind => BuyShip.fromJson(json),
         MoveShip.kind => MoveShip.fromJson(json),
         ColonizeShip.kind => ColonizeShip.fromJson(json),
@@ -86,8 +86,7 @@ class ClaimTile extends PlayerAction {
   String get type => kind;
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
 /// Build on an owned tile — 1 movement point + the building's cost (§4).
@@ -152,8 +151,7 @@ class Demolish extends PlayerAction {
   String get type => kind;
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
 /// Menu action "H(e)irat vorschlagen" (§14.1): propose a marriage between
@@ -269,36 +267,7 @@ class MergeRealms extends PlayerAction {
       {'type': kind, 'slot': slot, 'sourceSlot': sourceSlot};
 }
 
-/// "(S)chiff" — send a colony ship from a harbor (§4/§9.3, rules v6):
-/// claims a free land tile reachable over open water from an own Hafen,
-/// e.g. on an uninhabited island. The ship is consumed: flat 700 T plus
-/// 1 movement point. Rules v6–v8 only — v9 replaced the tap-target
-/// voyage with manually steered ships ([BuyShip]/[MoveShip]/
-/// [ColonizeShip]).
-class SendShip extends PlayerAction {
-  SendShip({required super.slot, required this.x, required this.y});
-
-  factory SendShip.fromJson(Map<String, dynamic> json) => SendShip(
-        slot: json['slot'] as int,
-        x: json['x'] as int,
-        y: json['y'] as int,
-      );
-
-  static const kind = 'sendShip';
-
-  /// Target land tile to colonize.
-  final int x;
-  final int y;
-
-  @override
-  String get type => kind;
-
-  @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'x': x, 'y': y};
-}
-
-/// Buy a colony ship at an own Hafen (rules v9): 700 T + 1 Zug, the ship
+/// Buy a colony ship at an own Hafen: 700 T + 1 Zug, the ship
 /// spawns on the harbor's water tile and is steered manually afterwards.
 class BuyShip extends PlayerAction {
   BuyShip({required super.slot, required this.x, required this.y});
@@ -319,11 +288,10 @@ class BuyShip extends PlayerAction {
   String get type => kind;
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
-/// Sail a ship to a water tile (rules v9): the player picks the target,
+/// Sail a ship to a water tile: the player picks the target,
 /// the ship takes the shortest all-water route — 1 Zug per water tile,
 /// like the original's "(S)chiff steuern". Long voyages span turns.
 class MoveShip extends PlayerAction {
@@ -358,7 +326,7 @@ class MoveShip extends PlayerAction {
       {'type': kind, 'slot': slot, 'shipIndex': shipIndex, 'x': x, 'y': y};
 }
 
-/// Colonize a free land tile next to the ship (rules v9): the ship is
+/// Colonize a free land tile next to the ship: the ship is
 /// consumed (its settlers stay) and a named Dorf is founded on the tile.
 class ColonizeShip extends PlayerAction {
   ColonizeShip({
@@ -505,8 +473,7 @@ class RelocateCapital extends PlayerAction {
   String get type => kind;
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
 /// Change the dynasty's religion (§4): katholisch free, evangelisch 500 T,
@@ -514,8 +481,7 @@ class RelocateCapital extends PlayerAction {
 class ChangeReligion extends PlayerAction {
   ChangeReligion({required super.slot, required this.religion});
 
-  factory ChangeReligion.fromJson(Map<String, dynamic> json) =>
-      ChangeReligion(
+  factory ChangeReligion.fromJson(Map<String, dynamic> json) => ChangeReligion(
         slot: json['slot'] as int,
         religion: json['religion'] as int,
       );

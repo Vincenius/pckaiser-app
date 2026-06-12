@@ -10,18 +10,25 @@ void main() {
 
   setUp(() {
     state = startGame(
-        newGame(GameSetup(
-          humans: [
-            HumanPlayerSetup(
-                founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'A'),
-            HumanPlayerSetup(
-                founderName: 'Berta', gender: 1, countrySlot: 2, dorfName: 'B'),
-          ],
-          reformationYear: 1020,
-          ottomanYear: 1040,
-          seed: 2026,
-        )),
-        Rng(7)).state;
+            newGame(GameSetup(
+              humans: [
+                HumanPlayerSetup(
+                    founderName: 'Anna',
+                    gender: 1,
+                    countrySlot: 1,
+                    dorfName: 'A'),
+                HumanPlayerSetup(
+                    founderName: 'Berta',
+                    gender: 1,
+                    countrySlot: 2,
+                    dorfName: 'B'),
+              ],
+              reformationYear: 1020,
+              ottomanYear: 1040,
+              seed: 2026,
+            )),
+            Rng(7))
+        .state;
     state.year = 1010;
     state.dynasty(2).status = DynastyStatus.ai;
     state.dynasty(2).humanPlayer = null;
@@ -31,13 +38,14 @@ void main() {
       realm.towns.single.troopCapacity = 200;
       realm.troopCapacity = 200;
       state = applyAction(
-          state,
-          RecruitTroops(
-              slot: slot,
-              men: 50,
-              troopClass: TroopClass.infanterie,
-              name: 'Heer$slot'),
-          Rng(state.rngSeed)).state;
+              state,
+              RecruitTroops(
+                  slot: slot,
+                  men: 50,
+                  troopClass: TroopClass.infanterie,
+                  name: 'Heer$slot'),
+              Rng(state.rngSeed))
+          .state;
     }
     // Wars need a shared border: hand slot 2 a land tile next to slot 1.
     final map = state.map;
@@ -60,27 +68,20 @@ void main() {
   });
 
   group('DrillTroop (rules v7)', () {
-    test('+1 quality for 5 T/man, repeatable within a turn since v8', () {
+    test('+1 quality for 5 T/man, repeatable within a turn', () {
       final before = state.realm(1).treasury;
       var s = applyAction(
               state, DrillTroop(slot: 1, unitIndex: 0), Rng(state.rngSeed))
           .state;
       final troop = s.realm(1).troops.single;
       expect(troop.quality, TroopQuality.regular + 1);
-      expect(troop.troopClass, TroopClass.infanterie, reason: 'no class change');
+      expect(troop.troopClass, TroopClass.infanterie,
+          reason: 'no class change');
       expect(s.realm(1).treasury, before - 5 * 50);
-      expect(troop.drilledThisTurn, isTrue);
 
-      // v7 pinned the drill to once per unit per turn; v8 lifted it.
-      final v7 = GameState.fromJson(s.toJson()..['rulesVersion'] = 7);
-      expect(
-        () => applyAction(v7, DrillTroop(slot: 1, unitIndex: 0), Rng(1)),
-        throwsA(isA<ActionException>()),
-        reason: 'v7: once per unit per turn',
-      );
       s = applyAction(s, DrillTroop(slot: 1, unitIndex: 0), Rng(1)).state;
       expect(s.realm(1).troops.single.quality, TroopQuality.regular + 2,
-          reason: 'v8: no per-turn limit');
+          reason: 'no per-turn limit');
     });
 
     test('drilling raises combat strength', () {
@@ -91,9 +92,10 @@ void main() {
       expect(troopStrength(s.realm(1).troops.single), greaterThan(undrilled));
     });
 
-    test('rejects Söldner, the quality cap, at-war and pre-v7 games', () {
+    test('rejects Söldner, the quality cap and drilling at war', () {
       var s = applyAction(
-              state, HireSoeldner(slot: 1, men: 10, name: 'Mietlinge'),
+              state,
+              HireSoeldner(slot: 1, men: 10, name: 'Mietlinge'),
               Rng(state.rngSeed))
           .state;
       expect(
@@ -110,20 +112,13 @@ void main() {
       );
       state.realm(1).troops.single.quality = TroopQuality.regular;
 
-      s = applyAction(state, DeclareWar(slot: 1, targetSlot: 2),
-              Rng(state.rngSeed))
+      s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
       expect(
         () => applyAction(s, DrillTroop(slot: 1, unitIndex: 0), Rng(1)),
         throwsA(isA<ActionException>()),
         reason: 'not while at war',
-      );
-
-      final old = GameState.fromJson(state.toJson()..['rulesVersion'] = 6);
-      expect(
-        () => applyAction(old, DrillTroop(slot: 1, unitIndex: 0), Rng(1)),
-        throwsA(isA<ActionException>()),
-        reason: 'pre-v7 games play without drilling',
       );
     });
 
@@ -134,9 +129,7 @@ void main() {
       s = applyAction(
               s,
               TrainTroop(
-                  slot: 1,
-                  unitIndex: 0,
-                  troopClass: TroopClass.kavallerie),
+                  slot: 1, unitIndex: 0, troopClass: TroopClass.kavallerie),
               Rng(1))
           .state;
       final troop = s.realm(1).troops.single;
@@ -145,21 +138,12 @@ void main() {
           reason: 'drilled quality survives the retrain');
     });
 
-    test('drill flag and quality round-trip through JSON', () {
+    test('drilled quality round-trips through JSON', () {
       final s = applyAction(
               state, DrillTroop(slot: 1, unitIndex: 0), Rng(state.rngSeed))
           .state;
       final loaded = GameState.fromJson(s.toJson());
       expect(loaded.realm(1).troops.single.quality, TroopQuality.regular + 1);
-      expect(loaded.realm(1).troops.single.drilledThisTurn, isTrue);
-      // Old saves without the field default to false.
-      final json = s.toJson();
-      for (final t
-          in ((json['realms'] as List)[0] as Map)['troops'] as List) {
-        (t as Map).remove('drilledThisTurn');
-      }
-      expect(GameState.fromJson(json).realm(1).troops.single.drilledThisTurn,
-          isFalse);
     });
   });
 
@@ -167,7 +151,8 @@ void main() {
     int distanceToCapital(Troop t, Realm target) =>
         (t.x - target.capitalX).abs() + (t.y - target.capitalY).abs();
 
-    test('counter-marches on the enemy capital once the attacker army is '
+    test(
+        'counter-marches on the enemy capital once the attacker army is '
         'wiped out', () {
       state = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
@@ -185,8 +170,7 @@ void main() {
         // Marched all the way: ruler captured.
         expect(events.any((e) => e.type == 'rulerCaptured'), isTrue);
       } else {
-        final after =
-            distanceToCapital(defender.troops.single, state.realm(1));
+        final after = distanceToCapital(defender.troops.single, state.realm(1));
         expect(after, lessThan(before),
             reason: 'the defender must advance on the enemy capital');
       }
@@ -211,8 +195,8 @@ void main() {
       }
 
       final defender = state.realm(2).troops.single;
-      final before = (defender.x - intruder.x).abs() +
-          (defender.y - intruder.y).abs();
+      final before =
+          (defender.x - intruder.x).abs() + (defender.y - intruder.y).abs();
       final events = <GameEvent>[];
       runAiWarMovement(state, 2, Rng(99), events);
 
@@ -225,22 +209,6 @@ void main() {
         expect(after, lessThan(before),
             reason: 'the defender must close in on the intruder');
       }
-    });
-
-    test('pre-v7 defenders keep the original stay-home behavior', () {
-      final old = GameState.fromJson(state.toJson()..['rulesVersion'] = 6);
-      var s = applyAction(
-              old, DeclareWar(slot: 1, targetSlot: 2), Rng(old.rngSeed))
-          .state;
-      s.realm(1).troops.clear();
-      s.activeWar!.movesLeft[1] = [];
-
-      final positions = [
-        for (final t in s.realm(2).troops) (t.x, t.y),
-      ];
-      runAiWarMovement(s, 2, Rng(99), <GameEvent>[]);
-      expect([for (final t in s.realm(2).troops) (t.x, t.y)], positions,
-          reason: 'old games: the defender never leaves home');
     });
   });
 }

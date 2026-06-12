@@ -63,8 +63,7 @@ void main() {
 
   group('BuyShip', () {
     test('spawns a ship on the own Hafen for 700 T + 1 Zug', () {
-      final result =
-          applyAction(state, BuyShip(slot: 1, x: 3, y: 40), rng);
+      final result = applyAction(state, BuyShip(slot: 1, x: 3, y: 40), rng);
       final realm = result.state.realm(1);
       expect(realm.ships, hasLength(1));
       expect((realm.ships.single.x, realm.ships.single.y), (3, 40));
@@ -95,22 +94,13 @@ void main() {
         reason: 'no Züge left',
       );
     });
-
-    test('pre-v9 games play without manual ships', () {
-      final old = GameState.fromJson(state.toJson()..['rulesVersion'] = 8);
-      expect(
-        () => applyAction(old, BuyShip(slot: 1, x: 3, y: 40), rng),
-        throwsA(isA<ActionException>()),
-      );
-    });
   });
 
   group('MoveShip', () {
     late GameState withShip;
 
     setUp(() {
-      withShip =
-          applyAction(state, BuyShip(slot: 1, x: 3, y: 40), rng).state;
+      withShip = applyAction(state, BuyShip(slot: 1, x: 3, y: 40), rng).state;
     });
 
     test('sails the shortest water route at 1 Zug per tile', () {
@@ -122,8 +112,7 @@ void main() {
       expect(realm.movementPoints, 7 - 5);
     });
 
-    test('rejects land targets, unreachable water and over-long voyages',
-        () {
+    test('rejects land targets, unreachable water and over-long voyages', () {
       expect(
         () => applyAction(
             withShip, MoveShip(slot: 1, shipIndex: 0, x: 9, y: 40), rng),
@@ -151,18 +140,18 @@ void main() {
 
     setUp(() {
       var s = applyAction(state, BuyShip(slot: 1, x: 3, y: 40), rng).state;
-      s = applyAction(s, MoveShip(slot: 1, shipIndex: 0, x: 8, y: 40),
-              Rng(s.rngSeed))
+      s = applyAction(
+              s, MoveShip(slot: 1, shipIndex: 0, x: 8, y: 40), Rng(s.rngSeed))
           .state;
       atIsland = s;
     });
 
-    test('founds a named Dorf on the adjacent free tile, consuming the '
+    test(
+        'founds a named Dorf on the adjacent free tile, consuming the '
         'ship', () {
       final result = applyAction(
           atIsland,
-          ColonizeShip(
-              slot: 1, shipIndex: 0, x: 9, y: 40, townName: 'Atoll'),
+          ColonizeShip(slot: 1, shipIndex: 0, x: 9, y: 40, townName: 'Atoll'),
           Rng(atIsland.rngSeed));
       final s = result.state;
       final realm = s.realm(1);
@@ -184,8 +173,7 @@ void main() {
       expect(
         () => applyAction(
             atIsland,
-            ColonizeShip(
-                slot: 1, shipIndex: 0, x: 13, y: 40, townName: 'Fern'),
+            ColonizeShip(slot: 1, shipIndex: 0, x: 13, y: 40, townName: 'Fern'),
             rng),
         throwsA(isA<ActionException>()),
         reason: 'not adjacent to the ship',
@@ -193,8 +181,7 @@ void main() {
       expect(
         () => applyAction(
             atIsland,
-            ColonizeShip(
-                slot: 1, shipIndex: 0, x: 7, y: 40, townName: 'Nass'),
+            ColonizeShip(slot: 1, shipIndex: 0, x: 7, y: 40, townName: 'Nass'),
             rng),
         throwsA(isA<ActionException>()),
         reason: 'water cannot be colonized',
@@ -211,8 +198,7 @@ void main() {
       expect(
         () => applyAction(
             atIsland,
-            ColonizeShip(
-                slot: 1, shipIndex: 0, x: 9, y: 40, townName: 'Fremd'),
+            ColonizeShip(slot: 1, shipIndex: 0, x: 9, y: 40, townName: 'Fremd'),
             rng),
         throwsA(isA<ActionException>()),
         reason: 'already owned',
@@ -241,17 +227,15 @@ void main() {
   });
 
   test('the three actions round-trip through JSON', () {
-    final buy = PlayerAction.fromJson(
-        BuyShip(slot: 1, x: 3, y: 40).toJson()) as BuyShip;
+    final buy = PlayerAction.fromJson(BuyShip(slot: 1, x: 3, y: 40).toJson())
+        as BuyShip;
     expect((buy.slot, buy.x, buy.y), (1, 3, 40));
     final move = PlayerAction.fromJson(
-            MoveShip(slot: 1, shipIndex: 2, x: 8, y: 40).toJson())
-        as MoveShip;
+        MoveShip(slot: 1, shipIndex: 2, x: 8, y: 40).toJson()) as MoveShip;
     expect((move.shipIndex, move.x, move.y), (2, 8, 40));
     final colonize = PlayerAction.fromJson(
-            ColonizeShip(slot: 1, shipIndex: 0, x: 9, y: 40, townName: 'A')
-                .toJson())
-        as ColonizeShip;
+        ColonizeShip(slot: 1, shipIndex: 0, x: 9, y: 40, townName: 'A')
+            .toJson()) as ColonizeShip;
     expect((colonize.shipIndex, colonize.x, colonize.y, colonize.townName),
         (0, 9, 40, 'A'));
   });

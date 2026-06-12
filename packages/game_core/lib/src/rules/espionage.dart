@@ -20,14 +20,22 @@ const int guardCost = 100;
 
 /// Fuzzes a spied value ±10% uniform — never show exact numbers
 /// (§13.2 `[APPROX]`, adopted as final design).
-int fuzz(int value, Rng rng) =>
-    (value * (0.9 + rng.nextReal() * 0.2)).round();
+int fuzz(int value, Rng rng) => (value * (0.9 + rng.nextReal() * 0.2)).round();
+
+/// `[DESIGNED]` deviation from the traced §13.1 roll: the defense
+/// catches at most a random share of the agents sent —
+/// `min(defenseRoll, random(agents+1))`. With the raw defense roll a
+/// rich AI's 50 guards wiped ~70% of missions outright, so sending more
+/// agents barely helped and espionage was effectively unplayable.
+int _caughtAgents(GameState state, int defenseRoll, int agents, Rng rng) =>
+    math.min(math.min(defenseRoll, agents), rng.nextInt(agents + 1));
 
 /// §13.1/§13.2 economy intel mission. Writes an [IntelReport] on success.
-List<GameEvent> runEconomyMission(GameState state, Realm spy, Realm target,
-    int agents, Rng rng) {
+List<GameEvent> runEconomyMission(
+    GameState state, Realm spy, Realm target, int agents, Rng rng) {
   final defense = target.guardLevel;
-  final caught = math.min(defense, rng.nextInt(2 * defense + 2));
+  final caught = _caughtAgents(
+      state, math.min(defense, rng.nextInt(2 * defense + 2)), agents, rng);
   final survivors = math.min(agents - caught, 99);
   if (survivors <= 0) {
     return [_missionFailed(state, spy, target, 'economy', caught)];
@@ -67,13 +75,17 @@ List<GameEvent> runEconomyMission(GameState state, Realm spy, Realm target,
   ];
 }
 
-/// §13.1/§13.2 military intel: a single check reveals the troop list.
-List<GameEvent> runMilitaryMission(GameState state, Realm spy, Realm target,
-    int agents, Rng rng) {
+/// §13.1/§13.2 military intel: a single check reveals the troop list;
+/// success scales with the surviving agents `[DESIGNED]`.
+List<GameEvent> runMilitaryMission(
+    GameState state, Realm spy, Realm target, int agents, Rng rng) {
   final defense = target.guardLevel;
-  final caught = math.min(defense, rng.nextInt(2 * defense + 5));
+  final caught = _caughtAgents(
+      state, math.min(defense, rng.nextInt(2 * defense + 5)), agents, rng);
   final survivors = math.min(agents - caught, 49);
-  if (survivors <= 0 || rng.nextInt(math.max(0, 50 - survivors)) >= 15) {
+  final success =
+      survivors > 0 && rng.nextInt(50) < math.min(45, 15 + 2 * survivors);
+  if (!success) {
     return [_missionFailed(state, spy, target, 'military', caught)];
   }
 
@@ -85,6 +97,10 @@ List<GameEvent> runMilitaryMission(GameState state, Realm spy, Realm target,
   for (var i = 0; i < target.troops.length; i++) {
     values['unit${i}Men'] = fuzz(target.troops[i].men, rng);
     values['unit${i}Class'] = target.troops[i].troopClass;
+    // Unit positions as of the spy year — the client renders the spied
+    // army on the map as a faded snapshot.
+    values['unit${i}X'] = target.troops[i].x;
+    values['unit${i}Y'] = target.troops[i].y;
   }
   spy.intelReports.add(IntelReport(
     targetSlot: target.slot,
@@ -102,27 +118,32 @@ List<GameEvent> runMilitaryMission(GameState state, Realm spy, Realm target,
   ];
 }
 
+/// Failed mission event. With caught agents the target learns the
+/// sponsor — "Einer von ihnen gesteht unter Folter, aus `<X>` geschickt
+/// worden zu sein !!!" (the §13.3 wording, applied to intel missions as
+/// well `[DESIGNED]`: guards that catch spies must tell their realm).
 GameEvent _missionFailed(
         GameState state, Realm spy, Realm target, String kind, int caught) =>
     GameEvent(
       year: state.year,
       slot: spy.slot,
       type: 'missionFailed',
-      visibility: EventVisibility.owner,
+      visibility:
+          caught > 0 ? EventVisibility.participants : EventVisibility.owner,
+      participants: caught > 0 ? [spy.slot, target.slot] : const [],
       payload: {'targetSlot': target.slot, 'kind': kind, 'caught': caught},
     );
 
 /// §13.3 assassination resolution (queued orders run in the event phase).
 /// On failure the sponsor is publicly named. NOT suppressed by the
 /// protect-new-players rule — it is a deliberate action.
-void resolveAssassinations(GameState state, int targetSlot, Rng rng,
-    List<GameEvent> events) {
+void resolveAssassinations(
+    GameState state, int targetSlot, Rng rng, List<GameEvent> events) {
   final orders = state.assassinationOrders
       .where((o) => o.targetSlot == targetSlot)
       .toList();
   if (orders.isEmpty) return;
-  state.assassinationOrders
-      .removeWhere((o) => o.targetSlot == targetSlot);
+  state.assassinationOrders.removeWhere((o) => o.targetSlot == targetSlot);
 
   for (final order in orders) {
     final target = state.realm(targetSlot);
@@ -130,12 +151,13 @@ void resolveAssassinations(GameState state, int targetSlot, Rng rng,
     if (victim == null) continue;
 
     final g = 2 * target.guardLevel;
-    final caught = math.min(rng.nextInt(g + 15), order.count);
+    final caught = _caughtAgents(
+        state, math.min(rng.nextInt(g + 15), order.count), order.count, rng);
     final survivors = math.min(order.count - caught, 49);
-    // Rules v4: like the spy missions, an attempt whose agents were ALL
-    // caught fails outright — earlier rules still rolled a 30% success.
-    final success = (state.rulesVersion < 4 || survivors > 0) &&
-        rng.nextInt(math.max(1, 50 - survivors)) < 15;
+    // Like the spy missions, an attempt whose agents were ALL caught
+    // fails outright; success scales with the survivors `[DESIGNED]`.
+    final success =
+        survivors > 0 && rng.nextInt(50) < math.min(40, 10 + survivors);
 
     if (success) {
       events.add(GameEvent(
@@ -169,8 +191,7 @@ void resolveAssassinations(GameState state, int targetSlot, Rng rng,
 void queueAssassination(
     GameState state, int sponsorSlot, int targetSlot, int agents) {
   for (final order in state.assassinationOrders) {
-    if (order.sponsorSlot == sponsorSlot &&
-        order.targetSlot == targetSlot) {
+    if (order.sponsorSlot == sponsorSlot && order.targetSlot == targetSlot) {
       order.count += agents;
       return;
     }

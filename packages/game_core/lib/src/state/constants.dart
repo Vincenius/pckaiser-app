@@ -33,13 +33,29 @@ abstract final class Building {
 
   /// War-score / worth value per building type (§4); index = building.
   static const List<int> value = [
-    0, 100, 150, 1000, 2500, 5000, 5000, 10000, 700,
+    0,
+    100,
+    150,
+    1000,
+    2500,
+    5000,
+    5000,
+    10000,
+    700,
   ];
 
   /// Build cost in Taler; `null` = cannot be built directly (Markt/Stadt
   /// grow from towns, §8.3).
   static const List<int?> cost = [
-    null, 100, 150, 1000, null, null, 5000, 10000, 700,
+    null,
+    100,
+    150,
+    1000,
+    null,
+    null,
+    5000,
+    10000,
+    700,
   ];
 
   /// "(S)chiff" colony ship (§4/§9.3) — not a building on a tile: sent

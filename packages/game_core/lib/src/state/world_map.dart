@@ -103,7 +103,7 @@ class WorldMap {
 
   /// Length of the shortest all-water path from ([fromX],[fromY]) to
   /// ([toX],[toY]) in orthogonal steps, or -1 when unreachable. Both ends
-  /// must be water tiles. Used by the manual ship voyage (rules v9):
+  /// must be water tiles. Used by the manual ship voyage:
   /// every water tile sailed costs 1 Zug, like the original's
   /// "(S)chiff steuern".
   int waterPathLength(int fromX, int fromY, int toX, int toY) {

@@ -54,7 +54,6 @@ List<GameEvent> applyActionInPlace(
 
   return switch (action) {
     ClaimTile() => _claimTile(state, realm, action),
-    SendShip() => _sendShip(state, realm, action),
     BuyShip() => _buyShip(state, realm, action),
     MoveShip() => _moveShip(state, realm, action),
     ColonizeShip() => _colonizeShip(state, realm, action, rng),
@@ -84,6 +83,7 @@ List<GameEvent> applyActionInPlace(
     WarPeaceWish() => applyWarPeaceWish(state, realm, action),
     WarEndRound() => applyWarEndRound(state, realm, action, rng),
     SettlementAnnex() => applySettlementAnnex(state, realm, action),
+    SettlementTakeAll() => applySettlementTakeAll(state, realm, action),
     SettlementFinish() => applySettlementFinish(state, realm, action),
     SpyMission() => applySpyMission(state, realm, action, rng),
     OrderAssassination() => applyOrderAssassination(state, realm, action),
@@ -111,8 +111,7 @@ void _requireOnMap(WorldMap map, int x, int y) {
 
 bool _adjacentToOwn(WorldMap map, int slot, int x, int y) {
   for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-    if (map.inBounds(x + dx, y + dy) &&
-        map.ownerAt(x + dx, y + dy) == slot) {
+    if (map.inBounds(x + dx, y + dy) && map.ownerAt(x + dx, y + dy) == slot) {
       return true;
     }
   }
@@ -162,60 +161,6 @@ List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   ];
 }
 
-/// "(S)chiff" colony ship, rules v6–v8 (manual: "man kann von [Häfen] aus
-/// auch Schiffe ausschicken, um z.B. unbewohnte Inseln zu kolonisieren";
-/// proc_005D2B): claims a free land tile reachable over water from an own
-/// Hafen for a flat 700 T — the ship is consumed at its build cost.
-/// Rules v9 retired this tap-target voyage in favor of manually steered
-/// ships ([_buyShip]/[_moveShip]/[_colonizeShip]).
-List<GameEvent> _sendShip(GameState state, Realm realm, SendShip action) {
-  if (state.rulesVersion < 6) {
-    throw ActionException('Das geht in diesem Spielstand noch nicht !');
-  }
-  if (state.rulesVersion >= 9) {
-    throw ActionException(
-        'Schiffe werden jetzt im Hafen gekauft und selbst gesteuert !');
-  }
-  final map = state.map;
-  _requireOnMap(map, action.x, action.y);
-  if (map.isWaterAt(action.x, action.y)) {
-    throw ActionException('Das Schiff muß ein freies Landfeld ansteuern !');
-  }
-  if (map.ownerAt(action.x, action.y) != World.niemand) {
-    throw ActionException('Das Feld hat bereits einen Besitzer !');
-  }
-  if (realm.tileCount[Building.hafen] < 1) {
-    throw ActionException('Du brauchst zuerst einen Hafen !');
-  }
-  if (!map.shipReachable(realm.slot, action.x, action.y)) {
-    throw ActionException('Dieses Feld ist über See nicht erreichbar !');
-  }
-  const cost = Building.shipCost;
-  _requireMovementPoint(realm);
-  _requireFunds(realm, cost);
-
-  realm.movementPoints--;
-  realm.treasury -= cost;
-  map.owner[map.index(action.x, action.y)] = realm.slot;
-  realm.tileCount[Building.none]++;
-
-  return [
-    GameEvent(
-      year: state.year,
-      slot: realm.slot,
-      type: 'shipColonized',
-      visibility: EventVisibility.public,
-      payload: {'x': action.x, 'y': action.y},
-    ),
-  ];
-}
-
-void _requireManualShips(GameState state) {
-  if (state.rulesVersion < 9) {
-    throw ActionException('Das geht in diesem Spielstand noch nicht !');
-  }
-}
-
 Ship _shipAt(Realm realm, int index) {
   if (index < 0 || index >= realm.ships.length) {
     throw ActionException('Dieses Schiff gibt es nicht !');
@@ -223,10 +168,9 @@ Ship _shipAt(Realm realm, int index) {
   return realm.ships[index];
 }
 
-/// Buy a colony ship at an own Hafen (rules v9): 700 T + 1 Zug; the ship
+/// Buy a colony ship at an own Hafen: 700 T + 1 Zug; the ship
 /// spawns on the harbor's water tile and is steered manually from there.
 List<GameEvent> _buyShip(GameState state, Realm realm, BuyShip action) {
-  _requireManualShips(state);
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
   if (map.ownerAt(action.x, action.y) != realm.slot ||
@@ -251,20 +195,18 @@ List<GameEvent> _buyShip(GameState state, Realm realm, BuyShip action) {
   ];
 }
 
-/// Sail a ship to a water tile (rules v9): shortest all-water route,
+/// Sail a ship to a water tile: shortest all-water route,
 /// 1 Zug per water tile — the original's "(S)chiff steuern" cost. A
 /// voyage longer than the remaining Züge must wait for the next turn
 /// (or stop at a nearer tile).
 List<GameEvent> _moveShip(GameState state, Realm realm, MoveShip action) {
-  _requireManualShips(state);
   final ship = _shipAt(realm, action.shipIndex);
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
   if (!map.isWaterAt(action.x, action.y)) {
     throw ActionException('Schiffe fahren nur auf dem Wasser !');
   }
-  final distance =
-      map.waterPathLength(ship.x, ship.y, action.x, action.y);
+  final distance = map.waterPathLength(ship.x, ship.y, action.x, action.y);
   if (distance < 0) {
     throw ActionException('Dieses Feld ist über See nicht erreichbar !');
   }
@@ -283,13 +225,12 @@ List<GameEvent> _moveShip(GameState state, Realm realm, MoveShip action) {
   return const [];
 }
 
-/// Colonize with a ship (rules v9): a free land tile orthogonally next to
+/// Colonize with a ship: a free land tile orthogonally next to
 /// the ship becomes the realm's, with a freshly founded Dorf on it — the
 /// ship is consumed (its settlers stay). Costs 1 Zug; the ship's 700 T
 /// already covered the colony.
 List<GameEvent> _colonizeShip(
     GameState state, Realm realm, ColonizeShip action, Rng rng) {
-  _requireManualShips(state);
   final ship = _shipAt(realm, action.shipIndex);
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
@@ -352,8 +293,7 @@ List<GameEvent> _colonizeShip(
 /// Building on an unowned land tile adjacent to own territory claims the
 /// tile as part of the build — the separate claim step was dropped from
 /// the player UX [DEVIATION]; `ClaimTile` remains for the AI script.
-List<GameEvent> _build(
-    GameState state, Realm realm, Build action, Rng rng) {
+List<GameEvent> _build(GameState state, Realm realm, Build action, Rng rng) {
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
 
@@ -493,14 +433,12 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
 /// "Reiche zusammenlegen" (§6.2).
 List<GameEvent> _mergeRealms(
     GameState state, Realm realm, MergeRealms action, Rng rng) {
-  // Rules v4: no merging while either realm fights the active war — the
-  // merged-in troops would bypass the v2 no-reinforcement-at-war gate and
-  // desync the war's movesLeft/snapshot bookkeeping.
+  // No merging while either realm fights the active war — the merged-in
+  // troops would bypass the no-reinforcement-at-war gate and desync the
+  // war's movesLeft/snapshot bookkeeping.
   final war = state.activeWar;
-  if (state.rulesVersion >= 4 &&
-      war != null &&
-      (war.isParticipant(realm.slot) ||
-          war.isParticipant(action.sourceSlot))) {
+  if (war != null &&
+      (war.isParticipant(realm.slot) || war.isParticipant(action.sourceSlot))) {
     throw ActionException('Nicht mitten im Krieg !');
   }
   if (!mergeableSlots(state, realm.slot).contains(action.sourceSlot)) {
@@ -631,7 +569,8 @@ List<GameEvent> _relocateCapital(
   if (building != Building.stadt &&
       building != Building.burg &&
       building != Building.palast) {
-    throw ActionException('Der neue Sitz braucht eine Stadt, Burg oder einen Palast !');
+    throw ActionException(
+        'Der neue Sitz braucht eine Stadt, Burg oder einen Palast !');
   }
   _requireFunds(realm, 5000);
 
@@ -686,14 +625,11 @@ List<GameEvent> _proposeMarriage(
 /// "(B)ürgerlich heiraten" (§14.1): marry [MarryCommoner.personId] to a
 /// freshly created commoner. [DEVIATION] A commoner always accepts (the
 /// original rolled the 25% like any proposal); the spouse joins the
-/// dynasty so the §14.3 birth loop applies to the couple. Rules v5+:
+/// dynasty so the §14.3 birth loop applies to the couple.
 /// always available — it neither checks nor consumes the one royal
 /// proposal per turn.
 List<GameEvent> _marryCommoner(
     GameState state, Realm realm, MarryCommoner action, Rng rng) {
-  if (state.rulesVersion < 5 && realm.proposedMarriageThisTurn) {
-    throw ActionException('Nur ein Heiratsantrag pro Zug !');
-  }
   final person = state.persons[action.personId];
   if (person == null || person.dynasty != realm.slot) {
     throw ActionException('Diese Person gehört nicht zu deiner Dynastie !');
@@ -701,8 +637,6 @@ List<GameEvent> _marryCommoner(
   if (person.spouseId != null || person.age < 14) {
     throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
   }
-  if (state.rulesVersion < 5) realm.proposedMarriageThisTurn = true;
-
   final events = <GameEvent>[];
   final dynasty = state.dynasty(realm.slot);
   final gender = 1 - person.gender;
@@ -838,7 +772,8 @@ List<GameEvent> _resolveDecision(
         total += amount;
       }
       if (total > realm.treasury) {
-        throw ActionException('Du hast nicht genügend Taler für diese Bestechung !');
+        throw ActionException(
+            'Du hast nicht genügend Taler für diese Bestechung !');
       }
       for (final (electorId, amount) in gifts) {
         realm.treasury -= amount;
@@ -852,16 +787,15 @@ List<GameEvent> _resolveDecision(
       final victor = state.persons[payload['victorId'] as int];
       final captured = state.persons[payload['capturedRulerId'] as int];
       if (victor != null && captured != null && choice['apply'] != false) {
-        war_rules.applyCoercion(state, payload['option'] as String, victor,
-            captured, rng, events);
+        war_rules.applyCoercion(
+            state, payload['option'] as String, victor, captured, rng, events);
       }
 
     case 'convertOrDie':
       final captured = state.persons[payload['capturedRulerId'] as int];
       if (captured != null) {
-        war_rules.applyConvertOrDie(state, captured,
-            payload['religion'] as int, choice['accept'] == true, rng,
-            events);
+        war_rules.applyConvertOrDie(state, captured, payload['religion'] as int,
+            choice['accept'] == true, rng, events);
       }
 
     case 'electorVote':
@@ -871,8 +805,7 @@ List<GameEvent> _resolveDecision(
       if (election == null || election.office.name != payload['office']) {
         break; // election already over — stale decision, no-op
       }
-      if (finalistId == null ||
-          !election.finalistIds.contains(finalistId)) {
+      if (finalistId == null || !election.finalistIds.contains(finalistId)) {
         throw ActionException('Stimme für einen der Kandidaten !');
       }
       election.votes[electorId] = finalistId;
@@ -930,14 +863,12 @@ List<GameEvent> _changeReligion(
 
   if (religion == Religion.moslemisch) {
     state.kurfuerstenIds.remove(realm.rulerId);
-    // Rules v10: the whole dynasty converts (religion is a dynasty
-    // property), so every member's Kurfürst seat is forfeit — exactly as
-    // in the coerced conversion (§12.1); seat eligibility (§17.2) keys
-    // on the member's home-dynasty religion.
-    if (state.rulesVersion >= 10) {
-      state.kurfuerstenIds
-          .removeWhere((id) => state.persons[id]?.dynasty == realm.slot);
-    }
+    // The whole dynasty converts (religion is a dynasty property), so
+    // every member's Kurfürst seat is forfeit — exactly as in the
+    // coerced conversion (§12.1); seat eligibility (§17.2) keys on the
+    // member's home-dynasty religion.
+    state.kurfuerstenIds
+        .removeWhere((id) => state.persons[id]?.dynasty == realm.slot);
   }
 
   // §14.4: religiously incompatible marriages dissolve.

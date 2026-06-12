@@ -51,8 +51,7 @@ void main() {
           // Starting cross: capital Burg + exactly one Dorf town.
           final map = state.map;
           expect(map.ownerAt(realm.capitalX, realm.capitalY), slot);
-          expect(
-              map.buildingAt(realm.capitalX, realm.capitalY), Building.burg);
+          expect(map.buildingAt(realm.capitalX, realm.capitalY), Building.burg);
           expect(realm.towns, hasLength(1));
           final town = realm.towns.single;
           expect(town.population, inInclusiveRange(75, 124));
@@ -96,8 +95,7 @@ void main() {
         final componentOf = List<int>.filled(map.terrain.length, -1);
         final sizes = <int>[];
         for (var start = 0; start < map.terrain.length; start++) {
-          if (componentOf[start] != -1 ||
-              !Terrain.isLand(map.terrain[start])) {
+          if (componentOf[start] != -1 || !Terrain.isLand(map.terrain[start])) {
             continue;
           }
           final id = sizes.length;
@@ -143,9 +141,8 @@ void main() {
       expect(state.dynasty(3).humanPlayer, 1);
       expect(state.realm(3).titleClass, 13, reason: 'female founder');
 
-      final aiCount = state.dynasties
-          .where((d) => d.status == DynastyStatus.ai)
-          .length;
+      final aiCount =
+          state.dynasties.where((d) => d.status == DynastyStatus.ai).length;
       expect(aiCount, 28);
       // AI realms get the suggested city name for their country (§22.4).
       expect(state.dynasty(1).status, DynastyStatus.ai);

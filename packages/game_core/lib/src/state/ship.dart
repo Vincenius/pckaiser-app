@@ -1,4 +1,4 @@
-/// A colony ship on the map (§9.3, rules v9): bought at an own Hafen,
+/// A colony ship on the map (§9.3): bought at an own Hafen,
 /// steered manually over water (1 Zug per tile, like the original's
 /// "(S)chiff steuern"), consumed when it colonizes a free coastal tile.
 ///

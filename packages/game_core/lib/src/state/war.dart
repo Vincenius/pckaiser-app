@@ -64,7 +64,7 @@ class ActiveWar {
         },
         winnerSlot: json['winnerSlot'] as int?,
         remainingClaim: json['remainingClaim'] as int? ?? 0,
-        // Additive field (rules v11) — older saves have no armed capture.
+        // Additive field — older saves have no armed capture.
         heldCapitalSlot: json['heldCapitalSlot'] as int?,
       );
 
@@ -92,14 +92,13 @@ class ActiveWar {
   int? winnerSlot;
   int remainingClaim;
 
-  /// Rules v11: the side that occupied the enemy capital at the previous
+  /// The side that occupied the enemy capital at the previous
   /// round end ("armed" capture). Holding it at the NEXT round end too —
   /// through the opponent's full response round — resolves the capture;
   /// null when nobody holds it.
   int? heldCapitalSlot;
 
-  bool isParticipant(int slot) =>
-      slot == attackerSlot || slot == defenderSlot;
+  bool isParticipant(int slot) => slot == attackerSlot || slot == defenderSlot;
 
   int opponentOf(int slot) =>
       slot == attackerSlot ? defenderSlot : attackerSlot;

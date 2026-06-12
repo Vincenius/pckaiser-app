@@ -35,8 +35,10 @@ class GameController extends ChangeNotifier {
   /// Routes the next map taps to [onPick] instead of the tile sheet.
   /// [onPick] returns true to accept the tile (ends the pick) or false to
   /// reject it (the pick stays active).
-  void startTilePick(
-      {required String hint, required bool Function(int x, int y) onPick}) {
+  void startTilePick({
+    required String hint,
+    required bool Function(int x, int y) onPick,
+  }) {
     tilePickHint = hint;
     _tilePick = onPick;
     notifyListeners();
@@ -89,9 +91,8 @@ class GameController extends ChangeNotifier {
 
   Realm get currentRealm => state.realm(currentSlot);
 
-  int get humanCount => state.dynasties
-      .where((d) => d.status == DynastyStatus.human)
-      .length;
+  int get humanCount =>
+      state.dynasties.where((d) => d.status == DynastyStatus.human).length;
 
   bool get busy => _busy;
 
@@ -111,8 +112,10 @@ class GameController extends ChangeNotifier {
   ActiveWar? get warForCurrentPlayer {
     final war = state.activeWar;
     if (war == null) return null;
-    final humanSide = [war.attackerSlot, war.defenderSlot].where(
-        (s) => state.dynasty(s).status == DynastyStatus.human);
+    final humanSide = [
+      war.attackerSlot,
+      war.defenderSlot,
+    ].where((s) => state.dynasty(s).status == DynastyStatus.human);
     if (humanSide.isEmpty) return null;
     return war;
   }
@@ -137,8 +140,10 @@ class GameController extends ChangeNotifier {
   /// restarts.
   List<GameEvent> recapFor(int slot) {
     final baseline = state.recapBaselines[slot] ?? 0;
-    final from =
-        (baseline - state.prunedEventCount).clamp(0, state.events.length);
+    final from = (baseline - state.prunedEventCount).clamp(
+      0,
+      state.events.length,
+    );
     return [
       for (var i = from; i < state.events.length; i++)
         if (state.events[i].visibleTo(slot)) state.events[i],
@@ -153,8 +158,7 @@ class GameController extends ChangeNotifier {
   void markRecapSeen(int slot) {
     // Written into the session's live state (persisted with the next
     // auto-save) — endTurn copies the state right after, carrying it over.
-    state.recapBaselines[slot] =
-        state.prunedEventCount + state.events.length;
+    state.recapBaselines[slot] = state.prunedEventCount + state.events.length;
   }
 
   /// Deterministic in-turn action — undoable (PROJECT_REQUIREMENTS).
@@ -193,7 +197,8 @@ class GameController extends ChangeNotifier {
     try {
       await _session.endTurnAndAdvance();
       _handoffToSlot = state.currentPlayer;
-      _handoffPending = humanCount > 1 ||
+      _handoffPending =
+          humanCount > 1 ||
           state.dynasty(state.currentPlayer).status == DynastyStatus.human;
       // A war against a human defender pauses the AI advance; the war UI
       // takes over instead of a handoff.
@@ -247,7 +252,8 @@ class GameController extends ChangeNotifier {
   /// side's units did this round. Skipped once the war is over — the
   /// post-war troop return would otherwise read as movement.
   List<GameEvent> _enemyMovementEvents(
-      Map<int, List<(String, int, int)>> before) {
+    Map<int, List<(String, int, int)>> before,
+  ) {
     if (before.isEmpty || state.activeWar == null) return const [];
     final events = <GameEvent>[];
     for (final entry in before.entries) {
@@ -264,30 +270,34 @@ class GameController extends ChangeNotifier {
           used[i] = true;
           if (x != troop.x || y != troop.y) {
             moves++;
-            events.add(GameEvent(
-              year: state.year,
-              slot: entry.key,
-              type: 'enemyMoved',
-              visibility: EventVisibility.public,
-              payload: {
-                'unit': troop.name,
-                'fromX': x,
-                'fromY': y,
-                'x': troop.x,
-                'y': troop.y,
-              },
-            ));
+            events.add(
+              GameEvent(
+                year: state.year,
+                slot: entry.key,
+                type: 'enemyMoved',
+                visibility: EventVisibility.public,
+                payload: {
+                  'unit': troop.name,
+                  'fromX': x,
+                  'fromY': y,
+                  'x': troop.x,
+                  'y': troop.y,
+                },
+              ),
+            );
           }
           break;
         }
       }
       if (moves == 0) {
-        events.add(GameEvent(
-          year: state.year,
-          slot: entry.key,
-          type: 'enemyHolds',
-          visibility: EventVisibility.public,
-        ));
+        events.add(
+          GameEvent(
+            year: state.year,
+            slot: entry.key,
+            type: 'enemyHolds',
+            visibility: EventVisibility.public,
+          ),
+        );
       }
     }
     return events;
@@ -318,8 +328,10 @@ class GameController extends ChangeNotifier {
     // directly (no second runAiTurn) and then let the remaining AIs play.
     if (state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
       final completed = completeTurn(state, Rng(state.rngSeed));
-      final advanced =
-          advanceUntilHuman(completed.state, Rng(completed.state.rngSeed));
+      final advanced = advanceUntilHuman(
+        completed.state,
+        Rng(completed.state.rngSeed),
+      );
       _session.restore(advanced.state);
       _handoffPending = true;
       _handoffToSlot = state.currentPlayer;
@@ -343,11 +355,14 @@ class GameController extends ChangeNotifier {
 
   /// Resolves a pending decision for [slot].
   Future<void> resolveDecision(
-      String decisionId, int slot, Map<String, dynamic> choice) async {
-    _session.apply(ResolveDecision(
-        slot: slot, decisionId: decisionId, choice: choice));
+    String decisionId,
+    int slot,
+    Map<String, dynamic> choice,
+  ) async {
+    _session.apply(
+      ResolveDecision(slot: slot, decisionId: decisionId, choice: choice),
+    );
     await _session.save();
     notifyListeners();
   }
-
 }

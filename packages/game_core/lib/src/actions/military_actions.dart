@@ -84,8 +84,7 @@ class ReinforceTroop extends PlayerAction {
   ReinforceTroop(
       {required super.slot, required this.unitIndex, required this.men});
 
-  factory ReinforceTroop.fromJson(Map<String, dynamic> json) =>
-      ReinforceTroop(
+  factory ReinforceTroop.fromJson(Map<String, dynamic> json) => ReinforceTroop(
         slot: json['slot'] as int,
         unitIndex: json['unitIndex'] as int,
         men: json['men'] as int,
@@ -104,7 +103,7 @@ class ReinforceTroop extends PlayerAction {
       {'type': kind, 'slot': slot, 'unitIndex': unitIndex, 'men': men};
 }
 
-/// "Truppe ausbilden" — drill (§10.2, rules v7, the traced original
+/// "Truppe ausbilden" — drill (§10.2, the traced original
 /// `proc_00A316`): +1 quality for 5 T/man, no class change. Once per unit
 /// per turn, regulars only, capped at [Troop.drillCap].
 class DrillTroop extends PlayerAction {
@@ -127,7 +126,7 @@ class DrillTroop extends PlayerAction {
       {'type': kind, 'slot': slot, 'unitIndex': unitIndex};
 }
 
-/// "Truppe umrüsten" (rules v5): retrain a regular unit to a new
+/// "Truppe umrüsten": retrain a regular unit to a new
 /// class for 5 T/man plus the class surcharge (Kav +500, Art +1,000).
 class TrainTroop extends PlayerAction {
   TrainTroop({
@@ -353,8 +352,7 @@ class WarPlunder extends PlayerAction {
   String get type => kind;
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
 /// "Will `<Land>` ein Ende des Krieges ?" — set this side's peace wish
@@ -416,8 +414,26 @@ class SettlementAnnex extends PlayerAction {
   String get type => kind;
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'x': x, 'y': y};
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
+}
+
+/// Claim settlement: annex EVERY affordable loser tile
+/// bordering the own land in one stroke, then finish the settlement
+/// (rest in Taler). Offered by the client as "Ganzes Land übernehmen"
+/// when the claim covers the loser's whole territory.
+class SettlementTakeAll extends PlayerAction {
+  SettlementTakeAll({required super.slot});
+
+  factory SettlementTakeAll.fromJson(Map<String, dynamic> json) =>
+      SettlementTakeAll(slot: json['slot'] as int);
+
+  static const kind = 'settlementTakeAll';
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
 }
 
 /// Claim settlement: press `F` (fertig) — unspent claim pays out 1:1 in

@@ -50,7 +50,8 @@ void applyShorelinePass(WorldMap map) {
   for (var y = 0; y < map.height; y++) {
     for (var x = 0; x < map.width; x++) {
       if (map.isLandAt(x, y)) continue;
-      map.terrain[map.index(x, y)] = Terrain.water + landNeighborMask(map, x, y);
+      map.terrain[map.index(x, y)] =
+          Terrain.water + landNeighborMask(map, x, y);
     }
   }
 }

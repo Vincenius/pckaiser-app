@@ -27,8 +27,7 @@ void main() {
       expect(state.rulesVersion, 1);
     });
 
-    test('documents from a newer app version are rejected, not guessed at',
-        () {
+    test('documents from a newer app version are rejected, not guessed at', () {
       final json = sampleState().toJson()
         ..['schemaVersion'] = currentSchemaVersion + 1;
       expect(

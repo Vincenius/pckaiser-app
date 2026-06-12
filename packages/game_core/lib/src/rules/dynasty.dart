@@ -12,8 +12,8 @@ import 'protection.dart';
 /// End-of-turn dynasty events for the active slot (§6.1 step 3, §14, §15):
 /// aging & death rolls (with succession), the annual marriage/birth loop.
 /// Mutates [state] in place; the pipeline owns the copy.
-void runDynastyPhase(GameState state, int slot, Rng rng,
-    List<GameEvent> events) {
+void runDynastyPhase(
+    GameState state, int slot, Rng rng, List<GameEvent> events) {
   final dynasty = state.dynasty(slot);
 
   // §15.1 Aging & natural death — iterate over a snapshot; deaths mutate
@@ -87,8 +87,8 @@ Person? findMarriageCandidate(GameState state, Person seeker, Rng rng) {
 /// §14.1 acceptance: an AI-controlled target rolls 25% immediately; a
 /// human-controlled target gets a `marriageConsent` pending decision
 /// (default fallback on timeout: the same 25% roll).
-void proposeMarriage(GameState state, Person proposer, Person target,
-    Rng rng, List<GameEvent> events) {
+void proposeMarriage(GameState state, Person proposer, Person target, Rng rng,
+    List<GameEvent> events) {
   final targetDynasty = state.dynasty(target.dynasty);
   if (targetDynasty.status == DynastyStatus.human) {
     state.pendingDecisions.add(PendingDecision(
@@ -132,8 +132,8 @@ void marry(GameState state, Person a, Person b, List<GameEvent> events) {
 }
 
 /// §14.4: a religion change dissolves religiously incompatible marriages.
-void divorceIncompatibleCouples(GameState state, int slot,
-    List<GameEvent> events) {
+void divorceIncompatibleCouples(
+    GameState state, int slot, List<GameEvent> events) {
   final religion = state.dynasty(slot).religion;
   for (final personId in List.of(state.dynasty(slot).memberIds)) {
     final person = state.persons[personId];
@@ -266,10 +266,26 @@ void handleDeath(
       visibility: EventVisibility.public,
       payload: {'deceased': deceased.name, 'heir': heir.name},
     ));
+    // Cross-dynasty inheritance (the §15.4 spouse path): another house —
+    // possibly another PLAYER — just gained whole realms. Announce it
+    // from the heir's side so their client can show a prominent popup
+    // (a quiet 'succession' line was easy to miss in playtests).
+    if (heir.dynasty != deceased.dynasty) {
+      events.add(GameEvent(
+        year: state.year,
+        slot: heir.dynasty,
+        type: 'realmInherited',
+        visibility: EventVisibility.public,
+        payload: {
+          'slots': ruledSlots,
+          'deceased': deceased.name,
+          'heir': heir.name,
+        },
+      ));
+    }
     // A human dynasty picks from a menu — the priority heir is provisional
     // until the decision is resolved (non-blocking).
-    if (dynasty.status == DynastyStatus.human &&
-        dynasty.memberIds.length > 1) {
+    if (dynasty.status == DynastyStatus.human && dynasty.memberIds.length > 1) {
       state.pendingDecisions.add(PendingDecision(
         id: 'heir-${deceased.id}-${state.year}',
         type: 'heirChoice',
@@ -288,8 +304,7 @@ void handleDeath(
   // No members remain: everything passes to a random other living ruler.
   final livingRulers = <int>{
     for (final realm in state.realms)
-      if (realm.rulerId != null && realm.rulerId != deceased.id)
-        realm.rulerId!,
+      if (realm.rulerId != null && realm.rulerId != deceased.id) realm.rulerId!,
   }.toList();
   if (livingRulers.isEmpty) {
     events.add(GameEvent(
@@ -318,6 +333,22 @@ void handleDeath(
       'inheritor': state.persons[inheritor]?.name,
     },
   ));
+  // The windfall inheritance, announced from the inheritor's side — the
+  // gaining player gets a prominent popup (see the succession path).
+  final inheritorPerson = state.persons[inheritor];
+  if (inheritorPerson != null) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: inheritorPerson.dynasty,
+      type: 'realmInherited',
+      visibility: EventVisibility.public,
+      payload: {
+        'slots': ruledSlots,
+        'deceased': deceased.name,
+        'heir': inheritorPerson.name,
+      },
+    ));
+  }
 }
 
 /// §15.4 heir priority: first male child → first male member → spouse →
@@ -342,6 +373,6 @@ Person? _chooseHeirByPriority(
       firstAlive(dynasty.memberIds);
   if (heir != null) return heir;
   if (dynasty.memberIds.isEmpty) return null;
-  return state.persons[
-      dynasty.memberIds[rng.nextInt(dynasty.memberIds.length)]];
+  return state
+      .persons[dynasty.memberIds[rng.nextInt(dynasty.memberIds.length)]];
 }

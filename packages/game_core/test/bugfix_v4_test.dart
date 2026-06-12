@@ -7,34 +7,45 @@ import 'package:test/test.dart';
 /// cleanup, decision purging, snapshot matching, recap baselines).
 void main() {
   GameState freshState() => startGame(
-      newGame(GameSetup(
-        humans: [
-          HumanPlayerSetup(
-              founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'A'),
-        ],
-        reformationYear: 1020,
-        ottomanYear: 1040,
-        seed: 2026,
-      )),
-      Rng(7)).state;
+          newGame(GameSetup(
+            humans: [
+              HumanPlayerSetup(
+                  founderName: 'Anna',
+                  gender: 1,
+                  countrySlot: 1,
+                  dorfName: 'A'),
+            ],
+            reformationYear: 1020,
+            ottomanYear: 1040,
+            seed: 2026,
+          )),
+          Rng(7))
+      .state;
 
   /// War-ready state: human slot 1 vs AI slot 2, both with one 50-man
   /// unit, a shared border, year 1010 (mirrors war_test.dart's setup).
   /// Returns the state plus the granted border tile of slot 2.
   (GameState, (int, int)) warState() {
     var state = startGame(
-        newGame(GameSetup(
-          humans: [
-            HumanPlayerSetup(
-                founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'A'),
-            HumanPlayerSetup(
-                founderName: 'Berta', gender: 1, countrySlot: 2, dorfName: 'B'),
-          ],
-          reformationYear: 1020,
-          ottomanYear: 1040,
-          seed: 2026,
-        )),
-        Rng(7)).state;
+            newGame(GameSetup(
+              humans: [
+                HumanPlayerSetup(
+                    founderName: 'Anna',
+                    gender: 1,
+                    countrySlot: 1,
+                    dorfName: 'A'),
+                HumanPlayerSetup(
+                    founderName: 'Berta',
+                    gender: 1,
+                    countrySlot: 2,
+                    dorfName: 'B'),
+              ],
+              reformationYear: 1020,
+              ottomanYear: 1040,
+              seed: 2026,
+            )),
+            Rng(7))
+        .state;
     state.year = 1010;
     state.dynasty(2).status = DynastyStatus.ai;
     state.dynasty(2).humanPlayer = null;
@@ -44,13 +55,14 @@ void main() {
       realm.towns.single.troopCapacity = 200;
       realm.troopCapacity = 200;
       state = applyAction(
-          state,
-          RecruitTroops(
-              slot: slot,
-              men: 50,
-              troopClass: TroopClass.infanterie,
-              name: 'Heer$slot'),
-          Rng(state.rngSeed)).state;
+              state,
+              RecruitTroops(
+                  slot: slot,
+                  men: 50,
+                  troopClass: TroopClass.infanterie,
+                  name: 'Heer$slot'),
+              Rng(state.rngSeed))
+          .state;
     }
     final map = state.map;
     (int, int)? border;
@@ -146,38 +158,6 @@ void main() {
           reason: 'stepping onto a tile the attacker owns is no capture');
       expect(s.realm(2).rulerId, isNot(s.realm(1).rulerId));
     });
-
-    test('under pre-v4 rules the stale capital still captures', () {
-      final (built, border) = warState();
-      var state =
-          GameState.fromJson(built.toJson()..['rulesVersion'] = 3);
-      final map = state.map;
-      final defender = state.realm(2);
-      map.owner[map.index(defender.capitalX, defender.capitalY)] = 1;
-      defender.troops.single
-        ..x = border.$1
-        ..y = border.$2;
-      final dorf = defender.towns.single;
-      state.realm(1).troops.single
-        ..x = dorf.x
-        ..y = dorf.y;
-
-      state = applyAction(
-              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
-          .state;
-      state = applyAction(
-              state,
-              WarMove(
-                  slot: 1,
-                  unitIndex: 0,
-                  dx: defender.capitalX - dorf.x,
-                  dy: defender.capitalY - dorf.y),
-              Rng(state.rngSeed))
-          .state;
-
-      expect(state.activeWar, isNull, reason: 'old games keep old rules');
-      expect(state.realm(2).rulerId, state.realm(1).rulerId);
-    });
   });
 
   group('rules v4: stacked combat', () {
@@ -220,10 +200,8 @@ void main() {
           .state;
 
       final attacker = s.realm(1).troops.singleOrNull;
-      final defendersOnDorf = s
-          .realm(2)
-          .troops
-          .where((t) => t.x == dorf.x && t.y == dorf.y);
+      final defendersOnDorf =
+          s.realm(2).troops.where((t) => t.x == dorf.x && t.y == dorf.y);
       final moverOnDorf =
           attacker != null && attacker.x == dorf.x && attacker.y == dorf.y;
       expect(moverOnDorf && defendersOnDorf.isNotEmpty, isFalse,
@@ -251,31 +229,10 @@ void main() {
           reason: 'the premise: the only agent was caught');
       expect(state.persons, contains(victim));
     });
-
-    test('under pre-v4 rules the same attempt could still succeed', () {
-      // Probe a seed where the agent is caught AND the old 30% roll hits.
-      var seed = 1;
-      for (;; seed++) {
-        final probe = Rng(seed);
-        if (probe.nextInt(115) > 0 && probe.nextInt(50) < 15) break;
-      }
-      final state =
-          GameState.fromJson(freshState().toJson()..['rulesVersion'] = 1);
-      state.realm(2).guardLevel = guardCap;
-      final victim = state.realm(2).rulerId!;
-      queueAssassination(state, 1, 2, 1);
-      final events = <GameEvent>[];
-      resolveAssassinations(state, 2, Rng(seed), events);
-
-      expect(events.any((e) => e.type == 'assassination'), isTrue,
-          reason: 'old games keep the old (buggy) behavior');
-      expect(state.persons.containsKey(victim), isFalse);
-    });
   });
 
   group('rules v4: merging at war', () {
-    test('MergeRealms is blocked while the realm fights the active war',
-        () {
+    test('MergeRealms is blocked while the realm fights the active war', () {
       final (built, _) = warState();
       var state = built;
       final ruler1 = state.realm(1).rulerId!;
@@ -287,8 +244,8 @@ void main() {
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
       expect(
-        () => applyAction(state, MergeRealms(slot: 1, sourceSlot: 3),
-            Rng(state.rngSeed)),
+        () => applyAction(
+            state, MergeRealms(slot: 1, sourceSlot: 3), Rng(state.rngSeed)),
         throwsA(isA<ActionException>()),
       );
     });
@@ -311,8 +268,7 @@ void main() {
   });
 
   group('decision resolution (unversioned fixes)', () {
-    test('unknown decision types resolve as a no-op instead of throwing',
-        () {
+    test('unknown decision types resolve as a no-op instead of throwing', () {
       final state = freshState();
       state.pendingDecisions.add(PendingDecision(
         id: 'future-1',
@@ -325,8 +281,7 @@ void main() {
                   slot: 1, decisionId: 'future-1', choice: const {}),
               Rng(state.rngSeed))
           .state;
-      expect(next.pendingDecisions.where((d) => d.id == 'future-1'),
-          isEmpty);
+      expect(next.pendingDecisions.where((d) => d.id == 'future-1'), isEmpty);
     });
 
     test('marriage consent re-checks religion at resolution time', () {
@@ -434,14 +389,14 @@ void main() {
       // A second same-named unit for the attacker on another own tile.
       final first = state.realm(1).troops.single;
       state.realm(1).troops.add(Troop(
-        name: first.name,
-        men: 10,
-        troopClass: TroopClass.infanterie,
-        quality: TroopQuality.soeldner,
-        garrisonCounted: false,
-        x: state.realm(1).towns.single.x,
-        y: state.realm(1).towns.single.y,
-      ));
+            name: first.name,
+            men: 10,
+            troopClass: TroopClass.infanterie,
+            quality: TroopQuality.soeldner,
+            garrisonCounted: false,
+            x: state.realm(1).towns.single.x,
+            y: state.realm(1).towns.single.y,
+          ));
       final homes = [
         for (final t in state.realm(1).troops) (t.x, t.y),
       ];
@@ -480,8 +435,7 @@ void main() {
       state.recapBaselines[1] = 42;
       expect(GameState.fromJson(state.toJson()).recapBaselines[1], 42);
       expect(state.copy().recapBaselines[1], 42);
-      expect(
-          visibleStateFor(state, 2).recapBaselines.containsKey(1), isFalse);
+      expect(visibleStateFor(state, 2).recapBaselines.containsKey(1), isFalse);
       expect(visibleStateFor(state, 1).recapBaselines[1], 42);
     });
   });

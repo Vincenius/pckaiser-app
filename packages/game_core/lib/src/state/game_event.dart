@@ -27,11 +27,9 @@ class GameEvent {
         year: json['year'] as int,
         slot: json['slot'] as int,
         type: json['type'] as String,
-        visibility:
-            EventVisibility.values.byName(json['visibility'] as String),
+        visibility: EventVisibility.values.byName(json['visibility'] as String),
         participants: (json['participants'] as List?)?.cast<int>() ?? const [],
-        payload:
-            (json['payload'] as Map?)?.cast<String, dynamic>() ?? const {},
+        payload: (json['payload'] as Map?)?.cast<String, dynamic>() ?? const {},
       );
 
   final int year;

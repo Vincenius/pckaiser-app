@@ -24,9 +24,28 @@ Troop unitAt(Realm realm, int index) {
   return realm.troops[index];
 }
 
+/// Militarism costs popularity, but never below 25 — the
+/// people grumble over levies and wars, yet the §19.1 strife revolution
+/// (popularity < 20) stays food-driven as in the original: the floor
+/// sits above the strife line plus the ±3 harvest nudge (§8.4), so
+/// militarism alone can never tip a realm into collapse. Without it the
+/// AI (which recruits and wars freely) collapsed into strife 5–9× as
+/// often in the 200-year sim. A stat already below 25 is left
+/// untouched, never raised.
+void _militarismPopularityCost(Realm realm, int cost) {
+  final floored = realm.popularity - cost < 25 ? 25 : realm.popularity - cost;
+  if (floored < realm.popularity) realm.popularity = floored;
+}
+
+/// The people resent levies — recruiting or hiring [men] costs
+/// 1 + men/200 popularity.
+void _levyPopularityCost(GameState state, Realm realm, int men) {
+  _militarismPopularityCost(realm, 1 + men ~/ 200);
+}
+
 List<GameEvent> applyRecruitTroops(
     GameState state, Realm realm, RecruitTroops action, Rng rng) {
-  _requireNotAtWarV2(state, realm);
+  _requireNotAtWarPeacetime(state, realm);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   if (action.troopClass < TroopClass.infanterie ||
       action.troopClass > TroopClass.artillerie) {
@@ -41,6 +60,7 @@ List<GameEvent> applyRecruitTroops(
   }
   final (px, py) = _stationAt(state, realm, action.x, action.y);
   realm.treasury -= cost;
+  _levyPopularityCost(state, realm, action.men);
   quarterRecruits(realm, action.men, rng);
   realm.troops.add(Troop(
     name: action.name.trim().isEmpty ? 'Rekruten' : action.name.trim(),
@@ -76,7 +96,7 @@ List<GameEvent> applyRecruitTroops(
 
 List<GameEvent> applyHireSoeldner(
     GameState state, Realm realm, HireSoeldner action) {
-  _requireNotAtWarV2(state, realm);
+  _requireNotAtWarPeacetime(state, realm);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   final cost = 50 * action.men;
   if (realm.treasury < cost) {
@@ -84,6 +104,7 @@ List<GameEvent> applyHireSoeldner(
   }
   final (px, py) = _stationAt(state, realm, action.x, action.y);
   realm.treasury -= cost;
+  _levyPopularityCost(state, realm, action.men);
   realm.troops.add(Troop(
     name: action.name.trim().isEmpty ? 'Söldner' : action.name.trim(),
     men: action.men,
@@ -107,7 +128,7 @@ List<GameEvent> applyHireSoeldner(
 
 List<GameEvent> applyReinforceTroop(
     GameState state, Realm realm, ReinforceTroop action, Rng rng) {
-  _requireNotAtWarV2(state, realm);
+  _requireNotAtWarPeacetime(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   final int cost;
@@ -128,16 +149,12 @@ List<GameEvent> applyReinforceTroop(
   return const [];
 }
 
-/// "Truppe ausbilden" — drill (§10.2, rules v7): the traced original
-/// training (`proc_00A316`: cost = men × 5, quality counter +1). Regulars
-/// only, quality capped at [Troop.drillCap] `[DESIGNED]`. Pre-v7 games
-/// keep playing without it; v7 limited it to once per unit per turn,
-/// since v8 a unit drills as often as the treasury allows.
+/// "Truppe ausbilden" — drill (§10.2): the traced original training
+/// (`proc_00A316`: cost = men × 5, quality counter +1). Regulars only,
+/// quality capped at [Troop.drillCap] `[DESIGNED]`; a unit drills as
+/// often as the treasury allows.
 List<GameEvent> applyDrillTroop(
     GameState state, Realm realm, DrillTroop action) {
-  if (state.rulesVersion < 7) {
-    throw ActionException('Das geht in diesem Spielstand noch nicht !');
-  }
   _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   // Söldner (and event units) are not garrison-counted — only the realm's
@@ -148,32 +165,23 @@ List<GameEvent> applyDrillTroop(
   if (troop.quality >= Troop.drillCap) {
     throw ActionException('Diese Truppe ist bereits voll ausgebildet !');
   }
-  if (state.rulesVersion < 8 && troop.drilledThisTurn) {
-    throw ActionException(
-        'Diese Truppe wurde in dieser Runde schon ausgebildet !');
-  }
   final cost = 5 * troop.men;
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
   realm.treasury -= cost;
   troop.quality++;
-  troop.drilledThisTurn = true;
   return const [];
 }
 
-/// "Truppe umrüsten" (rules v5): retrain a regular unit to a new
-/// class for 5 T/man plus the class surcharge. Pre-v5 games keep playing
-/// without it (new capability = balance change).
+/// "Truppe umrüsten": retrain a regular unit to a new class for 5 T/man
+/// plus the class surcharge.
 List<GameEvent> applyTrainTroop(
     GameState state, Realm realm, TrainTroop action) {
-  if (state.rulesVersion < 5) {
-    throw ActionException('Das geht in diesem Spielstand noch nicht !');
-  }
   _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   // Garrison-counted = the realm's own regulars (drilled quality stays
-  // retrainable under v7); Söldner/event units are excluded.
+  // retrainable); Söldner/event units are excluded.
   if (!troop.garrisonCounted) {
     throw ActionException('Nur reguläre Truppen lassen sich ausbilden !');
   }
@@ -216,12 +224,12 @@ void _requireNotAtWar(GameState state, Realm realm) {
   }
 }
 
-/// Rules v2 widens the at-war gate to recruiting, hiring, reinforcing and
+/// The at-war gate also covers recruiting, hiring, reinforcing and
 /// peacetime troop moves: new units desync the war's `movesLeft`/snapshot
 /// lists until the next round roll, and a normal move would teleport a
 /// unit past the war movement rules for one movement point.
-void _requireNotAtWarV2(GameState state, Realm realm) {
-  if (state.rulesVersion >= 2) _requireNotAtWar(state, realm);
+void _requireNotAtWarPeacetime(GameState state, Realm realm) {
+  _requireNotAtWar(state, realm);
 }
 
 List<GameEvent> applyMergeTroops(
@@ -251,9 +259,8 @@ List<GameEvent> applyDisbandTroop(
   return const [];
 }
 
-List<GameEvent> applyMoveTroop(
-    GameState state, Realm realm, MoveTroop action) {
-  _requireNotAtWarV2(state, realm);
+List<GameEvent> applyMoveTroop(GameState state, Realm realm, MoveTroop action) {
+  _requireNotAtWarPeacetime(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   final map = state.map;
   if (!map.inBounds(action.x, action.y) ||
@@ -262,13 +269,7 @@ List<GameEvent> applyMoveTroop(
     throw ActionException(
         'Du musst deine Truppen auf deinem Territorium stationieren !');
   }
-  // Rules v3: relocating troops is free — only building consumes Züge.
-  if (state.rulesVersion < 3) {
-    if (realm.movementPoints < 1) {
-      throw ActionException('Du hast keine Züge mehr !');
-    }
-    realm.movementPoints--;
-  }
+  // Relocating troops is free — only building consumes Züge.
   map.troopMarker[map.index(troop.x, troop.y)] = 0;
   troop.x = action.x;
   troop.y = action.y;
@@ -282,8 +283,7 @@ List<GameEvent> applyDeclareWar(
     throw ActionException('Kriege sind erst ab dem Jahr 1010 erlaubt !');
   }
   if (realm.warThisYear) {
-    throw ActionException(
-        'Du hast dieses Jahr schon einmal Krieg geführt !');
+    throw ActionException('Du hast dieses Jahr schon einmal Krieg geführt !');
   }
   if (realm.troops.where((t) => t.men > 0).isEmpty) {
     throw ActionException('Du hast nicht genug Truppen !');
@@ -315,6 +315,9 @@ List<GameEvent> applyDeclareWar(
     throw ActionException('Du hast keine gemeinsame Grenze !');
   }
   startWar(state, realm.slot, action.targetSlot, rng);
+  // The people resent war — the aggressor pays popularity (floored at
+  // 25, see _militarismPopularityCost).
+  _militarismPopularityCost(realm, 5);
   return [
     GameEvent(
       year: state.year,
@@ -349,7 +352,8 @@ List<GameEvent> applyWarMove(
   if (moves == null ||
       action.unitIndex >= moves.length ||
       moves[action.unitIndex] < 1) {
-    throw ActionException('Diese Truppe kann in dieser Runde nicht weiter ziehen !');
+    throw ActionException(
+        'Diese Truppe kann in dieser Runde nicht weiter ziehen !');
   }
   final nx = troop.x + action.dx;
   final ny = troop.y + action.dy;
@@ -363,13 +367,11 @@ List<GameEvent> applyWarMove(
   final enemySlot = war.opponentOf(realm.slot);
   final enemyRealm = state.realm(enemySlot);
 
-  // Meeting an enemy unit triggers per-tile combat (§11.3). Rules v4: a
-  // stack of enemy units is fought one after another — earlier rules
-  // fought only the first and then co-located with the survivors.
+  // Meeting an enemy unit triggers per-tile combat (§11.3); a stack of
+  // enemy units is fought one after another.
   final defenders =
       enemyRealm.troops.where((t) => t.x == nx && t.y == ny).toList();
-  for (final enemyUnit
-      in state.rulesVersion >= 4 ? defenders : defenders.take(1)) {
+  for (final enemyUnit in defenders) {
     events.addAll(
         resolveCombat(state, realm.slot, troop, enemySlot, enemyUnit, rng));
     if (!realm.troops.contains(troop)) {
@@ -387,20 +389,10 @@ List<GameEvent> applyWarMove(
   troop.y = ny;
   map.troopMarker[map.index(nx, ny)] = 1;
 
-  // Ruler capture (§11.2): a unit on the enemy capital ends the war.
-  // Rules v4: only while the capital tile is still enemy-owned — stale
-  // capital coordinates (the tile was conquered or seized in an earlier
-  // war/bankruptcy and the seat never relocated) no longer grant an
-  // instant capture by stepping onto a tile the attacker may even own.
-  // Rules v9: stepping onto the capital no longer ends the war on the
-  // spot — the occupier must HOLD the tile until the war round ends
-  // (`endWarRound` resolves the capture, opening the claim settlement).
-  if (state.rulesVersion < 9 &&
-      nx == enemyRealm.capitalX &&
-      ny == enemyRealm.capitalY &&
-      (state.rulesVersion < 4 || map.ownerAt(nx, ny) == enemySlot)) {
-    endWarByCapture(state, realm.slot, rng, events);
-  }
+  // Ruler capture (§11.2) does NOT trigger here: stepping onto the
+  // enemy capital arms the capture, but the occupier must HOLD the tile
+  // through the enemy's full response round — `endWarRound` resolves it
+  // and opens the claim settlement.
   return events;
 }
 
@@ -430,15 +422,13 @@ List<GameEvent> applyWarPlunder(
   if (map.ownerAt(action.x, action.y) == realm.slot) {
     throw ActionException('Wollen sie wirklich ihr eigenes Land plündern !');
   }
-  // Rules v2: plunder only hits the war opponent — v1 let a unit sack any
-  // foreign realm it could walk to during someone else's war.
-  if (state.rulesVersion >= 2 &&
-      map.ownerAt(action.x, action.y) != war.opponentOf(realm.slot)) {
+  // Plunder only hits the war opponent — not any foreign realm a unit
+  // could walk to during someone else's war.
+  if (map.ownerAt(action.x, action.y) != war.opponentOf(realm.slot)) {
     throw ActionException('Das gehört nicht deinem Kriegsgegner !');
   }
   // Your troops must have reached the tile.
-  final present =
-      realm.troops.any((t) => t.x == action.x && t.y == action.y);
+  final present = realm.troops.any((t) => t.x == action.x && t.y == action.y);
   if (!present) {
     throw ActionException('Keine Truppen auf diesem Feld !');
   }
@@ -501,6 +491,20 @@ List<GameEvent> applySettlementAnnex(
   final events = <GameEvent>[];
   transferTile(state, action.x, action.y, realm.slot, events);
   war.remainingClaim -= value;
+  return events;
+}
+
+/// "Ganzes Land übernehmen": greedy annex of every affordable bordering
+/// loser tile, then the settlement finishes (rest in Taler).
+List<GameEvent> applySettlementTakeAll(
+    GameState state, Realm realm, SettlementTakeAll action) {
+  final war = _warFor(state, realm.slot, phase: WarPhase.settlement);
+  if (war.winnerSlot != realm.slot) {
+    throw ActionException('Nur der Sieger stellt Ansprüche !');
+  }
+  final events = <GameEvent>[];
+  annexAffordableTiles(state, events);
+  finishSettlement(state, events);
   return events;
 }
 

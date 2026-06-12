@@ -76,13 +76,12 @@ class GameState {
         sultanChronicle: _recordList(json['sultanChronicle']),
         persons: {
           for (final p in (json['persons'] as List? ?? const []))
-            (p as Map)['id'] as int:
-                Person.fromJson(p.cast<String, dynamic>()),
+            (p as Map)['id'] as int: Person.fromJson(p.cast<String, dynamic>()),
         },
         nextPersonId: json['nextPersonId'] as int? ?? 1,
         assassinationOrders: (json['assassinationOrders'] as List?)
-            ?.map((o) => AssassinationOrder.fromJson(
-                (o as Map).cast<String, dynamic>()))
+            ?.map((o) =>
+                AssassinationOrder.fromJson((o as Map).cast<String, dynamic>()))
             .toList(),
         currentPlayer: json['currentPlayer'] as int? ?? 1,
         map: WorldMap.fromJson((json['map'] as Map).cast<String, dynamic>()),
@@ -102,12 +101,11 @@ class GameState {
             : ActiveWar.fromJson(
                 (json['activeWar'] as Map).cast<String, dynamic>()),
         pendingDecisions: (json['pendingDecisions'] as List?)
-            ?.map((d) => PendingDecision.fromJson(
-                (d as Map).cast<String, dynamic>()))
+            ?.map((d) =>
+                PendingDecision.fromJson((d as Map).cast<String, dynamic>()))
             .toList(),
         events: (json['events'] as List?)
-            ?.map((e) =>
-                GameEvent.fromJson((e as Map).cast<String, dynamic>()))
+            ?.map((e) => GameEvent.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
         prunedEventCount: json['prunedEventCount'] as int? ?? 0,
         recapBaselines: {
@@ -116,11 +114,10 @@ class GameState {
         });
   }
 
-  static List<ChronicleRecord> _recordList(Object? json) =>
-      (json as List? ?? const [])
-          .map((r) =>
-              ChronicleRecord.fromJson((r as Map).cast<String, dynamic>()))
-          .toList();
+  static List<ChronicleRecord> _recordList(Object? json) => (json as List? ??
+          const [])
+      .map((r) => ChronicleRecord.fromJson((r as Map).cast<String, dynamic>()))
+      .toList();
 
   /// JSON shape version (see versioning.dart). Bumped only on
   /// incompatible reshapes; additions never bump it. Old documents are
@@ -235,9 +232,7 @@ class GameState {
         sultanChronicle: [for (final r in sultanChronicle) r.copy()],
         persons: {for (final e in persons.entries) e.key: e.value.copy()},
         nextPersonId: nextPersonId,
-        assassinationOrders: [
-          for (final o in assassinationOrders) o.copy()
-        ],
+        assassinationOrders: [for (final o in assassinationOrders) o.copy()],
         currentPlayer: currentPlayer,
         map: map.copy(),
         realms: [for (final r in realms) r.copy()],
