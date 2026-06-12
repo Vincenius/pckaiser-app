@@ -124,6 +124,8 @@ String describeEvent(gc.GameEvent e) {
     'realmOverrun' => '$realm hat sein gesamtes Land verloren !',
     'humansDefeated' =>
       'Keine menschliche Dynastie hält mehr die Macht — das Spiel ist aus',
+    'playerLeft' =>
+      '$realm: der Spieler hat die Partie verlassen — der Computer übernimmt',
     'forcedMarriage' => '${p['victor']} erzwingt die Heirat mit ${p['spouse']}',
     'forcedAbdication' => '${p['name']} muss abdanken !',
     'execution' => '${p['name']} wird hingerichtet !!!',

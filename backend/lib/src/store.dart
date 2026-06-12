@@ -16,6 +16,7 @@ abstract class GameStore {
 
   Future<MatchRecord?> match(String id);
   Future<void> saveMatch(MatchRecord match);
+  Future<void> deleteMatch(String id);
   Future<List<MatchRecord>> matchesForPlayer(String playerId);
 
   /// Matches whose turn deadline has passed — the timeout sweep input.
@@ -39,6 +40,9 @@ class InMemoryStore implements GameStore {
 
   @override
   Future<void> saveMatch(MatchRecord match) async => _matches[match.id] = match;
+
+  @override
+  Future<void> deleteMatch(String id) async => _matches.remove(id);
 
   @override
   Future<List<MatchRecord>> matchesForPlayer(String playerId) async => [
@@ -95,8 +99,9 @@ class FileStore implements GameStore {
 
   @override
   Future<MatchRecord?> match(String id) async {
-    // The id becomes a file name — never trust it as a path.
-    if (!RegExp(r'^[0-9a-fA-F-]{1,64}$').hasMatch(id)) return null;
+    // The id becomes a file name — never trust it as a path. Covers both
+    // id schemes: 5-letter room codes and legacy UUIDs.
+    if (!RegExp(r'^[0-9A-Za-z-]{1,64}$').hasMatch(id)) return null;
     final file = _matchFile(id);
     if (!file.existsSync()) return null;
     return MatchRecord.fromJson(_readJson(file));
@@ -105,6 +110,14 @@ class FileStore implements GameStore {
   @override
   Future<void> saveMatch(MatchRecord match) async =>
       _writeAtomic(_matchFile(match.id), match.toJson());
+
+  @override
+  Future<void> deleteMatch(String id) async {
+    // Same path guard as [match] — the id becomes a file name.
+    if (!RegExp(r'^[0-9A-Za-z-]{1,64}$').hasMatch(id)) return;
+    final file = _matchFile(id);
+    if (file.existsSync()) file.deleteSync();
+  }
 
   Future<List<MatchRecord>> _allMatches() async => [
         for (final f in Directory('$directory/matches').listSync())

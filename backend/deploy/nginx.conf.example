@@ -1,0 +1,20 @@
+# Nginx reverse proxy for the PC Kaiser server (ARCHITECTURE.md).
+# Pair with certbot/Let's Encrypt for TLS:
+#   certbot --nginx -d kaiser.example.com
+server {
+    listen 80;
+    server_name kaiser.example.com;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 60s;
+        client_max_body_size 1m;
+    }
+}
+
+# Backups: the whole game state is the STORE_DIR volume — a daily
+#   docker run --rm -v pckaiser-data:/data -v /backups:/backups alpine \
+#     tar czf /backups/pckaiser-$(date +%F).tar.gz /data
+# cron line is all it takes.

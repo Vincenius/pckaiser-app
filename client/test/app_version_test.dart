@@ -10,12 +10,16 @@ void main() {
     final pubspec = File('pubspec.yaml').readAsLinesSync();
     final line = pubspec.firstWhere((l) => l.startsWith('version:'));
     final pubspecVersion = line.substring('version:'.length).trim();
-    expect(appVersion, pubspecVersion,
-        reason: 'keep lib/app_version.dart in sync with pubspec.yaml');
+    expect(
+      appVersion,
+      pubspecVersion,
+      reason: 'keep lib/app_version.dart in sync with pubspec.yaml',
+    );
   });
 
-  testWidgets('the About screen shows description, version and credits',
-      (tester) async {
+  testWidgets('the About screen shows description, version and credits', (
+    tester,
+  ) async {
     await tester.pumpWidget(const MaterialApp(home: AboutScreen()));
     expect(find.textContaining('Version $appVersion'), findsOneWidget);
     expect(find.textContaining('Regelwerk'), findsOneWidget);

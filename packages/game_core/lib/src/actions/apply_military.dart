@@ -302,10 +302,12 @@ List<GameEvent> applyDeclareWar(
   if (state.realm(action.targetSlot).rulerId == realm.rulerId) {
     throw ActionException('Dieses Reich gehört bereits deinem Herrscher !');
   }
-  // V1 limitation: human-vs-human wars wait for the online war clock
-  // (ARCHITECTURE.md "Human-vs-human wars online") — the war UI can only
-  // seat one human side, so such a war would deadlock the game.
-  if (state.dynasty(realm.slot).status == DynastyStatus.human &&
+  // Ruleset v2 lifts the V1 limitation on human-vs-human wars: war input
+  // now alternates between the two human sides (war.actingSlot, hot-seat
+  // handoff locally, the war clock online). The gate only documents the
+  // change — every game adopts the latest rules on load.
+  if (state.rulesVersion < 2 &&
+      state.dynasty(realm.slot).status == DynastyStatus.human &&
       state.dynasty(action.targetSlot).status == DynastyStatus.human) {
     throw ActionException(
         'Krieg gegen menschliche Mitspieler ist noch nicht möglich !');
@@ -337,6 +339,14 @@ ActiveWar _warFor(GameState state, int slot, {WarPhase? phase}) {
   }
   if (phase != null && war.phase != phase) {
     throw ActionException('Falsche Kriegsphase !');
+  }
+  // Human-vs-human rounds run sequentially (attacker first): only the
+  // acting side may issue war input. AI sides are exempt — their moves
+  // are driven by the round-end orchestration, not awaited input.
+  if (war.phase == WarPhase.rounds &&
+      state.dynasty(slot).status == DynastyStatus.human &&
+      warActingSlot(state) != slot) {
+    throw ActionException('Dein Gegner ist gerade am Zug !');
   }
   return war;
 }
@@ -456,7 +466,11 @@ List<GameEvent> applyWarEndRound(
     GameState state, Realm realm, WarEndRound action, Rng rng) {
   _warFor(state, realm.slot, phase: WarPhase.rounds);
   final events = <GameEvent>[];
-  endWarRound(state, rng, events);
+  // Human-vs-human: the attacker's round end only hands the input to the
+  // defender; the defender's round end advances the round for real.
+  if (!handWarRoundOver(state, realm.slot)) {
+    endWarRound(state, rng, events);
+  }
   return events;
 }
 

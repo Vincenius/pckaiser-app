@@ -1,5 +1,6 @@
 import 'package:game_core/game_core.dart';
 
+import 'game_session.dart';
 import 'save_service.dart';
 
 /// Drives a local hot-seat game: wraps the game_core turn pipeline and
@@ -7,7 +8,7 @@ import 'save_service.dart';
 /// the next player (PROJECT_REQUIREMENTS.md "Auto-save triggers after
 /// every turn completion"). With [persist] off (the tutorial) the session
 /// is ephemeral: nothing is ever written to disk.
-class LocalGameSession {
+class LocalGameSession implements GameSession {
   LocalGameSession(
     this.slotName,
     this._state,
@@ -66,13 +67,26 @@ class LocalGameSession {
   final bool persist;
 
   GameState _state;
+
+  @override
   GameState get state => _state;
+
+  @override
+  bool get isOnline => false;
+
+  @override
+  bool get canUndo => true;
+
+  @override
+  bool get awaitingRemote => false;
 
   /// What the seated player may see (hot-seat hidden information).
   GameState get visibleState => visibleStateFor(_state, _state.currentPlayer);
 
-  /// Applies an in-turn action for the active player.
-  ActionResult apply(PlayerAction action) {
+  /// Applies an in-turn action for the active player (synchronous under
+  /// the hood — the Future exists for the shared [GameSession] surface).
+  @override
+  Future<ActionResult> apply(PlayerAction action) async {
     final rng = Rng(_state.rngSeed);
     final result = applyAction(_state, action, rng);
     _state = result.state;
@@ -81,6 +95,7 @@ class LocalGameSession {
 
   /// Restores a snapshot — the in-turn undo path (deterministic actions
   /// only; the stack is managed by the GameController).
+  @override
   void restore(GameState snapshot) {
     _state = snapshot;
   }
@@ -100,6 +115,13 @@ class LocalGameSession {
     return events;
   }
 
+  /// One shared engine entry point (client + server): a human-vs-human
+  /// attacker hands the round to the defender, otherwise the AI sides
+  /// respond and the round advances.
+  @override
+  Future<List<GameEvent>> endWarRound(int slot) async =>
+      mutate((state, rng, events) => endWarRoundFor(state, slot, rng, events));
+
   /// Ends the active player's turn, advances the pipeline and auto-saves.
   /// The returned events feed the "since your last turn" recap.
   Future<TurnResult> endTurn() async {
@@ -112,17 +134,39 @@ class LocalGameSession {
 
   /// Ends the turn, then lets the AI realms play until a human's action
   /// phase (or a human-defended war) is reached; auto-saves the result.
-  Future<TurnResult> endTurnAndAdvance() async {
+  @override
+  Future<List<GameEvent>> endTurnAndAdvance() async {
     final rng = Rng(_state.rngSeed);
     final ended = completeTurn(_state, rng);
     final advanced = advanceUntilHuman(ended.state, Rng(ended.state.rngSeed));
     _state = advanced.state;
     await save();
-    return TurnResult(_state, [...ended.events, ...advanced.events]);
+    return [...ended.events, ...advanced.events];
+  }
+
+  /// A war that interrupted AI processing leaves the AI attacker's turn
+  /// half-finished: its action phase already ran, so complete the turn
+  /// directly (no second runAiTurn) and then let the remaining AIs play.
+  @override
+  Future<void> resumeAfterWar() async {
+    if (_state.activeWar != null) {
+      await save();
+      return;
+    }
+    if (_state.dynasty(_state.currentPlayer).status != DynastyStatus.human) {
+      final completed = completeTurn(_state, Rng(_state.rngSeed));
+      final advanced = advanceUntilHuman(
+        completed.state,
+        Rng(completed.state.rngSeed),
+      );
+      _state = advanced.state;
+    }
+    await save();
   }
 
   /// Persists the current state (used after war rounds resolve); a no-op
   /// for ephemeral sessions.
+  @override
   Future<void> save() async {
     if (!persist) return;
     await _saves.save(slotName, _state);

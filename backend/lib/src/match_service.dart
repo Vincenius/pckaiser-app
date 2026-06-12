@@ -64,33 +64,31 @@ class MatchService {
 
   // --- Match lifecycle ---------------------------------------------------
 
-  /// Creates a match in `waiting`; the creator takes the first seat. A
-  /// single-human match starts immediately.
+  /// Creates a match in `waiting` under a fresh 5-letter room code; the
+  /// creator takes the first seat and later starts the game explicitly
+  /// ([startMatch]) — no fixed player count.
   Future<MatchRecord> createMatch({
     required String playerId,
-    required int humanCount,
     required MatchSettings settings,
     required Map<String, dynamic> setup,
   }) async {
     await _requirePlayer(playerId);
-    if (humanCount < 1 || humanCount > 16) {
-      throw ApiException(400, 'human_count must be 1–16');
+    // Retry on the rare code collision with an existing match.
+    var id = matchCode();
+    while (await _store.match(id) != null) {
+      id = matchCode();
     }
     final match = MatchRecord(
-      id: uuidV4(),
-      humanCount: humanCount,
+      id: id,
       settings: settings,
       players: [],
     );
     _seat(match, playerId, setup);
-    if (match.players.length == humanCount) {
-      await _start(match);
-    }
     await _store.saveMatch(match);
     return match;
   }
 
-  /// Joins a waiting match; the last seat starts the game.
+  /// Joins a waiting match (up to 16 human seats).
   Future<MatchRecord> joinMatch({
     required String matchId,
     required String playerId,
@@ -104,13 +102,126 @@ class MatchService {
     if (match.playerById(playerId) != null) {
       throw ApiException(400, 'player already joined');
     }
+    if (match.players.length >= 16) {
+      throw ApiException(400, 'match is full');
+    }
     _seat(match, playerId, setup);
-    if (match.players.length == match.humanCount) {
+    // Legacy fixed-size matches (pre room codes) still auto-start when
+    // the last announced seat fills.
+    if (match.humanCount != null &&
+        match.players.length == match.humanCount) {
       await _start(match);
     }
     match.updatedAt = _clock();
     await _store.saveMatch(match);
     return match;
+  }
+
+  /// Starts a waiting match — only the creator (first seat) may. The
+  /// world is built for exactly the joined players; nobody can join a
+  /// started game.
+  Future<MatchRecord> startMatch({
+    required String matchId,
+    required String playerId,
+  }) async {
+    await _requirePlayer(playerId);
+    final match = await _requireMatch(matchId);
+    if (match.status != MatchStatus.waiting) {
+      throw ApiException(400, 'match already started');
+    }
+    if (match.players.isEmpty || match.players.first.playerId != playerId) {
+      throw ApiException(403, 'only the creator can start the match');
+    }
+    await _start(match);
+    match.updatedAt = _clock();
+    await _store.saveMatch(match);
+    return match;
+  }
+
+  /// Leaving a match. Waiting: the creator leaving deletes the whole
+  /// match, a joiner just frees their seat. Active: the player's realm(s)
+  /// fall to the AI and the game continues without them — if their input
+  /// was awaited, the AI resolves it right away (same fallbacks as the
+  /// timeout sweep). Finished: the seat is dropped so the match leaves
+  /// the player's list. A match nobody is seated in anymore is deleted.
+  /// Returns true when the match itself was deleted.
+  Future<bool> leaveMatch({
+    required String matchId,
+    required String playerId,
+  }) async {
+    final match = await _requireMatch(matchId);
+    final seat = match.playerById(playerId);
+    if (seat == null) {
+      throw ApiException(403, 'player is not part of this match');
+    }
+
+    if (match.status == MatchStatus.waiting &&
+        match.players.first.playerId == playerId) {
+      await _store.deleteMatch(match.id);
+      return true;
+    }
+
+    if (match.status == MatchStatus.active) {
+      var state = _load(match);
+      final ignored = <GameEvent>[];
+      // Answer the leaver's open decisions with their defaults while the
+      // dynasty still counts as human (mirrors the timeout sweep).
+      for (final d in [...state.pendingDecisions]) {
+        if (state.dynasty(d.decidingSlot).humanPlayer != seat.turnOrder) {
+          continue;
+        }
+        state = _apply(
+            state,
+            ResolveDecision(
+                slot: d.decidingSlot, decisionId: d.id, choice: const {}),
+            ignored);
+      }
+      state = _mutate(state, (s, rng, ev) {
+        // Control follows the ruler: every dynasty this player holds
+        // (after conquests/inheritances) becomes an AI dynasty.
+        for (final d in s.dynasties) {
+          if (d.status != DynastyStatus.human ||
+              d.humanPlayer != seat.turnOrder) {
+            continue;
+          }
+          d.status = DynastyStatus.ai;
+          d.humanPlayer = null;
+          ev.add(GameEvent(
+            year: s.year,
+            slot: d.index,
+            type: 'playerLeft',
+            visibility: EventVisibility.public,
+          ));
+        }
+        // A war that now awaits nobody (the leaver's side fell to the
+        // AI) runs to its end like a pure AI war.
+        var guard = 0;
+        while (s.activeWar != null &&
+            warActingSlot(s) == null &&
+            guard++ < 30) {
+          if (s.activeWar!.phase == WarPhase.settlement) {
+            autoSettleClaim(s, rng, ev);
+          } else {
+            endWarRoundWithAi(s, rng, ev);
+          }
+        }
+      }, ignored);
+      // If it was the leaver's turn, the now-AI turn completes and play
+      // advances to the next human (or the game ends humansDefeated).
+      state = _resumeAfterWarIfOver(state, ignored);
+      match.players.remove(seat);
+      await _commit(match, state, notify: true);
+    } else {
+      match.players.remove(seat);
+      match.updatedAt = _clock();
+    }
+
+    if (match.players.isEmpty) {
+      await _store.deleteMatch(match.id);
+      return true;
+    }
+    await _store.saveMatch(match);
+    return false;
   }
 
   void _seat(MatchRecord match, String playerId, Map<String, dynamic> setup) {
@@ -200,6 +311,9 @@ class MatchService {
       'id': match.id,
       'status': match.status.name,
       'human_count': match.humanCount,
+      // The first seat is the creator — they alone may start the match.
+      'creator_id':
+          match.players.isEmpty ? null : match.players.first.playerId,
       'players': [
         for (final p in match.players)
           {
@@ -230,6 +344,10 @@ class MatchService {
           'status': m.status.name,
           'human_count': m.humanCount,
           'joined': m.players.length,
+          // Creator = first seat; a waiting match is deleted (not left)
+          // by its creator — drives the lobby's delete/leave labels.
+          'is_creator': m.players.isNotEmpty &&
+              m.players.first.playerId == playerId,
           'turn_deadline': m.turnDeadline?.toIso8601String(),
           'your_turn': m.status == MatchStatus.active &&
               m.stateJson != null &&
@@ -259,13 +377,20 @@ class MatchService {
     }
     var state = _load(match);
     final awaited = _awaitedPlayerId(match, state);
+    // Events emitted by THIS submission — returned to the caller so the
+    // client can show its result popups (battle reports, spy reveals).
+    final emitted = <GameEvent>[];
 
     if (endTurn) {
       if (awaited != playerId) throw ApiException(403, 'not your turn');
       if (state.activeWar != null) {
         throw ApiException(400, 'a war must end before the turn can');
       }
-      state = _endTurnAndAdvance(state);
+      // The recap baseline ("seen up to here") moves when the player
+      // ends their turn — mirrors the local client's markRecapSeen.
+      state.recapBaselines[seat.slot] =
+          state.prunedEventCount + state.events.length;
+      state = _endTurnAndAdvance(state, emitted);
     } else if (actionJson != null) {
       final PlayerAction action;
       try {
@@ -279,17 +404,21 @@ class MatchService {
       if (action is ResolveDecision) {
         // Pending decisions are answered out of turn (ARCHITECTURE
         // "Pending decisions") — the engine validates id and slot.
-        state = _apply(state, action);
+        state = _apply(state, action, emitted);
       } else {
         if (awaited != playerId) throw ApiException(403, 'not your turn');
         if (action is WarEndRound) {
-          // The engine entry point for awaited war-round input: the AI
-          // sides respond, then the round advances.
-          state = _mutate(state, endWarRoundWithAi);
+          // The engine entry point for awaited war-round input: a
+          // human-vs-human attacker hands the round to the defender,
+          // otherwise the AI sides respond and the round advances.
+          state = _mutate(
+              state,
+              (s, rng, ev) => endWarRoundFor(s, seat.slot, rng, ev),
+              emitted);
         } else {
-          state = _apply(state, action);
+          state = _apply(state, action, emitted);
         }
-        state = _resumeAfterWarIfOver(state);
+        state = _resumeAfterWarIfOver(state, emitted);
       }
     } else {
       throw ApiException(400, 'provide action or end_turn');
@@ -297,7 +426,12 @@ class MatchService {
 
     await _commit(match, state, notify: true);
     await _store.saveMatch(match);
-    return view(matchId, playerId);
+    final result = await view(matchId, playerId);
+    result['events'] = [
+      for (final e in emitted)
+        if (e.visibleTo(seat.slot)) e.toJson(),
+    ];
+    return result;
   }
 
   // --- Timeouts ----------------------------------------------------------
@@ -311,11 +445,27 @@ class MatchService {
     final expired = await _store.expiredMatches(now);
     for (final match in expired) {
       var state = _load(match);
+      final ignored = <GameEvent>[];
       if (state.activeWar != null) {
-        // The awaited combatant idles: their units hold position, the AI
-        // side moves, the round advances.
-        state = _mutate(state, endWarRoundWithAi);
-        state = _resumeAfterWarIfOver(state);
+        // The awaited combatant idles: their war round falls back to the
+        // AI war logic for this side (ARCHITECTURE "war clock"), then
+        // their round end is submitted for them — in a human-vs-human
+        // war an idle attacker thereby hands over to the defender. An
+        // idle winner's open claim settlement settles like the AI's.
+        final idleSlot = warActingSlot(state);
+        state = _mutate(state, (s, rng, ev) {
+          final war = s.activeWar;
+          if (war == null) return;
+          if (war.phase == WarPhase.settlement) {
+            autoSettleClaim(s, rng, ev);
+            return;
+          }
+          if (idleSlot != null) runAiWarMovement(s, idleSlot, rng, ev);
+          if (s.activeWar != null) {
+            endWarRoundFor(s, idleSlot ?? war.attackerSlot, rng, ev);
+          }
+        }, ignored);
+        state = _resumeAfterWarIfOver(state, ignored);
       } else {
         final awaitedSlot = _awaitedSlot(state);
         if (awaitedSlot != null) {
@@ -326,9 +476,10 @@ class MatchService {
             state = _apply(
                 state,
                 ResolveDecision(
-                    slot: awaitedSlot, decisionId: d.id, choice: const {}));
+                    slot: awaitedSlot, decisionId: d.id, choice: const {}),
+                ignored);
           }
-          state = _endTurnAndAdvance(state);
+          state = _endTurnAndAdvance(state, ignored);
         }
       }
       await _commit(match, state, notify: true);
@@ -342,9 +493,12 @@ class MatchService {
   GameState _load(MatchRecord match) =>
       GameState.fromJson(adoptLatestRules(match.stateJson!));
 
-  GameState _apply(GameState state, PlayerAction action) {
+  GameState _apply(
+      GameState state, PlayerAction action, List<GameEvent> emitted) {
     try {
-      return applyAction(state, action, Rng(state.rngSeed)).state;
+      final result = applyAction(state, action, Rng(state.rngSeed));
+      emitted.addAll(result.events);
+      return result.state;
     } on ActionException catch (e) {
       throw ApiException(400, e.message);
     }
@@ -353,6 +507,7 @@ class MatchService {
   GameState _mutate(
     GameState state,
     void Function(GameState, Rng, List<GameEvent>) f,
+    List<GameEvent> emitted,
   ) {
     final next = state.copy();
     final rng = Rng(next.rngSeed);
@@ -360,23 +515,27 @@ class MatchService {
     f(next, rng, events);
     next.rngSeed = rng.seed;
     next.events.addAll(events);
+    emitted.addAll(events);
     return next;
   }
 
-  GameState _endTurnAndAdvance(GameState state) {
+  GameState _endTurnAndAdvance(GameState state, List<GameEvent> emitted) {
     final ended = completeTurn(state, Rng(state.rngSeed));
-    return advanceUntilHuman(ended.state, Rng(ended.state.rngSeed)).state;
+    emitted.addAll(ended.events);
+    final advanced = advanceUntilHuman(ended.state, Rng(ended.state.rngSeed));
+    emitted.addAll(advanced.events);
+    return advanced.state;
   }
 
   /// A war that interrupted an AI's turn leaves that turn half-finished
   /// when it ends — complete it and let the remaining AIs play (mirrors
   /// the client's GameController.resumeAfterWar).
-  GameState _resumeAfterWarIfOver(GameState state) {
+  GameState _resumeAfterWarIfOver(GameState state, List<GameEvent> emitted) {
     if (state.activeWar != null || _gameOver(state)) return state;
     if (state.dynasty(state.currentPlayer).status == DynastyStatus.human) {
       return state;
     }
-    return _endTurnAndAdvance(state);
+    return _endTurnAndAdvance(state, emitted);
   }
 
   bool _gameOver(GameState state) =>
@@ -387,12 +546,9 @@ class MatchService {
   /// Realm slot whose human input the match is waiting for, or null.
   int? _awaitedSlot(GameState state) {
     if (_gameOver(state)) return null;
-    final war = state.activeWar;
-    if (war != null) {
-      for (final slot in [war.attackerSlot, war.defenderSlot]) {
-        if (state.dynasty(slot).status == DynastyStatus.human) return slot;
-      }
-      return null;
+    if (state.activeWar != null) {
+      // The war's acting side (alternates between two human combatants).
+      return warActingSlot(state);
     }
     if (state.dynasty(state.currentPlayer).status == DynastyStatus.human) {
       return state.currentPlayer;
@@ -422,8 +578,8 @@ class MatchService {
   }) async {
     final previousAwaited =
         match.stateJson == null ? null : _awaitedPlayerId(match, _load(match));
-    final hadWar = match.stateJson != null &&
-        (match.stateJson!['activeWar'] != null);
+    final hadWar =
+        match.stateJson != null && (match.stateJson!['activeWar'] != null);
 
     match.stateJson = state.toJson();
     match.updatedAt = _clock();
@@ -451,12 +607,20 @@ class MatchService {
         awaited == null || timeout == null ? null : _clock().add(timeout);
 
     if (!notify || awaited == null) return;
-    final player = await _store.player(awaited);
-    if (player == null) return;
     if (state.activeWar != null && !hadWar) {
-      await _push.warStarted(player, match);
+      // Both human combatants learn about a fresh war (ARCHITECTURE
+      // "war clock") — the awaited one must act, the other may delegate
+      // their next round to the clock or play it live.
+      final war = state.activeWar!;
+      for (final slot in [war.attackerSlot, war.defenderSlot]) {
+        final id = _playerForSlot(match, state, slot);
+        if (id == null) continue;
+        final p = await _store.player(id);
+        if (p != null) await _push.warStarted(p, match);
+      }
     } else if (awaited != previousAwaited) {
-      await _push.yourTurn(player, match);
+      final player = await _store.player(awaited);
+      if (player != null) await _push.yourTurn(player, match);
     }
     // Out-of-turn decisions get their own nudge.
     for (final d in state.pendingDecisions) {
@@ -486,7 +650,9 @@ class MatchService {
   }
 
   Future<MatchRecord> _requireMatch(String id) async {
-    final match = await _store.match(id);
+    // Room codes are read out loud and typed by hand — accept lowercase.
+    final match =
+        await _store.match(id.length == 5 ? id.toUpperCase() : id);
     if (match == null) throw ApiException(404, 'unknown match');
     return match;
   }

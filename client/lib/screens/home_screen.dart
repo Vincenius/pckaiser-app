@@ -131,9 +131,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const OnlineScreen()),
-              ),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const OnlineScreen())),
               icon: const Icon(Icons.cloud),
               label: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),

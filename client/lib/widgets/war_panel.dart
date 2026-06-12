@@ -47,11 +47,15 @@ class _WarPanelState extends State<WarPanel> {
     final selectedTroop = selected != null && selected < realm.troops.length
         ? realm.troops[selected]
         : null;
+    final enemyHuman =
+        state.dynasty(enemySlot).status == gc.DynastyStatus.human;
     // §11.2 AI peace rules, surfaced: when the AI opponent would say yes,
-    // tell the player that wishing for peace actually ends the war.
-    final enemyReady =
-        state.dynasty(enemySlot).status != gc.DynastyStatus.human &&
-        gc.aiWouldAcceptPeace(state, enemySlot);
+    // tell the player that wishing for peace actually ends the war. A
+    // human opponent's explicit peace wish is visible to both combatants
+    // and surfaced the same way.
+    final enemyReady = enemyHuman
+        ? war.wantsPeace(enemySlot)
+        : gc.aiWouldAcceptPeace(state, enemySlot);
     // Capital occupation decides the war at round end — but only when
     // held through the enemy's full response round (the first round end
     // merely ARMS it, war.heldCapitalSlot).
@@ -276,21 +280,22 @@ class _WarPanelState extends State<WarPanel> {
                 ? () async {
                     final List<gc.GameEvent> events;
                     try {
-                      events = controller
-                          .applyWarAction(
-                            gc.WarPlunder(
-                              slot: slot,
-                              x: selectedTroop.x,
-                              y: selectedTroop.y,
-                            ),
-                          )
-                          .events;
+                      events = (await controller.applyWarAction(
+                        gc.WarPlunder(
+                          slot: slot,
+                          x: selectedTroop.x,
+                          y: selectedTroop.y,
+                        ),
+                      )).events;
                     } on gc.ActionException catch (e) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(e.message)));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(e.message)));
+                      }
                       return;
                     }
+                    if (!context.mounted) return;
                     await showWarReport(
                       context,
                       events,
@@ -304,9 +309,19 @@ class _WarPanelState extends State<WarPanel> {
           ),
         ),
         TextButton(
-          onPressed: () => controller.applyWarAction(
-            gc.WarPeaceWish(slot: slot, wantsPeace: !war.wantsPeace(slot)),
-          ),
+          onPressed: () async {
+            try {
+              await controller.applyWarAction(
+                gc.WarPeaceWish(slot: slot, wantsPeace: !war.wantsPeace(slot)),
+              );
+            } on gc.ActionException catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(e.message)));
+              }
+            }
+          },
           child: Text(
             war.wantsPeace(slot) ? 'Frieden zurückziehen' : 'Frieden wünschen',
           ),
@@ -329,7 +344,14 @@ class _WarPanelState extends State<WarPanel> {
               await promptDecisionsFor(context, controller, slot);
             }
           },
-          child: const Text('Runde beenden'),
+          // A human-vs-human attacker hands the round to the defender —
+          // only the defender's button really ends the round.
+          child: Text(
+            slot == war.attackerSlot &&
+                    state.dynasty(enemySlot).status == gc.DynastyStatus.human
+                ? 'Züge übergeben'
+                : 'Runde beenden',
+          ),
         ),
       ],
     );
@@ -445,11 +467,15 @@ class _WarPanelState extends State<WarPanel> {
   Future<void> _takeAllLand(BuildContext context, int slot) async {
     final gc.ActionResult result;
     try {
-      result = controller.applyWarAction(gc.SettlementTakeAll(slot: slot));
+      result = await controller.applyWarAction(
+        gc.SettlementTakeAll(slot: slot),
+      );
     } on gc.ActionException catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
       return;
     }
     await controller.endWarRound(); // resumes AI advance
@@ -467,7 +493,9 @@ class _WarPanelState extends State<WarPanel> {
   }
 
   Future<void> _finishSettlement(BuildContext context, int slot) async {
-    final result = controller.applyWarAction(gc.SettlementFinish(slot: slot));
+    final result = await controller.applyWarAction(
+      gc.SettlementFinish(slot: slot),
+    );
     await controller.endWarRound(); // resumes AI advance
     if (context.mounted) {
       await showWarReport(

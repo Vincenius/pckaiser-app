@@ -1,6 +1,8 @@
 /// Server entry point. Env:
-///   PORT       — listen port (default 3000)
-///   STORE_DIR  — data directory for the file store (default ./data)
+///   PORT                      — listen port (default 3000)
+///   STORE_DIR                 — file-store data directory (default ./data)
+///   FIREBASE_SERVICE_ACCOUNT  — base64 service-account JSON; enables FCM
+///                               push (logged stub without it)
 ///
 /// The timeout sweep runs once a minute (ARCHITECTURE.md "Timeouts").
 library;
@@ -17,7 +19,10 @@ Future<void> main() async {
   final storeDir = Platform.environment['STORE_DIR'] ?? 'data';
 
   final store = FileStore(storeDir);
-  final service = MatchService(store, LogPushService());
+  final push =
+      FcmPushService.fromEnv(Platform.environment['FIREBASE_SERVICE_ACCOUNT']);
+  if (push != null) print('FCM push enabled');
+  final service = MatchService(store, push ?? LogPushService());
   final api = Api(service);
 
   Timer.periodic(const Duration(minutes: 1), (_) async {
@@ -29,9 +34,8 @@ Future<void> main() async {
     }
   });
 
-  final handler = const Pipeline()
-      .addMiddleware(logRequests())
-      .addHandler(api.handler);
+  final handler =
+      const Pipeline().addMiddleware(logRequests()).addHandler(api.handler);
   final server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
   print('PC Kaiser server listening on :${server.port} (store: $storeDir)');
 }

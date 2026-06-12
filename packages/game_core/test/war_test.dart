@@ -762,15 +762,25 @@ void main() {
       );
     });
 
-    test('human-vs-human wars are blocked (V1, online war clock pending)', () {
+    test('human-vs-human wars: blocked under ruleset v1, allowed since v2',
+        () {
       state.dynasty(2).status = DynastyStatus.human;
       state.dynasty(2).humanPlayer = 1;
+      // The pre-v2 gate (documentation only — saves adopt the latest
+      // rules on load via adoptLatestRules).
+      final v1 = GameState.fromJson(state.toJson()..['rulesVersion'] = 1);
       expect(
         () => applyAction(
-            state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed)),
+            v1, DeclareWar(slot: 1, targetSlot: 2), Rng(v1.rngSeed)),
         throwsA(isA<ActionException>()),
-        reason: 'the V1 war UI can only seat one human side',
+        reason: 'the V1 war UI could only seat one human side',
       );
+      final s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      expect(s.activeWar, isNotNull);
+      expect(s.activeWar!.actingSlot, 1,
+          reason: 'attacker before defender, as in the original');
     });
 
     test(
@@ -961,6 +971,102 @@ void main() {
         }
       }
       expect(killed, isTrue, reason: '1-man unit dies within 20 seeds');
+    });
+  });
+
+  group('human-vs-human wars (ruleset v2)', () {
+    late GameState war;
+
+    setUp(() {
+      // Re-seat slot 2 as the second human (the shared setUp made it AI).
+      state.dynasty(2).status = DynastyStatus.human;
+      state.dynasty(2).humanPlayer = 1;
+      war = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+    });
+
+    test('round input alternates: attacker hands over, defender ends', () {
+      expect(warActingSlot(war), 1);
+      // The defender may not act while the attacker's half runs.
+      expect(
+        () => applyAction(
+            war, WarEndRound(slot: 2), Rng(war.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      expect(
+        () => applyAction(war,
+            WarMove(slot: 2, unitIndex: 0, dx: 1, dy: 0), Rng(war.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+
+      // Attacker's round end only HANDS OVER — same round, defender acts.
+      var s = applyAction(war, WarEndRound(slot: 1), Rng(war.rngSeed)).state;
+      expect(s.activeWar!.round, 0);
+      expect(warActingSlot(s), 2);
+      // Now the attacker is locked out.
+      expect(
+        () => applyAction(
+            s, WarPeaceWish(slot: 1, wantsPeace: true), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+
+      // Defender's round end advances the round; attacker acts again.
+      s = applyAction(s, WarEndRound(slot: 2), Rng(s.rngSeed)).state;
+      expect(s.activeWar, isNotNull);
+      expect(s.activeWar!.round, 1);
+      expect(warActingSlot(s), 1);
+    });
+
+    test('mutual peace wishes end the war at the defender\'s round end', () {
+      var s = applyAction(
+              war, WarPeaceWish(slot: 1, wantsPeace: true), Rng(war.rngSeed))
+          .state;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      s = applyAction(
+              s, WarPeaceWish(slot: 2, wantsPeace: true), Rng(s.rngSeed))
+          .state;
+      s = applyAction(s, WarEndRound(slot: 2), Rng(s.rngSeed)).state;
+      expect(s.activeWar, isNull, reason: 'white peace — status quo ante');
+      expect(s.events.any((e) => e.type == 'peaceAgreed'), isTrue);
+    });
+
+    test('the settlement awaits the human winner', () {
+      // March the attacker onto the defender's capital and hold it
+      // through the defender's full response round.
+      final attacker = war.realm(1).troops.first;
+      final defender = war.realm(2);
+      // Clear the defending army so the capture resolves immediately
+      // (an opponent without troops cannot respond).
+      defender.troops.clear();
+      war.activeWar!.movesLeft[2] = [];
+      attacker.x = defender.capitalX;
+      attacker.y = defender.capitalY;
+      final events = <GameEvent>[];
+      // The attacker's input hands over; the defender's round end
+      // resolves the capture (a troopless opponent cannot respond).
+      endWarRoundFor(war, 1, Rng(war.rngSeed), events);
+      expect(war.activeWar!.phase, WarPhase.rounds);
+      expect(warActingSlot(war), 2);
+      endWarRoundFor(war, 2, Rng(war.rngSeed), events);
+      final active = war.activeWar!;
+      expect(active.phase, WarPhase.settlement);
+      expect(active.winnerSlot, 1);
+      expect(warActingSlot(war), 1,
+          reason: 'the human winner picks the claim tiles');
+    });
+
+    test('endWarRoundFor with an AI opponent advances the round directly',
+        () {
+      state.dynasty(2).status = DynastyStatus.ai;
+      state.dynasty(2).humanPlayer = null;
+      final s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      final events = <GameEvent>[];
+      endWarRoundFor(s, 1, Rng(s.rngSeed), events);
+      expect(s.activeWar == null || s.activeWar!.round == 1, isTrue,
+          reason: 'no handover against an AI defender');
     });
   });
 }

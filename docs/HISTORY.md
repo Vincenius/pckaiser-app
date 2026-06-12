@@ -276,3 +276,73 @@ deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
   Zug", 20 s polling). Remaining V2 milestone: the in-match play screen —
   async action round-trips (client cannot roll dice; rngSeed never
   leaves the server).
+
+- **V2 online play complete (user request)**: (1) `GameSession` interface
+  splits local/online: `LocalGameSession` unchanged in behavior;
+  `OnlineGameSession` round-trips every action to the server and maps
+  400/403 responses back to `ActionException`, so menus/war/decisions UI
+  run unchanged; `GameController`'s action path is async for both modes
+  (undo disabled online — the client never rolls dice, `rngSeed` never
+  leaves the server). (2) Server submissions return the action's
+  visibility-filtered events (client result popups) and move the recap
+  baseline at end_turn. (3) Client: `OnlineMatchScreen` (poll while
+  waiting, share match ID, prompt out-of-turn decisions, open the game
+  screen on your turn; screen pops itself when the turn passes on);
+  lobby opens matches. (4) Server URL via
+  `--dart-define=PCKAISER_SERVER_URL` (baked-in URL hides the address
+  field; manual entry = dev fallback). (5) FCM HTTP-v1 push
+  (`FIREBASE_SERVICE_ACCOUNT` base64 env, googleapis_auth) with logged
+  fallback; docker-compose + Nginx example + backup cron note in
+  backend/deploy/. Still open: human-vs-human war clock (engine rejects
+  human-vs-human wars — needs two-sided war-round input) and a
+  two-device system test. 226 core + 14 backend + 26 client tests green.
+
+- **Human-vs-human wars + lobby rework (user request, ruleset v2)**:
+  (1) Engine: `DeclareWar` against human realms is allowed (gate
+  `rulesVersion >= 2`); new additive `ActiveWar.actingSlot` names the
+  war side whose input is awaited — attacker first each round (original
+  order), the attacker's round end HANDS OVER to a human defender
+  (`handWarRoundOver`), the defender's ends the round; war actions from
+  the non-acting human side are rejected ("Dein Gegner ist gerade am
+  Zug !"); `warActingSlot(state)` resolves the awaited side everywhere
+  (settlement → the human winner); entry point `endWarRoundFor(state,
+  slot, …)` (used by client session and server submit). (2) Local
+  hot-seat: `GameController.currentSlot` keys off `warActingSlot`; every
+  acting-side change (incl. war end → back to the paused attacker turn)
+  raises the handoff blocker (`_maybeRequestSeatHandoff`); the "Krieg !"
+  defender briefing shows once per war; the war panel labels the
+  attacker's button "Züge übergeben" and surfaces a human opponent's
+  peace wish. (3) Online: the awaited player during a war is the acting
+  combatant (war clock `war_round_timeout` unchanged); the timeout sweep
+  now runs the AI war logic for the idle side (per the 2026-06-10
+  decision) and auto-settles an idle winner's claim; `WAR_STARTED` push
+  goes to both human combatants. (4) Lobby rework: match ids are now
+  5-letter uppercase room codes (lowercase accepted on lookup; legacy
+  UUIDs still valid), `human_count` dropped from creation — players join
+  via code (≤ 16) until the creator starts via new
+  `POST /matches/:id/start` (403 for non-creators; legacy fixed-size
+  matches still auto-start when full); client: room-code join dialog
+  (auto-uppercase), waiting room shows the code big + creator's "Spiel
+  starten" button (solo start allowed). 230 core + 17 backend + 27
+  client tests green.
+
+- **Leave/delete online matches + dev QoL (user request)**: (1) New
+  `POST /matches/:id/leave`: waiting + creator → match deleted for
+  everyone, otherwise the seat is freed; in a RUNNING game every dynasty
+  the player holds falls to the AI (`playerLeft` public event,
+  irreversible) — the leaver's open decisions resolve with defaults, a
+  war whose awaited side left runs out like a pure AI war
+  (`endWarRoundWithAi`/`autoSettleClaim` loop), and an abandoned open
+  turn completes via `_resumeAfterWarIfOver` (last human gone →
+  `humansDefeated` ends the match); a match with no seats left is
+  deleted (`GameStore.deleteMatch`). Lobby list now carries
+  `is_creator`; client: leave/delete icon per lobby tile + match-screen
+  app-bar action, with status-specific confirmation texts. (2)
+  Multiplayer testing on one desktop: `--dart-define=PCKAISER_INSTANCE=2`
+  switches the online profile file (`pckaiser_online_2.json`) so a second
+  instance registers as its own player (README). (3) Status row: compact
+  visual density for logout/undo icons and the end-turn button — the row
+  overflowed by 19 px on narrow phones (debug banner over "Anno …";
+  release would clip). (4) Action-bar menu "Sonstiges" renamed
+  "Dynastie" (EN "Dynasty"), tutorial step text updated. 230 core +
+  22 backend + 27 client tests green.

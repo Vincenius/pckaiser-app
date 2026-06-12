@@ -60,7 +60,7 @@ Unversioned design deviations:
 | Weide only on Berg | Also on Ebene | Gameplay request |
 | Island starts possible | Starting landmass ≥ 50 connected tiles | No boxed-in starts |
 | Unlimited proposals/turn | One royal proposal per turn; commoner marriage always available and always accepted | Pacing; reliable fallback |
-| Wars against any realm | Only shared-border realms; never against a slot your ruler already holds; human-vs-human blocked in V1 (V2 war clock lifts it) | Plausibility; self-war nonsense; V1 war UI seats one human |
+| Wars against any realm | Only shared-border realms; never against a slot your ruler already holds; human-vs-human wars run sequentially (attacker's half, then the defender's — hot-seat handoff locally, war clock online; ruleset v2) | Plausibility; self-war nonsense; one global war needs ordered two-sided input |
 | 50% phantom birth (§15.3) | Removed — children require married parents | Plausibility |
 | Other realms' stats visible | Hidden + espionage reveals | Makes espionage matter |
 | Modal text walls | Event feed + recap | Mobile UX |

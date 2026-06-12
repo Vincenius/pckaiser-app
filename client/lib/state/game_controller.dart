@@ -1,24 +1,28 @@
 import 'package:flutter/foundation.dart';
 import 'package:game_core/game_core.dart';
 
-import '../services/local_game_session.dart';
+import '../services/game_session.dart';
 
-/// UI-facing game state for one running local game: wraps the session,
-/// manages the in-turn undo stack, drives AI advancement and wars, and
-/// tracks hot-seat handoffs and the "since your last turn" recap baseline.
+/// UI-facing game state for one running game (local hot-seat or online):
+/// wraps the session, manages the in-turn undo stack (local only), drives
+/// AI advancement and wars, and tracks handoffs and the "since your last
+/// turn" recap baseline. All actions are async — local sessions complete
+/// immediately, online sessions round-trip to the server.
 class GameController extends ChangeNotifier {
   GameController(this._session) {
-    _handoffPending = humanCount > 0;
+    _handoffPending = _session.isOnline ? true : humanCount > 0;
     // The seat, not the engine's active player: a save resumed inside a
     // war pause must hand the device to the human war side.
     _handoffToSlot = currentSlot;
+    _lastSeat = currentSlot;
   }
 
-  final LocalGameSession _session;
+  final GameSession _session;
   final List<GameState> _undoStack = [];
 
   bool _handoffPending = false;
   int _handoffToSlot = 0;
+  int _lastSeat = 0;
   bool _busy = false;
 
   /// The war unit the player has selected on the map (index into the
@@ -28,7 +32,7 @@ class GameController extends ChangeNotifier {
   /// Hint banner text while a map tile pick is active (e.g. "station the
   /// new troop"); null = no pick pending.
   String? tilePickHint;
-  bool Function(int x, int y)? _tilePick;
+  Future<bool> Function(int x, int y)? _tilePick;
 
   bool get tilePickActive => _tilePick != null;
 
@@ -37,7 +41,7 @@ class GameController extends ChangeNotifier {
   /// reject it (the pick stays active).
   void startTilePick({
     required String hint,
-    required bool Function(int x, int y) onPick,
+    required Future<bool> Function(int x, int y) onPick,
   }) {
     tilePickHint = hint;
     _tilePick = onPick;
@@ -52,10 +56,10 @@ class GameController extends ChangeNotifier {
   }
 
   /// Feeds a map tap into the active pick; returns false when none is.
-  bool resolveTilePick(int x, int y) {
+  Future<bool> resolveTilePick(int x, int y) async {
     final pick = _tilePick;
     if (pick == null) return false;
-    if (pick(x, y)) {
+    if (await pick(x, y)) {
       _tilePick = null;
       tilePickHint = null;
     }
@@ -65,21 +69,30 @@ class GameController extends ChangeNotifier {
 
   GameState get state => _session.state;
 
+  /// True for online seats — the server is authoritative.
+  bool get isOnline => _session.isOnline;
+
+  /// Online: another player is awaited — the play screen should hand
+  /// back to the waiting lobby.
+  bool get awaitingRemote => _session.awaitingRemote;
+
   /// What the seated player may see (hidden information). Filtered for
   /// [currentSlot] — the *seat*, not necessarily the engine's active
-  /// player (see [currentSlot]).
+  /// player (see [currentSlot]). Online states arrive pre-filtered from
+  /// the server; the local filter is idempotent on them.
   GameState get visibleState => visibleStateFor(state, currentSlot);
 
   /// The slot of the player seated at the device. Normally the engine's
-  /// active player; during a war pause (an AI's turn stands paused while
-  /// its human war opponent acts) it is the human war side — keying the
-  /// whole UI (map filter, status row, menus) off the seat keeps the
-  /// human from seeing or controlling the paused AI realm.
+  /// active player; during a war it is the war side whose input is
+  /// awaited (the acting human side — `warActingSlot`), which pauses
+  /// another realm's turn: an AI attacker's, or in a human-vs-human war
+  /// the human attacker's while the defender responds. Keying the whole
+  /// UI (map filter, status row, menus) off the seat keeps the seated
+  /// player from seeing or controlling the paused realm.
   int get currentSlot {
-    final war = state.activeWar;
-    if (war != null &&
-        state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
-      return warHumanSlot ?? state.currentPlayer;
+    if (state.activeWar != null) {
+      final acting = warActingSlot(state);
+      if (acting != null) return acting;
     }
     return state.currentPlayer;
   }
@@ -102,6 +115,9 @@ class GameController extends ChangeNotifier {
 
   bool get canUndo => _undoStack.isNotEmpty;
 
+  /// False online: the server never takes an action back.
+  bool get supportsUndo => _session.canUndo;
+
   bool get gameOver =>
       state.events.isNotEmpty &&
       (state.events.last.type == 'gameWon' ||
@@ -120,15 +136,9 @@ class GameController extends ChangeNotifier {
     return war;
   }
 
-  /// The human slot that must act in the current war.
-  int? get warHumanSlot {
-    final war = state.activeWar;
-    if (war == null) return null;
-    for (final slot in [war.attackerSlot, war.defenderSlot]) {
-      if (state.dynasty(slot).status == DynastyStatus.human) return slot;
-    }
-    return null;
-  }
+  /// The human slot that must act in the current war (the acting side —
+  /// in a human-vs-human war the input alternates within each round).
+  int? get warHumanSlot => warActingSlot(state);
 
   List<PendingDecision> get decisionsForCurrent => state.pendingDecisions
       .where((d) => d.decidingSlot == currentSlot)
@@ -137,7 +147,7 @@ class GameController extends ChangeNotifier {
   /// Events the seated player has not seen yet — the recap card. The
   /// baseline is an absolute event position (`prunedEventCount + index`,
   /// stable across pruning) stored in the game state, so it survives app
-  /// restarts.
+  /// restarts (and lives server-side for online seats).
   List<GameEvent> recapFor(int slot) {
     final baseline = state.recapBaselines[slot] ?? 0;
     final from = (baseline - state.prunedEventCount).clamp(
@@ -152,27 +162,47 @@ class GameController extends ChangeNotifier {
 
   void confirmHandoff() {
     _handoffPending = false;
+    _lastSeat = currentSlot;
     notifyListeners();
+  }
+
+  /// Hot-seat: when the seat changed hands (a human-vs-human war passes
+  /// the input between the two sides, a war end returns it to the paused
+  /// turn's player), raise the handoff blocker so the device can be
+  /// passed without leaking the successor's view.
+  void _maybeRequestSeatHandoff() {
+    final seat = currentSlot;
+    if (seat == _lastSeat) return;
+    _lastSeat = seat;
+    // Online a device seats exactly one player — no handoff, the screen
+    // hands back to the lobby via [awaitingRemote] instead.
+    if (_session.isOnline) return;
+    if (state.dynasty(seat).status != DynastyStatus.human) return;
+    _handoffPending = true;
+    _handoffToSlot = seat;
   }
 
   void markRecapSeen(int slot) {
     // Written into the session's live state (persisted with the next
-    // auto-save) — endTurn copies the state right after, carrying it over.
+    // auto-save) — endTurn copies the state right after, carrying it
+    // over. Online the server moves the baseline at end_turn; this local
+    // write only keeps the recap from re-showing within the turn.
     state.recapBaselines[slot] = state.prunedEventCount + state.events.length;
   }
 
-  /// Deterministic in-turn action — undoable (PROJECT_REQUIREMENTS).
-  ActionResult applyUndoable(PlayerAction action) {
+  /// Deterministic in-turn action — undoable locally
+  /// (PROJECT_REQUIREMENTS); online there is no undo, the action is final.
+  Future<ActionResult> applyUndoable(PlayerAction action) async {
     final snapshot = state;
-    final result = _session.apply(action);
-    _undoStack.add(snapshot);
+    final result = await _session.apply(action);
+    if (_session.canUndo) _undoStack.add(snapshot);
     notifyListeners();
     return result;
   }
 
   /// Randomized or irreversible action — clears the undo stack.
-  ActionResult applyIrreversible(PlayerAction action) {
-    final result = _session.apply(action);
+  Future<ActionResult> applyIrreversible(PlayerAction action) async {
+    final result = await _session.apply(action);
     _undoStack.clear();
     notifyListeners();
     return result;
@@ -185,7 +215,9 @@ class GameController extends ChangeNotifier {
   }
 
   /// Ends the seated player's turn: clears undo, lets the AI play, then
-  /// requests a handoff to the next human (auto-saved inside).
+  /// requests a handoff to the next human (auto-saved inside). Online the
+  /// server advances; when another player is awaited afterwards,
+  /// [awaitingRemote] turns true and the play screen hands back.
   Future<void> endTurn() async {
     if (_busy) return;
     _busy = true;
@@ -197,27 +229,37 @@ class GameController extends ChangeNotifier {
     try {
       await _session.endTurnAndAdvance();
       _handoffToSlot = state.currentPlayer;
-      _handoffPending =
-          humanCount > 1 ||
-          state.dynasty(state.currentPlayer).status == DynastyStatus.human;
+      if (_session.isOnline) {
+        // One device seats exactly one player online: a handoff appears
+        // only when the next awaited input is again this seat's.
+        _handoffPending = !_session.awaitingRemote && !gameOver;
+      } else {
+        _handoffPending =
+            humanCount > 1 ||
+            state.dynasty(state.currentPlayer).status == DynastyStatus.human;
+      }
       // A war against a human defender pauses the AI advance; the war UI
       // takes over instead of a handoff.
-      if (state.activeWar != null) {
+      if (state.activeWar != null && !_session.awaitingRemote) {
         _handoffPending = true;
         _handoffToSlot = warHumanSlot ?? _handoffToSlot;
       }
+      _lastSeat = currentSlot;
     } finally {
       _busy = false;
       notifyListeners();
     }
   }
 
-  /// Ends a war round: the AI side moves, then the round advances. When
-  /// the war finishes, AI turns resume until a human's action phase.
-  /// Returns the round's events (battles, plunders, war end) so the UI
-  /// can show them as a report popup.
+  /// Ends the seated player's war-round input: in a human-vs-human war
+  /// the attacker hands the round to the defender, otherwise the AI side
+  /// moves and the round advances. When the war finishes, AI turns
+  /// resume until a human's action phase. Returns the round's events
+  /// (battles, plunders, war end) so the UI can show them as a report
+  /// popup.
   Future<List<GameEvent>> endWarRound() async {
     if (_busy) return const [];
+    final actingSlot = warHumanSlot;
     _busy = true;
     selectedWarUnit = null;
     notifyListeners();
@@ -237,10 +279,14 @@ class GameController extends ChangeNotifier {
     }
     try {
       _undoStack.clear();
-      // One shared engine entry point (client + V2 server): the AI sides
-      // respond, then the round advances — see endWarRoundWithAi.
-      events = _session.mutate(endWarRoundWithAi);
+      // One shared engine entry point (client + server): a human-vs-human
+      // attacker hands over, otherwise the AI sides respond and the round
+      // advances — see endWarRoundFor.
+      if (actingSlot != null) {
+        events = await _session.endWarRound(actingSlot);
+      }
       await _resumeAfterWarIfOver();
+      _maybeRequestSeatHandoff();
     } finally {
       _busy = false;
       notifyListeners();
@@ -311,32 +357,30 @@ class GameController extends ChangeNotifier {
     notifyListeners();
     try {
       await _resumeAfterWarIfOver();
+      _maybeRequestSeatHandoff();
     } finally {
       _busy = false;
       notifyListeners();
     }
   }
 
-  /// After a war ends outside the turn flow, resume the AI advance.
+  /// After a war ends outside the turn flow, resume the AI advance
+  /// (local; the server does this inside the submission online).
   Future<void> _resumeAfterWarIfOver() async {
     if (state.activeWar != null) {
       await _session.save();
       return;
     }
     // A war that interrupted AI processing leaves the AI attacker's turn
-    // half-finished: its action phase already ran, so complete the turn
-    // directly (no second runAiTurn) and then let the remaining AIs play.
-    if (state.dynasty(state.currentPlayer).status != DynastyStatus.human) {
-      final completed = completeTurn(state, Rng(state.rngSeed));
-      final advanced = advanceUntilHuman(
-        completed.state,
-        Rng(completed.state.rngSeed),
-      );
-      _session.restore(advanced.state);
+    // half-finished — the session completes it and advances.
+    final pausedAiTurn =
+        !_session.isOnline &&
+        state.dynasty(state.currentPlayer).status != DynastyStatus.human;
+    await _session.resumeAfterWar();
+    if (pausedAiTurn) {
       _handoffPending = true;
       _handoffToSlot = state.currentPlayer;
     }
-    await _session.save();
   }
 
   void selectWarUnit(int? index) {
@@ -344,11 +388,15 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// War actions from the war panel (move, plunder, peace wish).
-  ActionResult applyWarAction(PlayerAction action) {
-    final result = _session.apply(action);
+  /// War actions from the war panel (move, plunder, peace wish,
+  /// settlement picks). A settlement finish can end the war and return
+  /// the seat to the paused turn's player — hot-seat then needs a
+  /// handoff before the successor's view appears.
+  Future<ActionResult> applyWarAction(PlayerAction action) async {
+    final result = await _session.apply(action);
     _undoStack.clear();
     if (state.activeWar == null) selectedWarUnit = null;
+    _maybeRequestSeatHandoff();
     notifyListeners();
     return result;
   }
@@ -359,7 +407,7 @@ class GameController extends ChangeNotifier {
     int slot,
     Map<String, dynamic> choice,
   ) async {
-    _session.apply(
+    await _session.apply(
       ResolveDecision(slot: slot, decisionId: decisionId, choice: choice),
     );
     await _session.save();

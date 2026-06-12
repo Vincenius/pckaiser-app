@@ -475,12 +475,23 @@ void runAiWarMovement(
   return null;
 }
 
+/// Awaited war-round input from [slot] ("Runde beenden"): in a
+/// human-vs-human war the ATTACKER's round end only hands the input to
+/// the human defender ([handWarRoundOver]) — the defender's round end
+/// advances the round for real via [endWarRoundWithAi]. ONE entry point
+/// for the local client and the V2 server (ARCHITECTURE.md
+/// "Human-vs-human wars online") so the orchestration never lives in UI
+/// code.
+void endWarRoundFor(
+    GameState state, int slot, Rng rng, List<GameEvent> events) {
+  if (handWarRoundOver(state, slot)) return;
+  endWarRoundWithAi(state, rng, events);
+}
+
 /// Ends a war round: the AI sides move first (their response to the
 /// driving side's moves this round), then the round advances — capture,
-/// peace and winter checks included. ONE entry point for the local client
-/// ("Runde beenden") and the V2 server (an awaited war-round input, see
-/// ARCHITECTURE.md "Human-vs-human wars online") so the orchestration
-/// never lives in UI code. Attacker before defender, as in the original.
+/// peace and winter checks included. Attacker before defender, as in
+/// the original.
 void endWarRoundWithAi(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;

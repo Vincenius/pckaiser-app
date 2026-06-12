@@ -35,7 +35,12 @@ const int currentSchemaVersion = 1;
 /// conquest, take-all settlement, agent-scaled espionage, and the war
 /// bookkeeping gates) were consolidated into this baseline before the
 /// first release — their history lives in docs/HISTORY.md.
-const int currentRulesVersion = 1;
+///
+/// v2 lifts the V1 block on human-vs-human wars: `DeclareWar` against
+/// human realms is allowed, war-round input alternates between the two
+/// human sides (`ActiveWar.actingSlot` — hot-seat handoff locally, the
+/// war clock online).
+const int currentRulesVersion = 2;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

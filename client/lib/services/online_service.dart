@@ -6,6 +6,19 @@ import 'package:path_provider/path_provider.dart';
 
 import 'api_client.dart';
 
+/// Server URL baked in at build time:
+/// `flutter build --dart-define=PCKAISER_SERVER_URL=https://…` — when
+/// set, the app connects there and never asks the player for an address
+/// (a profile-stored URL is only a fallback for dev builds without the
+/// define).
+const String kEnvServerUrl = String.fromEnvironment('PCKAISER_SERVER_URL');
+
+/// Dev aid for multiplayer testing on one machine: two desktop instances
+/// would otherwise share the same profile file and thus the same player
+/// identity. `flutter run --dart-define=PCKAISER_INSTANCE=2` gives the
+/// instance its own profile (own UUID + name); unset = normal profile.
+const String kEnvInstance = String.fromEnvironment('PCKAISER_INSTANCE');
+
 /// Device identity + server connection for online play (V2). Identity is
 /// a device-generated UUID (no auth, ARCHITECTURE.md), persisted next to
 /// the local saves together with the chosen name and server URL.
@@ -14,12 +27,13 @@ class OnlineService {
 
   static Future<OnlineService> load() async {
     final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/pckaiser_online.json');
+    final suffix = kEnvInstance.isEmpty ? '' : '_$kEnvInstance';
+    final file = File('${dir.path}/pckaiser_online$suffix.json');
     Map<String, dynamic> profile = {};
     if (file.existsSync()) {
       try {
-        profile =
-            (jsonDecode(file.readAsStringSync()) as Map).cast<String, dynamic>();
+        profile = (jsonDecode(file.readAsStringSync()) as Map)
+            .cast<String, dynamic>();
       } on Object {
         profile = {};
       }
@@ -30,7 +44,11 @@ class OnlineService {
   final File _file;
   final Map<String, dynamic> _profile;
 
-  String? get serverUrl => _profile['server_url'] as String?;
+  /// The build-time env URL wins; the stored profile URL is the dev
+  /// fallback.
+  String? get serverUrl => kEnvServerUrl.isNotEmpty
+      ? kEnvServerUrl.replaceAll(RegExp(r'/+$'), '')
+      : _profile['server_url'] as String?;
   String? get displayName => _profile['display_name'] as String?;
   String? get playerId => _profile['player_id'] as String?;
 
@@ -51,6 +69,8 @@ class OnlineService {
     required String displayName,
   }) async {
     final id = playerId ?? _uuidV4();
+    // A baked-in env URL is authoritative — ignore any passed value.
+    if (kEnvServerUrl.isNotEmpty) serverUrl = kEnvServerUrl;
     final client = ApiClient(serverUrl.replaceAll(RegExp(r'/+$'), ''));
     await client.registerPlayer(id: id, displayName: displayName);
     _profile['server_url'] = client.baseUrl;

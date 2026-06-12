@@ -36,10 +36,60 @@ ActiveWar startWar(
       for (final t in realm.troops) UnitSnapshot(name: t.name, x: t.x, y: t.y),
     ];
   }
+  war.actingSlot = _firstHumanSide(state, war);
   _rollWarMoves(state, war, rng);
   state.activeWar = war;
   state.realm(attackerSlot).warThisYear = true;
   return war;
+}
+
+/// The first human war side in attacker-before-defender order (the
+/// original's round order), or null in a pure AI war.
+int? _firstHumanSide(GameState state, ActiveWar war) {
+  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+    if (state.dynasty(slot).status == DynastyStatus.human) return slot;
+  }
+  return null;
+}
+
+/// The war side whose interactive input is awaited right now, or null
+/// (no war, or no human has to act). Drives the local seat AND the
+/// server's awaited player (ARCHITECTURE.md "Human-vs-human wars
+/// online"): during war rounds it is `war.actingSlot` (falling back to
+/// the first human side for pre-HvH saves), in the claim settlement the
+/// human winner.
+int? warActingSlot(GameState state) {
+  final war = state.activeWar;
+  if (war == null) return null;
+  if (war.phase == WarPhase.settlement) {
+    final winner = war.winnerSlot;
+    return winner != null &&
+            state.dynasty(winner).status == DynastyStatus.human
+        ? winner
+        : null;
+  }
+  final acting = war.actingSlot;
+  if (acting != null && state.dynasty(acting).status == DynastyStatus.human) {
+    return acting;
+  }
+  return _firstHumanSide(state, war);
+}
+
+/// Human-vs-human round handover: an attacker finishing their half of
+/// the round passes the input to the human defender instead of ending
+/// the round. Returns true when the handover happened (the caller must
+/// NOT advance the round then). All other constellations — AI opponent,
+/// defender finishing — return false: the round really ends.
+bool handWarRoundOver(GameState state, int slot) {
+  final war = state.activeWar;
+  if (war == null || war.phase != WarPhase.rounds) return false;
+  if (slot != war.attackerSlot) return false;
+  if (state.dynasty(war.defenderSlot).status != DynastyStatus.human ||
+      state.dynasty(war.attackerSlot).status != DynastyStatus.human) {
+    return false;
+  }
+  war.actingSlot = war.defenderSlot;
+  return true;
 }
 
 /// `[DESIGNED]` war-round movement allowance (§11.2 / §27): each unit gets
@@ -478,6 +528,7 @@ void _endWarByCapitalOccupation(
   war.phase = WarPhase.settlement;
   war.winnerSlot = captorSlot;
   war.remainingClaim = claim;
+  war.actingSlot = captorSlot; // the settlement awaits the winner
 
   if (capturedRuler != null) {
     runCoercion(state, captorSlot, capturedRuler, rng, events);
@@ -560,6 +611,9 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   war.defenderWantsPeace = false;
   war.attackerPlunderedThisRound = false;
   war.defenderPlunderedThisRound = false;
+  // Attacker before defender, as in the original: every new round starts
+  // with the first human side's input.
+  war.actingSlot = _firstHumanSide(state, war);
   _rollWarMoves(state, war, rng);
 }
 
@@ -695,6 +749,7 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   war.phase = WarPhase.settlement;
   war.winnerSlot = winnerSlot;
   war.remainingClaim = claim;
+  war.actingSlot = winnerSlot; // the settlement awaits the winner
   if (state.dynasty(winnerSlot).status != DynastyStatus.human) {
     autoSettleClaim(state, rng, events);
   }

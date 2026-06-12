@@ -1,0 +1,342 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:game_core/game_core.dart' as gc;
+
+import '../services/api_client.dart';
+import '../services/online_game_session.dart';
+import '../services/online_service.dart';
+import '../state/game_controller.dart';
+import '../widgets/decisions.dart' show promptDecisionsFor;
+import 'game_screen.dart';
+
+/// One online match: polls the server while waiting (for players or for
+/// the other seats' turns) and opens the regular game screen on this
+/// seat's turn. Out-of-turn pending decisions (marriage consent, …) are
+/// prompted right from the waiting view.
+class OnlineMatchScreen extends StatefulWidget {
+  const OnlineMatchScreen({
+    super.key,
+    required this.service,
+    required this.matchId,
+  });
+
+  final OnlineService service;
+  final String matchId;
+
+  @override
+  State<OnlineMatchScreen> createState() => _OnlineMatchScreenState();
+}
+
+class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
+  Map<String, dynamic>? _view;
+  String? _error;
+  Timer? _poll;
+  bool _playing = false;
+  bool _promptingDecisions = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!_playing) _refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final view = await widget.service.api.match(
+        widget.matchId,
+        widget.service.playerId!,
+      );
+      if (!mounted) return;
+      setState(() {
+        _view = view;
+        _error = null;
+      });
+      await _maybePromptDecisions(view);
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    }
+  }
+
+  /// Decisions addressed to this seat are answerable out of turn
+  /// (marriage consent, convert-or-die) — prompt them from the waiting
+  /// view instead of letting them sit until the next own turn.
+  Future<void> _maybePromptDecisions(Map<String, dynamic> view) async {
+    if (_playing || _promptingDecisions) return;
+    if (view['status'] != 'active' || view['your_turn'] == true) return;
+    final stateJson = view['state'];
+    if (stateJson == null) return;
+    final session = OnlineGameSession(
+      api: widget.service.api,
+      matchId: widget.matchId,
+      playerId: widget.service.playerId!,
+      view: view,
+    );
+    final mySlot = session.yourSlot;
+    final pending = session.state.pendingDecisions.any(
+      (d) => d.decidingSlot == mySlot,
+    );
+    if (!pending) return;
+    _promptingDecisions = true;
+    try {
+      final controller = GameController(session);
+      if (mounted) await promptDecisionsFor(context, controller, mySlot);
+    } finally {
+      _promptingDecisions = false;
+    }
+    if (mounted) await _refresh();
+  }
+
+  Future<void> _play() async {
+    final view = _view;
+    if (view == null || view['your_turn'] != true) return;
+    final session = OnlineGameSession(
+      api: widget.service.api,
+      matchId: widget.matchId,
+      playerId: widget.service.playerId!,
+      view: view,
+    );
+    _playing = true;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => GameScreen.online(session: session)),
+    );
+    _playing = false;
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final view = _view;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Online-Partie'),
+        actions: [
+          IconButton(
+            tooltip: 'Aktualisieren',
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh),
+          ),
+          if (view != null)
+            IconButton(
+              tooltip: view['status'] == 'waiting' &&
+                      view['creator_id'] == widget.service.playerId
+                  ? 'Partie löschen'
+                  : 'Partie verlassen',
+              onPressed: _leave,
+              icon: Icon(
+                view['status'] == 'waiting' &&
+                        view['creator_id'] == widget.service.playerId
+                    ? Icons.delete_outline
+                    : Icons.logout,
+              ),
+            ),
+        ],
+      ),
+      body: view == null
+          ? Center(
+              child: _error == null
+                  ? const CircularProgressIndicator()
+                  : Text(_error!),
+            )
+          : _body(theme, view),
+    );
+  }
+
+  Widget _body(ThemeData theme, Map<String, dynamic> view) {
+    final status = view['status'] as String;
+    final yourTurn = view['your_turn'] == true;
+    final yourSlot = view['your_slot'] as int?;
+    final players = (view['players'] as List).cast<Map>();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (_error != null)
+          ListTile(
+            leading: Icon(Icons.error_outline, color: theme.colorScheme.error),
+            title: Text(_error!),
+          ),
+        Card(
+          child: ListTile(
+            leading: Icon(switch (status) {
+              'waiting' => Icons.hourglass_top,
+              'active' => yourTurn ? Icons.play_circle : Icons.schedule,
+              _ => Icons.emoji_events,
+            }),
+            title: Text(switch (status) {
+              'waiting' =>
+                'Wartet auf Spieler (${players.length} beigetreten)',
+              'active' =>
+                yourTurn ? 'Du bist am Zug !' : 'Warten auf Mitspieler …',
+              _ =>
+                view['winner'] == widget.service.playerId
+                    ? 'Sieg ! Die Partie ist beendet.'
+                    : 'Die Partie ist beendet.',
+            }),
+            subtitle: view['turn_deadline'] == null
+                ? null
+                : Text('Zugfrist: ${view['turn_deadline']}'),
+          ),
+        ),
+        if (status == 'waiting') ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Teile den Raum-Code, damit deine Mitspieler beitreten können:',
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SelectableText(
+                view['id'] as String? ?? widget.matchId,
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  letterSpacing: 6,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Raum-Code kopieren',
+                icon: const Icon(Icons.copy, size: 18),
+                onPressed: () {
+                  Clipboard.setData(
+                    ClipboardData(
+                      text: view['id'] as String? ?? widget.matchId,
+                    ),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Raum-Code kopiert')),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text('Spieler', style: theme.textTheme.titleSmall),
+        for (final p in players)
+          ListTile(
+            dense: true,
+            leading: Icon(
+              p['player_id'] == view['awaited_player_id']
+                  ? Icons.play_arrow
+                  : Icons.person,
+              size: 18,
+            ),
+            title: Text(
+              gc.countryNames[p['dynasty_index'] as int] +
+                  (p['dynasty_index'] == yourSlot ? ' (du)' : ''),
+            ),
+            subtitle: Text('Zugreihenfolge ${(p['turn_order'] as int) + 1}'),
+          ),
+        const SizedBox(height: 16),
+        // The creator opens the game once everyone joined — no fixed
+        // player count; nobody can join after the start.
+        if (status == 'waiting' &&
+            view['creator_id'] == widget.service.playerId) ...[
+          FilledButton.icon(
+            onPressed: _start,
+            icon: const Icon(Icons.flag),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('Spiel starten'),
+            ),
+          ),
+          if (players.length == 1)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Du kannst auch allein gegen die 29 Computer-Reiche '
+                'starten — danach kann niemand mehr beitreten.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+        if (status == 'active' && yourTurn)
+          FilledButton.icon(
+            onPressed: _play,
+            icon: const Icon(Icons.play_arrow),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('Zug spielen'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Leave/delete this match (mirrors the lobby's per-match action):
+  /// the creator deletes a waiting match, otherwise the seat is freed —
+  /// in a running game the realm falls to the AI.
+  Future<void> _leave() async {
+    final view = _view;
+    if (view == null) return;
+    final status = view['status'] as String;
+    final deletes = status == 'waiting' &&
+        view['creator_id'] == widget.service.playerId;
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(deletes ? 'Partie löschen?' : 'Partie verlassen?'),
+        content: Text(switch (status) {
+          'waiting' when deletes =>
+            'Die wartende Partie wird für alle Spieler gelöscht.',
+          'waiting' => 'Dein Platz wird wieder frei.',
+          'active' =>
+            'Dein Reich wird ab sofort vom Computer weitergespielt — '
+                'eine Rückkehr ist nicht möglich.',
+          _ => 'Die beendete Partie verschwindet aus deiner Liste.',
+        }),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(deletes ? 'Löschen' : 'Verlassen'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true) return;
+    try {
+      await widget.service.api.leaveMatch(
+        matchId: widget.matchId,
+        playerId: widget.service.playerId!,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    }
+  }
+
+  Future<void> _start() async {
+    try {
+      final view = await widget.service.api.startMatch(
+        matchId: widget.matchId,
+        playerId: widget.service.playerId!,
+      );
+      if (!mounted) return;
+      setState(() {
+        _view = view;
+        _error = null;
+      });
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    }
+  }
+}

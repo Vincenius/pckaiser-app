@@ -37,6 +37,7 @@ class ActiveWar {
     this.winnerSlot,
     this.remainingClaim = 0,
     this.heldCapitalSlot,
+    this.actingSlot,
   })  : snapshots = snapshots ?? {},
         movesLeft = movesLeft ?? {};
 
@@ -66,6 +67,9 @@ class ActiveWar {
         remainingClaim: json['remainingClaim'] as int? ?? 0,
         // Additive field — older saves have no armed capture.
         heldCapitalSlot: json['heldCapitalSlot'] as int?,
+        // Additive field — pre-HvH saves derive the acting side from the
+        // dynasty statuses (warActingSlot falls back to the first human).
+        actingSlot: json['actingSlot'] as int?,
       );
 
   final int attackerSlot;
@@ -97,6 +101,13 @@ class ActiveWar {
   /// through the opponent's full response round — resolves the capture;
   /// null when nobody holds it.
   int? heldCapitalSlot;
+
+  /// The side whose interactive war input is awaited right now. Attacker
+  /// first each round; in a human-vs-human war the attacker's round end
+  /// HANDS OVER to the defender instead of advancing the round (see
+  /// `endWarRoundFor`). Null when no human fights — AI sides never await
+  /// input. Read through `warActingSlot`, which also covers pre-HvH saves.
+  int? actingSlot;
 
   bool isParticipant(int slot) => slot == attackerSlot || slot == defenderSlot;
 
@@ -144,6 +155,7 @@ class ActiveWar {
         winnerSlot: winnerSlot,
         remainingClaim: remainingClaim,
         heldCapitalSlot: heldCapitalSlot,
+        actingSlot: actingSlot,
       );
 
   Map<String, dynamic> toJson() => {
@@ -165,5 +177,6 @@ class ActiveWar {
         'winnerSlot': winnerSlot,
         'remainingClaim': remainingClaim,
         'heldCapitalSlot': heldCapitalSlot,
+        'actingSlot': actingSlot,
       };
 }

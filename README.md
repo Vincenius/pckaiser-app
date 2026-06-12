@@ -90,22 +90,47 @@ dart test
 ```bash
 cd backend
 dart pub get
-dart run bin/server.dart            # PORT (default 3000), STORE_DIR (default ./data)
+dart run bin/server.dart
 ```
 
-Or containerized (build from the repository root so `game_core` is in
-context):
+Env: `PORT` (default 3000), `STORE_DIR` (default `./data`),
+`FIREBASE_SERVICE_ACCOUNT` (base64 service-account JSON — enables FCM
+push; without it pushes are logged only).
+
+Containerized (build from the repository root so `game_core` is in
+context), with an Nginx example in `backend/deploy/`:
 
 ```bash
-docker build -f backend/Dockerfile -t pckaiser-server .
-docker run -p 3000:3000 -v pckaiser-data:/data pckaiser-server
+docker compose -f backend/deploy/docker-compose.yml up -d --build
 ```
 
 The store is a JSON file store under `STORE_DIR` (one document per match —
 the same `GameState` JSON the client saves locally); swap in PostgreSQL
-behind `lib/src/store.dart` for multi-node setups. In the app: home screen
-→ "Online spielen (Beta)" → enter the server URL and a name, create a
-match and share the match ID.
+behind `lib/src/store.dart` for multi-node setups.
+
+**Client:** bake the server address into the build —
+
+```bash
+flutter run --dart-define=PCKAISER_SERVER_URL=https://kaiser.example.com
+flutter build apk --dart-define=PCKAISER_SERVER_URL=https://kaiser.example.com
+```
+
+With the define set, "Online spielen (Beta)" only asks for a player name;
+without it (dev builds) the address can be entered in the app. Create a
+match, share the match ID, and play your turns as they come — the server
+validates every action, hides foreign realms per seat and auto-resolves
+expired turns (configurable timer).
+
+**Testing multiplayer on one machine:** two desktop instances normally
+share the same profile file and therefore the same player identity. Give
+the second instance its own identity with
+
+```bash
+flutter run -d linux --dart-define=PCKAISER_INSTANCE=2
+```
+
+(any suffix works — it picks the profile file `pckaiser_online_2.json`,
+so the instance registers as its own player).
 
 ## Build the APK / App Bundle
 

@@ -48,7 +48,10 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Dart shelf backend (`backend/`): players/matches routes, state documents, turn endpoint (ARCHITECTURE.md) — JSON file store behind `GameStore` (PostgreSQL later)
 - [x] Server-side simulation advance; `visibleStateFor` on all responses
 - [x] Host match settings + turn timers; timeout sweep (reminder push pending FCM)
-- [x] Client online foundation: device identity, `ApiClient`, lobby (create/join/list, polling)
-- [ ] In-match play screen against the server (async action round-trips — rngSeed never leaves the server)
-- [ ] Human-vs-human war clock (pending decisions + `war_round_timeout`, delegate-to-AI, WAR_STARTED push) — engine still blocks human-vs-human wars
-- [ ] FCM push (interface + logged stub exist), Nginx deployment, backups — Dockerfile ready
+- [x] Client online foundation: device identity, `ApiClient`, lobby (create/join/list, polling); server URL via `--dart-define=PCKAISER_SERVER_URL`
+- [x] In-match play screen against the server (async `GameSession` round-trips; submissions return their events; out-of-turn decisions prompted from the waiting view)
+- [x] Human-vs-human wars (ruleset v2): two-sided war-round input (`ActiveWar.actingSlot`, attacker hands over to the defender), hot-seat handoff locally, `war_round_timeout` war clock online with AI fallback on timeout
+- [x] Lobby rework: 5-letter room codes, no fixed player count, creator starts the match (`POST /matches/:id/start`)
+- [x] FCM HTTP-v1 push (`FIREBASE_SERVICE_ACCOUNT`, logged stub without it); Docker compose + Nginx example in `backend/deploy/` (backups = volume tar cron, see nginx.conf.example)
+- [x] Leave/delete matches (`POST /matches/:id/leave`): creator deletes a waiting match, leaving a running one hands the realm(s) to the AI (`playerLeft` event); lobby + match-screen UI; `--dart-define=PCKAISER_INSTANCE` for two clients on one desktop
+- [ ] Real-device/system test of an online match (two devices against a deployed server)

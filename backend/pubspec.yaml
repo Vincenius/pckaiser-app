@@ -13,6 +13,7 @@ dependencies:
     path: ../packages/game_core
   shelf: ^1.4.1
   shelf_router: ^1.1.4
+  googleapis_auth: ^2.0.0
 
 dev_dependencies:
   lints: ^5.0.0

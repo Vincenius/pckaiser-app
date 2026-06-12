@@ -57,8 +57,8 @@ Future<void> showTileActionSheet(
   Future<void> run(gc.PlayerAction action, {bool undoable = true}) async {
     try {
       undoable
-          ? controller.applyUndoable(action)
-          : controller.applyIrreversible(action);
+          ? await controller.applyUndoable(action)
+          : await controller.applyIrreversible(action);
     } on gc.ActionException catch (e) {
       toastError(e);
     }
@@ -395,14 +395,14 @@ Future<void> showTileActionSheet(
 /// the nearest water tile beside the target and founds the Dorf (the
 /// separate "move, then tap the coast" dance is no longer needed).
 /// Returns false to keep the pick active on an invalid target.
-bool _steerShip(
+Future<bool> _steerShip(
   BuildContext context,
   GameController controller,
   int slot,
   int shipIndex,
   int x,
   int y,
-) {
+) async {
   void toast(String message) {
     if (context.mounted) {
       ScaffoldMessenger.of(
@@ -414,7 +414,7 @@ bool _steerShip(
   final map = controller.visibleState.map;
   if (map.isWaterAt(x, y)) {
     try {
-      controller.applyUndoable(
+      await controller.applyUndoable(
         gc.MoveShip(slot: slot, shipIndex: shipIndex, x: x, y: y),
       );
       return true;
@@ -469,13 +469,13 @@ bool _steerShip(
     if (name == null || name.isEmpty) return;
     try {
       if (distance > 0) {
-        controller.applyIrreversible(
+        await controller.applyIrreversible(
           gc.MoveShip(slot: slot, shipIndex: shipIndex, x: anchorX, y: anchorY),
         );
       }
       // Founding rolls the starting population — randomized actions
       // clear the undo stack (PROJECT_REQUIREMENTS).
-      controller.applyIrreversible(
+      await controller.applyIrreversible(
         gc.ColonizeShip(
           slot: slot,
           shipIndex: shipIndex,

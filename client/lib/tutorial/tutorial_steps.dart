@@ -137,7 +137,7 @@ final List<TutorialStep> tutorialSteps = [
   TutorialStep(
     title: 'Dynastie',
     body:
-        'Unter „Sonstiges" verwaltest du deine Dynastie: Heirate in '
+        'Unter „Dynastie" verwaltest du dein Herrscherhaus: Heirate in '
         'fremde Häuser ein oder bürgerlich — ohne Erben stirbt deine '
         'Dynastie aus und das Spiel ist für dich verloren. Die Kurfürsten '
         'wählen den Kaiser; Titel steigen mit der Größe deines Reichs.',

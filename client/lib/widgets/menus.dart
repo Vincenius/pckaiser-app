@@ -9,21 +9,22 @@ import '../state/game_controller.dart';
 import 'event_feed.dart';
 
 void _toast(BuildContext context, String message) {
+  if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
-void _tryAction(
+Future<void> _tryAction(
   BuildContext context,
   GameController controller,
   gc.PlayerAction action, {
   bool undoable = false,
-}) {
+}) async {
   try {
     undoable
-        ? controller.applyUndoable(action)
-        : controller.applyIrreversible(action);
+        ? await controller.applyUndoable(action)
+        : await controller.applyIrreversible(action);
   } on gc.ActionException catch (e) {
-    _toast(context, e.message);
+    if (context.mounted) _toast(context, e.message);
   }
 }
 
@@ -324,7 +325,7 @@ void _stationSheet(
               Navigator.pop(sheetContext);
               controller.startTilePick(
                 hint: 'Feld für die neue Truppe antippen',
-                onPick: (x, y) {
+                onPick: (x, y) async {
                   if (controller.state.map.ownerAt(x, y) !=
                       controller.currentSlot) {
                     _toast(
@@ -546,9 +547,9 @@ void showTroopActions(
                   Navigator.pop(sheetContext);
                   controller.startTilePick(
                     hint: 'Zielfeld für „${troop.name}" antippen',
-                    onPick: (x, y) {
+                    onPick: (x, y) async {
                       try {
-                        controller.applyUndoable(
+                        await controller.applyUndoable(
                           gc.MoveTroop(
                             slot: slot,
                             unitIndex: index,
@@ -816,9 +817,6 @@ void _declareWarSheet(BuildContext context, GameController controller) {
                 !realm.isVacant &&
                 // No war against a slot your own ruler already holds.
                 realm.rulerId != controller.currentRealm.rulerId &&
-                // V1: human-vs-human wars wait for the online war clock.
-                controller.state.dynasty(realm.slot).status !=
-                    gc.DynastyStatus.human &&
                 neighbors.contains(realm.slot))
               ListTile(
                 title: Text(gc.countryNames[realm.slot]),
@@ -953,10 +951,10 @@ void _spySheet(
     detail: (agents) =>
         'kostet ${agents * costPerAgent} T — mehr '
         'Agenten, bessere Chancen',
-    onSubmit: (target, agents) {
+    onSubmit: (target, agents) async {
       final gc.ActionResult result;
       try {
-        result = controller.applyIrreversible(
+        result = await controller.applyIrreversible(
           gc.SpyMission(
             slot: controller.currentSlot,
             targetSlot: target,
@@ -965,9 +963,10 @@ void _spySheet(
           ),
         );
       } on gc.ActionException catch (e) {
-        _toast(context, e.message);
+        if (context.mounted) _toast(context, e.message);
         return;
       }
+      if (!context.mounted) return;
       // The mission resolves within the action — confirm the dispatch and
       // reveal the outcome after a short suspense beat. On a failure with
       // caught agents the original's torture line tells the player their
@@ -1028,7 +1027,7 @@ void _assassinSheet(BuildContext context, GameController controller) {
       );
       if (sure != true || !context.mounted) return;
       try {
-        controller.applyIrreversible(
+        await controller.applyIrreversible(
           gc.OrderAssassination(
             slot: controller.currentSlot,
             targetSlot: target,
@@ -1036,9 +1035,10 @@ void _assassinSheet(BuildContext context, GameController controller) {
           ),
         );
       } on gc.ActionException catch (e) {
-        _toast(context, e.message);
+        if (context.mounted) _toast(context, e.message);
         return;
       }
+      if (!context.mounted) return;
       // Assassinations resolve later (event phase) — confirm the dispatch
       // so the player knows the order went through.
       await showDialog<void>(
@@ -1064,7 +1064,8 @@ void _assassinSheet(BuildContext context, GameController controller) {
 
 // --- Misc & Info ------------------------------------------------------
 
-/// The Sonstiges sheet — opened directly from the bottom action bar.
+/// The Dynastie sheet (menu key 'misc') — opened directly from the
+/// bottom action bar.
 void showMiscMenu(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final state = controller.state;
@@ -1453,9 +1454,9 @@ Future<void> _proposeAndReveal(
 ) async {
   final gc.ActionResult result;
   try {
-    result = controller.applyIrreversible(action);
+    result = await controller.applyIrreversible(action);
   } on gc.ActionException catch (e) {
-    _toast(context, e.message);
+    if (context.mounted) _toast(context, e.message);
     return;
   }
   final accepted = result.events.any((e) => e.type == 'wedding');

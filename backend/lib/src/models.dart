@@ -12,11 +12,20 @@ String uuidV4() {
   final bytes = List<int>.generate(16, (_) => rng.nextInt(256));
   bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
-  final hex =
-      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
       '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
       '${hex.substring(20)}';
+}
+
+/// Room code for a match: 5 uppercase letters, short enough to read out
+/// loud or type by hand. 26⁵ ≈ 11.9M codes — the service retries on the
+/// rare collision with an existing match.
+String matchCode() {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  final rng = Random.secure();
+  return String.fromCharCodes(List.generate(
+      5, (_) => letters.codeUnitAt(rng.nextInt(letters.length))));
 }
 
 /// A registered device (`players` table). No auth in V2's first cut:
@@ -105,8 +114,7 @@ class MatchSettings {
 
   factory MatchSettings.fromJson(Map<String, dynamic> json) => MatchSettings(
         turnTimeoutHours: json['turn_timeout_hours'] as int?,
-        warRoundTimeoutSeconds:
-            json['war_round_timeout'] as int? ?? 600,
+        warRoundTimeoutSeconds: json['war_round_timeout'] as int? ?? 600,
         reformationYear: json['reformation_year'] as int? ?? 1020,
         ottomanYear: json['ottoman_year'] as int? ?? 1040,
         seed: json['seed'] as int?,
@@ -138,7 +146,7 @@ enum MatchStatus { waiting, active, finished }
 class MatchRecord {
   MatchRecord({
     required this.id,
-    required this.humanCount,
+    this.humanCount,
     required this.settings,
     required this.players,
     this.status = MatchStatus.waiting,
@@ -152,7 +160,7 @@ class MatchRecord {
 
   factory MatchRecord.fromJson(Map<String, dynamic> json) => MatchRecord(
         id: json['id'] as String,
-        humanCount: json['human_count'] as int,
+        humanCount: json['human_count'] as int?,
         settings:
             MatchSettings.fromJson(json['settings'] as Map<String, dynamic>),
         players: [
@@ -170,7 +178,12 @@ class MatchRecord {
       );
 
   final String id;
-  final int humanCount;
+
+  /// Legacy pre-room-code field: matches used to fix their seat count at
+  /// creation and auto-start when full. New matches leave it null — the
+  /// creator starts the game explicitly (`POST /matches/:id/start`).
+  final int? humanCount;
+
   final MatchSettings settings;
   final List<MatchPlayer> players;
   MatchStatus status;

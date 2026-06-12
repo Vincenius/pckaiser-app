@@ -62,49 +62,62 @@ void main() {
     expect(controller.currentRealm.movementPoints, greaterThan(0));
   });
 
-  test('every interactive tutorial step is completable on the fixed seed',
-      () async {
-    final controller = await tutorialGame();
-    final slot = controller.currentSlot;
-    final realm = controller.currentRealm;
-    final startYear = controller.state.year;
+  test(
+    'every interactive tutorial step is completable on the fixed seed',
+    () async {
+      final controller = await tutorialGame();
+      final slot = controller.currentSlot;
+      final realm = controller.currentRealm;
+      final startYear = controller.state.year;
 
-    // Build step: Weide on a claimable neighbor tile (any land terrain).
-    final buildStep = stepNamed('Bauen & Erweitern');
-    var since = TutorialBaseline(controller);
-    expect(buildStep.isDone!(controller, since), isFalse);
-    final (x, y) = claimableTile(controller.state, slot);
-    controller.applyUndoable(
-        Build(slot: slot, x: x, y: y, building: Building.weide));
-    expect(buildStep.isDone!(controller, since), isTrue);
+      // Build step: Weide on a claimable neighbor tile (any land terrain).
+      final buildStep = stepNamed('Bauen & Erweitern');
+      var since = TutorialBaseline(controller);
+      expect(buildStep.isDone!(controller, since), isFalse);
+      final (x, y) = claimableTile(controller.state, slot);
+      await controller.applyUndoable(
+        Build(slot: slot, x: x, y: y, building: Building.weide),
+      );
+      expect(buildStep.isDone!(controller, since), isTrue);
 
-    // Trade step: the first upkeep leaves something to sell.
-    final tradeStep = stepNamed('Handel');
-    since = TutorialBaseline(controller);
-    expect(tradeStep.isDone!(controller, since), isFalse);
-    expect(realm.grainHarvest + realm.livestockHarvest, greaterThan(0),
-        reason: 'tutorial seed must leave goods to sell on turn one');
-    final good = realm.grainHarvest > 0 ? MarketGood.grain : MarketGood.cattle;
-    controller.applyIrreversible(SellGood(slot: slot, good: good, amount: 1));
-    expect(tradeStep.isDone!(controller, since), isTrue);
+      // Trade step: the first upkeep leaves something to sell.
+      final tradeStep = stepNamed('Handel');
+      since = TutorialBaseline(controller);
+      expect(tradeStep.isDone!(controller, since), isFalse);
+      expect(
+        realm.grainHarvest + realm.livestockHarvest,
+        greaterThan(0),
+        reason: 'tutorial seed must leave goods to sell on turn one',
+      );
+      final good = realm.grainHarvest > 0
+          ? MarketGood.grain
+          : MarketGood.cattle;
+      await controller.applyIrreversible(
+        SellGood(slot: slot, good: good, amount: 1),
+      );
+      expect(tradeStep.isDone!(controller, since), isTrue);
 
-    // Military step: recruit one man at the capital.
-    final militaryStep = stepNamed('Militär');
-    since = TutorialBaseline(controller);
-    expect(militaryStep.isDone!(controller, since), isFalse);
-    controller.applyIrreversible(RecruitTroops(
-        slot: slot,
-        men: 1,
-        troopClass: TroopClass.infanterie,
-        name: 'Rekruten',
-        x: realm.capitalX,
-        y: realm.capitalY));
-    expect(militaryStep.isDone!(controller, since), isTrue);
+      // Military step: recruit one man at the capital.
+      final militaryStep = stepNamed('Militär');
+      since = TutorialBaseline(controller);
+      expect(militaryStep.isDone!(controller, since), isFalse);
+      await controller.applyIrreversible(
+        RecruitTroops(
+          slot: slot,
+          men: 1,
+          troopClass: TroopClass.infanterie,
+          name: 'Rekruten',
+          x: realm.capitalX,
+          y: realm.capitalY,
+        ),
+      );
+      expect(militaryStep.isDone!(controller, since), isTrue);
 
-    // The tutorial must finish within the first round: every interactive
-    // step above completed without ending the turn.
-    expect(controller.state.year, startYear);
-  });
+      // The tutorial must finish within the first round: every interactive
+      // step above completed without ending the turn.
+      expect(controller.state.year, startYear);
+    },
+  );
 
   test('no tutorial step requires ending the turn', () {
     // The last step ends the tutorial itself, so the round-start

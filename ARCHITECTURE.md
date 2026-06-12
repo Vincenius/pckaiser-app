@@ -37,7 +37,8 @@ Key API: `applyAction(GameState, PlayerAction, Rng)`, `runAiTurn`, `advanceUntil
 
 ```sql
 players       (id UUID PK, display_name TEXT, fcm_token TEXT, created_at)
-matches       (id UUID PK, current_turn UUID→players, state JSONB,
+matches       (id TEXT PK,                -- 5-letter room code (legacy rows: UUID)
+               current_turn UUID→players, state JSONB,
                settings JSONB,         -- e.g. {"turn_timeout_hours":24,"war_round_timeout":600}
                turn_deadline TIMESTAMPTZ, status TEXT,  -- waiting|active|finished
                winner UUID→players, created_at, updated_at)
@@ -53,11 +54,17 @@ turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- au
 |--------|------|-------------|
 | POST | `/players` | Register device `{id, display_name, fcm_token}` |
 | PATCH | `/players/:id` | Update name / FCM token |
-| POST | `/matches` | Create `{player_id, human_count, settings}` → `status: waiting` |
-| POST | `/matches/:id/join` | Join; `active` when full |
+| POST | `/matches` | Create `{player_id, settings}` → `status: waiting`, id = 5-letter room code |
+| POST | `/matches/:id/join` | Join a waiting match (≤ 16 seats, no fixed count) |
+| POST | `/matches/:id/start` | Start the match — creator (first seat) only |
+| POST | `/matches/:id/leave` | Leave/delete: waiting + creator → match deleted, otherwise the seat is freed; in a running game the realm falls to the AI (`playerLeft` event, awaited input auto-resolves like the timeout sweep); an empty match is deleted |
 | GET | `/matches/:id?player_id=` | State **filtered for the requester** |
 | POST | `/matches/:id/turn` | Submit turn action or pending decision |
-| GET | `/players/:id/matches` | List player's matches |
+| GET | `/players/:id/matches` | List player's matches (incl. `is_creator`) |
+
+Match ids are 5-letter uppercase room codes (typed by hand; lowercase
+accepted on lookup). There is no fixed player count: players join via the
+code until the creator starts the game.
 
 Responses `{data, error}`; 400 validation, 403 wrong turn, 404 missing.
 
@@ -66,7 +73,7 @@ Responses `{data, error}`; 400 validation, 403 wrong turn, 404 missing.
 Two version numbers travel inside every `GameState` JSON (`game_core/src/state/versioning.dart`):
 
 - **`schemaVersion`** — JSON shape. Additive changes (new field + `fromJson` default) never bump it; incompatible reshapes bump it and add a `schemaMigrations` step. `GameState.fromJson` migrates old documents on every load path. Newer-than-supported documents throw `UnsupportedSchemaVersionException` → shown as "update the app".
-- **`rulesVersion`** — gameplay rules. Changes bump `currentRulesVersion` and gate on `state.rulesVersion >= n` until the next release consolidates the gates. **Policy: every game plays the latest rules** — `adoptLatestRules` upgrades the document at the save-load boundary (client `SaveService.load`, server document load). Release 1 ships ruleset **v1**: the fourteen pre-release iterations were consolidated into the baseline (history in `docs/HISTORY.md`).
+- **`rulesVersion`** — gameplay rules. Changes bump `currentRulesVersion` and gate on `state.rulesVersion >= n` until the next release consolidates the gates. **Policy: every game plays the latest rules** — `adoptLatestRules` upgrades the document at the save-load boundary (client `SaveService.load`, server document load). Release 1 ships ruleset **v1**: the fourteen pre-release iterations were consolidated into the baseline (history in `docs/HISTORY.md`). **v2** lifts the block on human-vs-human wars (see "Human-vs-human wars" below).
 
 Online additionally: API changes additive within `/api/v1`; the server reports a minimum client version so outdated clients get a friendly update prompt.
 
@@ -89,15 +96,17 @@ Online additionally: API changes additive within `/api/v1`; the server reports a
 
 Local mode runs the same loop on-device (`advanceUntilHuman`); auto-save after every completed turn.
 
-### Human-vs-human wars online: blocking with a short war clock (decided 2026-06-10)
+### Human-vs-human wars: sequential round input on a short war clock (decided 2026-06-10, implemented 2026-06-12, ruleset v2)
 
 A war is up to 20 rounds × 2 sides of awaited inputs; `activeWar` is global and pauses the turn loop, so the match-level timer would freeze everyone for days.
 
-**Decision:** wars stay sequential/global (original semantics, replayable), but war-round input from the non-`current_turn` combatant is a **pending decision** on a separate short **war clock** (`settings.war_round_timeout`, default 10 min, host-configurable). Expired war input falls back to the AI war logic for that side/round; a combatant can explicitly delegate the war to the AI; both get a `WAR_STARTED` push. Worst case ≈ 20 × 2 × clock ≈ 7 h; live players finish in minutes.
-Rejected: parallel war track (shared-state mutation breaks replay), WEGO plans (kills tactics), plain blocking (unbounded freeze).
-**Until then (V1):** engine + UI reject `DeclareWar` against human-controlled realms — the local war panel seats only one human side.
+**Mechanism:** wars stay sequential/global (original semantics, replayable). `ActiveWar.actingSlot` names the side whose interactive input is awaited — attacker first each round, as in the original. In a human-vs-human war the attacker's "Runde beenden" only **hands the round over** to the defender (`handWarRoundOver`); the defender's round end advances the round for real. `warActingSlot(state)` resolves the awaited side everywhere (engine gate on war actions, `GameController.currentSlot`, the server's awaited player); the engine entry point for awaited round input is `endWarRoundFor(state, slot, …)`.
+- **Local hot-seat:** every acting-side change raises the regular handoff blocker (`GameController._maybeRequestSeatHandoff`) — the device passes between the combatants each half-round and returns to the paused turn's player when the war ends.
+- **Online:** the awaited combatant runs on the short **war clock** (`settings.war_round_timeout`, default 10 min, host-configurable) instead of the turn timer. Expired war input falls back to the AI war logic for that side/round (an idle attacker thereby hands over; an idle settlement winner auto-settles); both combatants get a `WAR_STARTED` push. Worst case ≈ 20 × 2 × clock ≈ 7 h; live players finish in minutes.
 
-**Seat vs. active player (local client):** while an AI's turn stands paused on a human-defended war, the engine's `currentPlayer` stays the AI; `GameController.currentSlot` is the *seat* (the human war side). Map filter, status row, recap, decisions all key off the seat; regular menus are locked while `warPauseActive`.
+Rejected: parallel war track (shared-state mutation breaks replay), WEGO plans (kills tactics), plain blocking (unbounded freeze), war input as pending decisions (the awaited-player mechanism already models it with less machinery).
+
+**Seat vs. active player (local client):** while a war pauses another realm's turn (an AI attacker's, or the human attacker's while the defender responds), the engine's `currentPlayer` stays that realm; `GameController.currentSlot` is the *seat* (the acting human war side). Map filter, status row, recap, decisions all key off the seat; regular menus are locked while `warPauseActive`.
 
 ## RNG & Determinism
 
@@ -117,18 +126,34 @@ HTTP v1 API via a Dart client (service-account creds from env). Send after state
 
 ### V2 implementation status
 
-The server is implemented (`backend/`): players/matches/join/turn/list
-endpoints, per-requester `visibleStateFor` filtering, the full turn flow
-(apply → AI advance → win check → deadline → push hook), the timeout
-sweep, and a single-node JSON **file store** behind the `GameStore`
-interface (PostgreSQL slots in behind the same interface; FCM is a logged
-stub behind `PushService` until credentials are wired up). The client
-ships the online foundation: device identity, `ApiClient`, and the lobby
-(create / join by match ID / list with turn status, polling). **Remaining
-milestone:** the in-match play screen against the server — actions must
-round-trip (the client cannot roll dice: `rngSeed` never leaves the
-server), so the synchronous `GameController` action path needs an async
-session variant.
+The server is implemented (`backend/`): players/matches/join/start/turn/
+list endpoints, per-requester `visibleStateFor` filtering, the full turn
+flow (apply → AI advance → win check → deadline → push), submission
+responses carry the action's events (visibility-filtered) for the
+client's result popups, the recap baseline moves server-side at end_turn,
+the timeout sweep auto-resolves expired input (incl. the war clock), FCM
+HTTP-v1 push behind `FIREBASE_SERVICE_ACCOUNT` (logged stub without it),
+and a single-node JSON **file store** behind the `GameStore` interface
+(PostgreSQL slots in behind the same interface). Matches live under
+5-letter room codes; the creator starts the game once everyone joined
+(legacy fixed-size matches still auto-start when full). Deployment:
+`backend/Dockerfile` + `backend/deploy/` (compose + Nginx example).
+
+The client plays online matches end to end: the `GameSession` interface
+(`services/game_session.dart`) splits local and online play —
+`LocalGameSession` applies actions through the engine, the
+`OnlineGameSession` round-trips every action to `/matches/:id/turn` and
+rethrows server rejections as the engine's `ActionException`s, so the
+entire game UI (menus, war panel, decisions) runs unchanged on top; the
+`GameController` action path is async for both. The server URL is baked
+in at build time via `--dart-define=PCKAISER_SERVER_URL` (manual entry is
+the dev fallback). Lobby: device identity, create/join (by room code,
+auto-uppercased)/list; the waiting room shows the room code and the
+creator's "Spiel starten" button; the match screen polls while waiting,
+prompts out-of-turn decisions, and opens the regular game screen on your
+turn (undo hidden — the server is authoritative). Human-vs-human wars
+work online and locally (the war clock / hot-seat handoff above) — V2 is
+feature-complete; remaining: device testing.
 
 ## Backend env & infra (V2)
 
@@ -137,4 +162,4 @@ Docker Compose (server + Postgres), Nginx reverse proxy + Let's Encrypt, daily `
 
 ## Out of Scope (V1 of online)
 
-Auth/JWT, matchmaking queue (share match ID), leaderboard, spectator mode, WebSockets (client polls on foreground).
+Auth/JWT, matchmaking queue (share the room code), leaderboard, spectator mode, WebSockets (client polls on foreground).

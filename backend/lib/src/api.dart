@@ -23,6 +23,8 @@ class Api {
       ..get('/api/v1/players/<id>/matches', _playerMatches)
       ..post('/api/v1/matches', _createMatch)
       ..post('/api/v1/matches/<id>/join', _joinMatch)
+      ..post('/api/v1/matches/<id>/start', _startMatch)
+      ..post('/api/v1/matches/<id>/leave', _leaveMatch)
       ..get('/api/v1/matches/<id>', _getMatch)
       ..post('/api/v1/matches/<id>/turn', _submitTurn);
     return router.call;
@@ -56,7 +58,6 @@ class Api {
         final body = await _json(request);
         final match = await _service.createMatch(
           playerId: _requireString(body, 'player_id'),
-          humanCount: body['human_count'] as int? ?? 1,
           settings: MatchSettings.fromJson(
               (body['settings'] as Map?)?.cast<String, dynamic>() ?? {}),
           setup: (body['setup'] as Map?)?.cast<String, dynamic>() ?? {},
@@ -66,12 +67,30 @@ class Api {
 
   Future<Response> _joinMatch(Request request, String id) => _guard(() async {
         final body = await _json(request);
-        await _service.joinMatch(
+        final match = await _service.joinMatch(
           matchId: id,
           playerId: _requireString(body, 'player_id'),
           setup: (body['setup'] as Map?)?.cast<String, dynamic>() ?? {},
         );
-        return _service.view(id, _requireString(body, 'player_id'));
+        return _service.view(match.id, _requireString(body, 'player_id'));
+      });
+
+  Future<Response> _startMatch(Request request, String id) => _guard(() async {
+        final body = await _json(request);
+        final match = await _service.startMatch(
+          matchId: id,
+          playerId: _requireString(body, 'player_id'),
+        );
+        return _service.view(match.id, _requireString(body, 'player_id'));
+      });
+
+  Future<Response> _leaveMatch(Request request, String id) => _guard(() async {
+        final body = await _json(request);
+        final deleted = await _service.leaveMatch(
+          matchId: id,
+          playerId: _requireString(body, 'player_id'),
+        );
+        return {'left': true, 'deleted': deleted};
       });
 
   Future<Response> _getMatch(Request request, String id) => _guard(() {

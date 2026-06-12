@@ -5,29 +5,29 @@ import 'package:game_core/game_core.dart';
 import 'package:pckaiser/services/save_service.dart';
 
 GameState minimalState({int year = 1000}) => GameState(
-      year: year,
-      reformationYear: 1020,
-      ottomanYear: 1040,
-      map: generateMap(Rng(1)),
-      realms: [
-        for (var s = 1; s <= World.realmCount; s++)
-          Realm(slot: s, rulerId: s <= 2 ? s : null),
-      ],
-      persons: {
-        1: Person(id: 1, name: 'Otto', age: 30, dynasty: 1, gender: 0),
-        2: Person(id: 2, name: 'Mathilde', age: 28, dynasty: 2, gender: 1),
-      },
-      dynasties: [
-        for (var s = 1; s <= World.realmCount; s++)
-          Dynasty(
-            index: s,
-            status: s <= 2 ? DynastyStatus.human : DynastyStatus.ai,
-            humanPlayer: s <= 2 ? s - 1 : null,
-            religion: Religion.katholisch,
-          ),
-      ],
-      rngSeed: 7,
-    );
+  year: year,
+  reformationYear: 1020,
+  ottomanYear: 1040,
+  map: generateMap(Rng(1)),
+  realms: [
+    for (var s = 1; s <= World.realmCount; s++)
+      Realm(slot: s, rulerId: s <= 2 ? s : null),
+  ],
+  persons: {
+    1: Person(id: 1, name: 'Otto', age: 30, dynasty: 1, gender: 0),
+    2: Person(id: 2, name: 'Mathilde', age: 28, dynasty: 2, gender: 1),
+  },
+  dynasties: [
+    for (var s = 1; s <= World.realmCount; s++)
+      Dynasty(
+        index: s,
+        status: s <= 2 ? DynastyStatus.human : DynastyStatus.ai,
+        humanPlayer: s <= 2 ? s - 1 : null,
+        religion: Religion.katholisch,
+      ),
+  ],
+  rngSeed: 7,
+);
 
 void main() {
   late Directory tmp;
@@ -53,19 +53,29 @@ void main() {
 
   test('loading upgrades an old save to the latest ruleset', () async {
     final old = GameState.fromJson(
-        minimalState(year: 1007).toJson()..['rulesVersion'] = 1);
+      minimalState(year: 1007).toJson()..['rulesVersion'] = 1,
+    );
     expect(old.rulesVersion, 1);
     await saves.save('Alte Regeln', old);
     final loaded = await saves.load('Alte Regeln');
-    expect(loaded.rulesVersion, currentRulesVersion,
-        reason: 'every game plays the latest rules (versioning policy)');
+    expect(
+      loaded.rulesVersion,
+      currentRulesVersion,
+      reason: 'every game plays the latest rules (versioning policy)',
+    );
   });
 
   test('listSlots returns metadata, most recent first', () async {
-    await saves.save('Alt', minimalState(year: 1003),
-        now: DateTime(2026, 6, 1));
-    await saves.save('Neu', minimalState(year: 1010),
-        now: DateTime(2026, 6, 9));
+    await saves.save(
+      'Alt',
+      minimalState(year: 1003),
+      now: DateTime(2026, 6, 1),
+    );
+    await saves.save(
+      'Neu',
+      minimalState(year: 1010),
+      now: DateTime(2026, 6, 9),
+    );
     final slots = await saves.listSlots();
     expect(slots.map((s) => s.name), ['Neu', 'Alt']);
     expect(slots.first.year, 1010);

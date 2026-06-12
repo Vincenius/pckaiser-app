@@ -5,6 +5,7 @@ import 'package:game_core/game_core.dart' as gc;
 import '../game/map_game.dart';
 import '../game/realm_palette.dart';
 import '../l10n/strings.dart';
+import '../services/game_session.dart';
 import '../services/local_game_session.dart';
 import '../services/save_service.dart';
 import '../state/game_controller.dart';
@@ -52,7 +53,12 @@ class GameScreen extends StatefulWidget {
     tutorial: true,
   );
 
-  final Future<LocalGameSession> sessionFuture;
+  /// One online turn: the session already holds the server's view; the
+  /// screen pops itself once another player is awaited.
+  factory GameScreen.online({required GameSession session}) =>
+      GameScreen._(sessionFuture: Future.value(session));
+
+  final Future<GameSession> sessionFuture;
   final bool tutorial;
 
   @override
@@ -62,6 +68,8 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   GameController? _controller;
   MapGame? _game;
+  bool _poppedForRemote = false;
+  bool _warBriefingShown = false;
 
   @override
   void initState() {
@@ -78,6 +86,16 @@ class _GameScreenState extends State<GameScreen> {
       controller.addListener(() {
         game.updateState(controller.visibleState);
         _syncWarOverlay(controller, game);
+        // Online: the turn went to another player — hand back to the
+        // waiting lobby (once; guarded against re-entry).
+        if (controller.isOnline &&
+            controller.awaitingRemote &&
+            !controller.gameOver &&
+            !_poppedForRemote) {
+          _poppedForRemote = true;
+          if (mounted) Navigator.of(context).maybePop();
+          return;
+        }
         if (mounted) setState(() {});
       });
       setState(() {
@@ -93,15 +111,15 @@ class _GameScreenState extends State<GameScreen> {
     super.dispose();
   }
 
-  void _onTileTap(GameController controller, int x, int y) {
+  Future<void> _onTileTap(GameController controller, int x, int y) async {
     if (controller.handoffPending || controller.gameOver) return;
     // An active tile pick (e.g. stationing a new troop) consumes the tap.
-    if (controller.resolveTilePick(x, y)) return;
+    if (await controller.resolveTilePick(x, y)) return;
     if (controller.state.activeWar != null) {
-      _onWarTileTap(controller, x, y);
+      await _onWarTileTap(controller, x, y);
       return;
     }
-    showTileActionSheet(context, controller, x, y);
+    if (mounted) await showTileActionSheet(context, controller, x, y);
   }
 
   void _toast(String message) {
@@ -138,7 +156,9 @@ class _GameScreenState extends State<GameScreen> {
     if (war.phase == gc.WarPhase.settlement) {
       if (war.winnerSlot != slot) return;
       try {
-        controller.applyWarAction(gc.SettlementAnnex(slot: slot, x: x, y: y));
+        await controller.applyWarAction(
+          gc.SettlementAnnex(slot: slot, x: x, y: y),
+        );
       } on gc.ActionException catch (e) {
         _toast(e.message);
       }
@@ -206,9 +226,9 @@ class _GameScreenState extends State<GameScreen> {
           : (remainingX.sign, 0);
       final beforeX = troop.x;
       final beforeY = troop.y;
-      var error = _warStep(controller, slot, unitIndex, primary, report);
+      var error = await _warStep(controller, slot, unitIndex, primary, report);
       if (error != null && secondary != (0, 0)) {
-        error = _warStep(controller, slot, unitIndex, secondary, report);
+        error = await _warStep(controller, slot, unitIndex, secondary, report);
       }
       if (error != null) {
         // Blocked on both axes or out of moves: only worth a toast when
@@ -236,16 +256,16 @@ class _GameScreenState extends State<GameScreen> {
 
   /// One war step; returns null on success or the engine's message.
   /// Emitted events (battles, capture, war end) are appended to [report].
-  String? _warStep(
+  Future<String?> _warStep(
     GameController controller,
     int slot,
     int unitIndex,
     (int, int) step,
     List<gc.GameEvent> report,
-  ) {
+  ) async {
     if (step == (0, 0)) return 'Unpassierbar !';
     try {
-      final result = controller.applyWarAction(
+      final result = await controller.applyWarAction(
         gc.WarMove(slot: slot, unitIndex: unitIndex, dx: step.$1, dy: step.$2),
       );
       report.addAll(result.events);
@@ -438,7 +458,12 @@ class _GameScreenState extends State<GameScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Spiel verlassen?'),
-        content: const Text('Der letzte abgeschlossene Zug ist gespeichert.'),
+        content: Text(
+          _controller?.isOnline == true
+              ? 'Die Partie läuft auf dem Server weiter — du kannst '
+                    'jederzeit zurückkehren.'
+              : 'Der letzte abgeschlossene Zug ist gespeichert.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -470,11 +495,15 @@ class _GameScreenState extends State<GameScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Row(
           children: [
+            // Compact fixed-width members: on narrow phones the row's
+            // minimum width (icons + year + end-turn button) must stay
+            // under the screen width — only the realm name may truncate.
             IconButton(
               onPressed: _confirmLeaveGame,
               icon: const Icon(Icons.logout),
               color: theme.colorScheme.error,
               tooltip: 'Spiel verlassen',
+              visualDensity: VisualDensity.compact,
             ),
             Flexible(
               child: InkWell(
@@ -512,11 +541,13 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
             ),
-            IconButton(
-              onPressed: controller.canUndo ? controller.undo : null,
-              icon: const Icon(Icons.undo),
-              tooltip: tr('undo'),
-            ),
+            if (controller.supportsUndo)
+              IconButton(
+                onPressed: controller.canUndo ? controller.undo : null,
+                icon: const Icon(Icons.undo),
+                tooltip: tr('undo'),
+                visualDensity: VisualDensity.compact,
+              ),
             const Spacer(),
             FilledButton.icon(
               onPressed: controller.state.activeWar == null
@@ -524,6 +555,10 @@ class _GameScreenState extends State<GameScreen> {
                   : null,
               icon: const Icon(Icons.skip_next),
               label: Text(tr('endTurn')),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
             ),
           ],
         ),
@@ -585,11 +620,18 @@ class _GameScreenState extends State<GameScreen> {
   /// over. The attacker started the war themselves and needs no briefing.
   Future<void> _maybeShowWarAlert(GameController controller, int slot) async {
     final war = controller.state.activeWar;
-    if (war == null ||
-        war.phase != gc.WarPhase.rounds ||
-        war.defenderSlot != slot) {
+    if (war == null) {
+      _warBriefingShown = false;
       return;
     }
+    if (war.phase != gc.WarPhase.rounds ||
+        war.defenderSlot != slot ||
+        // Human-vs-human wars hand the device over every round — brief
+        // the defender only once per war.
+        _warBriefingShown) {
+      return;
+    }
+    _warBriefingShown = true;
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -644,7 +686,10 @@ class _GameScreenState extends State<GameScreen> {
           children: [
             const Icon(Icons.swap_horiz, size: 56),
             const SizedBox(height: 12),
-            Text(tr('handoff'), style: Theme.of(context).textTheme.titleMedium),
+            Text(
+            _controller?.isOnline == true ? 'Du bist am Zug !' : tr('handoff'),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
             Text(
               '${gc.countryNames[slot]}'
               '${ruler == null ? '' : ' — ${ruler.name}'}',

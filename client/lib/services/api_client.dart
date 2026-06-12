@@ -16,7 +16,7 @@ class ApiError implements Exception {
 /// Pure transport — no game logic; the server validates everything.
 class ApiClient {
   ApiClient(this.baseUrl, {HttpClient? httpClient})
-      : _http = httpClient ?? HttpClient();
+    : _http = httpClient ?? HttpClient();
 
   /// e.g. `https://kaiser.example.com` (no trailing slash).
   final String baseUrl;
@@ -26,61 +26,82 @@ class ApiClient {
     required String id,
     required String displayName,
     String? fcmToken,
-  }) =>
-      _request('POST', '/api/v1/players', body: {
-        'id': id,
-        'display_name': displayName,
-        'fcm_token': fcmToken,
-      });
+  }) => _request(
+    'POST',
+    '/api/v1/players',
+    body: {'id': id, 'display_name': displayName, 'fcm_token': fcmToken},
+  );
 
   Future<Map<String, dynamic>> createMatch({
     required String playerId,
-    required int humanCount,
     required Map<String, dynamic> settings,
     required Map<String, dynamic> setup,
-  }) =>
-      _request('POST', '/api/v1/matches', body: {
-        'player_id': playerId,
-        'human_count': humanCount,
-        'settings': settings,
-        'setup': setup,
-      });
+  }) => _request(
+    'POST',
+    '/api/v1/matches',
+    body: {'player_id': playerId, 'settings': settings, 'setup': setup},
+  );
 
   Future<Map<String, dynamic>> joinMatch({
     required String matchId,
     required String playerId,
     required Map<String, dynamic> setup,
-  }) =>
-      _request('POST', '/api/v1/matches/$matchId/join', body: {
-        'player_id': playerId,
-        'setup': setup,
-      });
+  }) => _request(
+    'POST',
+    '/api/v1/matches/$matchId/join',
+    body: {'player_id': playerId, 'setup': setup},
+  );
+
+  /// Starts a waiting match — creator only.
+  Future<Map<String, dynamic>> startMatch({
+    required String matchId,
+    required String playerId,
+  }) => _request(
+    'POST',
+    '/api/v1/matches/$matchId/start',
+    body: {'player_id': playerId},
+  );
+
+  /// Leaves (or, as creator of a waiting match, deletes) a match. In a
+  /// running game the server hands the seat's realm to the AI.
+  Future<Map<String, dynamic>> leaveMatch({
+    required String matchId,
+    required String playerId,
+  }) => _request(
+    'POST',
+    '/api/v1/matches/$matchId/leave',
+    body: {'player_id': playerId},
+  );
 
   Future<Map<String, dynamic>> match(String matchId, String playerId) =>
       _request('GET', '/api/v1/matches/$matchId?player_id=$playerId');
 
   Future<List<dynamic>> myMatches(String playerId) async =>
-      (await _request('GET', '/api/v1/players/$playerId/matches',
-              expectList: true))['list'] as List<dynamic>;
+      (await _request(
+            'GET',
+            '/api/v1/players/$playerId/matches',
+            expectList: true,
+          ))['list']
+          as List<dynamic>;
 
   Future<Map<String, dynamic>> submitAction({
     required String matchId,
     required String playerId,
     required Map<String, dynamic> action,
-  }) =>
-      _request('POST', '/api/v1/matches/$matchId/turn', body: {
-        'player_id': playerId,
-        'action': action,
-      });
+  }) => _request(
+    'POST',
+    '/api/v1/matches/$matchId/turn',
+    body: {'player_id': playerId, 'action': action},
+  );
 
   Future<Map<String, dynamic>> endTurn({
     required String matchId,
     required String playerId,
-  }) =>
-      _request('POST', '/api/v1/matches/$matchId/turn', body: {
-        'player_id': playerId,
-        'end_turn': true,
-      });
+  }) => _request(
+    'POST',
+    '/api/v1/matches/$matchId/turn',
+    body: {'player_id': playerId, 'end_turn': true},
+  );
 
   Future<Map<String, dynamic>> _request(
     String method,
@@ -97,8 +118,10 @@ class ApiClient {
       final text = await response.transform(utf8.decoder).join();
       final decoded = (jsonDecode(text) as Map).cast<String, dynamic>();
       if (response.statusCode != 200) {
-        throw ApiError(response.statusCode,
-            decoded['error'] as String? ?? 'Serverfehler');
+        throw ApiError(
+          response.statusCode,
+          decoded['error'] as String? ?? 'Serverfehler',
+        );
       }
       final data = decoded['data'];
       if (expectList) return {'list': data as List<dynamic>};

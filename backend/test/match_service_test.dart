@@ -26,17 +26,33 @@ void main() {
         'dorf_name': '${name}dorf',
       };
 
+  /// Create + creator start in one go (the new lobby flow has no fixed
+  /// player count — the creator opens the game explicitly).
+  Future<MatchRecord> createStarted(
+    String playerId,
+    MatchSettings settings,
+    Map<String, dynamic> setup,
+  ) async {
+    final match = await service.createMatch(
+        playerId: playerId, settings: settings, setup: setup);
+    return service.startMatch(matchId: match.id, playerId: playerId);
+  }
+
   group('lifecycle', () {
-    test('a single-human match starts immediately and awaits the human',
+    test('matches get a 5-letter room code and wait for the creator start',
         () async {
       final a = await service.registerPlayer(displayName: 'Solo');
       final match = await service.createMatch(
         playerId: a.id,
-        humanCount: 1,
         settings: MatchSettings(seed: 42),
         setup: setupFor('Solo', 5),
       );
-      expect(match.status, MatchStatus.active);
+      expect(match.id, matches(RegExp(r'^[A-Z]{5}$')));
+      expect(match.status, MatchStatus.waiting);
+
+      final started =
+          await service.startMatch(matchId: match.id, playerId: a.id);
+      expect(started.status, MatchStatus.active);
 
       final view = await service.view(match.id, a.id);
       expect(view['your_turn'], isTrue);
@@ -45,24 +61,61 @@ void main() {
       expect(state['currentPlayer'], 5);
     });
 
-    test('a two-human match waits for the second seat, then starts',
+    test('room codes are accepted in lowercase (typed by hand)', () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Solo', 5),
+      );
+      final view = await service.view(match.id.toLowerCase(), a.id);
+      expect(view['id'], match.id);
+    });
+
+    test('only the creator can start; nobody joins a started match',
         () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+
+      await expectLater(
+        service.startMatch(matchId: match.id, playerId: b.id),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+      );
+      await service.startMatch(matchId: match.id, playerId: a.id);
+
+      final c = await service.registerPlayer(displayName: 'Clara');
+      await expectLater(
+        service.joinMatch(
+            matchId: match.id, playerId: c.id, setup: setupFor('Clara', 3)),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 400)),
+      );
+    });
+
+    test('a two-human match starts when the creator says so', () async {
       final (a, b) = await twoPlayers();
       final created = await service.createMatch(
         playerId: a.id,
-        humanCount: 2,
         settings: MatchSettings(seed: 42),
         setup: setupFor('Anna', 1),
       );
       expect(created.status, MatchStatus.waiting);
       expect((await service.view(created.id, a.id))['state'], isNull);
+      expect((await service.view(created.id, a.id))['creator_id'], a.id);
 
-      final joined = await service.joinMatch(
+      await service.joinMatch(
         matchId: created.id,
         playerId: b.id,
         setup: setupFor('Berta', 2),
       );
-      expect(joined.status, MatchStatus.active);
+      final started =
+          await service.startMatch(matchId: created.id, playerId: a.id);
+      expect(started.status, MatchStatus.active);
       // Exactly one player is awaited; the other sees the same id.
       final viewA = await service.view(created.id, a.id);
       final viewB = await service.view(created.id, b.id);
@@ -75,15 +128,13 @@ void main() {
       final (a, b) = await twoPlayers();
       final match = await service.createMatch(
         playerId: a.id,
-        humanCount: 2,
         settings: MatchSettings(seed: 42),
         setup: setupFor('Anna', 1),
       );
       await expectLater(
         service.joinMatch(
             matchId: match.id, playerId: b.id, setup: setupFor('Berta', 1)),
-        throwsA(isA<ApiException>()
-            .having((e) => e.statusCode, 'status', 400)),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 400)),
       );
       await service.joinMatch(
         matchId: match.id,
@@ -97,32 +148,37 @@ void main() {
 
     test('outsiders may not view a match', () async {
       final (a, b) = await twoPlayers();
-      final match = await service.createMatch(
-        playerId: a.id,
-        humanCount: 1,
-        settings: MatchSettings(seed: 42),
-        setup: setupFor('Anna', 1),
-      );
+      final match = await createStarted(
+          a.id, MatchSettings(seed: 42), setupFor('Anna', 1));
       await expectLater(
         service.view(match.id, b.id),
-        throwsA(isA<ApiException>()
-            .having((e) => e.statusCode, 'status', 403)),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
       );
     });
   });
 
   group('turn flow', () {
-    test('the awaited player acts and ends the turn; the server advances '
-        'to the next human', () async {
-      final (a, b) = await twoPlayers();
+    /// Started two-human match: Anna on slot 1, Berta on slot 2.
+    Future<MatchRecord> twoHumanMatch(
+      PlayerRecord a,
+      PlayerRecord b, {
+      MatchSettings? settings,
+    }) async {
       final match = await service.createMatch(
         playerId: a.id,
-        humanCount: 2,
-        settings: MatchSettings(seed: 42),
+        settings: settings ?? MatchSettings(seed: 42),
         setup: setupFor('Anna', 1),
       );
       await service.joinMatch(
           matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      return service.startMatch(matchId: match.id, playerId: a.id);
+    }
+
+    test(
+        'the awaited player acts and ends the turn; the server advances '
+        'to the next human', () async {
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b);
 
       final record = (await store.match(match.id))!;
       final state = GameState.fromJson(record.stateJson!);
@@ -134,8 +190,7 @@ void main() {
       // The not-awaited player is rejected for actions and end-turn.
       await expectLater(
         service.submit(matchId: match.id, playerId: otherId, endTurn: true),
-        throwsA(isA<ApiException>()
-            .having((e) => e.statusCode, 'status', 403)),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
       );
 
       // A foreign-slot action is rejected even for the awaited player.
@@ -146,8 +201,7 @@ void main() {
           actionJson:
               AdjustGuards(slot: awaitedSlot == 1 ? 2 : 1, delta: 1).toJson(),
         ),
-        throwsA(isA<ApiException>()
-            .having((e) => e.statusCode, 'status', 403)),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
       );
 
       // A legal in-turn action sticks.
@@ -168,12 +222,8 @@ void main() {
     test('an engine rejection surfaces as a 400 with the German message',
         () async {
       final a = await service.registerPlayer(displayName: 'Solo');
-      final match = await service.createMatch(
-        playerId: a.id,
-        humanCount: 1,
-        settings: MatchSettings(seed: 42),
-        setup: setupFor('Solo', 1),
-      );
+      final match = await createStarted(
+          a.id, MatchSettings(seed: 42), setupFor('Solo', 1));
       await expectLater(
         service.submit(
           matchId: match.id,
@@ -187,17 +237,9 @@ void main() {
       );
     });
 
-    test('the state is filtered per requester (hidden information)',
-        () async {
+    test('the state is filtered per requester (hidden information)', () async {
       final (a, b) = await twoPlayers();
-      final match = await service.createMatch(
-        playerId: a.id,
-        humanCount: 2,
-        settings: MatchSettings(seed: 42),
-        setup: setupFor('Anna', 1),
-      );
-      await service.joinMatch(
-          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      final match = await twoHumanMatch(a, b);
 
       final viewA = await service.view(match.id, a.id);
       final stateA = (viewA['state'] as Map).cast<String, dynamic>();
@@ -209,15 +251,10 @@ void main() {
       expect(stateA['rngSeed'], 0, reason: 'the seed never leaves the server');
     });
 
-    test('a full AI-decided match finishes with a winner or defeat',
-        () async {
+    test('a full AI-decided match finishes with a winner or defeat', () async {
       final a = await service.registerPlayer(displayName: 'Solo');
-      final match = await service.createMatch(
-        playerId: a.id,
-        humanCount: 1,
-        settings: MatchSettings(seed: 7),
-        setup: setupFor('Solo', 1),
-      );
+      final match = await createStarted(
+          a.id, MatchSettings(seed: 7), setupFor('Solo', 1));
       // Play 30 empty turns — the world keeps simulating around the
       // player; the match must stay consistent and never throw.
       for (var i = 0; i < 30; i++) {
@@ -231,6 +268,99 @@ void main() {
       final state = GameState.fromJson(record.stateJson!);
       expect(state.year, greaterThan(1000));
     });
+
+    test(
+        'human-vs-human war: the attacker hands the round to the '
+        'defender, the war clock arms the deadline', () async {
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(seed: 42, warRoundTimeoutSeconds: 600));
+
+      // State surgery (test-only): make a war declarable right now —
+      // year past 1010, troops on both sides, a shared border.
+      final record = (await store.match(match.id))!;
+      final state = GameState.fromJson(record.stateJson!);
+      state.year = 1010;
+      for (final slot in [1, 2]) {
+        final realm = state.realm(slot);
+        realm.treasury = 10000;
+        realm.towns.first.troopCapacity = 200;
+        realm.troopCapacity = 200;
+        realm.troops.add(Troop(
+          name: 'Heer$slot',
+          men: 50,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: false,
+          x: realm.capitalX,
+          y: realm.capitalY,
+        ));
+      }
+      final map = state.map;
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
+            continue;
+          }
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 1) {
+              map.owner[map.index(x, y)] = 2;
+              state.realm(2).tileCount[Building.none]++;
+              break outer;
+            }
+          }
+        }
+      }
+      // Park the match on slot 1's turn (Anna attacks).
+      state.currentPlayer = 1;
+      record.stateJson = state.toJson();
+      await store.saveMatch(record);
+
+      // Anna declares war on Berta's realm — allowed since ruleset v2.
+      final declared = await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      expect(declared['awaited_player_id'], a.id,
+          reason: 'attacker before defender');
+      expect(declared['turn_deadline'], isNotNull,
+          reason: 'the short war clock replaces the turn timer');
+
+      // Berta may not act during Anna's half of the round.
+      await expectLater(
+        service.submit(
+          matchId: match.id,
+          playerId: b.id,
+          actionJson: WarEndRound(slot: 2).toJson(),
+        ),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+      );
+
+      // Anna's round end hands the same round to Berta.
+      final handed = await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: WarEndRound(slot: 1).toJson(),
+      );
+      expect(handed['awaited_player_id'], b.id);
+      final handedState = GameState.fromJson(
+          (handed['state'] as Map).cast<String, dynamic>());
+      expect(handedState.activeWar!.round, 0, reason: 'same round');
+
+      // Berta's round end advances the round — back to Anna.
+      final advanced = await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarEndRound(slot: 2).toJson(),
+      );
+      expect(advanced['awaited_player_id'], a.id);
+      final advancedState = GameState.fromJson(
+          (advanced['state'] as Map).cast<String, dynamic>());
+      expect(advancedState.activeWar!.round, 1);
+    });
   });
 
   group('timeouts', () {
@@ -240,15 +370,14 @@ void main() {
       final (a, b) = await twoPlayers();
       final match = await service.createMatch(
         playerId: a.id,
-        humanCount: 2,
         settings: MatchSettings(seed: 42, turnTimeoutHours: 24),
         setup: setupFor('Anna', 1),
       );
       await service.joinMatch(
           matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
 
-      final before =
-          (await service.view(match.id, a.id))['awaited_player_id'];
+      final before = (await service.view(match.id, a.id))['awaited_player_id'];
       expect((await store.match(match.id))!.turnDeadline, isNotNull);
 
       now = now.add(const Duration(hours: 25));
@@ -261,14 +390,155 @@ void main() {
 
     test('without a timer no deadline is set', () async {
       final a = await service.registerPlayer(displayName: 'Solo');
-      final match = await service.createMatch(
-        playerId: a.id,
-        humanCount: 1,
-        settings: MatchSettings(seed: 42),
-        setup: setupFor('Solo', 1),
-      );
+      final match = await createStarted(
+          a.id, MatchSettings(seed: 42), setupFor('Solo', 1));
       expect((await store.match(match.id))!.turnDeadline, isNull);
       expect(await service.sweepExpired(), 0);
+    });
+  });
+
+  group('leaving', () {
+    test('the creator leaving a waiting match deletes it for everyone',
+        () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+
+      final deleted =
+          await service.leaveMatch(matchId: match.id, playerId: a.id);
+      expect(deleted, isTrue);
+      expect(await store.match(match.id), isNull);
+      expect(await service.matchesForPlayer(b.id), isEmpty);
+    });
+
+    test('a joiner leaving a waiting match just frees the seat', () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+
+      final deleted =
+          await service.leaveMatch(matchId: match.id, playerId: b.id);
+      expect(deleted, isFalse);
+      final record = (await store.match(match.id))!;
+      expect(record.status, MatchStatus.waiting);
+      expect(record.playerById(b.id), isNull);
+      // The freed slot can be taken again.
+      final c = await service.registerPlayer(displayName: 'Clara');
+      await service.joinMatch(
+          matchId: match.id, playerId: c.id, setup: setupFor('Clara', 2));
+    });
+
+    test('leaving a running match hands the realm to the AI and play '
+        'continues', () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
+
+      // Whoever is awaited leaves — the hardest case: their open turn
+      // must complete via the AI and pass to the remaining human.
+      final awaitedId = (await service.view(match.id, a.id))['awaited_player_id']
+          as String;
+      final (leaver, stays) = awaitedId == a.id ? (a, b) : (b, a);
+      final leaverSlot =
+          (await service.view(match.id, leaver.id))['your_slot'] as int;
+
+      final deleted =
+          await service.leaveMatch(matchId: match.id, playerId: leaver.id);
+      expect(deleted, isFalse);
+
+      final record = (await store.match(match.id))!;
+      expect(record.playerById(leaver.id), isNull);
+      final state = GameState.fromJson(record.stateJson!);
+      expect(state.dynasty(leaverSlot).status, DynastyStatus.ai);
+      expect(state.dynasty(leaverSlot).humanPlayer, isNull);
+      expect(state.events.any((e) => e.type == 'playerLeft'), isTrue);
+
+      // The leaver is out, the remaining player is awaited.
+      await expectLater(
+        service.view(match.id, leaver.id),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+      );
+      final view = await service.view(match.id, stays.id);
+      expect(view['status'], 'active');
+      expect(view['your_turn'], isTrue);
+    });
+
+    test('the last player leaving a running match deletes it', () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await createStarted(
+          a.id, MatchSettings(seed: 42), setupFor('Solo', 1));
+      final deleted =
+          await service.leaveMatch(matchId: match.id, playerId: a.id);
+      expect(deleted, isTrue);
+      expect(await store.match(match.id), isNull);
+    });
+
+    test('an outsider cannot leave a match', () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await expectLater(
+        service.leaveMatch(matchId: match.id, playerId: b.id),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+      );
+    });
+  });
+
+  group('submission responses', () {
+    test(
+        'a submission returns its own (visible) events and end_turn '
+        'moves the recap baseline', () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await createStarted(
+          a.id, MatchSettings(seed: 42), setupFor('Solo', 3));
+
+      // Recruiting emits an owner-visible 'troopsRecruited' event — it
+      // must come back with the submission for the client's popups.
+      final record = (await store.match(match.id))!;
+      // Persist the tweak through the store (test-only state surgery).
+      record.stateJson = (GameState.fromJson(record.stateJson!)
+            ..realm(3).treasury = 1000
+            ..realm(3).towns.single.troopCapacity = 50
+            ..realm(3).troopCapacity = 50)
+          .toJson();
+      await store.saveMatch(record);
+
+      final view = await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: RecruitTroops(slot: 3, men: 5, troopClass: 0, name: 'Garde')
+            .toJson(),
+      );
+      final events = (view['events'] as List).cast<Map>();
+      expect(events.any((e) => e['type'] == 'troopsRecruited'), isTrue);
+
+      // Ending the turn moves the seat's recap baseline server-side.
+      final ended = await service.submit(
+          matchId: match.id, playerId: a.id, endTurn: true);
+      final state =
+          GameState.fromJson(((ended['state'] as Map).cast<String, dynamic>()));
+      expect(state.recapBaselines[3], isNotNull);
+      expect((ended['events'] as List), isNotEmpty,
+          reason: 'the advance events come back for the recap');
     });
   });
 }
