@@ -328,11 +328,17 @@ void _crown(
   if (office == Office.kaiser) {
     state.kaiserId = winner.id;
     state.kaiserChronicle.add(ChronicleRecord(
-        name: winner.name, accessionYear: state.year, personId: winner.id));
+        name: winner.name,
+        accessionYear: state.year,
+        personId: winner.id,
+        slot: winner.dynasty));
   } else {
     state.sultanId = winner.id;
     state.sultanChronicle.add(ChronicleRecord(
-        name: winner.name, accessionYear: state.year, personId: winner.id));
+        name: winner.name,
+        accessionYear: state.year,
+        personId: winner.id,
+        slot: winner.dynasty));
   }
   events.add(GameEvent(
     year: state.year,
@@ -378,7 +384,8 @@ void closeChronicleIfOfficeHolder(
       final r = ChronicleRecord(
           name: deceased.name,
           accessionYear: state.year,
-          personId: deceased.id);
+          personId: deceased.id,
+          slot: deceased.dynasty);
       chronicle.add(r);
       return r;
     },

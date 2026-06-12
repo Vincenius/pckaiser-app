@@ -1692,12 +1692,18 @@ void _showSettlements(BuildContext context, GameController controller) {
 }
 
 /// "Kaiserchronik" (the original's "Urkunde" screen): every Kaiser and
-/// Sultan reign with years and epithet.
+/// Sultan reign with home country, years and epithet.
 void _showChronicle(BuildContext context, GameController controller) {
   final state = controller.visibleState;
-  String line(gc.ChronicleRecord r) =>
-      '${r.name} (${r.accessionYear}–${r.deathYear ?? ''})'
-      '${r.epithet == null ? '' : ' "${r.epithet}"'}';
+  String line(gc.ChronicleRecord r) {
+    // Pre-`slot` records (older saves): the person's dynasty is the home
+    // realm, as long as the person still exists.
+    final slot = r.slot ?? state.persons[r.personId]?.dynasty;
+    final country = slot == null ? '' : ' von ${gc.countryNames[slot]}';
+    return '${r.name}$country (${r.accessionYear}–${r.deathYear ?? ''})'
+        '${r.epithet == null ? '' : ' "${r.epithet}"'}';
+  }
+
   showModalBottomSheet<void>(
     context: context,
     builder: (context) => SafeArea(

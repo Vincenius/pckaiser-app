@@ -124,22 +124,31 @@ void _runAiTurnInPlace(
   }
 }
 
-/// §20.4 build-loop target selection: first matching tile in a map scan.
+/// §20.4 build-loop target selection: a RANDOM matching tile.
+/// `[DEVIATION]` The original scanned the map row by row and took the
+/// first hit, so AI realms always built and expanded toward the top-left
+/// corner — visibly predictable. Picking uniformly among all candidates
+/// keeps the same build priorities but spreads growth in every direction.
 PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
   final map = state.map;
   final slot = realm.slot;
 
+  (int, int)? pickRandom(List<(int, int)> candidates) =>
+      candidates.isEmpty ? null : candidates[rng.nextInt(candidates.length)];
+
   (int, int)? findOwned(bool Function(int x, int y, int building) test) {
+    final candidates = <(int, int)>[];
     for (var y = 0; y < map.height; y++) {
       for (var x = 0; x < map.width; x++) {
         if (map.ownerAt(x, y) != slot) continue;
-        if (test(x, y, map.buildingAt(x, y))) return (x, y);
+        if (test(x, y, map.buildingAt(x, y))) candidates.add((x, y));
       }
     }
-    return null;
+    return pickRandom(candidates);
   }
 
   (int, int)? findClaimable() {
+    final candidates = <(int, int)>[];
     for (var y = 0; y < map.height; y++) {
       for (var x = 0; x < map.width; x++) {
         if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
@@ -148,12 +157,13 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
         for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
           if (map.inBounds(x + dx, y + dy) &&
               map.ownerAt(x + dx, y + dy) == slot) {
-            return (x, y);
+            candidates.add((x, y));
+            break;
           }
         }
       }
     }
-    return null;
+    return pickRandom(candidates);
   }
 
   // Keep food up: tileCount[Kornfeld] × 9 ≳ population.
@@ -192,6 +202,7 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
 
   // Hafen on a qualifying coastal water tile.
   if (realm.treasury >= 700) {
+    final coast = <(int, int)>[];
     for (var y = 0; y < map.height; y++) {
       for (var x = 0; x < map.width; x++) {
         if (!map.isWaterAt(x, y) ||
@@ -206,10 +217,16 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
           if (map.inBounds(x + dx, y + dy) &&
               map.ownerAt(x + dx, y + dy) == slot &&
               Terrain.isLand(map.terrainAt(x + dx, y + dy))) {
-            return Build(slot: slot, x: x, y: y, building: Building.hafen);
+            coast.add((x, y));
+            break;
           }
         }
       }
+    }
+    final spot = pickRandom(coast);
+    if (spot != null) {
+      return Build(
+          slot: slot, x: spot.$1, y: spot.$2, building: Building.hafen);
     }
   }
 

@@ -99,10 +99,10 @@ void main() {
         .state;
   }
 
-  group('settlement claim cap (rules v12)', () {
+  group('settlement claim cap (rules v12; share rolled 50–80% since v3)', () {
     test(
-        'a capital capture claim is capped at half the loser territory '
-        'value (the capital-tile floor permitting)', () {
+        'a capital capture claim is capped at a share of the loser '
+        'territory value (the capital-tile floor permitting)', () {
       var s = marchOntoCapital(state);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
       final loserValueBefore = territoryValue(s, 2);
@@ -112,11 +112,14 @@ void main() {
 
       expect(s.activeWar!.phase, WarPhase.settlement);
       expect(s.activeWar!.winnerSlot, 1);
-      // The cap is half the loser's territory value; a capture claim is
-      // floored at the capital tile (the captor held that very tile).
-      expect(s.activeWar!.remainingClaim,
-          lessThanOrEqualTo(math.max(loserValueBefore ~/ 2, capitalValue)),
-          reason: 'one lost war may cost at most half the realm '
+      // The cap share is rolled, at most 80% of the loser's territory
+      // value; a capture claim is floored at the capital tile (the
+      // captor held that very tile).
+      expect(
+          s.activeWar!.remainingClaim,
+          lessThanOrEqualTo(
+              math.max(loserValueBefore * 80 ~/ 100, capitalValue)),
+          reason: 'one lost war may cost at most 80% of the realm '
               '(or the capital tile, whichever is more)');
       expect(s.activeWar!.remainingClaim, greaterThan(0));
     });
@@ -124,6 +127,28 @@ void main() {
     test('a winter score victory is capped the same way', () {
       var s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      final enemyTown = s.realm(2).towns.single;
+      final troop = s.realm(1).troops.single;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      final loserValueBefore = territoryValue(s, 2);
+      s.activeWar!.round = 21;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.remainingClaim,
+          lessThanOrEqualTo(loserValueBefore * 80 ~/ 100));
+      expect(s.activeWar!.remainingClaim,
+          greaterThanOrEqualTo(loserValueBefore ~/ 2),
+          reason: 'the rolled share never falls below the old half cap');
+    });
+
+    test('an old-rules (v2) state keeps the flat half cap', () {
+      // Pin the pre-v3 ruleset via a JSON roundtrip (rulesVersion is
+      // final); the gate in _cappedClaim must keep the old behavior.
+      var s = GameState.fromJson(state.toJson()..['rulesVersion'] = 2);
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
           .state;
       final enemyTown = s.realm(2).towns.single;
       final troop = s.realm(1).troops.single;

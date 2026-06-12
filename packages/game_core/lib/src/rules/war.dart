@@ -63,8 +63,7 @@ int? warActingSlot(GameState state) {
   if (war == null) return null;
   if (war.phase == WarPhase.settlement) {
     final winner = war.winnerSlot;
-    return winner != null &&
-            state.dynasty(winner).status == DynastyStatus.human
+    return winner != null && state.dynasty(winner).status == DynastyStatus.human
         ? winner
         : null;
   }
@@ -471,14 +470,18 @@ int? capitalOccupier(GameState state, ActiveWar war) {
   return null;
 }
 
-/// The settlement claim is capped at HALF the loser's total
+/// The settlement claim is capped at a share of the loser's total
 /// territory settlement value. War scores grow with army strength
 /// squared, so any sizeable army's claim used to dwarf the loser's whole
 /// realm — the winner could annex every reachable tile and the cash
 /// remainder bankrupted the loser on top. With the cap, one lost war
-/// costs at most half the realm (the last tile is never affordable), so
+/// never costs the whole realm (the last tile is never affordable), so
 /// a losing party is never erased by a single war.
-int _cappedClaim(GameState state, int loserSlot, int claim) {
+///
+/// Ruleset v3: the cap share is ROLLED per war end, 50–80% (before: a
+/// flat 50%, which made every victory against a similar-sized realm pay
+/// out the same, predictable claim).
+int _cappedClaim(GameState state, int loserSlot, int claim, Rng rng) {
   final map = state.map;
   var total = 0;
   for (var i = 0; i < map.terrain.length; i++) {
@@ -486,7 +489,8 @@ int _cappedClaim(GameState state, int loserSlot, int claim) {
       total += settlementTileValue(state, map.building[i]);
     }
   }
-  return math.min(claim, total ~/ 2);
+  final sharePercent = state.rulesVersion >= 3 ? 50 + rng.nextInt(31) : 50;
+  return math.min(claim, total * sharePercent ~/ 100);
 }
 
 /// Ruler capture, resolved at ROUND END: the captor holds the enemy
@@ -506,7 +510,7 @@ void _endWarByCapitalOccupation(
   // win — a quick war against a depleted enemy yields a tiny war score,
   // and the winner could otherwise never take the seat they conquered.
   final claim = math.max(
-      _cappedClaim(state, loserSlot, warScore(state, captorSlot)),
+      _cappedClaim(state, loserSlot, warScore(state, captorSlot), rng),
       settlementTileValue(
           state, state.map.buildingAt(loser.capitalX, loser.capitalY)));
 
@@ -579,8 +583,14 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
     war.setWantsPeace(slot, _aiWantsPeace(state, war, slot));
   }
 
-  if ((war.attackerWantsPeace && war.defenderWantsPeace) || war.round >= 20) {
-    if (war.round >= 20) {
+  // Ruleset v3: winter fires when the 20th round ENDS (`round` is
+  // 0-based, so >= 19). The pre-v3 check (>= 20) only fired one round
+  // later — the war UI counts "Runde X/20", so players saw an absurd
+  // "Runde 21/20" and a war one round longer than announced.
+  final winterReached =
+      war.round >= (state.rulesVersion >= 3 ? 19 : 20);
+  if ((war.attackerWantsPeace && war.defenderWantsPeace) || winterReached) {
+    if (winterReached) {
       events.add(GameEvent(
         year: state.year,
         slot: 0,
@@ -733,8 +743,8 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   final winnerSlot =
       scoreAttacker > scoreDefender ? war.attackerSlot : war.defenderSlot;
   final loserSlot = war.opponentOf(winnerSlot);
-  final claim =
-      _cappedClaim(state, loserSlot, math.max(scoreAttacker, scoreDefender));
+  final claim = _cappedClaim(
+      state, loserSlot, math.max(scoreAttacker, scoreDefender), rng);
 
   events.add(GameEvent(
     year: state.year,

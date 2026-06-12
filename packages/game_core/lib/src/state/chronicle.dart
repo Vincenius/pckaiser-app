@@ -4,6 +4,7 @@ class ChronicleRecord {
     required this.name,
     required this.accessionYear,
     this.personId,
+    this.slot,
     this.deathYear,
     this.epithet,
   });
@@ -13,6 +14,7 @@ class ChronicleRecord {
         name: json['name'] as String,
         accessionYear: json['accessionYear'] as int,
         personId: json['personId'] as int?,
+        slot: json['slot'] as int?,
         deathYear: json['deathYear'] as int?,
         epithet: json['epithet'] as String?,
       );
@@ -24,6 +26,11 @@ class ChronicleRecord {
   /// is matched by id (null only in pre-personId saves).
   final int? personId;
 
+  /// Home realm slot (dynasty index) at coronation — the country the
+  /// office holder "stammt aus" in the chronicle (null in older saves;
+  /// the UI falls back to the person's dynasty then).
+  final int? slot;
+
   /// Null while the office holder is alive / in office.
   int? deathYear;
 
@@ -34,6 +41,7 @@ class ChronicleRecord {
         name: name,
         accessionYear: accessionYear,
         personId: personId,
+        slot: slot,
         deathYear: deathYear,
         epithet: epithet,
       );
@@ -42,6 +50,7 @@ class ChronicleRecord {
         'name': name,
         'accessionYear': accessionYear,
         'personId': personId,
+        'slot': slot,
         'deathYear': deathYear,
         'epithet': epithet,
       };

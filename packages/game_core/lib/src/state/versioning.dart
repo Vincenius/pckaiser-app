@@ -40,7 +40,14 @@ const int currentSchemaVersion = 1;
 /// human realms is allowed, war-round input alternates between the two
 /// human sides (`ActiveWar.actingSlot` — hot-seat handoff locally, the
 /// war clock online).
-const int currentRulesVersion = 2;
+///
+/// v3 rolls the war-claim cap per war end (50–80% of the loser's
+/// territory value instead of a flat 50% — see `_cappedClaim`) and
+/// fires the winter war end when the 20th war round ends (was one round
+/// later, contradicting the UI's "Runde X/20" counter). The AI
+/// build-tile picks were randomized in the same change (ungated: AI
+/// scripting, not a state rule).
+const int currentRulesVersion = 3;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

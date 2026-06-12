@@ -248,11 +248,14 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
       );
 
     case 'winterEndsWar':
+      // The original's wording: "Der Krieg mußte wegen des
+      // hereinbrechenden Winters beendet werden."
       return _ReportEntry(
         Icons.ac_unit,
         Colors.blueGrey,
         'Winter',
-        'Der Winter bricht herein und beendet den Krieg.',
+        'Der Krieg musste wegen des hereinbrechenden Winters beendet '
+            'werden.',
       );
 
     case 'claimPaidOut':

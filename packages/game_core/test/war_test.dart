@@ -233,6 +233,25 @@ void main() {
       expect(s.events.any((e) => e.type == 'winterEndsWar'), isTrue);
     });
 
+    test(
+        'played naturally, winter ends the war when round 20 ends — not '
+        'one round later (the UI counts "Runde X/20")', () {
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      // Click through 19 rounds without moving or wishing peace.
+      for (var i = 0; i < 19; i++) {
+        s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+        expect(s.activeWar, isNotNull,
+            reason: 'round ${i + 1} ended, no winter yet');
+      }
+      expect(s.activeWar!.round, 19, reason: 'displayed as "Runde 20/20"');
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      expect(result.events.any((e) => e.type == 'winterEndsWar'), isTrue);
+      expect(result.state.activeWar, isNull,
+          reason: 'no scores on either side — the winter end is a draw');
+    });
+
     test('plunder: once per round, never your own land', () {
       var s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))

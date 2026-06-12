@@ -110,7 +110,8 @@ String describeEvent(gc.GameEvent e) {
       '$realm gewinnt den Krieg gegen ${gc.countryNames[p['loserSlot'] as int]}',
     'warDraw' => 'Der Krieg endet unentschieden',
     'peaceAgreed' => 'Friedensschluss — der Krieg endet ohne Gebietsänderungen',
-    'winterEndsWar' => 'Der Winter beendet den Krieg',
+    'winterEndsWar' =>
+      'Der Krieg musste wegen des hereinbrechenden Winters beendet werden',
     'peaceWish' => '$realm wünscht ein Ende des Krieges',
     'tileConquered' =>
       '$realm erobert (${p['x']}, ${p['y']}) von '

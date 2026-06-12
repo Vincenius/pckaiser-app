@@ -369,3 +369,38 @@ deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
   highlighted icon, 20 s foreground poll like the lobby, tap opens the
   match; errors are silent there (the online screen reports them). 27
   client tests + analyze green.
+- **Polish round (user feedback, ruleset v3)**: (1) Hot-seat/turn
+  blockers ("Spieler X ist am Zug", victory, busy) moved OUTSIDE the
+  game screen's `SafeArea` — inside it the system-inset strips (status
+  bar / gesture nav) stayed uncovered and the map shone through on
+  devices with edge-to-edge UI. (2) AI build variability `[DEVIATION]`:
+  `_pickBuildAction` picked the FIRST matching tile of a row-major map
+  scan, so AI realms always built/expanded toward the top-left ("nach
+  oben"); now every candidate set (fields, Dorf/Burg/Palast spots,
+  Hafen coast tiles, claimable frontier) is collected and a uniformly
+  random one is taken — same priorities, unpredictable shape. Ungated
+  (AI scripting, not a state rule). (3) Winter war end now reports with
+  the original's sentence "Der Krieg musste wegen des hereinbrechenden
+  Winters beendet werden" (war report popup + event feed; was a terse
+  "Der Winter beendet den Krieg"). (4) **Ruleset v3**: the settlement
+  claim cap is rolled per war end at 50–80% of the loser's territory
+  value (was a flat 50%, which made every victory against a
+  similar-sized realm pay out the same 5000–6000) — old half cap kept
+  under `rulesVersion < 3` and covered by a pinned-v2 test in
+  `bugfix_v12_test.dart`. (5) Kaiserchronik shows the office holder's
+  home country: `ChronicleRecord.slot` (additive JSON field, no schema
+  bump) stamped at coronation/record creation; the chronicle sheet
+  renders "Name von Land (Jahre)" with a person-dynasty fallback for
+  pre-slot saves. 231 core + 27 client + 22 backend tests green.
+- **Winter off-by-one (test-play follow-up, ruleset v3)**: the winter
+  check fired at `war.round >= 20`, but the counter is 0-based and the
+  war UI counts "Runde X/20" — wars ran 21 rounds, the panel showed
+  "Runde 21/20", and the player never saw the winter message where the
+  UI promised it. v3 fires winter when the 20th round ends
+  (`round >= 19`); pre-v3 behavior kept under the gate. Natural-flow
+  regression test in `war_test.dart` (the old winter test forces
+  `round = 21` and would not have caught this). Launcher icons:
+  regenerated via `dart run flutter_launcher_icons` after the new
+  `client/assets/icon/` images landed — the generated platform mipmaps
+  are checked in, so they must be regenerated whenever the source
+  images change.

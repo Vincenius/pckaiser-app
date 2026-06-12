@@ -283,11 +283,15 @@ class _GameScreenState extends State<GameScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    // The full-screen blockers (busy, handoff, victory) live OUTSIDE the
+    // SafeArea: inside it they leave the system-inset strips (status bar,
+    // gesture nav) uncovered, and the map shines through there — a hot-seat
+    // handoff must hide the predecessor's screen completely.
     return Scaffold(
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
               children: [
                 Expanded(
                   child: Stack(
@@ -346,19 +350,18 @@ class _GameScreenState extends State<GameScreen> {
                 _actionBar(controller),
               ],
             ),
-            if (controller.busy)
-              const Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.black54,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
+          ),
+          if (controller.busy)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black54,
+                child: Center(child: CircularProgressIndicator()),
               ),
-            if (controller.handoffPending && !controller.gameOver)
-              Positioned.fill(child: _handoff(controller)),
-            if (controller.gameOver)
-              Positioned.fill(child: _victory(controller)),
-          ],
-        ),
+            ),
+          if (controller.handoffPending && !controller.gameOver)
+            Positioned.fill(child: _handoff(controller)),
+          if (controller.gameOver) Positioned.fill(child: _victory(controller)),
+        ],
       ),
     );
   }
@@ -687,9 +690,11 @@ class _GameScreenState extends State<GameScreen> {
             const Icon(Icons.swap_horiz, size: 56),
             const SizedBox(height: 12),
             Text(
-            _controller?.isOnline == true ? 'Du bist am Zug !' : tr('handoff'),
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+              _controller?.isOnline == true
+                  ? 'Du bist am Zug !'
+                  : tr('handoff'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             Text(
               '${gc.countryNames[slot]}'
               '${ruler == null ? '' : ' — ${ruler.name}'}',
