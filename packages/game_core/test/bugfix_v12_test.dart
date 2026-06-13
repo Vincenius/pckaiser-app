@@ -197,6 +197,44 @@ void main() {
     });
   });
 
+  group('realmOverrun vacates the loser (zombie-realm bug fix)', () {
+    test(
+        'a total-conquest settlement vacates the loser so it leaves the '
+        'turn order and cannot inherit the human slot', () {
+      // Win the war (enter settlement phase).
+      var s = marchOntoCapital(state);
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.activeWar!.phase, WarPhase.settlement);
+
+      // Strip all loser tiles out-of-band (simulates a large-claim total
+      // conquest: the settlement claim covers every tile the loser owns).
+      final map = s.map;
+      final loser = s.realm(2);
+      for (var i = 0; i < map.terrain.length; i++) {
+        if (map.owner[i] != 2) continue;
+        loser.tileCount[map.building[i]]--;
+        map.owner[i] = World.niemand;
+      }
+      s = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed)).state;
+
+      // Loser must be vacant — not a zombie with 0 tiles.
+      expect(s.realm(2).isVacant, isTrue,
+          reason: 'a realm that lost every tile must become vacant immediately');
+
+      // Vacate all AI slots (3–30) so slot 1 is the sole living ruler:
+      // this simulates the win-condition scenario without running a full game.
+      for (var slot = 3; slot <= 30; slot++) {
+        s.realm(slot).rulerId = null;
+      }
+      final result = completeTurn(s, Rng(s.rngSeed));
+      expect(result.events.any((e) => e.type == 'gameWon'), isTrue);
+      expect(
+          result.events.firstWhere((e) => e.type == 'gameWon').slot, 1,
+          reason: 'the human wins — not the zombie slot');
+    });
+  });
+
   group('humansDefeated stop', () {
     test('advanceUntilHuman ends the game when no human seat remains', () {
       // Both human dynasties fall to AI control (strife/capture path).

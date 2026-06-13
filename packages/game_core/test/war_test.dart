@@ -1088,4 +1088,80 @@ void main() {
           reason: 'no handover against an AI defender');
     });
   });
+
+  group('war bug-fixes', () {
+    test(
+        'startWar sets warThisYear on the defender too (§11.1 one-war-per-year)',
+        () {
+      final s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      expect(s.realm(1).warThisYear, isTrue,
+          reason: 'attacker is locked into one war per year');
+      expect(s.realm(2).warThisYear, isTrue,
+          reason: 'defender is equally locked — a defending realm must not '
+              'be able to declare war on a third party in the same year');
+    });
+
+    test(
+        'after settlement annexation loser troops at an annexed tile are '
+        'moved to the capital instead of left stranded on enemy ground', () {
+      // Find the border tile slot 2 owns (bare land, adjacent to slot 1).
+      final map = state.map;
+      int borderX = -1, borderY = -1;
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) == 2 &&
+              map.buildingAt(x, y) == Building.none) {
+            borderX = x;
+            borderY = y;
+            break outer;
+          }
+        }
+      }
+      expect(borderX, greaterThanOrEqualTo(0), reason: 'setUp adds a border tile');
+
+      // Place slot 2's troop at the border tile BEFORE war declaration so
+      // the snapshot captures that position.
+      state.realm(2).troops.single.x = borderX;
+      state.realm(2).troops.single.y = borderY;
+
+      // Declare war and reach settlement via capital capture.
+      var s =
+          applyAction(state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+              .state;
+      // March slot 1's unit onto slot 2's capital.
+      s.realm(1).troops.single.x = s.realm(2).capitalX - 1;
+      s.realm(1).troops.single.y = s.realm(2).capitalY;
+      s.activeWar!.movesLeft[1]![0] = 5;
+      s = applyAction(s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0),
+              Rng(s.rngSeed))
+          .state;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.activeWar!.phase, WarPhase.settlement);
+
+      // Simulate: the winner annexes the border tile out-of-band (the
+      // same pattern the claim-cap tests use for territory stripping).
+      final loser = s.realm(2);
+      final idx = s.map.index(borderX, borderY);
+      loser.tileCount[s.map.building[idx]]--;
+      s.map.owner[idx] = 1;
+      s.realm(1).tileCount[Building.none]++;
+
+      // SettlementFinish returns troops to snapshots then re-homes stranded ones.
+      s = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed)).state;
+
+      // The loser's realm may be eliminated (total defeat) or survive.
+      // If it survives, any troop must be on own territory — not the annexed tile.
+      final loserAfter = s.realm(2);
+      if (!loserAfter.isVacant) {
+        for (final t in loserAfter.troops) {
+          expect(s.map.ownerAt(t.x, t.y), loserAfter.slot,
+              reason: 'no troop may be stranded on enemy territory after settlement');
+        }
+      }
+    });
+  });
 }

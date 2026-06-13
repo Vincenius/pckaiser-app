@@ -124,8 +124,7 @@ Future<void> showTurnReport(
             row(
               Icons.construction,
               'Du kannst diese Runde ${realm.movementPoints} '
-              'Feld${realm.movementPoints == 1 ? '' : 'er'} bebauen '
-              '(je höher dein Titel, desto mehr Züge).',
+              'Feld${realm.movementPoints == 1 ? '' : 'er'} bebauen.',
             ),
           ],
         ),

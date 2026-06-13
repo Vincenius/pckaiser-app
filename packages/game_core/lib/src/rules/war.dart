@@ -39,7 +39,9 @@ ActiveWar startWar(
   war.actingSlot = _firstHumanSide(state, war);
   _rollWarMoves(state, war, rng);
   state.activeWar = war;
+  // §11.1: both sides are locked into one war per year — not just the attacker.
   state.realm(attackerSlot).warThisYear = true;
+  state.realm(defenderSlot).warThisYear = true;
   return war;
 }
 
@@ -837,6 +839,10 @@ void finishSettlement(GameState state, List<GameEvent> events) {
     ));
   }
   _returnTroops(state, war, events);
+  // Settlement annexation can transfer tiles that were snapshot positions for
+  // the loser's troops. Re-home any stranded unit to the loser's capital (or
+  // the nearest owned tile if the capital itself was annexed).
+  _rehomeStrandedTroops(state, state.realm(loserSlot));
   state.activeWar = null;
   _checkLandLoss(state, state.realm(loserSlot), events);
 }
@@ -860,6 +866,38 @@ void _returnTroops(GameState state, ActiveWar war, List<GameEvent> events) {
   _refreshTroopMarkers(state);
 }
 
+/// Moves any troop that ended up on non-owned territory (e.g. because its
+/// pre-war snapshot position was annexed during settlement) to the realm's
+/// capital, or to the nearest owned tile if the capital itself was taken.
+void _rehomeStrandedTroops(GameState state, Realm realm) {
+  final map = state.map;
+  int? homeX, homeY;
+  for (final troop in realm.troops) {
+    if (map.ownerAt(troop.x, troop.y) == realm.slot) continue;
+    if (homeX == null) {
+      // Capital first; fall back to a map scan if the capital was also annexed.
+      if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
+        homeX = realm.capitalX;
+        homeY = realm.capitalY;
+      } else {
+        outer:
+        for (var y = 0; y < map.height; y++) {
+          for (var x = 0; x < map.width; x++) {
+            if (map.ownerAt(x, y) == realm.slot) {
+              homeX = x;
+              homeY = y;
+              break outer;
+            }
+          }
+        }
+      }
+      if (homeX == null) break; // realm is landless; _checkLandLoss handles it
+    }
+    troop.x = homeX;
+    troop.y = homeY!;
+  }
+}
+
 void _refreshTroopMarkers(GameState state) {
   final map = state.map;
   for (var i = 0; i < map.troopMarker.length; i++) {
@@ -876,6 +914,13 @@ void _refreshTroopMarkers(GameState state) {
 /// LAST tile also emits a public `realmOverrun` event — both war sides
 /// get an explicit "everything was won/lost" popup in the client instead
 /// of having to read it off the map.
+///
+/// The loser's realm is eliminated: `rulerId` set to null so the slot is
+/// vacant and no longer participates in turns or the win-condition check.
+/// Without this a "zombie realm" with no tiles stays in the turn order;
+/// when the human player's own ruler later dies with no heirs, the only
+/// surviving ruler is the zombie's — it inherits the human slot, converts
+/// it to AI control, and `advanceUntilHuman` fires `humansDefeated`.
 void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   final owned = loser.tileCount.fold(0, (a, b) => a + b);
   if (owned > 0) return;
@@ -888,6 +933,16 @@ void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
     type: 'realmOverrun',
     visibility: EventVisibility.public,
   ));
+  // Vacate the slot so it no longer appears in turn order or living-ruler
+  // lists. Troops are cleared because a realm with no land has no base to
+  // return to; the map markers are refreshed to match.
+  loser.rulerId = null;
+  loser.troops.clear();
+  loser.ships.clear();
+  final dynasty = state.dynasty(loser.slot);
+  dynasty.status = DynastyStatus.ai;
+  dynasty.humanPlayer = null;
+  _refreshTroopMarkers(state);
 }
 
 /// §11.5 plunder during war rounds, once per side per round.
