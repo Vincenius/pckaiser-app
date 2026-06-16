@@ -103,9 +103,10 @@ void main() {
       state.realm(2).rulerId = state.realm(1).rulerId;
       final result = runAiTurn(state, 1, Rng(state.rngSeed));
       expect(result.events.any((e) => e.type == 'realmsMerged'), isTrue);
-      expect(result.state.realm(2).rulerId, isNull);
-      expect(result.state.realm(2).towns, isEmpty);
-      expect(result.state.realm(2).popularity, 60);
+      // The acting slot (1) is the source — it gets vacated; slot 2 absorbs it.
+      expect(result.state.realm(1).rulerId, isNull);
+      expect(result.state.realm(1).towns, isEmpty);
+      expect(result.state.realm(1).popularity, 60);
       expectInvariants(result.state);
     });
   });

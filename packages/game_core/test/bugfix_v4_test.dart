@@ -250,7 +250,7 @@ void main() {
       );
     });
 
-    test('MergeRealms still works in peacetime and vacates the source seat',
+    test('MergeRealms still works in peacetime and vacates the acting seat',
         () {
       final (state, _) = warState();
       final ruler1 = state.realm(1).rulerId!;
@@ -260,10 +260,12 @@ void main() {
       final next = applyAction(
               state, MergeRealms(slot: 1, sourceSlot: 3), Rng(state.rngSeed))
           .state;
-      expect(next.realm(3).isVacant, isTrue);
-      expect(next.dynasty(3).status, DynastyStatus.ai,
-          reason: 'a merged-away slot is no longer a human seat');
-      expect(next.dynasty(3).humanPlayer, isNull);
+      // The acting slot (1) is now the source — it gets vacated.
+      // sourceSlot (3) is the target that absorbs slot 1 and survives.
+      expect(next.realm(1).isVacant, isTrue);
+      expect(next.dynasty(1).status, DynastyStatus.ai,
+          reason: 'the merged-away acting slot is no longer a human seat');
+      expect(next.dynasty(1).humanPlayer, isNull);
     });
   });
 

@@ -431,6 +431,10 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
 }
 
 /// "Reiche zusammenlegen" (§6.2).
+/// [DESIGNED] The acting slot (realm.slot) is the SOURCE — it gets vacated
+/// and its everything moves to action.sourceSlot (the target). This means
+/// the player "joins" their current realm to the selected one, which then
+/// becomes the consolidated seat going forward.
 List<GameEvent> _mergeRealms(
     GameState state, Realm realm, MergeRealms action, Rng rng) {
   // No merging while either realm fights the active war — the merged-in
@@ -445,7 +449,8 @@ List<GameEvent> _mergeRealms(
     throw ActionException('Diese Reiche können nicht zusammengelegt werden !');
   }
   final events = <GameEvent>[];
-  mergeRealms(state, realm.slot, action.sourceSlot, rng, events);
+  // action.sourceSlot is the target (absorbs); realm.slot is the source (vacated).
+  mergeRealms(state, action.sourceSlot, realm.slot, rng, events);
   return events;
 }
 

@@ -44,10 +44,10 @@ class Troop {
   /// drill, capped at [drillCap].
   int quality;
 
-  /// `[DESIGNED]` quality ceiling for drilled regulars — the original's
-  /// counter is unbounded, but unbounded +0.1 power/man at a flat
-  /// 5 T/man would dominate every other military spend.
-  static const int drillCap = 10;
+  /// Quality ceiling for drilled regulars. `[DESIGNED]` raised to 99:
+  /// costs scale with level (`5 × men × quality`), so high levels are
+  /// expensive to reach; reinforcing new recruits dilutes quality back down.
+  static const int drillCap = 99;
 
   /// False for Söldner — they never count against garrison capacity (§10.2).
   final bool garrisonCounted;

@@ -40,14 +40,16 @@ EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
     state.sultanPot = 0;
   }
 
-  // §7.2 Feudal tribute: one 10% skim into the religion's crown pot
+  // §7.2 Feudal tribute: 5% skim into the religion's crown pot
   // (simplified per spec note — the office holder does not pay their own
-  // pot, they would only collect it back).
+  // pot, they would only collect it back). [DESIGNED: reduced from
+  // original 10% — the accumulated pot gave the Kaiser an overwhelming
+  // compounding advantage that was near-impossible to overcome.]
   if (realm.treasury > 0) {
     final muslim = state.dynasty(realm.slot).religion == Religion.moslemisch;
     final paysTribute = muslim ? !isSultan : !isKaiser;
     if (paysTribute) {
-      report.tribute = realm.treasury ~/ 10;
+      report.tribute = realm.treasury ~/ 20;
       realm.treasury -= report.tribute;
       if (muslim) {
         state.sultanPot += report.tribute;

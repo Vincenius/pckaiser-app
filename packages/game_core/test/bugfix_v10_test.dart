@@ -213,11 +213,13 @@ void main() {
               state, MergeRealms(slot: 1, sourceSlot: 3), Rng(state.rngSeed))
           .state;
 
-      expect(next.realm(1).ships, hasLength(1));
-      expect(next.realm(3).ships, isEmpty);
-      expect(next.realm(1).intelReports, hasLength(1));
-      expect(next.realm(1).intelReports.single.targetSlot, 7);
-      expect(next.realm(3).intelReports, isEmpty);
+      // slot 3 is the target (sourceSlot absorbs the acting slot 1).
+      // slot 3 already had the ship and intel — they stay in slot 3.
+      expect(next.realm(3).ships, hasLength(1));
+      expect(next.realm(1).ships, isEmpty);
+      expect(next.realm(3).intelReports, hasLength(1));
+      expect(next.realm(3).intelReports.single.targetSlot, 7);
+      expect(next.realm(1).intelReports, isEmpty);
     });
   });
 }

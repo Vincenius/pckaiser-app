@@ -143,16 +143,26 @@ List<GameEvent> applyReinforceTroop(
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
+  final oldMen = troop.men;
   realm.treasury -= cost;
   if (troop.garrisonCounted) quarterRecruits(realm, action.men, rng);
   troop.men += action.men;
+  // New recruits dilute the trained quality toward regular (1).
+  if (troop.garrisonCounted && troop.quality > TroopQuality.regular) {
+    troop.quality = ((oldMen * troop.quality +
+                action.men * TroopQuality.regular) /
+            troop.men)
+        .round()
+        .clamp(TroopQuality.regular, troop.quality);
+  }
   return const [];
 }
 
 /// "Truppe ausbilden" — drill (§10.2): the traced original training
-/// (`proc_00A316`: cost = men × 5, quality counter +1). Regulars only,
-/// quality capped at [Troop.drillCap] `[DESIGNED]`; a unit drills as
-/// often as the treasury allows.
+/// (`proc_00A316`). Regulars only, quality capped at [Troop.drillCap].
+/// `[DESIGNED]` Cost scales with current level: `5 × men × quality` — early
+/// levels are cheap; higher levels require proportionally more investment.
+/// Reinforcing with new recruits dilutes quality back toward regular (1).
 List<GameEvent> applyDrillTroop(
     GameState state, Realm realm, DrillTroop action) {
   _requireNotAtWar(state, realm);
@@ -165,7 +175,7 @@ List<GameEvent> applyDrillTroop(
   if (troop.quality >= Troop.drillCap) {
     throw ActionException('Diese Truppe ist bereits voll ausgebildet !');
   }
-  final cost = 5 * troop.men;
+  final cost = 5 * troop.men * troop.quality;
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }

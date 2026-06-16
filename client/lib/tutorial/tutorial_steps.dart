@@ -114,8 +114,8 @@ final List<TutorialStep> tutorialSteps = [
     body:
         'Truppen schützen dein Reich und führen Kriege: Rekruten kosten '
         '5 T pro Mann (Söldner 50 T), die Kapazität kommt aus deinen '
-        'Siedlungen. Bestehende Truppen kannst du ausbilden (5 T pro '
-        'Mann, stärkt die Qualität) oder zu Kavallerie/Artillerie '
+        'Siedlungen. Bestehende Truppen kannst du ausbilden (Kosten '
+        'steigen pro Level: 5 T/Mann × Stufe) oder zu Kavallerie/Artillerie '
         'umrüsten. Aber Vorsicht: Das Volk verübelt dir Aushebungen '
         'und Kriege (Beliebtheit sinkt). Krieg erklären kannst du ab '
         'dem Jahr 1010 — nur Nachbarn, einmal pro Jahr.',

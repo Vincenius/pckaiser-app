@@ -392,6 +392,19 @@ deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
   bump) stamped at coronation/record creation; the chronicle sheet
   renders "Name von Land (Jahre)" with a person-dynasty fallback for
   pre-slot saves. 231 core + 27 client + 22 backend tests green.
+- **Balance: Kaiser income, drill scaling, merge direction (2026-06-16)**:
+  Three balance/UX fixes. (1) Kaiser/Sultan tribute reduced from 10% to
+  5% (`economy.dart` `~/ 20`): the accumulated pot gave the Kaiser an
+  overwhelming compounding advantage that was near-impossible to overcome.
+  (2) Drill cap raised from 10 to 99; drill cost now scales with current
+  quality (`5 × men × quality`) so early levels are cheap and high levels
+  are expensive; reinforcing regular troops dilutes quality back toward 1
+  via a population-weighted average — this means elite units require
+  dedicated upkeep and cannot be mass-reinforced without re-training.
+  (3) "Reiche zusammenlegen" direction fixed: the acting slot is now the
+  SOURCE (it gets vacated) and the selected other slot is the TARGET that
+  absorbs everything — previously it was the other way around. 235 tests
+  green.
 - **Winter off-by-one (test-play follow-up, ruleset v3)**: the winter
   check fired at `war.round >= 20`, but the counter is 0-based and the
   war UI counts "Runde X/20" — wars ran 21 rounds, the panel showed
