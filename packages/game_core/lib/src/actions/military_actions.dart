@@ -394,6 +394,43 @@ class WarEndRound extends PlayerAction {
   Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
 }
 
+/// Naval transport during war: moves a unit from a land tile adjacent to an
+/// own harbor to any sea-reachable land tile, using all remaining moves.
+class WarNavalTransport extends PlayerAction {
+  WarNavalTransport({
+    required super.slot,
+    required this.unitIndex,
+    required this.x,
+    required this.y,
+  });
+
+  factory WarNavalTransport.fromJson(Map<String, dynamic> json) =>
+      WarNavalTransport(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'warNavalTransport';
+
+  final int unitIndex;
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'x': x,
+        'y': y,
+      };
+}
+
 /// Claim settlement: annex one loser tile at its building value (§11.2).
 class SettlementAnnex extends PlayerAction {
   SettlementAnnex({required super.slot, required this.x, required this.y});

@@ -231,9 +231,24 @@ class _GameScreenState extends State<GameScreen> {
         error = await _warStep(controller, slot, unitIndex, secondary, report);
       }
       if (error != null) {
-        // Blocked on both axes or out of moves: only worth a toast when
-        // nothing happened — after a battle the popup explains the halt.
-        if (report.isEmpty) _toast(error);
+        // Blocked on both axes or out of moves: try naval transport when the
+        // path is blocked (not just out of moves) and report is still empty
+        // (no battle has happened yet).
+        if (report.isEmpty) {
+          final currentTroops = controller.state.realm(slot).troops;
+          if (unitIndex < currentTroops.length &&
+              currentTroops[unitIndex].name == unitName) {
+            final t = currentTroops[unitIndex];
+            if (controller.state.map
+                .canNavalTransport(slot, t.x, t.y, tx, ty)) {
+              final navError =
+                  await _navalTransport(controller, slot, unitIndex, tx, ty);
+              if (navError != null) _toast(navError);
+              break;
+            }
+          }
+          _toast(error);
+        }
         break;
       }
       final after = controller.state.realm(slot).troops;
@@ -251,6 +266,26 @@ class _GameScreenState extends State<GameScreen> {
       await controller.resumeAfterWar();
       // Coercion choices from a capture come immediately.
       if (mounted) await promptDecisionsFor(context, controller, slot);
+    }
+  }
+
+  /// Naval transport: move the selected unit to [tx],[ty] via harbor.
+  /// Returns null on success or the engine's message on failure.
+  Future<String?> _navalTransport(
+    GameController controller,
+    int slot,
+    int unitIndex,
+    int tx,
+    int ty,
+  ) async {
+    try {
+      await controller.applyWarAction(
+        gc.WarNavalTransport(
+            slot: slot, unitIndex: unitIndex, x: tx, y: ty),
+      );
+      return null;
+    } on gc.ActionException catch (e) {
+      return e.message;
     }
   }
 

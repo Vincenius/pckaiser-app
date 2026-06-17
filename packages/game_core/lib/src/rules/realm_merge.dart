@@ -94,16 +94,19 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
   ));
 }
 
-/// Other slots ruled by the same ruler as [slot] that own ≥ 1 tile —
-/// merge candidates for the Handel menu and the AI (§6.2, §20.7).
+/// Other slots ruled by the same ruler as [slot] that own ≥ 1 tile AND
+/// share a land border with [slot] — merge candidates for the Handel menu
+/// and the AI (§6.2, §20.7).
 List<int> mergeableSlots(GameState state, int slot) {
   final rulerId = state.realm(slot).rulerId;
   if (rulerId == null) return const [];
+  final neighbors = state.map.realmNeighbors(slot);
   return [
     for (final realm in state.realms)
       if (realm.slot != slot &&
           realm.rulerId == rulerId &&
-          realm.tileCount.fold(0, (a, b) => a + b) > 0)
+          realm.tileCount.fold(0, (a, b) => a + b) > 0 &&
+          neighbors.contains(realm.slot))
         realm.slot,
   ];
 }

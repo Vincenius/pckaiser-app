@@ -79,6 +79,7 @@ List<GameEvent> applyActionInPlace(
     MoveTroop() => applyMoveTroop(state, realm, action),
     DeclareWar() => applyDeclareWar(state, realm, action, rng),
     WarMove() => applyWarMove(state, realm, action, rng),
+    WarNavalTransport() => applyWarNavalTransport(state, realm, action),
     WarPlunder() => applyWarPlunder(state, realm, action, rng),
     WarPeaceWish() => applyWarPeaceWish(state, realm, action),
     WarEndRound() => applyWarEndRound(state, realm, action, rng),

@@ -101,6 +101,45 @@ class WorldMap {
     return false;
   }
 
+  /// True if a troop at land tile ([fromX],[fromY]) can be transported by sea
+  /// to land tile ([toX],[toY]) using [slot]'s harbors: requires an own harbor
+  /// water tile adjacent to the troop's position and a connected water path
+  /// (via any sea tiles) to a water tile adjacent to the target.
+  bool canNavalTransport(int slot, int fromX, int fromY, int toX, int toY) {
+    if (!inBounds(toX, toY) || !isLandAt(toX, toY)) return false;
+    final visited = List<bool>.filled(terrain.length, false);
+    final queue = <int>[];
+    for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+      final hx = fromX + dx;
+      final hy = fromY + dy;
+      if (!inBounds(hx, hy)) continue;
+      final hi = index(hx, hy);
+      if (owner[hi] == slot &&
+          building[hi] == Building.hafen &&
+          Terrain.isWater(terrain[hi]) &&
+          !visited[hi]) {
+        visited[hi] = true;
+        queue.add(hi);
+      }
+    }
+    if (queue.isEmpty) return false;
+    for (var head = 0; head < queue.length; head++) {
+      final cx = queue[head] % width;
+      final cy = queue[head] ~/ width;
+      for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+        final nx = cx + dx;
+        final ny = cy + dy;
+        if (!inBounds(nx, ny)) continue;
+        if (nx == toX && ny == toY) return true;
+        final ni = index(nx, ny);
+        if (visited[ni] || !Terrain.isWater(terrain[ni])) continue;
+        visited[ni] = true;
+        queue.add(ni);
+      }
+    }
+    return false;
+  }
+
   /// Length of the shortest all-water path from ([fromX],[fromY]) to
   /// ([toX],[toY]) in orthogonal steps, or -1 when unreachable. Both ends
   /// must be water tiles. Used by the manual ship voyage:

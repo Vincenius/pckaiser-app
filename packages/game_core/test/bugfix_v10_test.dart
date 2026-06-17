@@ -202,6 +202,23 @@ void main() {
       final ruler1 = state.realm(1).rulerId!;
       state.realm(3).rulerId = ruler1; // aliasing: also rules slot 3
       alignSlotControl(state, 3, ruler1);
+      // Ensure slot 3 borders slot 1 (required since merging needs shared border).
+      final map = state.map;
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) != 1) continue;
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            final nx = x + dx, ny = y + dy;
+            if (!map.inBounds(nx, ny)) continue;
+            if (map.ownerAt(nx, ny) == World.niemand && map.isLandAt(nx, ny)) {
+              map.owner[map.index(nx, ny)] = 3;
+              state.realm(3).tileCount[Building.none]++;
+              break outer;
+            }
+          }
+        }
+      }
       state.realm(3).ships.add(Ship(x: 5, y: 5));
       state.realm(3).intelReports.add(IntelReport(
             targetSlot: 7,

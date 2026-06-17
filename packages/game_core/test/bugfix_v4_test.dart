@@ -231,6 +231,27 @@ void main() {
     });
   });
 
+  /// Give slot 3 a land tile adjacent to slot 1 so the border requirement
+  /// for merging is satisfied.
+  void borderSlot3ToSlot1(GameState state) {
+    final map = state.map;
+    outer:
+    for (var y = 0; y < map.height; y++) {
+      for (var x = 0; x < map.width; x++) {
+        if (map.ownerAt(x, y) != 1) continue;
+        for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+          final nx = x + dx, ny = y + dy;
+          if (!map.inBounds(nx, ny)) continue;
+          if (map.ownerAt(nx, ny) == World.niemand && map.isLandAt(nx, ny)) {
+            map.owner[map.index(nx, ny)] = 3;
+            state.realm(3).tileCount[Building.none]++;
+            break outer;
+          }
+        }
+      }
+    }
+  }
+
   group('rules v4: merging at war', () {
     test('MergeRealms is blocked while the realm fights the active war', () {
       final (built, _) = warState();
@@ -238,6 +259,7 @@ void main() {
       final ruler1 = state.realm(1).rulerId!;
       state.realm(3).rulerId = ruler1; // aliasing: also rules slot 3
       alignSlotControl(state, 3, ruler1);
+      borderSlot3ToSlot1(state); // ensure shared border for merge eligibility
       expect(mergeableSlots(state, 1), contains(3));
 
       state = applyAction(
@@ -256,6 +278,7 @@ void main() {
       final ruler1 = state.realm(1).rulerId!;
       state.realm(3).rulerId = ruler1;
       alignSlotControl(state, 3, ruler1);
+      borderSlot3ToSlot1(state); // ensure shared border for merge eligibility
 
       final next = applyAction(
               state, MergeRealms(slot: 1, sourceSlot: 3), Rng(state.rngSeed))

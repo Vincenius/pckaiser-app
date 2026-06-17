@@ -101,6 +101,26 @@ void main() {
       final state = aiOnlyGame();
       // Slot 1's ruler also rules slot 2 (e.g. inherited).
       state.realm(2).rulerId = state.realm(1).rulerId;
+      // Ensure slot 2 borders slot 1 (merging now requires a shared border).
+      final map = state.map;
+      if (!map.realmNeighbors(1).contains(2)) {
+        outer:
+        for (var y = 0; y < map.height; y++) {
+          for (var x = 0; x < map.width; x++) {
+            if (map.ownerAt(x, y) != 1) continue;
+            for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+              final nx = x + dx, ny = y + dy;
+              if (!map.inBounds(nx, ny)) continue;
+              if (map.ownerAt(nx, ny) == World.niemand &&
+                  map.isLandAt(nx, ny)) {
+                map.owner[map.index(nx, ny)] = 2;
+                state.realm(2).tileCount[Building.none]++;
+                break outer;
+              }
+            }
+          }
+        }
+      }
       final result = runAiTurn(state, 1, Rng(state.rngSeed));
       expect(result.events.any((e) => e.type == 'realmsMerged'), isTrue);
       // The acting slot (1) is the source — it gets vacated; slot 2 absorbs it.

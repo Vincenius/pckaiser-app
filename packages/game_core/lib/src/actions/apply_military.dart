@@ -428,6 +428,30 @@ void _refreshMarkers(GameState state) {
   }
 }
 
+List<GameEvent> applyWarNavalTransport(
+    GameState state, Realm realm, WarNavalTransport action) {
+  final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
+  final troop = unitAt(realm, action.unitIndex);
+  final moves = war.movesLeft[realm.slot];
+  if (moves == null ||
+      action.unitIndex >= moves.length ||
+      moves[action.unitIndex] < 1) {
+    throw ActionException(
+        'Diese Truppe kann in dieser Runde nicht weiter ziehen !');
+  }
+  final map = state.map;
+  if (!map.canNavalTransport(realm.slot, troop.x, troop.y, action.x, action.y)) {
+    throw ActionException(
+        'Keine Seeverbindung von einem eigenen Hafen zu diesem Ziel !');
+  }
+  moves[action.unitIndex] = 0;
+  map.troopMarker[map.index(troop.x, troop.y)] = 0;
+  troop.x = action.x;
+  troop.y = action.y;
+  map.troopMarker[map.index(action.x, action.y)] = 1;
+  return const [];
+}
+
 List<GameEvent> applyWarPlunder(
     GameState state, Realm realm, WarPlunder action, Rng rng) {
   final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
