@@ -307,7 +307,7 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events) {
 void _adjustGuardsTowardTarget(
     GameState state, Realm realm, Rng rng, List<GameEvent> events) {
   if (realm.treasury < 200) return;
-  final target = math.min(guardCap, rng.nextInt(realm.treasury ~/ 200));
+  final target = math.min(guardCap, rng.nextInt(realm.treasury ~/ 200 + 1));
   var delta = target - realm.guardLevel;
   if (delta > 0) {
     delta = math.min(delta, realm.treasury ~/ guardCost);
@@ -392,8 +392,12 @@ void runAiWarMovement(
       final (tx, ty) = target;
       if (troop.x == tx && troop.y == ty) break;
 
-      final step = _bfsStep(state.map, troop.x, troop.y, tx, ty) ??
-          _stepToward(state, troop.x, troop.y, tx, ty);
+      final warOwners = {slot, war.opponentOf(slot)};
+      final step =
+          _bfsStep(state.map, troop.x, troop.y, tx, ty,
+              allowedOwners: warOwners) ??
+          _stepToward(state, troop.x, troop.y, tx, ty,
+              allowedOwners: warOwners);
       if (step == null) break;
       try {
         events.addAll(applyActionInPlace(state,
@@ -445,7 +449,11 @@ void runAiWarMovement(
 
 /// First step of a shortest land path from ([x],[y]) to ([tx],[ty]);
 /// null when the target is start itself or unreachable over land.
-(int, int)? _bfsStep(WorldMap map, int x, int y, int tx, int ty) {
+/// If [allowedOwners] is non-null, only tiles whose owner is in the set
+/// (or the start tile itself) are traversed — used during war to prevent
+/// routing through uninvolved realms.
+(int, int)? _bfsStep(WorldMap map, int x, int y, int tx, int ty,
+    {Set<int>? allowedOwners}) {
   final start = map.index(x, y);
   final goal = map.index(tx, ty);
   if (start == goal) return null;
@@ -463,6 +471,9 @@ void runAiWarMovement(
       if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) continue;
       final ni = map.index(nx, ny);
       if (prev[ni] != -1) continue;
+      if (allowedOwners != null && !allowedOwners.contains(map.owner[ni])) {
+        continue;
+      }
       prev[ni] = cur;
       queue.add(ni);
     }
@@ -475,7 +486,8 @@ void runAiWarMovement(
   return (cur % map.width - x, cur ~/ map.width - y);
 }
 
-(int, int)? _stepToward(GameState state, int x, int y, int tx, int ty) {
+(int, int)? _stepToward(GameState state, int x, int y, int tx, int ty,
+    {Set<int>? allowedOwners}) {
   final map = state.map;
   final candidates = <(int, int)>[];
   if (tx > x) candidates.add((1, 0));
@@ -485,9 +497,14 @@ void runAiWarMovement(
   // Detours when the direct axes are blocked by water.
   candidates.addAll(const [(0, 1), (0, -1), (1, 0), (-1, 0)]);
   for (final (dx, dy) in candidates) {
-    if (map.inBounds(x + dx, y + dy) && !map.isWaterAt(x + dx, y + dy)) {
-      return (dx, dy);
+    final nx = x + dx;
+    final ny = y + dy;
+    if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) continue;
+    if (allowedOwners != null &&
+        !allowedOwners.contains(map.owner[map.index(nx, ny)])) {
+      continue;
     }
+    return (dx, dy);
   }
   return null;
 }

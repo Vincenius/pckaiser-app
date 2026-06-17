@@ -371,9 +371,9 @@ void main() {
         final countBefore = realm.tileCount[before];
         final result = applyAction(state, Demolish(slot: 1, x: fx, y: fy), rng);
         expect(result.state.map.buildingAt(fx, fy), Building.none);
+        expect(result.state.map.ownerAt(fx, fy), World.niemand);
         expect(result.state.realm(1).treasury, 900);
         expect(result.state.realm(1).tileCount[before], countBefore - 1);
-        expect(result.state.realm(1).tileCount[Building.none], 1);
       }
       final town = realm.towns.single;
       expect(

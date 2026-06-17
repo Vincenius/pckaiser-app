@@ -145,6 +145,7 @@ List<GameEvent> applyReinforceTroop(
   }
   final oldMen = troop.men;
   realm.treasury -= cost;
+  _levyPopularityCost(state, realm, action.men);
   if (troop.garrisonCounted) quarterRecruits(realm, action.men, rng);
   troop.men += action.men;
   // New recruits dilute the trained quality toward regular (1).
@@ -381,10 +382,14 @@ List<GameEvent> applyWarMove(
   if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) {
     throw ActionException('Unpassierbar !');
   }
+  final enemySlot = war.opponentOf(realm.slot);
+  final tileOwner = map.ownerAt(nx, ny);
+  if (tileOwner != realm.slot && tileOwner != enemySlot) {
+    throw ActionException('Durch fremde Reiche darf man im Krieg nicht ziehen !');
+  }
 
   moves[action.unitIndex]--;
   final events = <GameEvent>[];
-  final enemySlot = war.opponentOf(realm.slot);
   final enemyRealm = state.realm(enemySlot);
 
   // Meeting an enemy unit triggers per-tile combat (§11.3); a stack of
@@ -443,6 +448,10 @@ List<GameEvent> applyWarNavalTransport(
   if (!map.canNavalTransport(realm.slot, troop.x, troop.y, action.x, action.y)) {
     throw ActionException(
         'Keine Seeverbindung von einem eigenen Hafen zu diesem Ziel !');
+  }
+  if (map.ownerAt(action.x, action.y) != realm.slot) {
+    throw ActionException(
+        'Seetransport nur auf eigenes Territorium möglich !');
   }
   moves[action.unitIndex] = 0;
   map.troopMarker[map.index(troop.x, troop.y)] = 0;

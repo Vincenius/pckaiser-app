@@ -416,9 +416,10 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
 
   realm.movementPoints--;
   realm.treasury -= cost;
-  map.building[map.index(action.x, action.y)] = Building.none;
+  final idx = map.index(action.x, action.y);
+  map.building[idx] = Building.none;
+  map.owner[idx] = World.niemand;
   realm.tileCount[building]--;
-  realm.tileCount[Building.none]++;
 
   return [
     GameEvent(

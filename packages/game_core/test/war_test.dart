@@ -106,6 +106,17 @@ void main() {
       expect(soeldner.garrisonCounted, isFalse);
     });
 
+    test('reinforcing regular troops costs popularity like a levy', () {
+      final popBefore = state.realm(1).popularity;
+      // Free capacity = 200 - 50 = 150; 100 men cost 500 T and 1 popularity.
+      final result = applyAction(
+          state,
+          ReinforceTroop(slot: 1, unitIndex: 0, men: 100),
+          Rng(state.rngSeed));
+      expect(result.state.realm(1).popularity, lessThan(popBefore),
+          reason: 'levy cost: 1 + 100/200 = 1 popularity');
+    });
+
     test('merge requires same kind; disband releases the garrison', () {
       var s = applyAction(
               state,
@@ -970,7 +981,7 @@ void main() {
       final index = map.index(victim.x, victim.y);
       map.terrain[index] = Terrain.ebene;
       map.building[index] = Building.none;
-      map.owner[index] = World.niemand;
+      map.owner[index] = 2; // defender's tile so attacker may enter
       s.activeWar!.movesLeft[1]![0] = 5;
       final survivorMoves = s.activeWar!.movesLeft[2]![1];
 
