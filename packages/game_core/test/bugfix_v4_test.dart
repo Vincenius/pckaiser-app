@@ -98,8 +98,10 @@ void main() {
       alignSlotControl(state, 2, ruler1);
       state.kaiserId = ruler1;
       state.kurfuerstenIds.add(ruler1);
-      // Debt far past every §19.2 threshold → replacement dynasty.
+      // Debt far past every §19.2 threshold → replacement dynasty. The
+      // grace period has already elapsed, so this turn forecloses.
       state.realm(1).treasury = -999999;
+      state.realm(1).debtTurns = bankruptcyGraceTurns - 1;
       state.currentPlayer = 1;
 
       final next = completeTurn(state, Rng(state.rngSeed)).state;

@@ -563,7 +563,7 @@ void main() {
   });
 
   group('RelocateCapital', () {
-    test('relocates a lost capital onto an own Stadt for 5000 T', () {
+    test('re-seats a lost capital for free onto an own Stadt', () {
       final realm = state.realm(1);
       final map = state.map;
       // Lose the capital tile, then build up a Stadt elsewhere.
@@ -577,18 +577,37 @@ void main() {
           applyAction(state, RelocateCapital(slot: 1, x: x, y: y), rng);
       expect(result.state.realm(1).capitalX, x);
       expect(result.state.realm(1).capitalY, y);
+      // Forced re-seat after a loss is free.
+      expect(result.state.realm(1).treasury, 6000);
+      expect(result.events.single.type, 'capitalRelocated');
+    });
+
+    test('voluntary relocation while the capital is held costs 5000 T', () {
+      final realm = state.realm(1);
+      final map = state.map;
+      // The seat is still owned; relocate to another own Stadt for 5000 T.
+      final (x, y) = claimableTile();
+      map.owner[map.index(x, y)] = 1;
+      map.building[map.index(x, y)] = Building.stadt;
+      realm.treasury = 6000;
+
+      final result =
+          applyAction(state, RelocateCapital(slot: 1, x: x, y: y), rng);
+      expect(result.state.realm(1).capitalX, x);
+      expect(result.state.realm(1).capitalY, y);
       expect(result.state.realm(1).treasury, 1000);
       expect(result.events.single.type, 'capitalRelocated');
     });
 
-    test('rejects while the capital is still held', () {
+    test('rejects a voluntary relocation the realm cannot afford', () {
       final realm = state.realm(1);
-      realm.treasury = 6000;
+      final map = state.map;
+      final (x, y) = claimableTile();
+      map.owner[map.index(x, y)] = 1;
+      map.building[map.index(x, y)] = Building.stadt;
+      realm.treasury = 100;
       expect(
-          () => applyAction(
-              state,
-              RelocateCapital(slot: 1, x: realm.capitalX, y: realm.capitalY),
-              rng),
+          () => applyAction(state, RelocateCapital(slot: 1, x: x, y: y), rng),
           throwsA(isA<ActionException>()));
     });
   });

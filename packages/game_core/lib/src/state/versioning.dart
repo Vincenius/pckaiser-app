@@ -47,7 +47,28 @@ const int currentSchemaVersion = 1;
 /// later, contradicting the UI's "Runde X/20" counter). The AI
 /// build-tile picks were randomized in the same change (ungated: AI
 /// scripting, not a state rule).
-const int currentRulesVersion = 3;
+///
+/// v4 (universal — applied to every game on load, ungated like the AI
+/// scripting above):
+///  - War armies may march across neutral, unowned land, not only own and
+///    enemy territory (`applyWarMove` / the AI war pathing); only a third
+///    realm's land still blocks the march.
+///  - A realm whose capital tile is lost (war claim, earthquake, bankruptcy
+///    seizure) must take a new seat: AI realms re-seat automatically onto
+///    their highest-value Stadt/Burg/Palast (random among ties), humans get
+///    a `relocateCapital` decision (see `reseatLostCapitals`).
+///  - "Sitz verlegen" is allowed at any time now (5,000 T voluntarily; free
+///    when re-seating a lost capital), not only when the seat is lost.
+///  - Drill ("Truppe ausbilden") raises quality up to 99 (the engine cap was
+///    already 99; the client's cost display/gate were fixed to the real
+///    `5 × men × quality`).
+///  - The `humansDefeated` event now carries the real cause (`reason`) so
+///    the defeat screen explains WHY rule, not just "no human dynasty".
+///  - Bankruptcy (§19.2) no longer forecloses the instant the treasury
+///    crosses the debt limit: a realm gets `bankruptcyGraceTurns` turns
+///    below the limit (warned each turn via `debtWarning`) to recover
+///    before the creditor seizes tiles. `Realm.debtTurns` tracks the streak.
+const int currentRulesVersion = 4;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

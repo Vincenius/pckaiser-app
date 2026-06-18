@@ -6,6 +6,7 @@ import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
+import '../state/pending_decision.dart';
 import '../state/person.dart';
 import '../state/realm.dart';
 import '../state/town.dart';
@@ -15,6 +16,12 @@ import 'offices.dart' show closeChronicleIfOfficeHolder;
 import 'population.dart' show cutGarrisonTroops;
 import 'protection.dart';
 import 'titles.dart' show switchTitleLadder;
+
+/// `[DESIGNED]` How many consecutive end-of-turns a realm may stay below
+/// the §19.2 bankruptcy limit before the creditor forecloses. The first
+/// turns only warn, giving the player time to sell goods, raise taxes or
+/// disband troops and recover.
+const int bankruptcyGraceTurns = 3;
 
 /// The between-turns world-event phase (§18): earthquake, disease,
 /// Reformation, Ottoman invasion, merchant founders. Runs once per round.
@@ -74,6 +81,89 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
       payload: {'x': ex, 'y': ey, 'affectedSlots': affected.toList()},
     ));
   }
+}
+
+/// `[DESIGNED]` Re-seat realms whose capital tile is no longer theirs —
+/// lost to a war claim, an earthquake, or a bankruptcy seizure (§18.1,
+/// §11.2, §19.2). A realm without a valid seat must move it onto another
+/// own Stadt/Burg/Palast:
+///  - AI realms re-seat automatically onto the highest-VALUE eligible tile,
+///    picking at random among ties.
+///  - Human realms get a `relocateCapital` decision so the player chooses
+///    manually; the seat stays put until they resolve it.
+/// A realm with no seat-eligible tile left is skipped — it is effectively
+/// finished (the land-loss / elimination paths handle it).
+void reseatLostCapitals(GameState state, Rng rng, List<GameEvent> events) {
+  final map = state.map;
+  for (final realm in state.realms) {
+    if (realm.isVacant) continue;
+    if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
+      // Seat is valid again — drop any stale re-seat prompt.
+      state.pendingDecisions.removeWhere((d) =>
+          d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
+      continue;
+    }
+    if (state.dynasty(realm.slot).status == DynastyStatus.human) {
+      final already = state.pendingDecisions.any((d) =>
+          d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
+      if (!already && _bestSeatTile(state, realm.slot, rng) != null) {
+        state.pendingDecisions.add(PendingDecision(
+          id: 'relocate-${realm.slot}-${state.year}',
+          type: 'relocateCapital',
+          decidingSlot: realm.slot,
+          payload: const {},
+        ));
+        events.add(GameEvent(
+          year: state.year,
+          slot: realm.slot,
+          type: 'capitalLost',
+          visibility: EventVisibility.owner,
+        ));
+      }
+      continue;
+    }
+    // AI: pick the highest-value eligible own tile, random among ties.
+    final best = _bestSeatTile(state, realm.slot, rng);
+    if (best == null) continue;
+    realm.capitalX = best.$1;
+    realm.capitalY = best.$2;
+    events.add(GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'capitalReseated',
+      visibility: EventVisibility.public,
+      payload: {'x': best.$1, 'y': best.$2},
+    ));
+  }
+}
+
+/// Highest-VALUE own Stadt/Burg/Palast tile for [slot], chosen at random
+/// among ties; null when the realm holds no seat-eligible tile.
+(int, int)? _bestSeatTile(GameState state, int slot, Rng rng) {
+  final map = state.map;
+  var bestValue = -1;
+  final best = <(int, int)>[];
+  for (var i = 0; i < map.terrain.length; i++) {
+    if (map.owner[i] != slot) continue;
+    final building = map.building[i];
+    if (building != Building.stadt &&
+        building != Building.burg &&
+        building != Building.palast) {
+      continue;
+    }
+    final value = Building.value[building];
+    final tile = (i % map.width, i ~/ map.width);
+    if (value > bestValue) {
+      bestValue = value;
+      best
+        ..clear()
+        ..add(tile);
+    } else if (value == bestValue) {
+      best.add(tile);
+    }
+  }
+  if (best.isEmpty) return null;
+  return best[rng.nextInt(best.length)];
 }
 
 /// §18.1/§18.2 exact town damage shape: `T` victims reduce capacity and
@@ -416,7 +506,30 @@ void runEliminationChecks(
   final base = realm.titleClass > 12 ? realm.titleClass - 12 : realm.titleClass;
   final classIndex = (base >= 9 ? _muslimEquivalent(base) : base) - 1;
   final limit = thresholds[classIndex.clamp(0, 7)];
-  if (realm.treasury >= -limit) return;
+  if (realm.treasury >= -limit) {
+    realm.debtTurns = 0; // back above the limit — the debt clock resets
+    return;
+  }
+
+  // `[DESIGNED]` Below the limit the creditor does NOT foreclose at once:
+  // the realm gets [bankruptcyGraceTurns] end-of-turns to climb back out,
+  // with an owner-visible warning each turn. Only sustained deep debt
+  // triggers the §19.2 seizure + replacement dynasty.
+  realm.debtTurns++;
+  if (realm.debtTurns < bankruptcyGraceTurns) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: slot,
+      type: 'debtWarning',
+      visibility: EventVisibility.owner,
+      payload: {
+        'debt': -realm.treasury,
+        'turnsLeft': bankruptcyGraceTurns - realm.debtTurns,
+      },
+    ));
+    return;
+  }
+  realm.debtTurns = 0; // the debt episode is resolved by the foreclosure
 
   final debt = -realm.treasury;
   events.add(GameEvent(

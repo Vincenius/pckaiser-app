@@ -756,6 +756,29 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  /// Plain-language reason for the defeat screen, keyed off the
+  /// `humansDefeated` event's `reason` payload (set by `advanceUntilHuman`).
+  String _defeatReasonText(String? reason) {
+    const tail = 'Keine menschliche Dynastie hält mehr die Macht — '
+        'eure Herrschaft ist Geschichte.';
+    final cause = switch (reason) {
+      'internalStrife' =>
+        'Ein Volksaufstand hat deine Dynastie entthront (Popularität unter 20).',
+      'bankruptcy' =>
+        'Dein Reich ist bankrott gegangen und einem neuen Herrscherhaus zugefallen.',
+      'islamicSuccessionCrisis' =>
+        'Eine Thronfolgekrise hat dein Reich unter fremde (computergesteuerte) Kontrolle gebracht.',
+      'rulerCaptured' =>
+        'Dein Herrscher wurde im Krieg gefangen genommen und das Reich erobert.',
+      'realmOverrun' =>
+        'Dein Reich wurde im Krieg vollständig überrannt.',
+      'dynastyExtinct' || 'totalExtinction' =>
+        'Deine Dynastie ist ausgestorben.',
+      _ => null,
+    };
+    return cause == null ? tail : '$cause\n\n$tail';
+  }
+
   Widget _victory(GameController controller) {
     final event = controller.state.events.last;
     final slot = event.slot;
@@ -783,8 +806,7 @@ class _GameScreenState extends State<GameScreen> {
             ),
             Text(
               defeat
-                  ? 'Keine menschliche Dynastie hält mehr die Macht — '
-                        'eure Herrschaft ist Geschichte.'
+                  ? _defeatReasonText(event.payload['reason'] as String?)
                   : draw
                   ? 'Alle Dynastien sind erloschen — das Land bleibt herrenlos.'
                   : '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',

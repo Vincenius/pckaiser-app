@@ -82,7 +82,13 @@ String describeEvent(gc.GameEvent e) {
     'shipsReturned' => '$realm: Schiffe kehren zurück — ${p['returned']} T',
     'moneySent' =>
       '$realm schickt ${p['amount']} T an ${gc.countryNames[p['targetSlot'] as int]}',
-    'capitalRelocated' => '$realm verlegt den Sitz nach (${p['x']}, ${p['y']})',
+    'capitalRelocated' =>
+      '$realm verlegt den Sitz nach (${(p['x'] as int) + 1}, ${(p['y'] as int) + 1})',
+    'capitalReseated' =>
+      '$realm bestimmt nach dem Verlust einen neuen Sitz bei '
+          '(${(p['x'] as int) + 1}, ${(p['y'] as int) + 1})',
+    'capitalLost' =>
+      '$realm hat seinen Sitz verloren — ein neuer muss bestimmt werden !',
     'wedding' => '${p['a']} von $realm heiratet ${p['b']}',
     'marriageRejected' => '$realm: der Heiratsantrag wurde abgelehnt !',
     'divorce' =>
@@ -171,6 +177,10 @@ String describeEvent(gc.GameEvent e) {
     'internalStrife' =>
       '$realm: innere Unruhen — ${p['newRuler']} ergreift die Macht',
     'bankruptcy' => '$realm ist bankrott (${p['debt']} T Schulden) !',
+    'debtWarning' =>
+      '$realm steckt tief in Schulden (${p['debt']} T) — noch '
+          '${p['turnsLeft']} ${(p['turnsLeft'] as int) == 1 ? 'Zug' : 'Züge'} '
+          'bis zum Staatsbankrott !',
     'merchantFounder' => 'Der Kaufmann ${p['name']} gründet eine neue Dynastie',
     'totalExtinction' => 'Alle Dynastien sind erloschen — das Land verfällt',
     'earthquake' => 'Ein verheerendes Erdbeben verwüstet das Reich',
@@ -410,6 +420,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'earthquake' ||
   'disease' ||
   'bankruptcy' ||
+  'debtWarning' ||
   'internalStrife' ||
   'realmsMerged' ||
   'dynastyExtinct' ||
@@ -450,6 +461,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'earthquake' => (Icons.warning_amber, Colors.brown),
   'disease' => (Icons.coronavirus, Colors.red),
   'bankruptcy' => (Icons.money_off, Colors.red),
+  'debtWarning' => (Icons.warning_amber, Colors.orange),
   'internalStrife' => (Icons.local_fire_department, Colors.red),
   'realmsMerged' => (Icons.merge_type, Colors.green),
   'dynastyExtinct' ||
@@ -463,6 +475,8 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'succession' ||
   'islamicSuccessionCrisis' => (Icons.account_balance, Colors.indigo),
   'titlePromoted' => (Icons.military_tech, Colors.amber),
+  'capitalRelocated' || 'capitalReseated' => (Icons.location_city, Colors.brown),
+  'capitalLost' => (Icons.location_off, Colors.red),
   'townFounded' || 'townPromoted' => (Icons.home_work, Colors.brown),
   'townDied' => (Icons.home_work, Colors.blueGrey),
   'troopsRecruited' || 'soeldnerHired' => (Icons.shield, null),

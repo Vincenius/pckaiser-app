@@ -20,6 +20,7 @@ class Realm {
     this.grainHarvest = 0,
     this.livestockHarvest = 0,
     this.treasury = 0,
+    this.debtTurns = 0,
     this.guardLevel = 0,
     this.popularity = 50,
     this.movementPoints = 0,
@@ -55,6 +56,8 @@ class Realm {
         grainHarvest: json['grainHarvest'] as int? ?? 0,
         livestockHarvest: json['livestockHarvest'] as int? ?? 0,
         treasury: json['treasury'] as int? ?? 0,
+        // Additive field — older saves start the debt clock at zero.
+        debtTurns: json['debtTurns'] as int? ?? 0,
         guardLevel: json['guardLevel'] as int? ?? 0,
         popularity: json['popularity'] as int? ?? 50,
         movementPoints: json['movementPoints'] as int? ?? 0,
@@ -114,6 +117,12 @@ class Realm {
   /// Can go negative — debt (§19).
   int treasury;
 
+  /// Consecutive end-of-turns the treasury has stayed below the §19.2
+  /// bankruptcy limit. The creditor only forecloses once it reaches
+  /// [bankruptcyGraceTurns] — until then the realm has time to recover.
+  /// Reset to 0 the moment the debt climbs back above the limit.
+  int debtTurns;
+
   /// "Verstärken" stat, capped at 50 (§13).
   int guardLevel;
 
@@ -165,6 +174,7 @@ class Realm {
         grainHarvest: grainHarvest,
         livestockHarvest: livestockHarvest,
         treasury: treasury,
+        debtTurns: debtTurns,
         guardLevel: guardLevel,
         popularity: popularity,
         movementPoints: movementPoints,
@@ -196,6 +206,7 @@ class Realm {
         'grainHarvest': grainHarvest,
         'livestockHarvest': livestockHarvest,
         'treasury': treasury,
+        'debtTurns': debtTurns,
         'guardLevel': guardLevel,
         'popularity': popularity,
         'movementPoints': movementPoints,

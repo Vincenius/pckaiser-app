@@ -183,6 +183,53 @@ Future<void> _promptDecision(
         'accept': accept,
       });
 
+    case 'relocateCapital':
+      // The seat was lost (war, earthquake, bankruptcy) — the player must
+      // pick a new one. Free, and not dismissible: leaving the realm
+      // seatless is not an option.
+      final map = state.map;
+      const buildingNames = {
+        gc.Building.stadt: 'Stadt',
+        gc.Building.burg: 'Burg',
+        gc.Building.palast: 'Palast',
+      };
+      final candidates = <(int, int, int)>[];
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          final building = map.buildingAt(x, y);
+          if (map.ownerAt(x, y) == decision.decidingSlot &&
+              buildingNames.containsKey(building)) {
+            candidates.add((x, y, building));
+          }
+        }
+      }
+      if (candidates.isEmpty) {
+        // No eligible tile left — nothing to choose; clear the prompt.
+        await controller.resolveDecision(
+            decision.id, decision.decidingSlot, const {});
+        return;
+      }
+      final pick = await showDialog<(int, int)>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => SimpleDialog(
+          title: const Text('Dein Sitz ist verloren — wähle einen neuen'),
+          children: [
+            for (final (x, y, building) in candidates)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, (x, y)),
+                child: Text(
+                  '${buildingNames[building]} (${x + 1}, ${y + 1})',
+                ),
+              ),
+          ],
+        ),
+      );
+      await controller.resolveDecision(decision.id, decision.decidingSlot, {
+        if (pick != null) 'x': pick.$1,
+        if (pick != null) 'y': pick.$2,
+      });
+
     default:
       // Unknown decision type: resolve with the empty choice (the rules
       // fall back to defaults) rather than soft-locking the game.

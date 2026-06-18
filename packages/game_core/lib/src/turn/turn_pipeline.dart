@@ -145,6 +145,10 @@ void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   rollMarketPrices(state, rng);
   runWorldEvents(state, rng, events); // §18
   normalizeTowns(state);
+  // Re-seat any realm whose capital tile was lost this round (earthquake,
+  // war claim, bankruptcy seizure): AI picks automatically, humans are
+  // prompted with a `relocateCapital` decision.
+  reseatLostCapitals(state, rng, events);
   runOfficePhase(state, rng, events); // Kurfürsten + elections (§17)
 
   for (final realm in state.realms) {

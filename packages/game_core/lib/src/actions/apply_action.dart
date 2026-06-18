@@ -560,14 +560,17 @@ List<GameEvent> _sendMoney(GameState state, Realm realm, SendMoney action) {
   ];
 }
 
-/// "Sitz verlegen" (§6.2): 5,000 T; valid target = own tile with
-/// Stadt/Burg/Palast; only when the capital is unset or lost.
+/// "Sitz verlegen" (§6.2): valid target = own tile with Stadt/Burg/Palast.
+/// `[DESIGNED]` Allowed at ANY time, not only when the seat is lost. A
+/// voluntary move costs 5,000 T; re-seating a LOST capital (its tile is no
+/// longer owned, e.g. after a war or earthquake) is free — the realm is
+/// forced to pick a new seat anyway (see [reseatLostCapitals]).
 List<GameEvent> _relocateCapital(
     GameState state, Realm realm, RelocateCapital action) {
   final map = state.map;
   _requireOnMap(map, action.x, action.y);
-  if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
-    throw ActionException('Dein Sitz ist nicht verloren !');
+  if (action.x == realm.capitalX && action.y == realm.capitalY) {
+    throw ActionException('Das ist bereits dein Sitz !');
   }
   if (map.ownerAt(action.x, action.y) != realm.slot) {
     throw ActionException('Der neue Sitz muss auf deinem Territorium liegen !');
@@ -579,11 +582,16 @@ List<GameEvent> _relocateCapital(
     throw ActionException(
         'Der neue Sitz braucht eine Stadt, Burg oder einen Palast !');
   }
-  _requireFunds(realm, 5000);
-
-  realm.treasury -= 5000;
+  final lost = map.ownerAt(realm.capitalX, realm.capitalY) != realm.slot;
+  if (!lost) {
+    _requireFunds(realm, 5000);
+    realm.treasury -= 5000;
+  }
   realm.capitalX = action.x;
   realm.capitalY = action.y;
+  // A forced re-seat decision (if any) is now satisfied.
+  state.pendingDecisions.removeWhere(
+      (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
 
   return [
     GameEvent(
@@ -750,6 +758,33 @@ List<GameEvent> _resolveDecision(
       final name = (choice['name'] as String?)?.trim() ?? '';
       if (child != null && name.isNotEmpty) {
         child.name = name;
+      }
+
+    case 'relocateCapital':
+      // Forced re-seat after a lost capital — free. An invalid/stale pick
+      // is a no-op; `reseatLostCapitals` re-prompts next round if the seat
+      // is still lost (never throw, or the removed decision is restored
+      // with the discarded copy and re-prompted forever).
+      final x = choice['x'] as int?;
+      final y = choice['y'] as int?;
+      final building = (x != null && y != null && state.map.inBounds(x, y))
+          ? state.map.buildingAt(x, y)
+          : Building.none;
+      if (x != null &&
+          y != null &&
+          state.map.ownerAt(x, y) == decision.decidingSlot &&
+          (building == Building.stadt ||
+              building == Building.burg ||
+              building == Building.palast)) {
+        realm.capitalX = x;
+        realm.capitalY = y;
+        events.add(GameEvent(
+          year: state.year,
+          slot: decision.decidingSlot,
+          type: 'capitalRelocated',
+          visibility: EventVisibility.public,
+          payload: {'x': x, 'y': y},
+        ));
       }
 
     case 'electionBribe':

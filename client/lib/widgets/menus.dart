@@ -629,13 +629,13 @@ void showTroopActions(
                         ? 'Nicht mitten im Krieg !'
                         : troop.quality >= gc.Troop.drillCap
                         ? 'Bereits voll ausgebildet (Qualität ${troop.quality})'
-                        : '${5 * troop.men} T — Qualität ${troop.quality} → '
-                              '${troop.quality + 1}',
+                        : '${5 * troop.men * troop.quality} T — Qualität '
+                              '${troop.quality} → ${troop.quality + 1}',
                   ),
                   enabled:
                       !atWar &&
                       troop.quality < gc.Troop.drillCap &&
-                      realm.treasury >= 5 * troop.men,
+                      realm.treasury >= 5 * troop.men * troop.quality,
                   // The sheet stays open: drilling is repeatable and
                   // the ListenableBuilder refreshes quality/cost in place.
                   onTap: () => _tryAction(
@@ -1130,10 +1130,9 @@ void showMiscMenu(BuildContext context, GameController controller) {
             title: const Text('Sitz verlegen'),
             subtitle: Text(
               capitalLost
-                  ? '5000 T — eigene Stadt, Burg oder Palast wählen'
-                  : 'Nur möglich, wenn der Sitz verloren ist',
+                  ? 'Sitz verloren — neue Stadt, Burg oder Palast wählen (gratis)'
+                  : '5000 T — eigene Stadt, Burg oder Palast wählen',
             ),
-            enabled: capitalLost,
             onTap: () {
               Navigator.pop(sheetContext);
               _showRelocateCapital(context, controller);
@@ -1186,10 +1185,14 @@ void showMiscMenu(BuildContext context, GameController controller) {
 }
 
 /// "Sitz verlegen" (§6.2): pick one of the own Stadt/Burg/Palast tiles.
+/// Allowed any time — 5000 T voluntarily, free when the seat is lost.
 void _showRelocateCapital(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final state = controller.state;
   final map = state.map;
+  final realm = state.realm(slot);
+  final lost = map.ownerAt(realm.capitalX, realm.capitalY) != slot;
+  final costLabel = lost ? 'gratis' : '5000 T';
   const buildingNames = {
     gc.Building.stadt: 'Stadt',
     gc.Building.burg: 'Burg',
@@ -1218,7 +1221,7 @@ void _showRelocateCapital(BuildContext context, GameController controller) {
             ListTile(
               leading: const Icon(Icons.location_city),
               title: Text('${buildingNames[building]} (${x + 1}, ${y + 1})'),
-              trailing: const Text('5000 T'),
+              trailing: Text(costLabel),
               onTap: () {
                 Navigator.pop(context);
                 _tryAction(

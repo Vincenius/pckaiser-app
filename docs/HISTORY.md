@@ -1,9 +1,37 @@
 # Decision & Fix History
 
 Dated log of decisions, review rounds and fixes — kept for lookups.
-Rules-version changes (v2–v14) are documented in detail in
+Rules-version changes (v2–v4) are documented in detail in
 `packages/game_core/lib/src/state/versioning.dart` (changelog) and the
 deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
+
+## 2026-06-18
+
+- **Rules v4** (universal/ungated, see versioning.dart changelog):
+  - **War march over neutral land**: armies may cross unowned (`niemand`)
+    land in war, not only own/enemy territory — `applyWarMove` and the AI
+    war pathing (`runAiWarMovement` allowed-owners). Third realms still block.
+  - **Lost-capital re-seating** (`reseatLostCapitals`, run each round in
+    `_startRound`): a realm whose capital tile is lost (war claim,
+    earthquake, bankruptcy seizure) takes a new seat — AI auto-picks the
+    highest-value own Stadt/Burg/Palast (random among ties); humans get a
+    `relocateCapital` decision (free, prompted at turn start).
+  - **"Sitz verlegen" any time**: voluntary relocation costs 5,000 T; a
+    forced re-seat after a loss is free. (Was: only allowed when lost.)
+  - **`humansDefeated` carries `reason`**: the defeat screen now explains the
+    cause (internal strife / bankruptcy / succession crisis / conquest /
+    extinction) instead of just "no human dynasty". Mechanics unchanged — the
+    player can still be eliminated; only the messaging is clearer.
+  - **Bankruptcy grace period**: §19.2 no longer forecloses the moment the
+    treasury crosses the debt limit. A realm gets `bankruptcyGraceTurns` (3)
+    end-of-turns below the limit — warned each turn (`debtWarning`) — to
+    recover before tiles are seized. `Realm.debtTurns` tracks the streak,
+    resets on recovery.
+- **Drill display bug** (client-only): "Truppe ausbilden" showed/gated the
+  cost as `5 × men` while the engine charges `5 × men × quality`, so at
+  higher quality the enabled button threw "nicht genügend Taler" — it looked
+  like a level-3 cap. Fixed the menu to use the real cost. Engine cap was
+  already 99.
 
 ## 2026-06-10
 

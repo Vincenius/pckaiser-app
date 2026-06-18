@@ -384,7 +384,12 @@ List<GameEvent> applyWarMove(
   }
   final enemySlot = war.opponentOf(realm.slot);
   final tileOwner = map.ownerAt(nx, ny);
-  if (tileOwner != realm.slot && tileOwner != enemySlot) {
+  // `[DESIGNED]` Armies may march across neutral, unowned land
+  // (`World.niemand`) as well as own and enemy territory — only a THIRD
+  // realm's land is off-limits during the war.
+  if (tileOwner != realm.slot &&
+      tileOwner != enemySlot &&
+      tileOwner != World.niemand) {
     throw ActionException('Durch fremde Reiche darf man im Krieg nicht ziehen !');
   }
 

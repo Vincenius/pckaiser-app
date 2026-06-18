@@ -148,6 +148,8 @@ void main() {
       final realm = state.realm(2);
       final oldRuler = realm.rulerId;
       realm.treasury = -12000; // Ritter limit 10,000
+      // The grace period has already elapsed: this turn forecloses.
+      realm.debtTurns = bankruptcyGraceTurns - 1;
       final events = <GameEvent>[];
       runEliminationChecks(state, 2, Rng(3), events);
       expect(events.any((e) => e.type == 'bankruptcy'), isTrue);
@@ -186,6 +188,7 @@ void main() {
           y: town.y));
 
       realm.treasury = -12000; // Ritter limit 10,000 → 2 seizures
+      realm.debtTurns = bankruptcyGraceTurns - 1; // grace elapsed
       runEliminationChecks(state, 2, Rng(3), <GameEvent>[]);
 
       expect(realm.towns, isEmpty, reason: 'the Stadt was seized');
