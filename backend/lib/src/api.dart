@@ -5,6 +5,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:game_core/game_core.dart' as gc;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
@@ -18,6 +19,8 @@ class Api {
 
   Handler get handler {
     final router = Router()
+      ..get('/version', _version)
+      ..get('/api/v1/version', _version)
       ..post('/api/v1/players', _registerPlayer)
       ..patch('/api/v1/players/<id>', _updatePlayer)
       ..get('/api/v1/players/<id>/matches', _playerMatches)
@@ -29,6 +32,14 @@ class Api {
       ..post('/api/v1/matches/<id>/turn', _submitTurn);
     return router.call;
   }
+
+  /// Reports the `game_core` build this server is running so a client can
+  /// confirm the deployment is current — if these versions are stale, the
+  /// server rejects/caps actions a fresh client allows.
+  Future<Response> _version(Request request) => _guard(() async => {
+        'rules_version': gc.currentRulesVersion,
+        'schema_version': gc.currentSchemaVersion,
+      });
 
   Future<Response> _registerPlayer(Request request) => _guard(() async {
         final body = await _json(request);

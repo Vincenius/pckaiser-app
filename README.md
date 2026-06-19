@@ -104,6 +104,18 @@ context), with an Nginx example in `backend/deploy/`:
 docker compose -f backend/deploy/docker-compose.yml up -d --build
 ```
 
+`--build` is required after a `game_core` change — without it the old
+image (and old rules) keeps running. Verify the deployed build with
+`GET /version` (no auth), which reports the server's `game_core` rules:
+
+```bash
+curl https://your-server.example.com/version
+# {"data":{"rules_version":4,"schema_version":1},"error":null}
+```
+
+If those versions are stale, the redeploy did not pick up the new
+`game_core` (e.g. the server's checkout was not pulled before `--build`).
+
 Compose env (set in the shell or in `backend/deploy/.env`):
 `PCKAISER_PORT` — host port the server is published on
 (default 3000, bound to localhost; point Nginx at it), plus
