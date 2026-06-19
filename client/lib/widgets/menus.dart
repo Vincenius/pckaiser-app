@@ -166,7 +166,8 @@ void _investSheet(BuildContext context, GameController controller) {
     context,
     title: tr('investShips'),
     max: cap < realm.treasury ? cap : realm.treasury,
-    detail: (amount) => 'Einsatz $amount T — Gewinn oder Verlust',
+    detail: (amount) =>
+        'Einsatz $amount T — der Ertrag kehrt nächste Runde zurück',
     onSubmit: (amount) => _tryAction(
       context,
       controller,

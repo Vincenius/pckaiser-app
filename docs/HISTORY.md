@@ -7,6 +7,19 @@ deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
 ## 2026-06-19
 
+- **Rules v6** (universal/ungated, see versioning.dart changelog) —
+  **trade ships return next turn**. "Handelsschiffe aussenden" (§9.2) was an
+  instant 50/50 gamble that credited the treasury in the same action. Now the
+  stake leaves the treasury on departure, the outcome is rolled then (so saves
+  stay replayable) but is hidden, and the haul lands at the START of the
+  realm's next turn — the new `Realm.pendingShipReturns` voyages resolve in
+  `_resolveShipReturns` (turn pipeline begin-turn). Departure fires a
+  `shipsSent` event; the return fires `shipsReturned` (now the turn-start
+  notice of what the ships brought back, shown in the recap card). Hidden info
+  like colony ships (`_redactRealm` omits it). Additive JSON field — no schema
+  bump. UI: `_investSheet` detail + tutorial "Handel" step updated. Regression
+  test: `turn_pipeline_test.dart` ("trade ships return at the start of the
+  next round").
 - **`fromJson` list-aliasing fix** (no rules/schema change). `WorldMap.fromJson`
   and `Realm.fromJson` built their index-mutated lists with `cast<int>()`, which
   returns a write-through *view* over the decoded JSON rather than a copy — so a

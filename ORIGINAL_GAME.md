@@ -477,6 +477,12 @@ if random(2) == 0:  treasury += amount + random(amount) + 1   # profit, ≤ 2×
 else:               treasury += amount − (random(amount) + 1) # loss, ≥ 0
 ```
 
+`[DESIGNED]` (rules v6) — the clone keeps the original outcome roll above
+but **delays the return**: the stake leaves the treasury on departure, the
+profit/loss is rolled then (replayable) but hidden, and the haul is
+credited at the START of the realm's next turn with a `shipsReturned`
+notice. Modelled by `Realm.pendingShipReturns` / `_resolveShipReturns`.
+
 ### 9.3 Colony ships (`(S)chiff`, build menu)
 
 Manual: "Häfen bringen Geld, man kann von ihnen aus aber auch Schiffe

@@ -1,4 +1,5 @@
 import 'intel_report.dart';
+import 'pending_ship_return.dart';
 import 'ship.dart';
 import 'town.dart';
 import 'troop.dart';
@@ -35,11 +36,13 @@ class Realm {
     List<Troop>? troops,
     List<Town>? towns,
     List<Ship>? ships,
+    List<PendingShipReturn>? pendingShipReturns,
     List<IntelReport>? intelReports,
   })  : tileCount = tileCount ?? List.filled(9, 0),
         troops = troops ?? [],
         towns = towns ?? [],
         ships = ships ?? [],
+        pendingShipReturns = pendingShipReturns ?? [],
         intelReports = intelReports ?? [];
 
   factory Realm.fromJson(Map<String, dynamic> json) => Realm(
@@ -82,6 +85,11 @@ class Realm {
         // Additive field — older saves have no ships.
         ships: (json['ships'] as List?)
             ?.map((s) => Ship.fromJson((s as Map).cast<String, dynamic>()))
+            .toList(),
+        // Additive field — older saves have no in-flight trade voyages.
+        pendingShipReturns: (json['pendingShipReturns'] as List?)
+            ?.map((r) =>
+                PendingShipReturn.fromJson((r as Map).cast<String, dynamic>()))
             .toList(),
         intelReports: (json['intelReports'] as List?)
             ?.map(
@@ -157,6 +165,11 @@ class Realm {
   /// Colony ships at sea. Hidden information like [troops].
   final List<Ship> ships;
 
+  /// Trade-ship voyages still at sea (§9.2). Sent during a turn, each
+  /// resolves at the start of this realm's next turn — hidden information
+  /// like [ships].
+  final List<PendingShipReturn> pendingShipReturns;
+
   /// Espionage results owned by this realm — private, hidden-information
   /// state (ARCHITECTURE.md).
   final List<IntelReport> intelReports;
@@ -192,6 +205,7 @@ class Realm {
         troops: [for (final t in troops) t.copy()],
         towns: [for (final t in towns) t.copy()],
         ships: [for (final s in ships) s.copy()],
+        pendingShipReturns: [for (final r in pendingShipReturns) r.copy()],
         intelReports: [for (final r in intelReports) r.copy()],
       );
 
@@ -224,6 +238,7 @@ class Realm {
         'troops': [for (final t in troops) t.toJson()],
         'towns': [for (final t in towns) t.toJson()],
         'ships': [for (final s in ships) s.toJson()],
+        'pendingShipReturns': [for (final r in pendingShipReturns) r.toJson()],
         'intelReports': [for (final r in intelReports) r.toJson()],
       };
 }

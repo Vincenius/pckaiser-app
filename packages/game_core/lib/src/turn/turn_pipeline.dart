@@ -12,6 +12,7 @@ import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
+import '../state/realm.dart';
 
 /// Result of a pipeline step: the new state plus the events the step
 /// emitted (already appended to `state.events`).
@@ -177,6 +178,8 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
   final realm = state.realm(state.currentPlayer);
   if (realm.isVacant) return;
 
+  _resolveShipReturns(state, realm, events);
+
   final food = runFoodAndPopulation(state, realm, rng, events);
   final economy = runEconomy(state, realm, rng);
   checkTitlePromotion(state, realm, events); // §16.2: every turn
@@ -207,6 +210,27 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
       'movementPoints': realm.movementPoints,
     },
   ));
+}
+
+/// Trade ships sent on an earlier turn (§9.2) come home at the start of
+/// this realm's turn: credit each haul and post a `shipsReturned` notice
+/// (its profit/loss is the turn-start "Benachrichtigung").
+void _resolveShipReturns(GameState state, Realm realm, List<GameEvent> events) {
+  if (realm.pendingShipReturns.isEmpty) return;
+  final due =
+      realm.pendingShipReturns.where((r) => r.returnYear <= state.year).toList();
+  if (due.isEmpty) return;
+  realm.pendingShipReturns.removeWhere((r) => r.returnYear <= state.year);
+  for (final r in due) {
+    realm.treasury += r.returned;
+    events.add(GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'shipsReturned',
+      visibility: EventVisibility.owner,
+      payload: {'invested': r.invested, 'returned': r.returned},
+    ));
+  }
 }
 
 int _firstLivingSlot(GameState state) {

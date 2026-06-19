@@ -104,7 +104,8 @@ final List<TutorialStep> tutorialSteps = [
     body:
         'Überschüssiges Korn und Vieh verkaufst du auf dem Markt — '
         'die Preise schwanken von Jahr zu Jahr. Mit einem Hafen kannst '
-        'du außerdem Taler in Handelsschiffe investieren.',
+        'du außerdem Handelsschiffe aussenden — ihr Ertrag kehrt zu '
+        'Beginn der nächsten Runde zurück.',
     task: 'Öffne unten „Handel" und verkaufe Korn oder Rinder.',
     isDone: (c, since) =>
         c.currentRealm.soldGrainThisTurn || c.currentRealm.soldCattleThisTurn,

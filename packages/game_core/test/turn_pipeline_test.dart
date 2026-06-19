@@ -338,14 +338,47 @@ void main() {
       );
       final result = applyAction(
           state, InvestShips(slot: 1, amount: 500), Rng(state.rngSeed));
-      // Returned ∈ [0, 2×amount]: treasury ∈ [500, 1500].
-      expect(result.state.realm(1).treasury, inInclusiveRange(500, 1500));
+      final invested = result.state.realm(1);
+      // Stake leaves the treasury now; the haul lands next turn.
+      expect(invested.treasury, 500, reason: 'stake deducted immediately');
+      expect(invested.pendingShipReturns, hasLength(1));
+      final voyage = invested.pendingShipReturns.single;
+      expect(voyage.invested, 500);
+      // Returned ∈ [0, 2×amount].
+      expect(voyage.returned, inInclusiveRange(0, 1000));
+      expect(voyage.returnYear, result.state.year + 1);
       expect(
         () => applyAction(result.state, InvestShips(slot: 1, amount: 100),
             Rng(result.state.rngSeed)),
         throwsA(isA<ActionException>()),
         reason: 'once per turn',
       );
+    });
+
+    test('trade ships return at the start of the next round', () {
+      final state = startGame(freshGame(), Rng(11)).state;
+      final realm = state.realm(1);
+      realm.tileCount[Building.hafen] = 1;
+      realm.treasury = 600;
+      final sent = applyAction(
+          state, InvestShips(slot: 1, amount: 600), Rng(state.rngSeed)).state;
+      final voyage = sent.realm(1).pendingShipReturns.single;
+      expect(sent.events.last.type, 'shipsSent', reason: 'departure notice');
+
+      // Advance the pipeline until slot 1 begins its next turn (the voyage
+      // resolves there).
+      var s = sent;
+      for (var i = 0; i < 200 && s.realm(1).pendingShipReturns.isNotEmpty; i++) {
+        s = completeTurn(s, Rng(s.rngSeed)).state;
+      }
+
+      expect(s.realm(1).pendingShipReturns, isEmpty, reason: 'voyage resolved');
+      expect(s.year, 1001, reason: 'returned the following round');
+      final notice = s.events.lastWhere(
+          (e) => e.type == 'shipsReturned' && e.slot == 1,
+          orElse: () => throw StateError('no return notice posted'));
+      expect(notice.payload['returned'], voyage.returned,
+          reason: 'notice reports the haul rolled at departure');
     });
   });
 

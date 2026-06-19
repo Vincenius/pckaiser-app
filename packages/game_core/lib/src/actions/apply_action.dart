@@ -8,6 +8,7 @@ import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
+import '../state/pending_ship_return.dart';
 import '../state/person.dart';
 import '../state/realm.dart';
 import '../state/ship.dart';
@@ -497,7 +498,11 @@ List<GameEvent> _sellGood(GameState state, Realm realm, SellGood action) {
 }
 
 /// Trade-ship investment (§9.2): once per turn, capped at 600 T × harbors;
-/// 50/50 profit up to 2× or loss down to (almost) zero.
+/// 50/50 profit up to 2× or loss down to (almost) zero. The stake leaves
+/// the treasury now; the ships return at the START of this realm's next
+/// turn (`_resolveShipReturns` in the turn pipeline) with a notice of
+/// their haul. The outcome is rolled here so the save stays replayable,
+/// but it stays hidden until they come home.
 List<GameEvent> _investShips(
     GameState state, Realm realm, InvestShips action, Rng rng) {
   if (realm.investedThisTurn) {
@@ -517,16 +522,20 @@ List<GameEvent> _investShips(
   } else {
     returned = action.amount - (rng.nextInt(action.amount) + 1); // loss
   }
-  realm.treasury += returned;
   realm.investedThisTurn = true;
+  realm.pendingShipReturns.add(PendingShipReturn(
+    invested: action.amount,
+    returned: returned,
+    returnYear: state.year + 1,
+  ));
 
   return [
     GameEvent(
       year: state.year,
       slot: realm.slot,
-      type: 'shipsReturned',
+      type: 'shipsSent',
       visibility: EventVisibility.owner,
-      payload: {'invested': action.amount, 'returned': returned},
+      payload: {'invested': action.amount},
     ),
   ];
 }

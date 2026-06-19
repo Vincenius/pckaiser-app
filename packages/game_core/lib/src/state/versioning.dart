@@ -89,7 +89,16 @@ const int currentSchemaVersion = 1;
 ///    tapped, and tapping water/coast tiles steers manually. AI offensive
 ///    naval landings are still TODO (the AI defends a landing but does not
 ///    launch its own — its war pathing treats water as impassable).
-const int currentRulesVersion = 5;
+///
+/// v6 (universal — applied to every game on load, ungated):
+///  - "Handelsschiffe aussenden" (§9.2) is no longer an instant 50/50
+///    gamble. The stake leaves the treasury when the ships depart, the
+///    outcome is rolled then (so saves stay replayable) but stays hidden,
+///    and the haul lands at the START of the realm's next turn
+///    (`Realm.pendingShipReturns` / `_resolveShipReturns`). Departure fires
+///    a `shipsSent` event; the return fires `shipsReturned` (now the
+///    turn-start notice of what the ships brought back).
+const int currentRulesVersion = 6;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

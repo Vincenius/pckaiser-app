@@ -81,9 +81,9 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
 /// Strips a foreign realm down to its public face. Identity, title, capital
 /// and town tiers stay (visible on the map anyway); all economy and
 /// military numbers go to zero, meaning "unknown" — the UI must render
-/// foreign zeros as hidden, not as the value 0. Troops, colony ships and
-/// intel reports are simply omitted (the rebuilt realm defaults them
-/// empty).
+/// foreign zeros as hidden, not as the value 0. Troops, colony ships,
+/// in-flight trade voyages and intel reports are simply omitted (the
+/// rebuilt realm defaults them empty).
 Realm _redactRealm(Realm realm) => Realm(
       slot: realm.slot,
       titleClass: realm.titleClass,

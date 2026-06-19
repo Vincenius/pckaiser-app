@@ -79,7 +79,11 @@ String describeEvent(gc.GameEvent e) {
           '${p['building'] == gc.Building.markt ? 'Marktrecht' : 'Stadtrecht'} verliehen',
     'townDied' => '${p['name']} ist verlassen',
     'goodsSold' => '$realm verkauft ${p['amount']} für ${p['proceeds']} T',
-    'shipsReturned' => '$realm: Schiffe kehren zurück — ${p['returned']} T',
+    'shipsSent' =>
+      '$realm sendet Handelsschiffe aus — Einsatz ${p['invested']} T',
+    'shipsReturned' =>
+      '$realm: Handelsschiffe kehren zurück — Erlös ${p['returned']} T '
+          '(Einsatz ${p['invested']} T)',
     'moneySent' =>
       '$realm schickt ${p['amount']} T an ${gc.countryNames[p['targetSlot'] as int]}',
     'capitalRelocated' =>
@@ -221,6 +225,7 @@ const _routineTypes = {
   'buildingBuilt',
   'buildingDemolished',
   'goodsSold',
+  'shipsSent',
   'shipsReturned',
   'shipBought',
   'shipColonized',
@@ -484,7 +489,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'moneySent' ||
   'shipsReturned' ||
   'merchantFounder' => (Icons.storefront, null),
-  'shipBought' || 'shipColonized' => (Icons.sailing, null),
+  'shipBought' || 'shipColonized' || 'shipsSent' => (Icons.sailing, null),
   'gameWon' => (Icons.emoji_events, Colors.amber),
   'gameDraw' || 'humansDefeated' => (Icons.history_edu, Colors.blueGrey),
   _ => (Icons.campaign, null),
