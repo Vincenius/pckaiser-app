@@ -68,7 +68,28 @@ const int currentSchemaVersion = 1;
 ///    crosses the debt limit: a realm gets `bankruptcyGraceTurns` turns
 ///    below the limit (warned each turn via `debtWarning`) to recover
 ///    before the creditor seizes tiles. `Realm.debtTurns` tracks the streak.
-const int currentRulesVersion = 4;
+///
+/// v5 (universal — applied to every game on load, ungated):
+///  - Söldner are now distinguished from regulars by `garrisonCounted`, not
+///    by `quality == 3`. A regular drilled to quality 3 (now common with the
+///    v4 drill-to-99 change) was wrongly treated as a mercenary: reinforcing
+///    it cost 50 T/man and skipped the quarters check (`applyReinforceTroop`),
+///    and §7.4 wages double-counted its men (`computeIncome`). The client hid
+///    its drill/retrain buttons and mislabelled it "(Söldner)" at quality 3.
+///  - War sea movement (`[DESIGNED]`, not in the original) is now usable two
+///    ways. (1) Manual steering: `applyWarMove` lets a unit embark by
+///    stepping onto an own Hafen, sail open water tile by tile (1 Zug each,
+///    like the colony ship) and disembark on any reachable coast — only a
+///    third realm's tiles still block. (2) One-shot transport:
+///    `applyWarNavalTransport` ships a harbour-adjacent unit straight to any
+///    sea-connected coast. Both target own, enemy OR neutral coast (was: own
+///    only) and fight defenders on a contested landing (a repelled landing
+///    stays at the embark coast). The client auto-routes to the connecting
+///    harbour (`WorldMap.navalEmbarkTile`) when a sea-separated tile is
+///    tapped, and tapping water/coast tiles steers manually. AI offensive
+///    naval landings are still TODO (the AI defends a landing but does not
+///    launch its own — its war pathing treats water as impassable).
+const int currentRulesVersion = 5;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).

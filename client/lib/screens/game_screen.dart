@@ -204,7 +204,12 @@ class _GameScreenState extends State<GameScreen> {
   ) async {
     final report = <gc.GameEvent>[];
     final unitName = controller.state.realm(slot).troops[unitIndex].name;
-    for (var guard = 0; guard < 40; guard++) {
+    // The tile we currently walk toward. It starts as the tapped target and
+    // is re-pointed at an own harbor's coast when the only way across is by
+    // sea — then the unit ships from there to the tapped target.
+    var goalX = tx;
+    var goalY = ty;
+    for (var guard = 0; guard < 60; guard++) {
       final war = controller.state.activeWar;
       if (war == null || war.phase != gc.WarPhase.rounds) break;
       final troops = controller.state.realm(slot).troops;
@@ -213,9 +218,22 @@ class _GameScreenState extends State<GameScreen> {
         break; // the unit was destroyed
       }
       final troop = troops[unitIndex];
-      final remainingX = tx - troop.x;
-      final remainingY = ty - troop.y;
-      if (remainingX == 0 && remainingY == 0) break; // arrived
+      final map = controller.state.map;
+      final remainingX = goalX - troop.x;
+      final remainingY = goalY - troop.y;
+      if (remainingX == 0 && remainingY == 0) {
+        // Reached the goal. If it was a harbor approach (goal ≠ tapped
+        // target), embark now and ship across — unless a battle en route
+        // deferred it (re-tap to finish the hop next round).
+        if ((goalX != tx || goalY != ty) &&
+            report.isEmpty &&
+            map.canNavalTransport(slot, troop.x, troop.y, tx, ty)) {
+          final navError =
+              await _navalTransport(controller, slot, unitIndex, tx, ty, report);
+          if (navError != null) _toast(navError);
+        }
+        break;
+      }
 
       // Prefer the longer axis; fall back to the other on a blocked step.
       final primary = remainingX.abs() >= remainingY.abs()
@@ -231,21 +249,26 @@ class _GameScreenState extends State<GameScreen> {
         error = await _warStep(controller, slot, unitIndex, secondary, report);
       }
       if (error != null) {
-        // Blocked on both axes or out of moves: try naval transport when the
-        // path is blocked (not just out of moves) and report is still empty
-        // (no battle has happened yet).
-        if (report.isEmpty) {
-          final currentTroops = controller.state.realm(slot).troops;
-          if (unitIndex < currentTroops.length &&
-              currentTroops[unitIndex].name == unitName) {
-            final t = currentTroops[unitIndex];
-            if (controller.state.map
-                .canNavalTransport(slot, t.x, t.y, tx, ty)) {
-              final navError =
-                  await _navalTransport(controller, slot, unitIndex, tx, ty);
-              if (navError != null) _toast(navError);
-              break;
-            }
+        // Blocked or out of moves. The convenience sea-route only applies
+        // from LAND (at sea the unit is steered manually, tile by tile) and
+        // while no battle has happened yet (a fought march defers it).
+        if (report.isEmpty && !map.isWaterAt(beforeX, beforeY)) {
+          // Standing next to a harbor that reaches the target → ship across.
+          if (map.canNavalTransport(slot, beforeX, beforeY, tx, ty)) {
+            final navError =
+                await _navalTransport(controller, slot, unitIndex, tx, ty, report);
+            if (navError != null) _toast(navError);
+            break;
+          }
+          // Otherwise march to the nearest harbor coast that connects, then
+          // ship from there on a later iteration.
+          final embark = map.navalEmbarkTile(slot, beforeX, beforeY, tx, ty);
+          if (embark != null &&
+              (embark.$1 != goalX || embark.$2 != goalY) &&
+              (embark.$1 != beforeX || embark.$2 != beforeY)) {
+            goalX = embark.$1;
+            goalY = embark.$2;
+            continue; // head for the harbor now
           }
           _toast(error);
         }
@@ -269,20 +292,23 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  /// Naval transport: move the selected unit to [tx],[ty] via harbor.
-  /// Returns null on success or the engine's message on failure.
+  /// Naval transport: ship the selected unit to [tx],[ty] via an own harbor.
+  /// Appends any landing-battle events to [report]. Returns null on success
+  /// or the engine's message on failure.
   Future<String?> _navalTransport(
     GameController controller,
     int slot,
     int unitIndex,
     int tx,
     int ty,
+    List<gc.GameEvent> report,
   ) async {
     try {
-      await controller.applyWarAction(
+      final result = await controller.applyWarAction(
         gc.WarNavalTransport(
             slot: slot, unitIndex: unitIndex, x: tx, y: ty),
       );
+      report.addAll(result.events);
       return null;
     } on gc.ActionException catch (e) {
       return e.message;

@@ -132,7 +132,11 @@ List<GameEvent> applyReinforceTroop(
   final troop = unitAt(realm, action.unitIndex);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   final int cost;
-  if (troop.quality == TroopQuality.soeldner) {
+  // Söldner cost 50/man and ignore garrison capacity; they are identified
+  // by NOT being garrison-counted — never by quality == 3, which a drilled
+  // regular also reaches (it would then be mischarged and skip the quarters
+  // check).
+  if (!troop.garrisonCounted) {
     cost = 50 * action.men;
   } else {
     if (realm.armySize + action.men > realm.troopCapacity) {
@@ -379,8 +383,22 @@ List<GameEvent> applyWarMove(
   final nx = troop.x + action.dx;
   final ny = troop.y + action.dy;
   final map = state.map;
-  if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) {
+  if (!map.inBounds(nx, ny)) {
     throw ActionException('Unpassierbar !');
+  }
+  // Manual sea steering: a unit may take to the water only through an own
+  // Hafen, then sail tile by tile over open water (1 Zug each, like the
+  // colony ship) and disembark on any reachable coast. Open water is
+  // unowned, so the territory check below lets it through; a foreign Hafen
+  // tile (a third realm's) is still off-limits.
+  if (map.isWaterAt(nx, ny)) {
+    final embarking = map.ownerAt(nx, ny) == realm.slot &&
+        map.buildingAt(nx, ny) == Building.hafen;
+    final alreadyAtSea = map.isWaterAt(troop.x, troop.y);
+    if (!embarking && !alreadyAtSea) {
+      throw ActionException(
+          'Truppen gehen nur über einen eigenen Hafen an Bord !');
+    }
   }
   final enemySlot = war.opponentOf(realm.slot);
   final tileOwner = map.ownerAt(nx, ny);
@@ -438,8 +456,15 @@ void _refreshMarkers(GameState state) {
   }
 }
 
+/// Seetransport im Krieg: embark a unit standing next to an own Hafen and
+/// ship it to a sea-connected coastal tile. The destination may be own,
+/// enemy or neutral coast — an **amphibious landing** on enemy coast fights
+/// any defenders there (§11.3), exactly like a land step onto the tile; a
+/// repelled landing leaves the unit at its embark coast. A third realm's
+/// coast is off-limits, like the overland march. The voyage spends the
+/// unit's whole round.
 List<GameEvent> applyWarNavalTransport(
-    GameState state, Realm realm, WarNavalTransport action) {
+    GameState state, Realm realm, WarNavalTransport action, Rng rng) {
   final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
   final troop = unitAt(realm, action.unitIndex);
   final moves = war.movesLeft[realm.slot];
@@ -454,16 +479,42 @@ List<GameEvent> applyWarNavalTransport(
     throw ActionException(
         'Keine Seeverbindung von einem eigenen Hafen zu diesem Ziel !');
   }
-  if (map.ownerAt(action.x, action.y) != realm.slot) {
+  final enemySlot = war.opponentOf(realm.slot);
+  final tileOwner = map.ownerAt(action.x, action.y);
+  if (tileOwner != realm.slot &&
+      tileOwner != enemySlot &&
+      tileOwner != World.niemand) {
     throw ActionException(
-        'Seetransport nur auf eigenes Territorium möglich !');
+        'Du kannst nur an eigener, feindlicher oder neutraler Küste landen !');
   }
+  // A sea voyage spends the unit's whole round, success or not.
   moves[action.unitIndex] = 0;
+  final events = <GameEvent>[];
+  final enemyRealm = state.realm(enemySlot);
+
+  // Contested landing: fight the defenders stacked on the target tile.
+  final defenders =
+      enemyRealm.troops.where((t) => t.x == action.x && t.y == action.y).toList();
+  for (final enemyUnit in defenders) {
+    events.addAll(
+        resolveCombat(state, realm.slot, troop, enemySlot, enemyUnit, rng));
+    if (!realm.troops.contains(troop)) {
+      _refreshMarkers(state);
+      return events; // the landing force was annihilated at sea/shore
+    }
+    if (enemyRealm.troops.contains(enemyUnit)) {
+      _refreshMarkers(state);
+      return events; // landing repelled — the unit stays at its embark coast
+    }
+  }
+
   map.troopMarker[map.index(troop.x, troop.y)] = 0;
   troop.x = action.x;
   troop.y = action.y;
   map.troopMarker[map.index(action.x, action.y)] = 1;
-  return const [];
+  // Like applyWarMove, landing on the enemy capital only ARMS the capture;
+  // endWarRound resolves it if the unit holds the tile through the round.
+  return events;
 }
 
 List<GameEvent> applyWarPlunder(

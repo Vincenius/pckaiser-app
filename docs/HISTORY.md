@@ -1,9 +1,53 @@
 # Decision & Fix History
 
 Dated log of decisions, review rounds and fixes — kept for lookups.
-Rules-version changes (v2–v4) are documented in detail in
+Rules-version changes (v2–v5) are documented in detail in
 `packages/game_core/lib/src/state/versioning.dart` (changelog) and the
 deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
+
+## 2026-06-19
+
+- **`fromJson` list-aliasing fix** (no rules/schema change). `WorldMap.fromJson`
+  and `Realm.fromJson` built their index-mutated lists with `cast<int>()`, which
+  returns a write-through *view* over the decoded JSON rather than a copy — so a
+  loaded map's in-place writes (`map.building[i] = …`, `tileCount[b]++`) could
+  leak back into the source document (and vice versa), contradicting `copy()`
+  and the "cheap to copy" contract. Latent today (every engine entry point
+  copies state first) but a real footgun. Now `.toList()` detaches both.
+  Regression test: `serialization_test.dart` ("fromJson detaches index-mutated
+  lists"). A full audit of the rest of `game_core` (economy, military/war,
+  dynasty/offices/espionage, turn pipeline/events/AI, visibility) surfaced no
+  other live logic bugs.
+- **Rules v5** (universal/ungated, see versioning.dart changelog) —
+  **drilled regular ≠ Söldner**: a regular drilled to quality 3 (common
+  after the v4 drill-to-99 change) was misidentified as a mercenary because
+  several sites keyed off `quality == 3` instead of `garrisonCounted`. Effects
+  fixed: the client hid its **drill/retrain buttons** at quality 3 (the
+  reported "can only train to level 3" bug — `menus.dart`), reinforcing it
+  cost 50 T/man and skipped the quarters check (`applyReinforceTroop`), §7.4
+  wages double-counted its men (`runEconomy`), and the troop list mislabelled
+  it "(Söldner)". Regression test: `bugfix_v16_drilled_regular_not_soeldner_test.dart`.
+- **Server `/version` endpoint** (`backend/lib/src/api.dart`): reports the
+  deployed `game_core` `rules_version`/`schema_version` so a stale online
+  deployment (server not rebuilt with `--build` / checkout not pulled) can be
+  spotted with one `curl`. README "Run the online server" documents it.
+- **War sea movement → usable two ways** (folded into rules v5). The
+  `[DESIGNED]` sea transport (not in the original — colony ships only
+  colonised, ORIGINAL_GAME.md §9.3) was effectively unusable: own-territory
+  only, no combat, and the client only tried it as a march fallback that
+  rarely left the unit beside a harbour. Now:
+  - **Manual steering** (`applyWarMove`): a unit embarks by stepping onto an
+    own Hafen, sails open water tile by tile (1 Zug each, like the colony
+    ship) and disembarks on any reachable coast. Only a third realm's tiles
+    block. Tapping water/coast tiles steers it.
+  - **One-shot transport** (`applyWarNavalTransport`): ships a
+    harbour-adjacent unit straight to a sea-connected coast; the client
+    auto-routes to the connecting harbour (`WorldMap.navalEmbarkTile`) when a
+    sea-separated tile is tapped (`_marchToward`).
+  Both target own/enemy/neutral coast and **resolve combat on a contested
+  landing** (repelled landing stays at the embark coast). Tests:
+  `naval_transport_test.dart`. **TODO:** the AI defends a landing but never
+  launches its own (its war pathing still treats water as impassable).
 
 ## 2026-06-18
 

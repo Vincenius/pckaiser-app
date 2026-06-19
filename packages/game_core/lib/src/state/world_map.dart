@@ -26,11 +26,17 @@ class WorldMap {
     );
   }
 
+  // `cast<int>()` returns a write-through VIEW over the decoded JSON list,
+  // not a copy. These four lists are mutated in place all over the engine
+  // (`map.building[i] = …`, `troopMarker.fillRange(…)`), so a bare cast
+  // would let those writes leak back into the source JSON document — and vice
+  // versa. Materialize fresh lists so a loaded map owns its storage, matching
+  // the `copy()` contract and the class doc ("cheap to copy").
   factory WorldMap.fromJson(Map<String, dynamic> json) => WorldMap(
-        terrain: (json['terrain'] as List).cast<int>(),
-        owner: (json['owner'] as List).cast<int>(),
-        building: (json['building'] as List).cast<int>(),
-        troopMarker: (json['troopMarker'] as List).cast<int>(),
+        terrain: (json['terrain'] as List).cast<int>().toList(),
+        owner: (json['owner'] as List).cast<int>().toList(),
+        building: (json['building'] as List).cast<int>().toList(),
+        troopMarker: (json['troopMarker'] as List).cast<int>().toList(),
       );
 
   final List<int> terrain;
@@ -138,6 +144,40 @@ class WorldMap {
       }
     }
     return false;
+  }
+
+  /// The land tile next to one of [slot]'s harbors, sea-connected to the
+  /// coastal target ([toX],[toY]), that is closest (Manhattan) to
+  /// ([fromX],[fromY]) — i.e. the tile a unit must reach to embark for that
+  /// destination. Null when no harbor of [slot] connects to the target.
+  /// Drives the client's "tap a sea-separated tile → march to the harbor,
+  /// then ship across" routing; [canNavalTransport] from the returned tile
+  /// to the target is guaranteed true.
+  (int, int)? navalEmbarkTile(int slot, int fromX, int fromY, int toX, int toY) {
+    if (!inBounds(toX, toY) || !isLandAt(toX, toY)) return null;
+    (int, int)? best;
+    var bestDist = 1 << 30;
+    for (var i = 0; i < terrain.length; i++) {
+      if (owner[i] != slot ||
+          building[i] != Building.hafen ||
+          !Terrain.isWater(terrain[i])) {
+        continue;
+      }
+      final hx = i % width;
+      final hy = i ~/ width;
+      for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+        final lx = hx + dx;
+        final ly = hy + dy;
+        if (!inBounds(lx, ly) || !isLandAt(lx, ly)) continue;
+        if (!canNavalTransport(slot, lx, ly, toX, toY)) continue;
+        final dist = (lx - fromX).abs() + (ly - fromY).abs();
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = (lx, ly);
+        }
+      }
+    }
+    return best;
   }
 
   /// Length of the shortest all-water path from ([fromX],[fromY]) to

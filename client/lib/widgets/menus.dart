@@ -459,7 +459,7 @@ void _showTroopList(BuildContext context, GameController controller) {
               ),
               subtitle: Text(
                 '${['Infanterie', 'Kavallerie', 'Artillerie'][realm.troops[i].troopClass]}'
-                '${realm.troops[i].quality == gc.TroopQuality.soeldner ? ' (Söldner)' : ''}'
+                '${!realm.troops[i].garrisonCounted ? ' (Söldner)' : ''}'
                 ' — Stärke ${gc.troopStrength(realm.troops[i]).round()}'
                 ' — Feld (${realm.troops[i].x + 1}, ${realm.troops[i].y + 1})',
               ),
@@ -500,7 +500,10 @@ void showTroopActions(
           return const SafeArea(child: SizedBox(height: 80));
         }
         final troop = realm.troops[index];
-        final soeldner = troop.quality == gc.TroopQuality.soeldner;
+        // Mercenaries are identified by NOT counting against the garrison —
+        // never by quality == 3, which a drilled regular also reaches and
+        // would then be wrongly treated as a Söldner (drill/retrain hidden).
+        final soeldner = !troop.garrisonCounted;
         final costPerMan = soeldner ? 50 : 5;
         final affordable = realm.treasury ~/ costPerMan;
         final capacity = realm.troopCapacity - realm.armySize;

@@ -67,8 +67,10 @@ EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
   realm.treasury += report.harborIncome;
 
   // §7.4 Wages: 0.5 T per man (§27 constants), regulars and Söldner alike.
+  // Söldner are the non-garrison-counted troops (not in armySize); keying
+  // off quality == 3 would double-count a regular drilled to quality 3.
   final soeldnerMen = realm.troops
-      .where((t) => t.quality == TroopQuality.soeldner)
+      .where((t) => !t.garrisonCounted)
       .fold(0, (sum, t) => sum + t.men);
   report.wages = ((realm.armySize + soeldnerMen) * 0.5).round();
   realm.treasury -= report.wages;

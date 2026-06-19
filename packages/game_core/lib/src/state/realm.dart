@@ -52,7 +52,10 @@ class Realm {
         population: json['population'] as int? ?? 0,
         troopCapacity: json['troopCapacity'] as int? ?? 0,
         armySize: json['armySize'] as int? ?? 0,
-        tileCount: (json['tileCount'] as List?)?.cast<int>(),
+        // `.toList()` detaches from the decoded JSON: tileCount is index-
+        // mutated in place (`tileCount[building]++`), so a bare cast view
+        // would write back into the source document. (copy() already copies.)
+        tileCount: (json['tileCount'] as List?)?.cast<int>().toList(),
         grainHarvest: json['grainHarvest'] as int? ?? 0,
         livestockHarvest: json['livestockHarvest'] as int? ?? 0,
         treasury: json['treasury'] as int? ?? 0,
