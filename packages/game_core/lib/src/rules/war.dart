@@ -244,7 +244,12 @@ void transferTile(
   // No share of an EMPTY (or indebted) treasury — the winner must never
   // inherit a share of the loser's DEBT.
   if (sum1 > 0 && building < t1.length && loser.treasury > 0) {
-    final share = loser.treasury * t1[building] * factor ~/ sum1;
+    // Clamp to the loser's purse: a high-value capital tile (factor 2) can
+    // compute a share larger than the whole treasury — the winner must
+    // never take more money than the loser has, so war can't push a
+    // treasury negative.
+    final share =
+        math.min(loser.treasury, loser.treasury * t1[building] * factor ~/ sum1);
     loser.treasury -= share;
     winner.treasury += share;
   }
@@ -824,20 +829,25 @@ bool _bordersTerritory(GameState state, int slot, int x, int y) {
 }
 
 /// Ends the settlement ("F" — fertig): the unspent claim converts 1:1 into
-/// Taler straight from the loser's treasury (which may go negative).
+/// Taler from the loser's treasury — but capped at what the loser actually
+/// owns. War must never drive a treasury negative: a bankrupt loser would
+/// otherwise be soft-locked out of paying for anything afterwards (e.g. an
+/// election bribe prompt) and could lose far more than they ever had.
 void finishSettlement(GameState state, List<GameEvent> events) {
   final war = state.activeWar!;
   final winnerSlot = war.winnerSlot!;
   final loserSlot = war.opponentOf(winnerSlot);
   if (war.remainingClaim > 0) {
-    state.realm(loserSlot).treasury -= war.remainingClaim;
-    state.realm(winnerSlot).treasury += war.remainingClaim;
+    final loser = state.realm(loserSlot);
+    final paid = math.max(0, math.min(war.remainingClaim, loser.treasury));
+    loser.treasury -= paid;
+    state.realm(winnerSlot).treasury += paid;
     events.add(GameEvent(
       year: state.year,
       slot: winnerSlot,
       type: 'claimPaidOut',
       visibility: EventVisibility.public,
-      payload: {'amount': war.remainingClaim, 'from': loserSlot},
+      payload: {'amount': paid, 'from': loserSlot},
     ));
   }
   _returnTroops(state, war, events);

@@ -504,6 +504,15 @@ class MatchService {
               state,
               (s, rng, ev) => endWarRoundFor(s, warSlot, rng, ev),
               emitted);
+          // Mark the war report "seen up to here" for the side that just
+          // finished its round (mirrors the local client's markRecapSeen on
+          // endWarRound): the opponent's next round of battles then arrives
+          // as a fresh recap, so the turn-start war report shows only what
+          // happened since — not every battle of the war, every round. Set
+          // before _resumeAfterWarIfOver so a post-war AI advance still lands
+          // in this player's next recap card.
+          state.recapBaselines[warSlot] =
+              state.prunedEventCount + state.events.length;
         } else {
           state = _apply(state, action, emitted);
         }

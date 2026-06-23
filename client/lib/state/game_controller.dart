@@ -284,6 +284,13 @@ class GameController extends ChangeNotifier {
       // advances — see endWarRoundFor.
       if (actingSlot != null) {
         events = await _session.endWarRound(actingSlot);
+        // Mark the war report "seen up to here" for the side that just acted,
+        // so the next war turn's report shows only the opponent's response,
+        // not every battle since this player's last full turn. Online the
+        // server already moved the baseline (and ran any post-war AI advance
+        // after it); re-doing it here would hide those post-war events from
+        // the recap — so only the local engine needs this.
+        if (!_session.isOnline) markRecapSeen(actingSlot);
       }
       await _resumeAfterWarIfOver();
       _maybeRequestSeatHandoff();

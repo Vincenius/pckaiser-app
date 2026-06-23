@@ -1056,24 +1056,37 @@ void main() {
       // through the defender's full response round.
       final attacker = war.realm(1).troops.first;
       final defender = war.realm(2);
-      // Clear the defending army so the capture resolves immediately
-      // (an opponent without troops cannot respond).
+      // Clear the defending army: a defenceless side cannot respond, so its
+      // round is auto-skipped and the capture resolves the moment the
+      // attacker ends their round — no waiting on the troopless defender.
       defender.troops.clear();
       war.activeWar!.movesLeft[2] = [];
       attacker.x = defender.capitalX;
       attacker.y = defender.capitalY;
       final events = <GameEvent>[];
-      // The attacker's input hands over; the defender's round end
-      // resolves the capture (a troopless opponent cannot respond).
       endWarRoundFor(war, 1, Rng(war.rngSeed), events);
-      expect(war.activeWar!.phase, WarPhase.rounds);
-      expect(warActingSlot(war), 2);
-      endWarRoundFor(war, 2, Rng(war.rngSeed), events);
       final active = war.activeWar!;
       expect(active.phase, WarPhase.settlement);
       expect(active.winnerSlot, 1);
       expect(warActingSlot(war), 1,
           reason: 'the human winner picks the claim tiles');
+    });
+
+    test('a defenceless human side is auto-skipped so the war advances', () {
+      // The defender loses its whole army but the attacker is NOT on the
+      // capital: the defender cannot act, so ending the attacker's round
+      // must not stall awaiting the defender — it skips straight back to the
+      // attacker on the next round instead of blocking the match.
+      war.realm(2).troops.clear();
+      war.activeWar!.movesLeft[2] = [];
+      final events = <GameEvent>[];
+      endWarRoundFor(war, 1, Rng(war.rngSeed), events);
+      expect(war.activeWar, isNotNull, reason: 'no capital held — war goes on');
+      expect(war.activeWar!.phase, WarPhase.rounds);
+      expect(war.activeWar!.round, 1,
+          reason: 'the skipped defender advanced the round');
+      expect(warActingSlot(war), 1,
+          reason: 'input returns to the attacker, not the empty defender');
     });
 
     test('endWarRoundFor with an AI opponent advances the round directly',

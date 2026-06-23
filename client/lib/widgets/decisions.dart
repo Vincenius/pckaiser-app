@@ -4,6 +4,7 @@ import 'package:game_core/game_core.dart' as gc;
 import '../state/game_controller.dart';
 import 'event_feed.dart';
 import 'turn_report.dart';
+import 'war_report.dart';
 
 /// After the handoff: the §21.1 turn-start status report first ("Sie
 /// sind am Zug!" — income, popularity, buildable fields), then every
@@ -11,11 +12,36 @@ import 'turn_report.dart';
 /// …), then the standalone drama popups (assassinations, coronation),
 /// then the recap card — the summary reads better once the player has
 /// acted.
+///
+/// During a war the player is a combatant in, that whole sequence is
+/// replaced by a single war report of the opponent's actions since this
+/// side last acted (battles, plunders, the round's outcome): the routine
+/// status/popularity popup and the recap card are noise mid-war, and
+/// showing them every round was the reported online-war annoyance. The
+/// recap baseline already advances per war round (server + controller), so
+/// the report holds only the latest round, never the whole war.
 Future<void> showRecapAndDecisions(
   BuildContext context,
   GameController controller,
   int slot,
 ) async {
+  final war = controller.state.activeWar;
+  final inWar = war != null &&
+      war.phase == gc.WarPhase.rounds &&
+      (war.attackerSlot == slot || war.defenderSlot == slot);
+  if (inWar) {
+    await showWarReport(
+      context,
+      controller.recapFor(slot),
+      viewerSlot: slot,
+      title: 'Rundenbericht',
+    );
+    if (!context.mounted) return;
+    // A round may have resolved a ruler capture: surface its coercion
+    // choices now rather than deferring them to a non-war turn.
+    await promptDecisionsFor(context, controller, slot);
+    return;
+  }
   await showTurnReport(context, controller, slot);
   if (!context.mounted) return;
   await promptDecisionsFor(context, controller, slot);
@@ -315,7 +341,13 @@ class _BribeDialogState extends State<_BribeDialog> {
   @override
   Widget build(BuildContext context) {
     final treasury = widget.controller.state.realm(widget.slot).treasury;
+    // You can only ever spend what you actually have — a treasury in the red
+    // (e.g. after a lost war's reparations) affords no bribe, but the dialog
+    // must stay confirmable (with zero) so the election can proceed instead
+    // of soft-locking the finalist with a permanently disabled button.
+    final affordable = treasury > 0 ? treasury : 0;
     final spent = _amounts.values.fold(0, (a, b) => a + b);
+    final broke = affordable <= 0;
     return AlertDialog(
       title: Text('Bestechung ($spent / $treasury T)'),
       content: SizedBox(
@@ -323,6 +355,14 @@ class _BribeDialogState extends State<_BribeDialog> {
         child: ListView(
           shrinkWrap: true,
           children: [
+            if (broke)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Deine Schatzkammer ist leer — du kannst diesmal niemanden '
+                  'bestechen. Bestätige ohne Geschenk.',
+                ),
+              ),
             for (final id in widget.electorIds)
               Row(
                 children: [
@@ -334,9 +374,9 @@ class _BribeDialogState extends State<_BribeDialog> {
                   SizedBox(
                     width: 160,
                     child: Slider(
-                      value: _amounts[id]!.toDouble(),
-                      max: treasury <= 0 ? 1 : treasury.toDouble(),
-                      onChanged: treasury <= 0
+                      value: _amounts[id]!.clamp(0, affordable).toDouble(),
+                      max: broke ? 1 : affordable.toDouble(),
+                      onChanged: broke
                           ? null
                           : (v) => setState(() => _amounts[id] = v.round()),
                     ),
@@ -349,7 +389,7 @@ class _BribeDialogState extends State<_BribeDialog> {
       ),
       actions: [
         FilledButton(
-          onPressed: spent > treasury
+          onPressed: spent > affordable
               ? null
               : () {
                   widget.onSubmit([
@@ -358,7 +398,7 @@ class _BribeDialogState extends State<_BribeDialog> {
                   ]);
                   Navigator.pop(context);
                 },
-          child: const Text('Fertig'),
+          child: Text(broke ? 'Ohne Bestechung' : 'Fertig'),
         ),
       ],
     );

@@ -69,7 +69,6 @@ class _GameScreenState extends State<GameScreen> {
   GameController? _controller;
   MapGame? _game;
   bool _poppedForRemote = false;
-  bool _warBriefingShown = false;
 
   @override
   void initState() {
@@ -684,18 +683,19 @@ class _GameScreenState extends State<GameScreen> {
   /// over. The attacker started the war themselves and needs no briefing.
   Future<void> _maybeShowWarAlert(GameController controller, int slot) async {
     final war = controller.state.activeWar;
-    if (war == null) {
-      _warBriefingShown = false;
+    if (war == null ||
+        war.phase != gc.WarPhase.rounds ||
+        war.defenderSlot != slot) {
       return;
     }
-    if (war.phase != gc.WarPhase.rounds ||
-        war.defenderSlot != slot ||
-        // Human-vs-human wars hand the device over every round — brief
-        // the defender only once per war.
-        _warBriefingShown) {
-      return;
-    }
-    _warBriefingShown = true;
+    // Brief the defender exactly once — while the declaration is still fresh
+    // in their recap. The recap baseline advances per war round (and online
+    // the GameScreen is rebuilt every turn, so an instance flag wouldn't
+    // survive), so once this side has played one war round the warDeclared
+    // event is no longer in the recap and the briefing never repeats.
+    final freshDeclaration =
+        controller.recapFor(slot).any((e) => e.type == 'warDeclared');
+    if (!freshDeclaration) return;
     if (!mounted) return;
     await showDialog<void>(
       context: context,

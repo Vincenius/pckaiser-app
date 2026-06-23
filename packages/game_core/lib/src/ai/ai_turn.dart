@@ -624,8 +624,37 @@ void runAiWarMovement(
 /// code.
 void endWarRoundFor(
     GameState state, int slot, Rng rng, List<GameEvent> events) {
-  if (handWarRoundOver(state, slot)) return;
+  if (handWarRoundOver(state, slot)) {
+    _skipTrooplessWarSides(state, rng, events);
+    return;
+  }
   endWarRoundWithAi(state, rng, events);
+  _skipTrooplessWarSides(state, rng, events);
+}
+
+/// A war side with no troops left can take no action — auto-resolve its
+/// round so the war never stalls waiting for a defenceless human to act
+/// (online a troopless seat would otherwise block the whole match until its
+/// turn timer expires every single round). Loops because skipping one side
+/// can hand the round to a second defenceless side; the guard sits well
+/// above the 20-round winter cap, which ends any war between two empty
+/// armies on its own.
+void _skipTrooplessWarSides(GameState state, Rng rng, List<GameEvent> events) {
+  var guard = 0;
+  while (guard++ < 60) {
+    final war = state.activeWar;
+    if (war == null || war.phase != WarPhase.rounds) return;
+    final acting = warActingSlot(state);
+    // No human is awaited (a pure-AI war advances itself; a settlement is
+    // not a round) — nothing to skip.
+    if (acting == null) return;
+    if (state.realm(acting).troops.isNotEmpty) return;
+    // The awaited human side is defenceless: end its round on its behalf —
+    // an attacker hands over to the defender, anyone else advances the round
+    // (which also runs any AI side's movement first).
+    if (handWarRoundOver(state, acting)) continue;
+    endWarRoundWithAi(state, rng, events);
+  }
 }
 
 /// Ends a war round: the AI sides move first (their response to the

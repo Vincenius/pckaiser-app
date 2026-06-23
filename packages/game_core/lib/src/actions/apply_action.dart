@@ -840,7 +840,12 @@ List<GameEvent> _resolveDecision(
         gifts.add((electorId, amount));
         total += amount;
       }
-      if (total > realm.treasury) {
+      // A negative treasury (e.g. after a lost war's reparations) must still
+      // accept the empty "no bribe" submission — only reject spending more
+      // than is actually available, never the zero case, or the finalist is
+      // soft-locked in the bribe prompt with no way to confirm.
+      final affordable = realm.treasury > 0 ? realm.treasury : 0;
+      if (total > affordable) {
         throw ActionException(
             'Du hast nicht genügend Taler für diese Bestechung !');
       }

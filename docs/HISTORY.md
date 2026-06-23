@@ -6,6 +6,46 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-23 — Online war playtest fixes (appVersion 0.1.2)
+
+Reported from a human-vs-human online war: the attacked player saw the
+normal status (popularity) popup AND a fresh "Krieg!" popup every single
+round; a lost war left a huge NEGATIVE treasury and soft-locked the player
+(stuck "loading", then trapped in the Kaiser-election bribe popup with no
+confirmable button); and a defenceless seat could stall the war.
+
+- **War turns show a round report, not the status popup.** `showRecapAndDecisions`
+  now branches when the seated player is a combatant in an active war: it
+  replaces the §21.1 status report + recap card with a single
+  `showWarReport` of the opponent's actions since this side last acted
+  (battles/plunders/outcome), then prompts any decisions. The routine
+  stats popup is suppressed mid-war.
+- **War report scoped to the latest round.** The recap baseline now advances
+  on every `WarEndRound` (server `match_service.submit`, mirrored locally in
+  `GameController.endWarRound` for hot-seat), so the per-round report holds
+  only the opponent's response — not every battle of the war, re-shown each
+  round.
+- **"Krieg!" briefing shows once.** `_maybeShowWarAlert` keyed off a fresh
+  `warDeclared` in the defender's recap instead of an instance flag (which
+  reset every turn online, since the GameScreen is rebuilt per turn) — so it
+  appears once and never repeats.
+- **War never drives a treasury negative.** `finishSettlement` caps the claim
+  cash to what the loser owns, and `transferTile` clamps a conquered tile's
+  treasury share (a doubled capital share could exceed the whole purse).
+  "Through war you never lose more money than you have."
+- **Bribe prompt is answerable when broke.** Backend `electionBribe` validation
+  accepts the empty submission with a non-positive treasury (only over-spend
+  is rejected); the dialog enables its confirm button (labelled "Ohne
+  Bestechung") and clamps sliders to the affordable amount. This was the
+  post-war soft-lock.
+- **Defenceless war sides are auto-skipped.** `endWarRoundFor` now auto-resolves
+  the round of a troopless awaited human (`_skipTrooplessWarSides`) — an
+  attacker hands over, anyone else advances — so an empty army never stalls
+  the match waiting on a player who can do nothing.
+- Tests: new `bugfix_v19_online_war_test.dart` (treasury clamps + broke bribe),
+  updated `war_test.dart` for the auto-skip; full game_core + backend suites
+  green.
+
 ## 2026-06-23
 
 Playtest feedback batch (single change set).
