@@ -158,7 +158,11 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
 
   Future<void> _play() async {
     final view = _view;
-    if (view == null || view['your_turn'] != true) return;
+    if (view == null ||
+        view['your_turn'] != true ||
+        view['update_required'] == true) {
+      return;
+    }
     final session = OnlineGameSession(
       api: widget.service.api,
       matchId: widget.matchId,
@@ -215,7 +219,6 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
   Widget _body(ThemeData theme, Map<String, dynamic> view) {
     final status = view['status'] as String;
     final yourTurn = view['your_turn'] == true;
-    final yourSlot = view['your_slot'] as int?;
     final players = (view['players'] as List).cast<Map>();
     Map? awaitedSeat;
     for (final p in players) {
@@ -226,6 +229,13 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final awaitedName = awaitedSeat == null
         ? null
         : awaitedSeat['display_name'] as String?;
+    // The exact realm being played — when the awaited player holds several
+    // realms it differs from their home slot. Falls back to the home slot
+    // for older servers that don't send it.
+    final awaitedSlot =
+        view['awaited_slot'] as int? ?? awaitedSeat?['dynasty_index'] as int?;
+    final updateRequired = view['update_required'] == true;
+    final myId = widget.service.playerId;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -249,7 +259,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
                   ? 'Du bist am Zug !'
                   : awaitedName != null
                       ? '$awaitedName '
-                          '(${gc.countryNames[awaitedSeat!['dynasty_index'] as int]}) '
+                          '(${gc.countryNames[awaitedSlot!]}) '
                           'ist am Zug …'
                       : 'Warten auf Mitspieler …',
               _ =>
@@ -265,6 +275,26 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
                   ),
           ),
         ),
+        if (updateRequired)
+          Card(
+            color: theme.colorScheme.errorContainer,
+            child: ListTile(
+              leading: Icon(
+                Icons.system_update,
+                color: theme.colorScheme.onErrorContainer,
+              ),
+              title: Text(
+                'App-Update erforderlich',
+                style: TextStyle(color: theme.colorScheme.onErrorContainer),
+              ),
+              subtitle: Text(
+                'Diese Partie läuft auf Version '
+                '${view['server_app_version'] ?? '?'}. Bitte aktualisiere '
+                'die App, um deinen Zug zu machen.',
+                style: TextStyle(color: theme.colorScheme.onErrorContainer),
+              ),
+            ),
+          ),
         if (status == 'waiting') ...[
           const SizedBox(height: 8),
           const Text(
@@ -301,20 +331,35 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         const SizedBox(height: 8),
         Text('Spieler', style: theme.textTheme.titleSmall),
         for (final p in players)
-          ListTile(
-            dense: true,
-            leading: Icon(
-              p['player_id'] == view['awaited_player_id']
-                  ? Icons.play_arrow
-                  : Icons.person,
-              size: 18,
-            ),
-            title: Text(
-              '${p['display_name'] != null ? '${p['display_name']} — ' : ''}'
-              '${gc.countryNames[p['dynasty_index'] as int]}'
-              '${p['dynasty_index'] == yourSlot ? ' (du)' : ''}',
-            ),
-            subtitle: Text('Zugreihenfolge ${(p['turn_order'] as int) + 1}'),
+          Builder(
+            builder: (context) {
+              // Every realm this seat currently plays — one player can hold
+              // several after a conquest or inheritance (control follows the
+              // ruler). An eliminated seat controls none.
+              final controlled =
+                  (p['controlled_slots'] as List?)?.cast<int>() ??
+                  [p['dynasty_index'] as int];
+              final isYou = p['player_id'] == myId;
+              final isAwaited = p['player_id'] == view['awaited_player_id'];
+              final realms = controlled.isEmpty
+                  ? 'ausgeschieden'
+                  : [for (final s in controlled) gc.countryNames[s]].join(', ');
+              return ListTile(
+                dense: true,
+                leading: Icon(
+                  isAwaited ? Icons.play_arrow : Icons.person,
+                  size: 18,
+                ),
+                title: Text(
+                  '${p['display_name'] != null ? '${p['display_name']} — ' : ''}'
+                  '$realms${isYou ? ' (du)' : ''}',
+                ),
+                subtitle: Text(
+                  'Zugreihenfolge ${(p['turn_order'] as int) + 1}'
+                  '${controlled.length > 1 ? ' · ${controlled.length} Reiche' : ''}',
+                ),
+              );
+            },
           ),
         const SizedBox(height: 16),
         // The creator opens the game once everyone joined — no fixed
@@ -348,7 +393,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               textAlign: TextAlign.center,
             ),
           ),
-        if (status == 'active' && yourTurn)
+        if (status == 'active' && yourTurn && !updateRequired)
           FilledButton.icon(
             onPressed: _play,
             icon: const Icon(Icons.play_arrow),

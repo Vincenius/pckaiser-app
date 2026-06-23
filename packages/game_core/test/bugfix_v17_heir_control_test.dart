@@ -11,8 +11,8 @@ import 'package:test/test.dart';
 /// the couped realm stayed locked to AI control. After the fix,
 /// `alignSlotControl` restores human control: a realm whose ruler already
 /// plays another slot as a human is played by that same human.
-/// (17th bugfix iteration — the file counter is independent of
-/// `currentRulesVersion`.)
+/// (17th bugfix iteration — the file counter is just a label; rules are not
+/// versioned, every game plays the latest.)
 void main() {
   test('a retaken home realm follows its human ruler, not the couped AI flag',
       () {

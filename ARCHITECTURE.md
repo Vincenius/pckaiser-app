@@ -70,12 +70,12 @@ Responses `{data, error}`; 400 validation, 403 wrong turn, 404 missing.
 
 ## Versioning & compatibility
 
-Two version numbers travel inside every `GameState` JSON (`game_core/src/state/versioning.dart`):
+**Every game always plays under the latest rules** — there is no per-game ruleset version to pin or migrate. A rule or balance change ships in a new **app version**; local saves adopt the new behavior on load, and online matches require every seat to run the same app version before they may take their turn.
 
-- **`schemaVersion`** — JSON shape. Additive changes (new field + `fromJson` default) never bump it; incompatible reshapes bump it and add a `schemaMigrations` step. `GameState.fromJson` migrates old documents on every load path. Newer-than-supported documents throw `UnsupportedSchemaVersionException` → shown as "update the app".
-- **`rulesVersion`** — gameplay rules. Changes bump `currentRulesVersion` and gate on `state.rulesVersion >= n` until the next release consolidates the gates. **Policy: every game plays the latest rules** — `adoptLatestRules` upgrades the document at the save-load boundary (client `SaveService.load`, server document load). Release 1 ships ruleset **v1**: the fourteen pre-release iterations were consolidated into the baseline (history in `docs/HISTORY.md`). **v2** lifts the block on human-vs-human wars (see "Human-vs-human wars" below).
+- **`schemaVersion`** (`game_core/src/state/versioning.dart`) — the JSON *shape* that travels inside every `GameState`. Additive changes (new field + `fromJson` default) never bump it; incompatible reshapes bump it and add a `schemaMigrations` step. `GameState.fromJson` migrates old documents on every load path. Newer-than-supported documents throw `UnsupportedSchemaVersionException` → shown as "update the app".
+- **`appVersion`** (`game_core/src/state/versioning.dart`, mirrored in each `pubspec.yaml`) — the single build version shared by client and server. The client sends it with every online turn submission; the server rejects a build that differs from its own (HTTP **426**), and the match view flags `update_required` so the client blocks the turn before it starts. `GET /version` advertises the server's `app_version`.
 
-Online additionally: API changes additive within `/api/v1`; the server reports a minimum client version so outdated clients get a friendly update prompt.
+Online additionally: API changes stay additive within `/api/v1`.
 
 ## State Visibility (hidden information)
 
@@ -96,7 +96,7 @@ Online additionally: API changes additive within `/api/v1`; the server reports a
 
 Local mode runs the same loop on-device (`advanceUntilHuman`); auto-save after every completed turn.
 
-### Human-vs-human wars: sequential round input on a short war clock (decided 2026-06-10, implemented 2026-06-12, ruleset v2)
+### Human-vs-human wars: sequential round input on a short war clock (decided 2026-06-10, implemented 2026-06-12)
 
 A war is up to 20 rounds × 2 sides of awaited inputs; `activeWar` is global and pauses the turn loop, so the match-level timer would freeze everyone for days.
 

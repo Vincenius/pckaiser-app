@@ -144,24 +144,6 @@ void main() {
           reason: 'the rolled share never falls below the old half cap');
     });
 
-    test('an old-rules (v2) state keeps the flat half cap', () {
-      // Pin the pre-v3 ruleset via a JSON roundtrip (rulesVersion is
-      // final); the gate in _cappedClaim must keep the old behavior.
-      var s = GameState.fromJson(state.toJson()..['rulesVersion'] = 2);
-      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
-          .state;
-      final enemyTown = s.realm(2).towns.single;
-      final troop = s.realm(1).troops.single;
-      troop.x = enemyTown.x;
-      troop.y = enemyTown.y;
-      final loserValueBefore = territoryValue(s, 2);
-      s.activeWar!.round = 21;
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-
-      expect(s.activeWar!.phase, WarPhase.settlement);
-      expect(s.activeWar!.remainingClaim,
-          lessThanOrEqualTo(loserValueBefore ~/ 2));
-    });
   });
 
   group('realmOverrun event', () {

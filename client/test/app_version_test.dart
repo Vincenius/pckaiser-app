@@ -22,7 +22,6 @@ void main() {
   ) async {
     await tester.pumpWidget(const MaterialApp(home: AboutScreen()));
     expect(find.textContaining('Version $appVersion'), findsOneWidget);
-    expect(find.textContaining('Regelwerk'), findsOneWidget);
     expect(find.textContaining('Martin Gelter'), findsOneWidget);
     expect(find.textContaining('Remake'), findsOneWidget);
   });

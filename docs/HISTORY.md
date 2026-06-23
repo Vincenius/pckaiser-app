@@ -1,9 +1,54 @@
 # Decision & Fix History
 
 Dated log of decisions, review rounds and fixes — kept for lookups.
-Rules-version changes (v2–v5) are documented in detail in
-`packages/game_core/lib/src/state/versioning.dart` (changelog) and the
-deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
+Older entries refer to a per-game "ruleset version" (v1–v7); that concept
+was removed on 2026-06-23 (see that day's entry) — every game now always
+plays the latest rules. The deviations table lives in
+`PROJECT_REQUIREMENTS.md`; entries here only summarize.
+
+## 2026-06-23
+
+Playtest feedback batch (single change set).
+
+- **Ruleset versioning removed — the app version replaces it.** Games are no
+  longer tagged with a `rulesVersion`; every game always plays the latest
+  rules. Dropped `currentRulesVersion`, `adoptLatestRules` and the three
+  `state.rulesVersion >= n` gates (human-vs-human wars, the 50–80 % claim-cap
+  roll, the round-19 winter war end — all now unconditional). A single
+  `appVersion` (in `versioning.dart`, mirrored in each `pubspec.yaml`) is the
+  shared build identifier: the client sends it with every online turn, the
+  server rejects a mismatched build with HTTP **426**, and the match view
+  flags `update_required` so the client blocks the turn before it starts.
+  `GET /version` now reports `app_version`. `schemaVersion` (JSON shape) is
+  untouched. Old saves carrying a `rulesVersion` field still load (the
+  decoder ignores it).
+- **Kaiser windfall fixed.** Feudal tribute no longer accrues while the
+  throne is VACANT (`economy.dart`): with no Kaiser/Sultan to collect it, the
+  5 % skim used to pile up through the kaiserless first decade (and any later
+  interregnum) and dump a huge hoard on whoever was crowned next — the boost
+  that made a freshly crowned Kaiser instantly, unbeatably rich. Tribute now
+  only flows once the office is filled. Regression in `turn_pipeline_test`.
+- **Action buttons grey out instead of vanishing.** "Truppe ausbilden" and
+  "Truppe umrüsten" (and the war "Ganzes Land übernehmen") stay visible and
+  disabled when unavailable rather than disappearing — a vanishing button
+  shifted the others under the finger and caused mis-taps. The drill button
+  is pinned high in the troop sheet (above the come-and-go merge options) so
+  spamming it never moves it, and **disbanding a troop now asks for
+  confirmation** — a stray tap can no longer destroy a unit.
+- **Multi-realm online play works, and the turn order shows it.** A player can
+  come to hold several realms (control follows the ruler). The match view now
+  lists every realm a seat plays (`controlled_slots`) and the exact realm
+  awaited (`awaited_slot`); the turn-order UI lists all of a player's realms
+  and names the right one in "… ist am Zug". Found in the audit and fixed:
+  the server filtered the state and validated actions against the seat's HOME
+  slot only, so a conquered/inherited realm was redacted and unplayable —
+  `view()` now filters for the realm actually being played (`your_slot` /
+  `_viewSlot`) and `submit()` accepts an action for ANY realm the seat
+  controls; a human-vs-human war round drove the home slot instead of the
+  awaited war realm (skipping the defender's half) — now the awaited war slot;
+  the recap baseline is keyed on the realm actually played; and an out-of-turn
+  decision (e.g. an election vote) on a non-home realm is surfaced off-turn
+  instead of stalling until that realm's own turn.
 
 ## 2026-06-22
 

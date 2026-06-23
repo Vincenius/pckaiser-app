@@ -33,11 +33,11 @@ class Api {
     return router.call;
   }
 
-  /// Reports the `game_core` build this server is running so a client can
-  /// confirm the deployment is current — if these versions are stale, the
-  /// server rejects/caps actions a fresh client allows.
+  /// Reports the app build this server is running so a client can confirm
+  /// the deployment is current — an online turn from a client on a
+  /// different [gc.appVersion] is rejected (426) until the app is updated.
   Future<Response> _version(Request request) => _guard(() async => {
-        'rules_version': gc.currentRulesVersion,
+        'app_version': gc.appVersion,
         'schema_version': gc.currentSchemaVersion,
       });
 
@@ -109,7 +109,11 @@ class Api {
         if (playerId == null || playerId.isEmpty) {
           throw ApiException(400, 'player_id query parameter is required');
         }
-        return _service.view(id, playerId);
+        return _service.view(
+          id,
+          playerId,
+          clientAppVersion: request.url.queryParameters['app_version'],
+        );
       });
 
   Future<Response> _submitTurn(Request request, String id) => _guard(() async {
@@ -117,6 +121,8 @@ class Api {
         return _service.submit(
           matchId: id,
           playerId: _requireString(body, 'player_id'),
+          // The client always sends its build; a stale one is rejected (426).
+          clientAppVersion: _requireString(body, 'app_version'),
           actionJson: (body['action'] as Map?)?.cast<String, dynamic>(),
           endTurn: body['end_turn'] == true,
         );

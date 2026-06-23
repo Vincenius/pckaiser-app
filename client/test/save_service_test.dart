@@ -51,18 +51,17 @@ void main() {
     expect(loaded.realms, hasLength(World.realmCount));
   });
 
-  test('loading upgrades an old save to the latest ruleset', () async {
+  test('a legacy save carrying a rulesVersion field still loads', () async {
+    // Older saves stored a per-game rulesVersion; rules are no longer
+    // versioned (every game plays the latest), so the field is simply
+    // dropped on load.
     final old = GameState.fromJson(
       minimalState(year: 1007).toJson()..['rulesVersion'] = 1,
     );
-    expect(old.rulesVersion, 1);
     await saves.save('Alte Regeln', old);
     final loaded = await saves.load('Alte Regeln');
-    expect(
-      loaded.rulesVersion,
-      currentRulesVersion,
-      reason: 'every game plays the latest rules (versioning policy)',
-    );
+    expect(loaded.year, 1007);
+    expect(loaded.toJson().containsKey('rulesVersion'), isFalse);
   });
 
   test('listSlots returns metadata, most recent first', () async {

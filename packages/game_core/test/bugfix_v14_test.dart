@@ -176,11 +176,11 @@ void main() {
     });
   });
 
-  group('espionage rebalance (rules v14)', () {
-    int successes(int rules, int agents, int guards, int trials) {
+  group('espionage rebalance', () {
+    int successes(int agents, int guards, int trials) {
       var count = 0;
       for (var i = 0; i < trials; i++) {
-        final s = GameState.fromJson(state.toJson()..['rulesVersion'] = rules);
+        final s = GameState.fromJson(state.toJson());
         s.realm(2).guardLevel = guards;
         final events = runMilitaryMission(
             s, s.realm(1), s.realm(2), agents, Rng(1000 + i));
@@ -192,14 +192,14 @@ void main() {
     test('military intel with a full mission usually succeeds', () {
       // 30 agents vs a fully guarded target (the rich-AI case that used
       // to fail ~90% of the time before the rebalance).
-      final full = successes(14, 30, 50, 100);
+      final full = successes(30, 50, 100);
       expect(full, greaterThan(60),
           reason: 'a 6000 T mission should usually succeed');
     });
 
     test('few agents stay risky', () {
-      final v14 = successes(14, 3, 30, 100);
-      expect(v14, lessThan(70),
+      final few = successes(3, 30, 100);
+      expect(few, lessThan(70),
           reason: 'a token mission must not be a sure thing');
     });
 

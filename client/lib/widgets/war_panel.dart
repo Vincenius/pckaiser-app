@@ -442,12 +442,16 @@ class _WarPanelState extends State<WarPanel> {
                     spacing: 8,
                     alignment: WrapAlignment.center,
                     children: [
-                      if (canTakeAll)
-                        FilledButton.icon(
-                          icon: const Icon(Icons.flag, size: 18),
-                          onPressed: () => _takeAllLand(context, slot),
-                          label: const Text('Ganzes Land übernehmen'),
-                        ),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.flag, size: 18),
+                        // Greyed out instead of hidden when the winner cannot
+                        // afford every bordering loser tile — a button that
+                        // pops in and out under the finger causes mis-taps.
+                        onPressed: canTakeAll
+                            ? () => _takeAllLand(context, slot)
+                            : null,
+                        label: const Text('Ganzes Land übernehmen'),
+                      ),
                       FilledButton.tonal(
                         onPressed: () => _finishSettlement(context, slot),
                         child: const Text('Fertig — Rest in Talern'),

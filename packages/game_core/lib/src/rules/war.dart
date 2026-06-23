@@ -480,9 +480,9 @@ int? capitalOccupier(GameState state, ActiveWar war) {
 /// never costs the whole realm (the last tile is never affordable), so
 /// a losing party is never erased by a single war.
 ///
-/// Ruleset v3: the cap share is ROLLED per war end, 50–80% (before: a
-/// flat 50%, which made every victory against a similar-sized realm pay
-/// out the same, predictable claim).
+/// The cap share is ROLLED per war end, 50–80% (rather than a flat 50%,
+/// which made every victory against a similar-sized realm pay out the
+/// same, predictable claim).
 int _cappedClaim(GameState state, int loserSlot, int claim, Rng rng) {
   final map = state.map;
   var total = 0;
@@ -491,7 +491,7 @@ int _cappedClaim(GameState state, int loserSlot, int claim, Rng rng) {
       total += settlementTileValue(state, map.building[i]);
     }
   }
-  final sharePercent = state.rulesVersion >= 3 ? 50 + rng.nextInt(31) : 50;
+  final sharePercent = 50 + rng.nextInt(31);
   return math.min(claim, total * sharePercent ~/ 100);
 }
 
@@ -589,12 +589,10 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
     war.setWantsPeace(slot, _aiWantsPeace(state, war, slot));
   }
 
-  // Ruleset v3: winter fires when the 20th round ENDS (`round` is
-  // 0-based, so >= 19). The pre-v3 check (>= 20) only fired one round
-  // later — the war UI counts "Runde X/20", so players saw an absurd
-  // "Runde 21/20" and a war one round longer than announced.
-  final winterReached =
-      war.round >= (state.rulesVersion >= 3 ? 19 : 20);
+  // Winter fires when the 20th round ENDS (`round` is 0-based, so >= 19).
+  // The war UI counts "Runde X/20", so the end must land on round 20, not
+  // one round later.
+  final winterReached = war.round >= 19;
   if ((war.attackerWantsPeace && war.defenderWantsPeace) || winterReached) {
     if (winterReached) {
       events.add(GameEvent(

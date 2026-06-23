@@ -49,7 +49,8 @@ void main() {
       final realm = state.realm(1);
       // Movement roll for Burgherrin (class 13 → equivalent 1): [1, 6].
       expect(realm.movementPoints, inInclusiveRange(1, 6));
-      expect(state.kaiserPot, greaterThan(0), reason: 'tribute was paid');
+      expect(state.kaiserPot, 0,
+          reason: 'no Kaiser yet (year 1000) — no tribute accrues');
 
       final upkeep = result.events.where((e) => e.type == 'turnUpkeep').single;
       expect(upkeep.slot, 1);
@@ -133,27 +134,34 @@ void main() {
   });
 
   group('economy (§7)', () {
-    test('tribute goes to the kaiser pot; the Kaiser collects it', () {
-      var state = startGame(freshGame(), Rng(7)).state;
-      final pot = state.kaiserPot;
-      expect(pot, greaterThan(0));
+    test('no tribute accrues while the throne is vacant; then the Kaiser '
+        'collects the pot and pays none', () {
+      final state = startGame(freshGame(), Rng(7)).state;
+      expect(state.kaiserId, isNull);
+      expect(state.kaiserPot, 0,
+          reason: 'no Kaiser yet — nobody collects, so nobody pays');
 
-      // Crown slot 2's ruler: on their upkeep they collect the whole pot
-      // and pay no tribute.
+      // A vacant throne: even a rich realm skims nothing — the windfall the
+      // first Kaiser used to inherit from the kaiserless decade is gone.
+      state.realm(1).treasury = 5000;
+      final vacant = runEconomy(state, state.realm(1), Rng(1));
+      expect(vacant.tribute, 0);
+      expect(state.kaiserPot, 0);
+
+      // Crown slot 2's ruler. Now a non-Kaiser realm skims 5% into the pot…
       state.kaiserId = state.realm(2).rulerId;
-      final before = state.realm(2).treasury;
-      state = completeTurn(state, Rng(state.rngSeed)).state;
-      final upkeep = state.events.reversed
-          .firstWhere((e) => e.type == 'turnUpkeep' && e.slot == 2);
-      expect(upkeep.payload['potCollected'], pot);
-      expect(upkeep.payload['tribute'], 0);
-      expect(
-          state.realm(2).treasury,
-          before +
-              pot +
-              (upkeep.payload['tax'] as int) +
-              (upkeep.payload['harborIncome'] as int) -
-              (upkeep.payload['wages'] as int));
+      state.realm(3).treasury = 5000;
+      final payer = runEconomy(state, state.realm(3), Rng(1));
+      expect(payer.tribute, greaterThan(0));
+      expect(state.kaiserPot, payer.tribute);
+
+      // …and the Kaiser collects the whole pot on their own upkeep, paying
+      // none of their own.
+      final collected = state.kaiserPot;
+      final kaiser = runEconomy(state, state.realm(2), Rng(1));
+      expect(kaiser.tribute, 0, reason: 'the office holder never pays the pot');
+      expect(kaiser.potCollected, collected);
+      expect(state.kaiserPot, 0);
     });
 
     test('wages cost 0.5 T per man', () {

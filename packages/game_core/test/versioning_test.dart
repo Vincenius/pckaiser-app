@@ -5,7 +5,7 @@ import 'serialization_test.dart' show sampleState;
 
 void main() {
   group('schema versioning', () {
-    test('new games carry the current schema and rules versions', () {
+    test('new games carry the current schema version', () {
       final state = newGame(GameSetup(
         humans: [],
         reformationYear: 1020,
@@ -13,18 +13,13 @@ void main() {
         seed: 7,
       ));
       expect(state.schemaVersion, currentSchemaVersion);
-      expect(state.rulesVersion, currentRulesVersion);
       expect(state.toJson()['schemaVersion'], currentSchemaVersion);
-      expect(state.toJson()['rulesVersion'], currentRulesVersion);
     });
 
-    test('documents without version fields load as version 1', () {
-      final json = sampleState().toJson()
-        ..remove('schemaVersion')
-        ..remove('rulesVersion');
+    test('documents without a schema version load as version 1', () {
+      final json = sampleState().toJson()..remove('schemaVersion');
       final state = GameState.fromJson(json);
       expect(state.schemaVersion, currentSchemaVersion);
-      expect(state.rulesVersion, 1);
     });
 
     test('documents from a newer app version are rejected, not guessed at', () {
@@ -36,19 +31,13 @@ void main() {
       );
     });
 
-    test('fromJson and copy preserve rulesVersion faithfully', () {
-      // The decoder never silently changes rules — the latest-rules
-      // policy is applied explicitly via adoptLatestRules at load time.
-      final state = sampleState();
-      final reloaded = GameState.fromJson(state.toJson());
-      expect(reloaded.rulesVersion, state.rulesVersion);
-      expect(state.copy().rulesVersion, state.rulesVersion);
-    });
-
-    test('adoptLatestRules upgrades any document to the current rules', () {
+    test('a legacy rulesVersion field is dropped on load', () {
+      // Old saves carried a per-game rulesVersion; rules are no longer
+      // versioned (every game plays the latest), so the decoder simply
+      // ignores the field and never writes it back.
       final json = sampleState().toJson()..['rulesVersion'] = 1;
-      final upgraded = GameState.fromJson(adoptLatestRules(json));
-      expect(upgraded.rulesVersion, currentRulesVersion);
+      final state = GameState.fromJson(json);
+      expect(state.toJson().containsKey('rulesVersion'), isFalse);
     });
 
     test('migrations run sequentially from the document version up', () {
@@ -86,7 +75,7 @@ void main() {
       );
     });
 
-    test('full save/load round-trip preserves both versions', () {
+    test('full save/load round-trip preserves the state', () {
       final state = sampleState();
       final reloaded = GameState.fromJson(state.toJson());
       expect(reloaded.schemaVersion, state.schemaVersion);

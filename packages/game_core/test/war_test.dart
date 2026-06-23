@@ -792,19 +792,9 @@ void main() {
       );
     });
 
-    test('human-vs-human wars: blocked under ruleset v1, allowed since v2',
-        () {
+    test('human-vs-human wars are allowed; the attacker acts first', () {
       state.dynasty(2).status = DynastyStatus.human;
       state.dynasty(2).humanPlayer = 1;
-      // The pre-v2 gate (documentation only — saves adopt the latest
-      // rules on load via adoptLatestRules).
-      final v1 = GameState.fromJson(state.toJson()..['rulesVersion'] = 1);
-      expect(
-        () => applyAction(
-            v1, DeclareWar(slot: 1, targetSlot: 2), Rng(v1.rngSeed)),
-        throwsA(isA<ActionException>()),
-        reason: 'the V1 war UI could only seat one human side',
-      );
       final s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;

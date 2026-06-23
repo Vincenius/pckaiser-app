@@ -325,16 +325,9 @@ List<GameEvent> applyDeclareWar(
   if (state.realm(action.targetSlot).rulerId == realm.rulerId) {
     throw ActionException('Dieses Reich gehört bereits deinem Herrscher !');
   }
-  // Ruleset v2 lifts the V1 limitation on human-vs-human wars: war input
-  // now alternates between the two human sides (war.actingSlot, hot-seat
-  // handoff locally, the war clock online). The gate only documents the
-  // change — every game adopts the latest rules on load.
-  if (state.rulesVersion < 2 &&
-      state.dynasty(realm.slot).status == DynastyStatus.human &&
-      state.dynasty(action.targetSlot).status == DynastyStatus.human) {
-    throw ActionException(
-        'Krieg gegen menschliche Mitspieler ist noch nicht möglich !');
-  }
+  // Human-vs-human wars are allowed: war input alternates between the two
+  // human sides (war.actingSlot, hot-seat handoff locally, the war clock
+  // online).
   // [DEVIATION] Wars only against realms with a shared border.
   if (!state.map.realmNeighbors(realm.slot).contains(action.targetSlot)) {
     throw ActionException('Du hast keine gemeinsame Grenze !');

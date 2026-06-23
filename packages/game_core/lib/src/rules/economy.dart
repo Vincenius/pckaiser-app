@@ -44,9 +44,16 @@ EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
   // pot, they would only collect it back). [DESIGNED: reduced from
   // original 10% — the accumulated pot gave the Kaiser an overwhelming
   // compounding advantage that was near-impossible to overcome.]
+  // [DESIGNED] No tribute accrues while the throne is VACANT: there is no
+  // one to collect it, so it must not pile up through the kaiserless first
+  // decade (no Kaiser before year 1010) or any later interregnum and then
+  // dump a windfall on whoever is crowned next — that hoard was exactly
+  // what made a freshly crowned Kaiser instantly, unbeatably rich.
   if (realm.treasury > 0) {
     final muslim = state.dynasty(realm.slot).religion == Religion.moslemisch;
-    final paysTribute = muslim ? !isSultan : !isKaiser;
+    final officeFilled =
+        muslim ? state.sultanId != null : state.kaiserId != null;
+    final paysTribute = officeFilled && (muslim ? !isSultan : !isKaiser);
     if (paysTribute) {
       report.tribute = realm.treasury ~/ 20;
       realm.treasury -= report.tribute;

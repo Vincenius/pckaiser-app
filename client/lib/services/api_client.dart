@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../app_version.dart';
+
 /// Error from the server's `{data, error}` envelope (or transport).
 class ApiError implements Exception {
   ApiError(this.statusCode, this.message);
@@ -87,7 +89,10 @@ class ApiClient {
   );
 
   Future<Map<String, dynamic>> match(String matchId, String playerId) =>
-      _request('GET', '/api/v1/matches/$matchId?player_id=$playerId');
+      _request(
+        'GET',
+        '/api/v1/matches/$matchId?player_id=$playerId&app_version=$appVersion',
+      );
 
   Future<List<dynamic>> myMatches(String playerId) async =>
       (await _request(
@@ -104,7 +109,11 @@ class ApiClient {
   }) => _request(
     'POST',
     '/api/v1/matches/$matchId/turn',
-    body: {'player_id': playerId, 'action': action},
+    body: {
+      'player_id': playerId,
+      'app_version': appVersion,
+      'action': action,
+    },
   );
 
   Future<Map<String, dynamic>> endTurn({
@@ -113,7 +122,7 @@ class ApiClient {
   }) => _request(
     'POST',
     '/api/v1/matches/$matchId/turn',
-    body: {'player_id': playerId, 'end_turn': true},
+    body: {'player_id': playerId, 'app_version': appVersion, 'end_turn': true},
   );
 
   Future<Map<String, dynamic>> _request(

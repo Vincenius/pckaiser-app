@@ -5,8 +5,8 @@ import 'package:test/test.dart';
 /// the naming decision (so rivals see the chosen name, a round later, not the
 /// provisional one), and a religion change costs a smaller, floored
 /// popularity hit (no more opaque −70 swings).
-/// (18th bugfix iteration — the file counter is independent of
-/// `currentRulesVersion`.)
+/// (18th bugfix iteration — the file counter is just a label; rules are not
+/// versioned, every game plays the latest.)
 void main() {
   GameState fresh() => startGame(
         newGame(GameSetup(

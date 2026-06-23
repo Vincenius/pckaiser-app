@@ -95,8 +95,11 @@ class OnlineGameSession implements GameSession {
       _ingest(view);
       return view;
     } on ApiError catch (e) {
-      if (e.statusCode == 400 || e.statusCode == 403) {
-        // The server forwards the engine's German validation message.
+      // 400/403: engine validation / wrong turn. 426: this build is out of
+      // date for the match (a newer app version changed the rules). All
+      // carry a player-facing German message — surface it like any other
+      // rejected action so the existing UI shows it.
+      if (e.statusCode == 400 || e.statusCode == 403 || e.statusCode == 426) {
         throw ActionException(e.message);
       }
       rethrow;

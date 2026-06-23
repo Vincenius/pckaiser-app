@@ -16,7 +16,6 @@ import 'world_map.dart';
 class GameState {
   GameState({
     this.schemaVersion = currentSchemaVersion,
-    this.rulesVersion = currentRulesVersion,
     required this.year,
     required this.reformationYear,
     required this.ottomanYear,
@@ -60,8 +59,6 @@ class GameState {
     final json = migrateGameStateJson(raw);
     return GameState(
         schemaVersion: json['schemaVersion'] as int? ?? 1,
-        // Missing field = game created before rules were versioned (v1).
-        rulesVersion: json['rulesVersion'] as int? ?? 1,
         year: json['year'] as int,
         reformationYear: json['reformationYear'] as int,
         ottomanYear: json['ottomanYear'] as int,
@@ -121,15 +118,10 @@ class GameState {
 
   /// JSON shape version (see versioning.dart). Bumped only on
   /// incompatible reshapes; additions never bump it. Old documents are
-  /// migrated in [GameState.fromJson].
+  /// migrated in [GameState.fromJson]. Gameplay rules are NOT versioned —
+  /// every game always plays the latest rules (a rule change ships as a new
+  /// app version; see versioning.dart `appVersion`).
   final int schemaVersion;
-
-  /// Gameplay-rules version. Rule/balance changes gate on
-  /// `rulesVersion >= n`, but every game plays the LATEST rules: saves
-  /// adopt them at the load boundary (`adoptLatestRules`); the gates
-  /// document each change and keep old behavior testable
-  /// (see versioning.dart).
-  final int rulesVersion;
 
   /// Starts at 999; becomes 1000 at the first round (§1).
   int year;
@@ -217,7 +209,6 @@ class GameState {
   /// until a real persistent-structure need shows up.
   GameState copy() => GameState(
         schemaVersion: schemaVersion,
-        rulesVersion: rulesVersion,
         year: year,
         reformationYear: reformationYear,
         ottomanYear: ottomanYear,
@@ -248,7 +239,6 @@ class GameState {
 
   Map<String, dynamic> toJson() => {
         'schemaVersion': schemaVersion,
-        'rulesVersion': rulesVersion,
         'year': year,
         'reformationYear': reformationYear,
         'ottomanYear': ottomanYear,

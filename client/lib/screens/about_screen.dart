@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:game_core/game_core.dart' as gc;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_version.dart';
@@ -8,8 +7,8 @@ import '../l10n/strings.dart';
 /// Source repository of this app.
 const String _githubUrl = 'https://github.com/Vincenius/pckaiser-app';
 
-/// About: a short description of the game, the app and ruleset version,
-/// and the credits (original author + remake author).
+/// About: a short description of the game, the app version, and the
+/// credits (original author + remake author).
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
@@ -42,7 +41,7 @@ class AboutScreen extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Version $appVersion · Regelwerk v${gc.currentRulesVersion}',
+                'Version $appVersion',
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

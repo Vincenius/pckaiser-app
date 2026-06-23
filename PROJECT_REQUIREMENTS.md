@@ -46,7 +46,7 @@ Deviation from the original (which exposed most numbers): other realms' treasury
 
 ### Intentional deviations from the original
 
-**Release 1 ships ruleset v1** — the fourteen pre-release rule iterations (combat rework, white peace, manually steered colony ships, AI war defender, drilling, round-end ruler capture + claim settlement held through a full response round, coercion/conversion fidelity, claim cap at half the loser's territory with a capital-tile floor, militarism popularity costs, debt-free conquest, take-all settlement, agent-scaled espionage, war-bookkeeping gates) were consolidated into the baseline before the first release; their dated history lives in `docs/HISTORY.md`. Every game plays the **latest** rules (saves adopt them on load via `adoptLatestRules`); future rule changes bump `currentRulesVersion` and gate on it until the next release consolidates again.
+**Every game plays the latest rules** — rules are not versioned per game; a balance or rule change ships as a new app version and existing saves adopt it on load. The pre-release rule iterations (combat rework, white peace, manually steered colony ships, AI war defender, drilling, round-end ruler capture + claim settlement held through a full response round, coercion/conversion fidelity, claim cap at half the loser's territory with a capital-tile floor, militarism popularity costs, debt-free conquest, take-all settlement, agent-scaled espionage, war-bookkeeping gates) are baked into the baseline; their dated history lives in `docs/HISTORY.md`. In an online match every seat must run the same app version to take its turn (the server rejects a stale build with HTTP 426).
 
 Unversioned design deviations:
 
@@ -60,7 +60,7 @@ Unversioned design deviations:
 | Weide only on Berg | Also on Ebene | Gameplay request |
 | Island starts possible | Starting landmass ≥ 50 connected tiles | No boxed-in starts |
 | Unlimited proposals/turn | One royal proposal per turn; commoner marriage always available and always accepted | Pacing; reliable fallback |
-| Wars against any realm | Only shared-border realms; never against a slot your ruler already holds; human-vs-human wars run sequentially (attacker's half, then the defender's — hot-seat handoff locally, war clock online; ruleset v2) | Plausibility; self-war nonsense; one global war needs ordered two-sided input |
+| Wars against any realm | Only shared-border realms; never against a slot your ruler already holds; human-vs-human wars run sequentially (attacker's half, then the defender's — hot-seat handoff locally, war clock online) | Plausibility; self-war nonsense; one global war needs ordered two-sided input |
 | 50% phantom birth (§15.3) | Removed — children require married parents | Plausibility |
 | Other realms' stats visible | Hidden + espionage reveals | Makes espionage matter |
 | Modal text walls | Event feed + recap | Mobile UX |

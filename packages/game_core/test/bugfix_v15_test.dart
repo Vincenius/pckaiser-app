@@ -4,8 +4,8 @@ import 'package:test/test.dart';
 /// Rules v4: war armies may march across neutral land; a realm that loses
 /// its capital takes a new seat (AI automatically, humans by decision);
 /// "Sitz verlegen" is allowed any time; and `humansDefeated` carries the
-/// real cause. (15th bugfix iteration — the file counter is independent of
-/// `currentRulesVersion`.)
+/// real cause. (15th bugfix iteration — the file counter is just a label;
+/// rules are not versioned, every game plays the latest.)
 void main() {
   late GameState state;
 

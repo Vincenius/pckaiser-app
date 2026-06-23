@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:backend/backend.dart';
+import 'package:game_core/game_core.dart' show appVersion;
 import 'package:shelf/shelf.dart';
 import 'package:test/test.dart';
 
@@ -64,7 +65,11 @@ void main() {
 
     final (turnStatus, turned) = await call(
         'POST', '/api/v1/matches/$matchId/turn',
-        body: {'player_id': playerId, 'end_turn': true});
+        body: {
+          'player_id': playerId,
+          'app_version': appVersion,
+          'end_turn': true,
+        });
     expect(turnStatus, 200);
     expect((turned['data'] as Map)['your_turn'], true,
         reason: 'sole human: the next year comes right back to them');
@@ -73,6 +78,40 @@ void main() {
         await call('GET', '/api/v1/players/$playerId/matches');
     expect(listStatus, 200);
     expect((list['data'] as List), hasLength(1));
+  });
+
+  test('a turn from a stale app version is rejected (426)', () async {
+    final (_, registered) =
+        await call('POST', '/api/v1/players', body: {'display_name': 'Anna'});
+    final playerId = (registered['data'] as Map)['id'] as String;
+    final (_, created) = await call('POST', '/api/v1/matches', body: {
+      'player_id': playerId,
+      'settings': {'seed': 42},
+      'setup': {
+        'founder_name': 'Anna',
+        'gender': 1,
+        'country_slot': 3,
+        'dorf_name': 'Annadorf',
+      },
+    });
+    final matchId = (created['data'] as Map)['id'] as String;
+    await call('POST', '/api/v1/matches/$matchId/start',
+        body: {'player_id': playerId});
+
+    // A client on an old build may not take its turn until it updates.
+    final (stale, body) = await call('POST', '/api/v1/matches/$matchId/turn',
+        body: {
+          'player_id': playerId,
+          'app_version': '0.0.1',
+          'end_turn': true,
+        });
+    expect(stale, 426);
+    expect(body['error'], contains('aktualisiere'));
+
+    // The version endpoint advertises the build every client must match.
+    final (versionStatus, version) = await call('GET', '/version');
+    expect(versionStatus, 200);
+    expect((version['data'] as Map)['app_version'], appVersion);
   });
 
   test('status mapping: 404 unknown, 400 validation, 403 foreign', () async {

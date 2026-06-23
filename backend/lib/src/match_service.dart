@@ -295,8 +295,15 @@ class MatchService {
 
   /// The match as the requesting participant may see it: metadata plus
   /// the state filtered through `visibleStateFor` — the authoritative
-  /// document never leaves the server.
-  Future<Map<String, dynamic>> view(String matchId, String playerId) async {
+  /// document never leaves the server. [clientAppVersion] is the build the
+  /// requesting client runs; when it differs from this server's the view
+  /// flags `update_required` so the client blocks the turn before it starts
+  /// (the turn submission rejects it authoritatively either way).
+  Future<Map<String, dynamic>> view(
+    String matchId,
+    String playerId, {
+    String? clientAppVersion,
+  }) async {
     final match = await _requireMatch(matchId);
     final seat = match.playerById(playerId);
     if (seat == null) {
@@ -307,6 +314,10 @@ class MatchService {
       state = _load(match);
     }
     final awaited = state == null ? null : _awaitedPlayerId(match, state);
+    // The realm this seat's view is filtered for, so the player can see and
+    // play (or decide on) whichever of their realms is up — control follows
+    // the ruler, so one player can hold several. See [_viewSlot].
+    final playSlot = _viewSlot(state, seat, awaited, playerId);
     return {
       'id': match.id,
       'status': match.status.name,
@@ -322,18 +333,61 @@ class MatchService {
                 (await _store.player(p.playerId))?.displayName ??
                     p.founderName,
             'turn_order': p.turnOrder,
+            // The seat's HOME slot (where they started).
             'dynasty_index': p.slot,
+            // Every realm this seat currently plays — control follows the
+            // ruler, so a conquest or inheritance can leave one player on
+            // several realms. The turn-order UI lists them all.
+            'controlled_slots': _controlledSlots(state, p.turnOrder, p.slot),
           },
       ],
       'settings': match.settings.toJson(),
       'turn_deadline': match.turnDeadline?.toIso8601String(),
       'winner': match.winnerPlayerId,
-      'your_slot': seat.slot,
+      // The realm the client should play/show this turn (see [playSlot]).
+      'your_slot': playSlot,
+      // The exact realm whose input is awaited (may differ from the
+      // awaited player's home slot when they hold several realms).
+      'awaited_slot': state == null ? null : _awaitedSlot(state),
       'awaited_player_id': awaited,
       'your_turn': awaited == playerId,
+      'server_app_version': appVersion,
+      'update_required':
+          clientAppVersion != null && clientAppVersion != appVersion,
       'state':
-          state == null ? null : visibleStateFor(state, seat.slot).toJson(),
+          state == null ? null : visibleStateFor(state, playSlot).toJson(),
     };
+  }
+
+  /// The realm the requesting seat's view is filtered for. On their turn:
+  /// the awaited realm (they may hold several — control follows the ruler).
+  /// Off-turn: a controlled realm with a pending decision they must answer,
+  /// so an out-of-turn decision on a conquered/inherited realm is visible
+  /// and promptable instead of stuck until that realm's own turn — else
+  /// their home seat.
+  int _viewSlot(
+      GameState? state, MatchPlayer seat, String? awaited, String playerId) {
+    if (state == null) return seat.slot;
+    if (awaited == playerId) return _awaitedSlot(state)!;
+    for (final d in state.pendingDecisions) {
+      if (state.dynasty(d.decidingSlot).humanPlayer == seat.turnOrder) {
+        return d.decidingSlot;
+      }
+    }
+    return seat.slot;
+  }
+
+  /// The realm slots the seat with [turnOrder] currently plays as a human.
+  /// Falls back to the seat's [homeSlot] before the world is built (waiting
+  /// match) so the lobby still lists everyone's chosen country.
+  List<int> _controlledSlots(GameState? state, int turnOrder, int homeSlot) {
+    if (state == null) return [homeSlot];
+    return [
+      for (var s = 1; s <= World.realmCount; s++)
+        if (state.dynasty(s).status == DynastyStatus.human &&
+            state.dynasty(s).humanPlayer == turnOrder)
+          s,
+    ];
   }
 
   Future<List<Map<String, dynamic>>> matchesForPlayer(String playerId) async {
@@ -375,6 +429,7 @@ class MatchService {
   Future<Map<String, dynamic>> submit({
     required String matchId,
     required String playerId,
+    String? clientAppVersion,
     Map<String, dynamic>? actionJson,
     bool endTurn = false,
   }) async {
@@ -385,6 +440,16 @@ class MatchService {
     }
     if (match.status != MatchStatus.active) {
       throw ApiException(400, 'match is not active');
+    }
+    // A new app version may change the rules — every seat must run the same
+    // build before it may take its turn (426 Upgrade Required). null is the
+    // internal/test path; the HTTP layer always forwards the client's
+    // version. The view's `update_required` flag warns the client first.
+    if (clientAppVersion != null && clientAppVersion != appVersion) {
+      throw ApiException(
+          426,
+          'Diese Partie läuft auf App-Version $appVersion. Bitte '
+          'aktualisiere die App, um deinen Zug zu machen.');
     }
     var state = _load(match);
     final awaited = _awaitedPlayerId(match, state);
@@ -397,9 +462,12 @@ class MatchService {
       if (state.activeWar != null) {
         throw ApiException(400, 'a war must end before the turn can');
       }
-      // The recap baseline ("seen up to here") moves when the player
-      // ends their turn — mirrors the local client's markRecapSeen.
-      state.recapBaselines[seat.slot] =
+      // The recap baseline ("seen up to here") moves when the player ends
+      // their turn — mirrors the local client's markRecapSeen. Keyed on the
+      // realm actually played (currentPlayer), which equals the home seat
+      // for a single-realm player but is the awaited realm for a player who
+      // holds several.
+      state.recapBaselines[state.currentPlayer] =
           state.prunedEventCount + state.events.length;
       state = _endTurnAndAdvance(state, emitted);
     } else if (actionJson != null) {
@@ -409,7 +477,12 @@ class MatchService {
       } on Object {
         throw ApiException(400, 'malformed action');
       }
-      if (action.slot != seat.slot) {
+      // The action must act for a realm this seat currently controls — not
+      // only their home slot: control follows the ruler, so a player can
+      // come to play several realms (conquest, inheritance).
+      if (action.slot < 1 ||
+          action.slot > World.realmCount ||
+          state.dynasty(action.slot).humanPlayer != seat.turnOrder) {
         throw ApiException(403, 'action acts for a foreign realm');
       }
       if (action is ResolveDecision) {
@@ -421,10 +494,15 @@ class MatchService {
         if (action is WarEndRound) {
           // The engine entry point for awaited war-round input: a
           // human-vs-human attacker hands the round to the defender,
-          // otherwise the AI sides respond and the round advances.
+          // otherwise the AI sides respond and the round advances. Drive
+          // the AWAITED war slot — for a player who holds several realms
+          // that is the warring realm, not necessarily their home seat
+          // (a home-seat slot would skip the handover and the defender's
+          // half of the round).
+          final warSlot = _awaitedSlot(state)!;
           state = _mutate(
               state,
-              (s, rng, ev) => endWarRoundFor(s, seat.slot, rng, ev),
+              (s, rng, ev) => endWarRoundFor(s, warSlot, rng, ev),
               emitted);
         } else {
           state = _apply(state, action, emitted);
@@ -501,8 +579,7 @@ class MatchService {
 
   // --- Pipeline helpers ----------------------------------------------------
 
-  GameState _load(MatchRecord match) =>
-      GameState.fromJson(adoptLatestRules(match.stateJson!));
+  GameState _load(MatchRecord match) => GameState.fromJson(match.stateJson!);
 
   GameState _apply(
       GameState state, PlayerAction action, List<GameEvent> emitted) {

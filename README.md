@@ -106,15 +106,17 @@ docker compose -f backend/deploy/docker-compose.yml up -d --build
 
 `--build` is required after a `game_core` change — without it the old
 image (and old rules) keeps running. Verify the deployed build with
-`GET /version` (no auth), which reports the server's `game_core` rules:
+`GET /version` (no auth), which reports the server's app version:
 
 ```bash
 curl https://your-server.example.com/version
-# {"data":{"rules_version":4,"schema_version":1},"error":null}
+# {"data":{"app_version":"0.1.1","schema_version":1},"error":null}
 ```
 
-If those versions are stale, the redeploy did not pick up the new
-`game_core` (e.g. the server's checkout was not pulled before `--build`).
+If that version is stale, the redeploy did not pick up the new
+`game_core`/app build (e.g. the server's checkout was not pulled before
+`--build`). Online clients on a different `app_version` are told to update
+before they may take their turn.
 
 Compose env (set in the shell or in `backend/deploy/.env`):
 `PCKAISER_PORT` — host port the server is published on

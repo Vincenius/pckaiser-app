@@ -597,6 +597,58 @@ void showTroopActions(
                   );
                 },
               ),
+              // Drill (the original "Truppe ausbilden"): +1 quality for
+              // 5 T/man, class unchanged; as often per turn as the treasury
+              // allows. Kept high in the list (right after "verstärken") so
+              // its position never shifts while it is tapped repeatedly —
+              // the merge options below come and go as drilling changes this
+              // troop's quality, and a button that moved under the finger
+              // used to cause mis-taps onto "auflösen".
+              ListTile(
+                leading: const Icon(Icons.fitness_center),
+                title: const Text('Truppe ausbilden'),
+                subtitle: Text(
+                  soeldner
+                      ? 'Söldner können nicht ausgebildet werden'
+                      : atWar
+                      ? 'Nicht mitten im Krieg !'
+                      : troop.quality >= gc.Troop.drillCap
+                      ? 'Bereits voll ausgebildet (Qualität ${troop.quality})'
+                      : '${5 * troop.men * troop.quality} T — Qualität '
+                            '${troop.quality} → ${troop.quality + 1}',
+                ),
+                // Disabled (greyed out), never hidden — a vanishing button
+                // shifts the others up and causes accidental taps.
+                enabled:
+                    !soeldner &&
+                    !atWar &&
+                    troop.quality < gc.Troop.drillCap &&
+                    realm.treasury >= 5 * troop.men * troop.quality,
+                // The sheet stays open: drilling is repeatable and the
+                // ListenableBuilder refreshes quality/cost in place.
+                onTap: () => _tryAction(
+                  context,
+                  controller,
+                  gc.DrillTroop(slot: slot, unitIndex: index),
+                  undoable: true,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.military_tech),
+                title: const Text('Truppe umrüsten'),
+                subtitle: Text(
+                  soeldner
+                      ? 'Söldner können nicht umgerüstet werden'
+                      : atWar
+                      ? 'Nicht mitten im Krieg !'
+                      : 'Gattung wechseln — 5 T pro Mann plus Aufpreis',
+                ),
+                enabled: !soeldner && !atWar,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _trainSheet(context, controller, index);
+                },
+              ),
               for (final other in mergeTargets)
                 ListTile(
                   leading: const Icon(Icons.merge),
@@ -622,49 +674,6 @@ void showTroopActions(
                     );
                   },
                 ),
-              // Drill (the original "Truppe ausbilden"): +1 quality
-              // for 5 T/man, class unchanged; as often per turn
-              // as the treasury allows.
-              if (!soeldner)
-                ListTile(
-                  leading: const Icon(Icons.fitness_center),
-                  title: const Text('Truppe ausbilden'),
-                  subtitle: Text(
-                    atWar
-                        ? 'Nicht mitten im Krieg !'
-                        : troop.quality >= gc.Troop.drillCap
-                        ? 'Bereits voll ausgebildet (Qualität ${troop.quality})'
-                        : '${5 * troop.men * troop.quality} T — Qualität '
-                              '${troop.quality} → ${troop.quality + 1}',
-                  ),
-                  enabled:
-                      !atWar &&
-                      troop.quality < gc.Troop.drillCap &&
-                      realm.treasury >= 5 * troop.men * troop.quality,
-                  // The sheet stays open: drilling is repeatable and
-                  // the ListenableBuilder refreshes quality/cost in place.
-                  onTap: () => _tryAction(
-                    context,
-                    controller,
-                    gc.DrillTroop(slot: slot, unitIndex: index),
-                    undoable: true,
-                  ),
-                ),
-              if (!soeldner)
-                ListTile(
-                  leading: const Icon(Icons.military_tech),
-                  title: const Text('Truppe umrüsten'),
-                  subtitle: Text(
-                    atWar
-                        ? 'Nicht mitten im Krieg !'
-                        : 'Gattung wechseln — 5 T pro Mann plus Aufpreis',
-                  ),
-                  enabled: !atWar,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _trainSheet(context, controller, index);
-                  },
-                ),
               ListTile(
                 leading: const Icon(Icons.drive_file_rename_outline),
                 title: const Text('Truppe umbenennen'),
@@ -680,9 +689,32 @@ void showTroopActions(
                 title: const Text('Truppe auflösen'),
                 subtitle: atWar ? const Text('Nicht mitten im Krieg !') : null,
                 enabled: !atWar,
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _tryAction(
+                // Destructive: confirm first, so a stray tap (e.g. while
+                // spamming "ausbilden" above) can never disband by accident.
+                onTap: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('Truppe auflösen?'),
+                      content: Text(
+                        '„${troop.name}" (${troop.men} Mann) wird aufgelöst.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          child: const Text('Abbrechen'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          child: const Text('Auflösen'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true) return;
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  if (!context.mounted) return;
+                  await _tryAction(
                     context,
                     controller,
                     gc.DisbandTroop(slot: slot, unitIndex: index),
@@ -1681,15 +1713,13 @@ void showInfoMenu(BuildContext context, GameController controller) {
               },
             ),
             const Divider(),
-            // Which app build and ruleset THIS running game uses — handy for
-            // online play where the round may have been started on another
-            // build (every game adopts the latest ruleset on load).
+            // Which app build THIS running game uses — every game always
+            // plays the latest rules, so the app version is the only thing
+            // that matters for online compatibility.
             ListTile(
               dense: true,
               leading: const Icon(Icons.info_outline),
-              title: Text('Version $appVersion · '
-                  'Regelwerk v${state.rulesVersion}'
-                  '${state.rulesVersion != gc.currentRulesVersion ? ' (App: v${gc.currentRulesVersion})' : ''}'),
+              title: Text('Version $appVersion'),
               subtitle: Text('Spielstand-Format v${state.schemaVersion}'),
             ),
           ],

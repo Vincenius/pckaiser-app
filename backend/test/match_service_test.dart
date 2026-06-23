@@ -256,12 +256,24 @@ void main() {
       final match = await createStarted(
           a.id, MatchSettings(seed: 7), setupFor('Solo', 1));
       // Play 30 empty turns — the world keeps simulating around the
-      // player; the match must stay consistent and never throw.
+      // player; the match must stay consistent and never throw. A passive
+      // human can still be dragged into a war by an AI; they just end each
+      // war round (the equivalent of doing nothing).
       for (var i = 0; i < 30; i++) {
         final view = await service.view(match.id, a.id);
         if (view['status'] != 'active') break;
         if (view['your_turn'] != true) break;
-        await service.submit(matchId: match.id, playerId: a.id, endTurn: true);
+        final stateJson = (view['state'] as Map).cast<String, dynamic>();
+        if (stateJson['activeWar'] != null) {
+          await service.submit(
+            matchId: match.id,
+            playerId: a.id,
+            actionJson: WarEndRound(slot: view['awaited_slot'] as int).toJson(),
+          );
+        } else {
+          await service.submit(
+              matchId: match.id, playerId: a.id, endTurn: true);
+        }
       }
       final record = (await store.match(match.id))!;
       expect(record.stateJson, isNotNull);
@@ -318,7 +330,7 @@ void main() {
       record.stateJson = state.toJson();
       await store.saveMatch(record);
 
-      // Anna declares war on Berta's realm — allowed since ruleset v2.
+      // Anna declares war on Berta's realm (human-vs-human is allowed).
       final declared = await service.submit(
         matchId: match.id,
         playerId: a.id,
@@ -539,6 +551,126 @@ void main() {
       expect(state.recapBaselines[3], isNotNull);
       expect((ended['events'] as List), isNotEmpty,
           reason: 'the advance events come back for the recap');
+    });
+  });
+
+  group('multi-realm control', () {
+    test('the view lists every realm a player currently controls', () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
+
+      // State surgery: Anna (turn order 0) also comes to play realm 3 —
+      // control follows the ruler after a conquest/inheritance.
+      final record = (await store.match(match.id))!;
+      final state = GameState.fromJson(record.stateJson!);
+      state.dynasty(3).status = DynastyStatus.human;
+      state.dynasty(3).humanPlayer = 0;
+      record.stateJson = state.toJson();
+      await store.saveMatch(record);
+
+      final view = await service.view(match.id, a.id);
+      final players = (view['players'] as List).cast<Map>();
+      final anna = players.firstWhere((p) => p['player_id'] == a.id);
+      expect((anna['controlled_slots'] as List).cast<int>(),
+          containsAll(<int>[1, 3]));
+      final berta = players.firstWhere((p) => p['player_id'] == b.id);
+      expect(berta['controlled_slots'], <int>[2]);
+    });
+
+    test('a second realm is visible and actionable on its own turn',
+        () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
+
+      // Anna (turn order 0) also plays realm 3, and it is realm 3's turn.
+      final record = (await store.match(match.id))!;
+      final state = GameState.fromJson(record.stateJson!);
+      state.dynasty(3).status = DynastyStatus.human;
+      state.dynasty(3).humanPlayer = 0;
+      state.realm(3).treasury = 4242;
+      state.currentPlayer = 3;
+      record.stateJson = state.toJson();
+      await store.saveMatch(record);
+
+      final view = await service.view(match.id, a.id);
+      expect(view['your_turn'], isTrue);
+      expect(view['your_slot'], 3,
+          reason: 'the realm being played, not the home seat');
+      expect(view['awaited_slot'], 3);
+      final shown = (view['state'] as Map).cast<String, dynamic>();
+      final realm3 = (shown['realms'] as List)
+          .cast<Map>()
+          .firstWhere((r) => r['slot'] == 3);
+      expect(realm3['treasury'], 4242,
+          reason: 'own realm now — its treasury is no longer redacted');
+
+      // An action on realm 3 is accepted, not rejected as a foreign realm.
+      final after = await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: AdjustGuards(slot: 3, delta: 1).toJson(),
+      );
+      expect(after['your_turn'], isTrue);
+    });
+
+    test('an out-of-turn decision on a controlled realm is surfaced off-turn',
+        () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
+
+      // Anna (turn order 0) also controls realm 3; it is Berta's turn
+      // (slot 2), and realm 3 owes Anna an out-of-turn decision.
+      final record = (await store.match(match.id))!;
+      final state = GameState.fromJson(record.stateJson!);
+      state.dynasty(3).status = DynastyStatus.human;
+      state.dynasty(3).humanPlayer = 0;
+      state.currentPlayer = 2;
+      state.pendingDecisions.add(PendingDecision(
+          id: 'd1', type: 'marriageConsent', decidingSlot: 3));
+      record.stateJson = state.toJson();
+      await store.saveMatch(record);
+
+      final view = await service.view(match.id, a.id);
+      expect(view['your_turn'], isFalse, reason: 'it is Berta who is awaited');
+      expect(view['your_slot'], 3,
+          reason: 'the realm holding Anna\'s pending decision');
+      final shown = (view['state'] as Map).cast<String, dynamic>();
+      final decisions = (shown['pendingDecisions'] as List).cast<Map>();
+      expect(decisions.any((d) => d['id'] == 'd1'), isTrue,
+          reason: 'visible off-turn so Anna can answer it now, not next round');
+    });
+
+    test('an outdated client is flagged for an update in the view', () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await createStarted(
+          a.id, MatchSettings(seed: 42), setupFor('Solo', 1));
+      final current = await service.view(match.id, a.id);
+      expect(current['update_required'], isFalse);
+      final stale =
+          await service.view(match.id, a.id, clientAppVersion: '0.0.1');
+      expect(stale['update_required'], isTrue);
+      expect(stale['server_app_version'], appVersion);
     });
   });
 }
