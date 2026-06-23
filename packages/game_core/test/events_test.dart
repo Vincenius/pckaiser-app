@@ -62,10 +62,10 @@ void main() {
   });
 
   group('earthquake (§18.1)', () {
-    test('never strikes before year 1005 (grace period)', () {
+    test('never strikes before year 1010 (grace period)', () {
       for (var seed = 0; seed < 100; seed++) {
         final s = freshGame(seed: 2026).copy();
-        s.year = 1004;
+        s.year = 1009;
         final events = <GameEvent>[];
         runWorldEvents(s, Rng(seed), events);
         expect(events.where((e) => e.type == 'earthquake'), isEmpty);

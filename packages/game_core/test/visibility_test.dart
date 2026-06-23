@@ -90,6 +90,34 @@ void main() {
       expect(markerOf(third, 2), 0);
     });
 
+    test('reveals the opponent troop list to a combatant during war', () {
+      for (final slot in [1, 2]) {
+        final realm = state.realm(slot);
+        realm.troops.add(Troop(
+            name: 'Heer$slot',
+            men: 42,
+            troopClass: TroopClass.infanterie,
+            quality: TroopQuality.regular,
+            garrisonCounted: false,
+            x: realm.capitalX,
+            y: realm.capitalY));
+        realm.armySize = 42;
+      }
+
+      // Peacetime: the enemy army is hidden.
+      expect(visibleStateFor(state, 1).realm(2).troops, isEmpty);
+
+      // At war: realm 1 sees realm 2's units (and vice versa), but a
+      // bystander still sees nothing.
+      state.activeWar = ActiveWar(attackerSlot: 2, defenderSlot: 1);
+      final atWar = visibleStateFor(state, 1).realm(2);
+      expect(atWar.troops.single.men, 42);
+      expect(atWar.troops.single.name, 'Heer2');
+      expect(atWar.armySize, 42);
+      expect(visibleStateFor(state, 3).realm(2).troops, isEmpty,
+          reason: 'an uninvolved third party still cannot see the army');
+    });
+
     test('hides foreign economy, military and intel', () {
       final view = visibleStateFor(state, 1);
       final foreign = view.realm(2);

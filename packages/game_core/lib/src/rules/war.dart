@@ -521,7 +521,11 @@ void _endWarByCapitalOccupation(
     slot: captorSlot,
     type: 'rulerCaptured',
     visibility: EventVisibility.public,
-    payload: {'loserSlot': loserSlot, 'ruler': capturedRuler?.name},
+    payload: {
+      'loserSlot': loserSlot,
+      'ruler': capturedRuler?.name,
+      'loserHuman': state.dynasty(loserSlot).status == DynastyStatus.human,
+    },
   ));
   events.add(GameEvent(
     year: state.year,
@@ -932,6 +936,11 @@ void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
     slot: loser.slot,
     type: 'realmOverrun',
     visibility: EventVisibility.public,
+    // Whether a HUMAN player just lost their last land — the client shows
+    // a prominent popup to everyone for that (a strong, story-worthy event).
+    payload: {
+      'human': state.dynasty(loser.slot).status == DynastyStatus.human,
+    },
   ));
   // Vacate the slot so it no longer appears in turn order or living-ruler
   // lists. Troops are cleared because a realm with no land has no base to

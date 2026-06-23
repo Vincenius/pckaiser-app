@@ -7,6 +7,12 @@ import '../state/game_state.dart';
 import '../state/realm.dart';
 import '../state/town.dart';
 
+/// Largest popularity change the §8.4 food-satisfaction step may apply in a
+/// single turn (before the ±3 balance nudge), keeping the mood legible — no
+/// surprise swings — and well under the "lose >30 at once" threshold players
+/// complained about. [DESIGNED.]
+const int foodSatisfactionStepCap = 8;
+
 /// What the food/population upkeep did this turn (§8) — feeds the §21.1
 /// status report.
 class FoodReport {
@@ -57,11 +63,22 @@ FoodReport runFoodAndPopulation(
   final s = report.surplusPercent;
 
   // §8.4 update 1 — food satisfaction, right after S is computed.
+  // [DEVIATION] The original's purely multiplicative step
+  // (oldStat * (100 + s) / 82) let a low realm crawl back at ~1 point per
+  // turn while a well-fed one ballooned, and it was hard to reason about.
+  // We instead nudge popularity toward a food-driven target with a small,
+  // bounded, symmetric step: a content realm settles around 50, a fed one
+  // climbs and a starving one falls — recovery from a slump is fair and a
+  // single harvest never swings the mood violently.
   final oldStat = realm.popularity;
-  realm.popularity = math.min(
-    (oldStat * (100 + s) / 82).round(),
-    (oldStat * 1.05).round(),
-  );
+  // Target ∈ [0, 100]: 50 at break-even, → 100 at the +15 surplus cap,
+  // → 0 at the −30 famine floor.
+  final target = s >= 0 ? 50 + s * 50 ~/ 15 : 50 + s * 50 ~/ 30;
+  final gap = target - oldStat;
+  var step = (gap / 4).round();
+  if (step == 0 && gap != 0) step = gap.sign; // always close the last point
+  step = step.clamp(-foodSatisfactionStepCap, foodSatisfactionStepCap);
+  realm.popularity = (oldStat + step).clamp(0, 100);
 
   // §8.2 Growth.
   var g = s == 0 ? 0 : s.sign * (rng.nextInt(s.abs()) + 1);

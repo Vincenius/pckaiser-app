@@ -768,6 +768,24 @@ List<GameEvent> _resolveDecision(
       if (child != null && name.isNotEmpty) {
         child.name = name;
       }
+      // Announce the birth now (deferred from `_birth` for human dynasties):
+      // with the final name, in the round the child is named — so other
+      // players see the real name, a round after the birth, never both the
+      // provisional name and a same-round notice.
+      if (child != null && payload.containsKey('parent')) {
+        events.add(GameEvent(
+          year: state.year,
+          slot: decision.decidingSlot,
+          type: 'birth',
+          visibility: EventVisibility.public,
+          payload: {
+            'parent': payload['parent'],
+            'partner': payload['partner'],
+            'child': child.name,
+            'gender': payload['gender'],
+          },
+        ));
+      }
 
     case 'relocateCapital':
       // Forced re-seat after a lost capital — free. An invalid/stale pick
@@ -875,9 +893,10 @@ List<GameEvent> _resolveDecision(
 
 /// Religion change (§4): katholisch free, evangelisch 500 T, moslemisch
 /// 1,000 T. Availability follows §15.2 (Reformation/Ottoman gates).
-/// Any conversion costs −70 popularity (clamped ≥ 0) on every slot the
-/// ruler holds; converting to Islam forfeits any Kurfürst seat and switches
-/// the title ladder (§16.1, §17.2).
+/// Any conversion costs a floored popularity hit
+/// ([religionChangePopularityCost]) on every slot the ruler holds;
+/// converting to Islam forfeits any Kurfürst seat and switches the title
+/// ladder (§16.1, §17.2).
 List<GameEvent> _changeReligion(
     GameState state, Realm realm, ChangeReligion action) {
   final dynasty = state.dynasty(realm.slot);
@@ -904,11 +923,17 @@ List<GameEvent> _changeReligion(
   realm.treasury -= cost;
   dynasty.religion = religion;
 
-  // −70 popularity on every slot this ruler holds (ruler aliasing, §19).
-  // Clamped 0–100 like every other popularity write (Realm.popularity).
+  // Popularity hit on every slot this ruler holds (ruler aliasing, §19).
+  // [DEVIATION] A reduced, floored cost (see religionChangePopularityCost)
+  // instead of the original's flat −70: a conversion shakes the realm but
+  // can never on its own tip it into a §19.1 strife collapse. The actual
+  // loss is reported so the UI can tell the player exactly why their
+  // popularity dropped (it never exceeds religionChangePopularityCost).
+  var popularityLost = 0;
   for (final r in state.realms) {
     if (r.rulerId == realm.rulerId) {
-      r.popularity = (r.popularity - 70).clamp(0, 100);
+      final lost = militarismPopularityCost(r, religionChangePopularityCost);
+      if (lost > popularityLost) popularityLost = lost;
     }
   }
 
@@ -936,7 +961,7 @@ List<GameEvent> _changeReligion(
     slot: realm.slot,
     type: 'religionChanged',
     visibility: EventVisibility.public,
-    payload: {'religion': religion},
+    payload: {'religion': religion, 'popularityLost': popularityLost},
   ));
   return events;
 }

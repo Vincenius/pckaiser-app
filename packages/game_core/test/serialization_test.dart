@@ -156,7 +156,7 @@ void main() {
       expect((sourceMap['terrain'] as List)[0], terrainBefore,
           reason: 'loaded map must not write back into the source JSON');
       final sourceRealm1 =
-          ((source['realms'] as List).cast<Map>().firstWhere(
+          ((source['realms'] as List).cast<Map<String, dynamic>>().firstWhere(
                   (r) => r['slot'] == 1))
               .cast<String, dynamic>();
       final sourceTile = (sourceRealm1['tileCount'] as List)[Building.dorf];

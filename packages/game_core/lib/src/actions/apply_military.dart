@@ -24,23 +24,31 @@ Troop unitAt(Realm realm, int index) {
   return realm.troops[index];
 }
 
-/// Militarism costs popularity, but never below 25 — the
-/// people grumble over levies and wars, yet the §19.1 strife revolution
-/// (popularity < 20) stays food-driven as in the original: the floor
-/// sits above the strife line plus the ±3 harvest nudge (§8.4), so
-/// militarism alone can never tip a realm into collapse. Without it the
-/// AI (which recruits and wars freely) collapsed into strife 5–9× as
-/// often in the 200-year sim. A stat already below 25 is left
-/// untouched, never raised.
-void _militarismPopularityCost(Realm realm, int cost) {
-  final floored = realm.popularity - cost < 25 ? 25 : realm.popularity - cost;
-  if (floored < realm.popularity) realm.popularity = floored;
+/// Militarism costs popularity, but never below [militarismPopularityFloor]
+/// — the people grumble over levies, wars and conversions, yet the §19.1
+/// strife revolution (popularity < 20) stays food-driven as in the
+/// original: the floor sits above the strife line plus the ±3 harvest
+/// nudge (§8.4), so militarism alone can never tip a realm into collapse.
+/// Without it the AI (which recruits and wars freely) collapsed into
+/// strife 5–9× as often in the 200-year sim. A stat already below the
+/// floor is left untouched, never raised. Returns the popularity actually
+/// lost (0 when the floor swallowed the cost) so callers can report it.
+int militarismPopularityCost(Realm realm, int cost) {
+  final floored = realm.popularity - cost < militarismPopularityFloor
+      ? militarismPopularityFloor
+      : realm.popularity - cost;
+  if (floored < realm.popularity) {
+    final lost = realm.popularity - floored;
+    realm.popularity = floored;
+    return lost;
+  }
+  return 0;
 }
 
 /// The people resent levies — recruiting or hiring [men] costs
 /// 1 + men/200 popularity.
 void _levyPopularityCost(GameState state, Realm realm, int men) {
-  _militarismPopularityCost(realm, 1 + men ~/ 200);
+  militarismPopularityCost(realm, 1 + men ~/ 200);
 }
 
 List<GameEvent> applyRecruitTroops(
@@ -333,8 +341,8 @@ List<GameEvent> applyDeclareWar(
   }
   startWar(state, realm.slot, action.targetSlot, rng);
   // The people resent war — the aggressor pays popularity (floored at
-  // 25, see _militarismPopularityCost).
-  _militarismPopularityCost(realm, 5);
+  // militarismPopularityFloor, see militarismPopularityCost).
+  militarismPopularityCost(realm, 5);
   return [
     GameEvent(
       year: state.year,

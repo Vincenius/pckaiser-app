@@ -587,10 +587,18 @@ class MatchService {
     GameState state, {
     required bool notify,
   }) async {
+    final previous = match.stateJson == null ? null : _load(match);
     final previousAwaited =
-        match.stateJson == null ? null : _awaitedPlayerId(match, _load(match));
+        previous == null ? null : _awaitedPlayerId(match, previous);
     final hadWar =
         match.stateJson != null && (match.stateJson!['activeWar'] != null);
+    // Decisions that already existed before this commit were nudged when
+    // they first appeared — re-pushing them on every later commit (e.g. on
+    // each AI turn while a player's election vote sits open) was the source
+    // of the notification spam. Only NEW decisions get a push below.
+    final previousDecisionIds = previous == null
+        ? const <String>{}
+        : {for (final d in previous.pendingDecisions) d.id};
 
     match.stateJson = state.toJson();
     match.updatedAt = _clock();
@@ -633,10 +641,16 @@ class MatchService {
       final player = await _store.player(awaited);
       if (player != null) await _push.yourTurn(player, match);
     }
-    // Out-of-turn decisions get their own nudge.
+    // Out-of-turn decisions get their own nudge — but only once, when the
+    // decision first appears (see previousDecisionIds), never re-pushed on
+    // every subsequent commit.
+    final notified = <String>{};
     for (final d in state.pendingDecisions) {
+      if (previousDecisionIds.contains(d.id)) continue;
       final decider = _playerForSlot(match, state, d.decidingSlot);
-      if (decider != null && decider != awaited) {
+      // At most one decision nudge per player per commit, even when an
+      // election creates several decisions for the same seat at once.
+      if (decider != null && decider != awaited && notified.add(decider)) {
         final p = await _store.player(decider);
         if (p != null) await _push.yourDecision(p, match);
       }

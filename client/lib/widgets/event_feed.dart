@@ -169,7 +169,9 @@ String describeEvent(gc.GameEvent e) {
                 '$realm geschickt worden zu sein !!!'
           : '$realm: Spionagemission in '
                 '${gc.countryNames[p['targetSlot'] as int]} gescheitert',
-    'religionChanged' => '$realm wechselt die Religion',
+    'religionChanged' =>
+      '$realm wechselt die Religion'
+          '${(p['popularityLost'] as int? ?? 0) > 0 ? ' (−${p['popularityLost']} Beliebtheit)' : ''}',
     'dynastyConverted' => '$realm: die Dynastie konvertiert',
     'dynastyExtinct' => '$realm: die Dynastie ist erloschen',
     'realmInherited' =>
@@ -275,6 +277,13 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final slot = widget.controller.currentSlot;
+    // Realms played by a human (the seated player or — online — a rival):
+    // their events are highlighted so real players' moves stand out from the
+    // AI's routine bookkeeping.
+    final humanSlots = {
+      for (final d in widget.controller.state.dynasties)
+        if (d.status == gc.DynastyStatus.human) d.index,
+    };
     final events = [
       for (final e in widget.controller.state.events)
         if (e.visibleTo(slot) && _matches(e, slot)) e,
@@ -336,7 +345,7 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
                             ),
                           ),
                           for (final e in byYear[year]!)
-                            _eventRow(theme, e, slot),
+                            _eventRow(theme, e, slot, humanSlots),
                         ],
                         const SizedBox(height: 12),
                       ],
@@ -348,13 +357,24 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
     );
   }
 
-  /// One feed line: type icon (colored for drama), the description, and
-  /// bold text when the event concerns the seated player's realm.
-  Widget _eventRow(ThemeData theme, gc.GameEvent e, int slot) {
+  /// One feed line: type icon (colored for drama), the description, bold
+  /// text when the event concerns the seated player's realm, and a small
+  /// person badge highlighting events of OTHER human players (so real
+  /// rivals' moves stand out from the AI's bookkeeping, especially online).
+  Widget _eventRow(
+      ThemeData theme, gc.GameEvent e, int slot, Set<int> humanSlots) {
     final (icon, color) = _eventStyle(e);
     final mine = e.slot == slot;
-    return Padding(
+    final otherHuman = !mine && e.slot >= 1 && humanSlots.contains(e.slot);
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: otherHuman
+          ? BoxDecoration(
+              border: Border(
+                left: BorderSide(color: theme.colorScheme.primary, width: 3),
+              ),
+            )
+          : null,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -368,10 +388,16 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
             child: Text(
               describeEvent(e),
               style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: mine ? FontWeight.w600 : null,
+                fontWeight: (mine || otherHuman) ? FontWeight.w600 : null,
               ),
             ),
           ),
+          if (otherHuman)
+            Padding(
+              padding: const EdgeInsets.only(left: 6, top: 1),
+              child: Icon(Icons.person,
+                  size: 14, color: theme.colorScheme.primary),
+            ),
         ],
       ),
     );
@@ -400,6 +426,11 @@ bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
   'crowned' => e.slot == slot,
   // Your house inherited whole realms — easy to miss as a feed line.
   'realmInherited' => e.slot == slot,
+  // A human player losing their whole realm (or their ruler captured) is a
+  // story-worthy event the whole table should see as a strong popup — and
+  // the victim themselves above all.
+  'realmOverrun' => e.payload['human'] == true,
+  'rulerCaptured' => e.payload['loserHuman'] == true,
   _ => false,
 };
 
@@ -495,6 +526,101 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   _ => (Icons.campaign, null),
 };
 
+/// Title/body/style for a drama popup, or null when the event is not
+/// popup-worthy for [slot]. Shared by the turn-start recap ([showDramaPopups])
+/// and the online out-of-turn surfacing ([showDramaPopupsFor]).
+(IconData, Color, String, String)? _dramaContent(gc.GameEvent e, int slot) {
+  if (!_popupWorthy(e, slot)) return null;
+  final p = e.payload;
+  return switch (e.type) {
+    'assassination' => (
+      Icons.dangerous,
+      Colors.red,
+      'Attentat !!!',
+      '${p['victim']} wurde von gedungenen Mördern ermordet !',
+    ),
+    'assassinationFailed' when e.slot == slot => (
+      Icons.report,
+      Colors.orange,
+      'Attentat vereitelt !',
+      'Ein Anschlag auf ${p['victim']} ist fehlgeschlagen !'
+          '${(p['caught'] as int? ?? 0) > 0 ? '\nDie gefassten Attentäter gestehen unter Folter: der Auftrag kam aus ${gc.countryNames[p['sponsorSlot'] as int]} !' : ''}',
+    ),
+    'assassinationFailed' => (
+      Icons.report,
+      Colors.orange,
+      'Anschlag fehlgeschlagen',
+      'Deine Attentäter haben ${p['victim']} nicht erwischt'
+          '${(p['caught'] as int? ?? 0) > 0 ? ' — und wurden gefasst ! Dein Auftrag ist nun bekannt !' : '.'}',
+    ),
+    'crowned' => (
+      Icons.emoji_events,
+      Colors.amber,
+      p['office'] == 'kaiser' ? 'Du bist Kaiser !' : 'Du bist Sultan !',
+      '${p['name']} wird '
+          '${p['acclaimed'] == true ? 'ohne Gegenstimme ' : ''}'
+          'zum ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'} gekrönt !',
+    ),
+    'realmInherited' => (
+      Icons.account_balance,
+      Colors.amber,
+      'Erbschaft !',
+      'Nach dem Tod von ${p['deceased']} fällt '
+          '${((p['slots'] as List?) ?? const []).map((s) => gc.countryNames[s as int]).join(', ')} '
+          'durch Erbfolge an ${p['heir']} — das Reich gehört nun '
+          'deinem Haus, du führst es ab sofort mit !',
+    ),
+    'realmOverrun' when e.slot == slot => (
+      Icons.public_off,
+      Colors.red,
+      'Reich verloren !',
+      'Dein Reich wurde im Krieg vollständig überrannt — du hast all '
+          'dein Land verloren !',
+    ),
+    'realmOverrun' => (
+      Icons.public_off,
+      Colors.red,
+      'Ein Reich ist gefallen !',
+      '${gc.countryNames[e.slot]} wurde im Krieg vollständig überrannt '
+          'und hat sein gesamtes Land verloren !',
+    ),
+    'rulerCaptured' => (
+      Icons.lock,
+      Colors.red,
+      'Herrscher gefangen !',
+      '${gc.countryNames[e.slot]} nimmt den Herrscher von '
+          '${gc.countryNames[p['loserSlot'] as int]}'
+          '${p['ruler'] == null ? '' : ' (${p['ruler']})'} gefangen !',
+    ),
+    _ => (Icons.campaign, Colors.blueGrey, 'Nachricht', describeEvent(e)),
+  };
+}
+
+Future<void> _showDramaDialog(
+    BuildContext context, (IconData, Color, String, String) c) async {
+  final (icon, color, title, body) = c;
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 8),
+          Expanded(child: Text(title)),
+        ],
+      ),
+      content: Text(body),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Weiter'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Standalone drama popups, shown after pending decisions and before the
 /// recap card (which skips these events). One dialog per event, styled
 /// like the marriage prompt.
@@ -503,78 +629,22 @@ Future<void> showDramaPopups(
   GameController controller,
   int slot,
 ) async {
-  final drama = controller
-      .recapFor(slot)
-      .where((e) => _popupWorthy(e, slot))
-      .toList();
-  for (final e in drama) {
+  await showDramaPopupsFor(context, controller.recapFor(slot), slot);
+}
+
+/// Shows drama popups for an explicit event list — used by the online
+/// waiting screen to surface strong events (a coronation, a player losing
+/// their land) as they happen, even out of the player's own turn.
+Future<void> showDramaPopupsFor(
+  BuildContext context,
+  Iterable<gc.GameEvent> events,
+  int slot,
+) async {
+  for (final e in events) {
     if (!context.mounted) return;
-    final p = e.payload;
-    final (
-      IconData icon,
-      Color color,
-      String title,
-      String body,
-    ) = switch (e.type) {
-      'assassination' => (
-        Icons.dangerous,
-        Colors.red,
-        'Attentat !!!',
-        '${p['victim']} wurde von gedungenen Mördern ermordet !',
-      ),
-      'assassinationFailed' when e.slot == slot => (
-        Icons.report,
-        Colors.orange,
-        'Attentat vereitelt !',
-        'Ein Anschlag auf ${p['victim']} ist fehlgeschlagen !'
-            '${(p['caught'] as int? ?? 0) > 0 ? '\nDie gefassten Attentäter gestehen unter Folter: der Auftrag kam aus ${gc.countryNames[p['sponsorSlot'] as int]} !' : ''}',
-      ),
-      'assassinationFailed' => (
-        Icons.report,
-        Colors.orange,
-        'Anschlag fehlgeschlagen',
-        'Deine Attentäter haben ${p['victim']} nicht erwischt'
-            '${(p['caught'] as int? ?? 0) > 0 ? ' — und wurden gefasst ! Dein Auftrag ist nun bekannt !' : '.'}',
-      ),
-      'crowned' => (
-        Icons.emoji_events,
-        Colors.amber,
-        p['office'] == 'kaiser' ? 'Du bist Kaiser !' : 'Du bist Sultan !',
-        '${p['name']} wird '
-            '${p['acclaimed'] == true ? 'ohne Gegenstimme ' : ''}'
-            'zum ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'} gekrönt !',
-      ),
-      'realmInherited' => (
-        Icons.account_balance,
-        Colors.amber,
-        'Erbschaft !',
-        'Nach dem Tod von ${p['deceased']} fällt '
-            '${((p['slots'] as List?) ?? const []).map((s) => gc.countryNames[s as int]).join(', ')} '
-            'durch Erbfolge an ${p['heir']} — das Reich gehört nun '
-            'deinem Haus, du führst es ab sofort mit !',
-      ),
-      _ => (Icons.campaign, Colors.blueGrey, 'Nachricht', describeEvent(e)),
-    };
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 8),
-            Expanded(child: Text(title)),
-          ],
-        ),
-        content: Text(body),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Weiter'),
-          ),
-        ],
-      ),
-    );
+    final content = _dramaContent(e, slot);
+    if (content == null) continue;
+    await _showDramaDialog(context, content);
   }
 }
 

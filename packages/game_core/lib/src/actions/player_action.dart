@@ -478,7 +478,8 @@ class RelocateCapital extends PlayerAction {
 }
 
 /// Change the dynasty's religion (§4): katholisch free, evangelisch 500 T,
-/// moslemisch 1,000 T; −70 popularity on every slot the ruler holds.
+/// moslemisch 1,000 T; a floored popularity hit
+/// ([religionChangePopularityCost]) on every slot the ruler holds.
 class ChangeReligion extends PlayerAction {
   ChangeReligion({required super.slot, required this.religion});
 

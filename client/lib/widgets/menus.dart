@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../app_version.dart';
 import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 import 'event_feed.dart';
@@ -1163,9 +1164,38 @@ void showMiscMenu(BuildContext context, GameController controller) {
             if (available && state.dynasty(slot).religion != religion)
               ListTile(
                 title: Text('Religion: $name'),
-                trailing: Text('$cost T, −70 ${tr('popularity')}'),
+                trailing: Text(
+                  '$cost T, −${gc.religionChangePopularityCost} '
+                  '${tr('popularity')}',
+                ),
                 enabled: realm.treasury >= cost,
-                onTap: () {
+                // A faith change is momentous and easy to tap by accident
+                // once the options appear — always confirm first.
+                onTap: () async {
+                  final sure = await showDialog<bool>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('Religion wechseln?'),
+                      content: Text(
+                        'Deine Dynastie tritt zum ${name}en Glauben über.\n\n'
+                        'Das kostet $cost T und '
+                        '${gc.religionChangePopularityCost} Beliebtheit, '
+                        'löst religiös unpassende Ehen und kann den '
+                        'Kurfürstensitz kosten. Wirklich wechseln?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          child: Text(tr('cancel')),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          child: const Text('Wechseln'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (sure != true || !context.mounted) return;
                   Navigator.pop(context);
                   _tryAction(
                     context,
@@ -1649,6 +1679,18 @@ void showInfoMenu(BuildContext context, GameController controller) {
                 Navigator.pop(sheetContext);
                 _showChronicle(context, controller);
               },
+            ),
+            const Divider(),
+            // Which app build and ruleset THIS running game uses — handy for
+            // online play where the round may have been started on another
+            // build (every game adopts the latest ruleset on load).
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.info_outline),
+              title: Text('Version $appVersion · '
+                  'Regelwerk v${state.rulesVersion}'
+                  '${state.rulesVersion != gc.currentRulesVersion ? ' (App: v${gc.currentRulesVersion})' : ''}'),
+              subtitle: Text('Spielstand-Format v${state.schemaVersion}'),
             ),
           ],
         ),

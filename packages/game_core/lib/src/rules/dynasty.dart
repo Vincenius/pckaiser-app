@@ -177,13 +177,28 @@ void _birth(GameState state, Person parent, Person? partner, Rng rng,
   partner?.childrenIds.add(child.id);
 
   if (dynasty.status == DynastyStatus.human) {
+    // [DESIGNED] A human dynasty names its newborn before the world hears
+    // of it. The PUBLIC birth announcement is DEFERRED to that naming
+    // decision (resolved at the parent's next turn), so other players see
+    // the CHOSEN name — not the provisional table name — and never in the
+    // same round the child is born. The parent's own notice is the naming
+    // prompt itself; emitting a birth event here would both leak the
+    // placeholder name to rivals and announce it a round too early.
     state.pendingDecisions.add(PendingDecision(
       id: 'childname-${child.id}',
       type: 'childName',
       decidingSlot: parent.dynasty,
-      payload: {'childId': child.id, 'suggestedName': child.name},
+      payload: {
+        'childId': child.id,
+        'suggestedName': child.name,
+        'parent': parent.name,
+        'partner': partner?.name,
+        'gender': gender,
+      },
     ));
+    return;
   }
+  // AI dynasties have no naming step — announce the birth at once.
   events.add(GameEvent(
     year: state.year,
     slot: parent.dynasty,
@@ -199,16 +214,43 @@ void _birth(GameState state, Person parent, Person? partner, Rng rng,
 }
 
 /// Design decision (2026-06-10, CHECKLIST resolved-questions log): when a
-/// slot's ruler pointer is overwritten with a ruler from another dynasty —
-/// conquest (§11.2) or cross-dynasty inheritance (§15.4) — control of the
-/// slot follows the new ruler: the slot's dispatch entry adopts the
-/// controller (status + humanPlayer) of the ruler's home dynasty. Without
-/// this, a captured human slot would still be dealt to the old player.
+/// slot's ruler pointer is overwritten — conquest (§11.2), succession or
+/// cross-dynasty inheritance (§15.4) — control of the slot follows the new
+/// ruler. Without this, a captured human slot would still be dealt to the
+/// old player.
+///
+/// Control follows the RULER, in this priority:
+///  1. If the ruler already plays another slot as a human, this slot is
+///     played by that same human too — even when the slot's own (home)
+///     dynasty has since been flipped to AI by strife/capture/succession
+///     crisis. This is the "play the land yourself whenever your own heir
+///     is in power" rule: after a couped home dynasty's heir retakes the
+///     throne (e.g. by assassinating the AI usurper), the human regains
+///     control instead of being locked out of a realm their own ruler holds.
+///  2. Otherwise, for a ruler from ANOTHER dynasty, adopt that ruler's home
+///     dynasty's status + humanPlayer.
+///  3. Otherwise (a home-dynasty ruler with no human sibling slot), leave
+///     the slot's own dynasty status authoritative.
 void alignSlotControl(GameState state, int slot, int? rulerId) {
   final ruler = state.person(rulerId);
-  if (ruler == null || ruler.dynasty == slot) return;
-  final home = state.dynasty(ruler.dynasty);
+  if (ruler == null) return;
   final dynasty = state.dynasty(slot);
+
+  // 1. Inherit human control from any other slot the same ruler already
+  //    plays as a human (same person ⇒ same player).
+  for (final realm in state.realms) {
+    if (realm.slot == slot || realm.rulerId != rulerId) continue;
+    final sibling = state.dynasty(realm.slot);
+    if (sibling.status == DynastyStatus.human) {
+      dynasty.status = DynastyStatus.human;
+      dynasty.humanPlayer = sibling.humanPlayer;
+      return;
+    }
+  }
+
+  // 2./3. No human sibling slot.
+  if (ruler.dynasty == slot) return; // home slot — its own status stands
+  final home = state.dynasty(ruler.dynasty);
   dynasty.status = home.status;
   dynasty.humanPlayer = home.humanPlayer;
 }

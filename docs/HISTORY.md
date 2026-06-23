@@ -5,6 +5,56 @@ Rules-version changes (v2–v5) are documented in detail in
 `packages/game_core/lib/src/state/versioning.dart` (changelog) and the
 deviations table in `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-22
+
+Batch of gameplay/UX fixes from playtest feedback (single change set).
+
+- **Rules v7** (universal/ungated, see versioning.dart changelog):
+  - **Earthquakes gated to year ≥ 1010** (was 1005) — the protected first
+    decade is now fully disaster-free (`firstEarthquakeYear`).
+  - **Religion change popularity** is a smaller, FLOORED hit
+    (`religionChangePopularityCost` = 25, never below `militarismPopularityFloor`
+    = 25) instead of the opaque flat −70 that could crater a realm in one
+    (often accidental) tap. The `religionChanged` event now reports the exact
+    loss, and the menu asks for confirmation first.
+  - **Food satisfaction (§8.4) reworked** — popularity nudges toward a
+    food-driven target with a small, bounded, symmetric step
+    (`foodSatisfactionStepCap` = 8) instead of the multiplicative crawl, so a
+    slumping realm recovers fairly and the mood never swings >~11/turn.
+  - **Control follows the ruler** (`alignSlotControl`): a realm whose ruler
+    already plays another slot as a human is played by that human even after
+    the home dynasty was couped to AI — you regain a retaken realm when your
+    own heir is back on its throne. Regression: `bugfix_v17_heir_control_test`.
+  - **Human births announce only after naming** — the public `birth` event is
+    deferred to the `childName` decision, so rivals see the CHOSEN name a round
+    later (online players were seeing the provisional table name, same round).
+    Regression: `bugfix_v18_mp_fixes_test`.
+  - **`realmOverrun` / `rulerCaptured`** carry whether a HUMAN player was the
+    loser, so the client pops a strong "a player has fallen" event to everyone.
+  - **AI scripting** (ungated): the AI redeploys troops in peacetime
+    (`_repositionTroops`), occasionally sends assassins at a bordering rival
+    (`_maybeAssassinate`), and declares war a little more often (~2× chance).
+- **Online enemy troops in war** — `visibleStateFor` now keeps the OPPONENT's
+  troop list + army size for a war the viewer fights (it only rebuilt map
+  markers before, so the online war panel showed no enemy army). Regression:
+  `visibility_test` ("reveals the opponent troop list … during war").
+- **Online notification spam fixed** — `MatchService._commit` re-pushed a
+  `yourDecision` nudge on EVERY commit while a decision sat open (an election
+  vote drew one per AI turn). Now only NEW decisions are pushed, at most one
+  per player per commit.
+- **Online popups reach parity** — strong events (a coronation of THIS player,
+  a player losing their realm/ruler) now pop the moment they happen on the
+  waiting screen (`OnlineMatchScreen._maybeShowDrama`, deduped by event
+  position), not only at the next own turn; "Du bist Kaiser !" is one of them.
+- **Event feed/recap** highlights events of OTHER human players (border + bold
+  + person badge) so real rivals' moves stand out from AI bookkeeping.
+- **In-game Info menu** shows the running game's app + ruleset + save-format
+  version (handy online, where the round may have started on another build).
+- **Pre-existing cleanups found in the audit**: removed an unused import in
+  `economy.dart`; fixed a raw-type lint in `serialization_test`; synced
+  `client/pubspec.yaml` `version:` to the displayed `appVersion` (0.1.1) so the
+  `app_version_test` sync guard passes.
+
 ## 2026-06-19
 
 - **Rules v6** (universal/ungated, see versioning.dart changelog) —

@@ -87,6 +87,12 @@ void _runAiTurnInPlace(
   _adjustGuardsTowardTarget(state, realm, rng, events);
   _investInShips(state, realm, rng, events);
 
+  // `[DESIGNED]` Peacetime manoeuvres: the original AI never moved its
+  // units in peace, so armies sat frozen on their muster tile for
+  // centuries. Now they drift between the frontier and the rear each turn,
+  // so the map shows them maneuvering (relocation is free, §6.3).
+  _repositionTroops(state, realm, rng, events);
+
   // (§20.6 marriage/heir upkeep runs in the shared dynasty phase.)
 
   // §20.7 Merge one randomly-chosen other slot ruled by the same ruler.
@@ -100,13 +106,21 @@ void _runAiTurnInPlace(
         events);
   }
 
+  // §13.3 `[DESIGNED]` cloak-and-dagger: a content, solvent AI occasionally
+  // sends assassins at a bordering rival's ruler. The original AI never used
+  // its spies offensively, so rulers were immune to the dagger unless a
+  // human paid for it.
+  _maybeAssassinate(state, realm, rng, events);
+
   // §20.8 War. Declaring war costs the aggressor popularity, so a
   // sensible AI ruler only wars while the people are content — without
   // this guard, war-hit realms drifted into §19.1 strife collapses
-  // several times as often in the 200-year sim.
+  // several times as often in the 200-year sim. `[DESIGNED]` The spontaneous
+  // war chance was raised (~2–3×) so the map sees a bit more conflict
+  // without the AI warring constantly.
   final warMoodOk = realm.popularity >= 50;
   if ((warFlag || rng.nextInt(20) == 0) &&
-      rng.nextInt(7) == 0 &&
+      rng.nextInt(3) == 0 &&
       warMoodOk &&
       state.year > 1009 &&
       !realm.warThisYear &&
@@ -357,6 +371,96 @@ int? _pickWarTarget(GameState state, int slot, Rng rng) {
   ];
   final pool = infidels.isNotEmpty ? infidels : adjacent.toList();
   return pool[rng.nextInt(pool.length)];
+}
+
+/// `[DESIGNED]` Peacetime troop manoeuvres. Relocation is free (§6.3), so
+/// each turn most units redeploy to a random own destination — a frontier
+/// tile (own land touching another realm or unclaimed land) or a rear base
+/// (a town / the capital). Over several turns armies visibly shift around
+/// the realm instead of standing frozen on their muster tile, and they tend
+/// to mass near the borders where they may soon be needed. ~1/3 of the
+/// units hold position each turn so a realm is never left wholly undefended.
+void _repositionTroops(
+    GameState state, Realm realm, Rng rng, List<GameEvent> events) {
+  if (realm.troops.isEmpty) return;
+  final map = state.map;
+  final slot = realm.slot;
+
+  final frontier = <(int, int)>[];
+  for (var y = 0; y < map.height; y++) {
+    for (var x = 0; x < map.width; x++) {
+      if (map.ownerAt(x, y) != slot) continue;
+      for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+        final nx = x + dx;
+        final ny = y + dy;
+        if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) continue;
+        if (map.ownerAt(nx, ny) != slot) {
+          frontier.add((x, y));
+          break;
+        }
+      }
+    }
+  }
+
+  final rear = <(int, int)>[
+    for (final town in realm.towns) (town.x, town.y),
+    (realm.capitalX, realm.capitalY),
+  ];
+  // Weight toward the frontier when one exists, but keep some rear options
+  // so units don't all crowd a single edge.
+  final destinations = <(int, int)>[...frontier, ...frontier, ...rear];
+  if (destinations.isEmpty) return;
+
+  for (var i = 0; i < realm.troops.length; i++) {
+    if (rng.nextInt(3) == 0) continue; // hold position
+    final (dx, dy) = destinations[rng.nextInt(destinations.length)];
+    final troop = realm.troops[i];
+    if (troop.x == dx && troop.y == dy) continue;
+    try {
+      _act(state, MoveTroop(slot: slot, unitIndex: i, x: dx, y: dy), rng,
+          events);
+    } on ActionException {
+      // Defensive: a stale destination must not kill the AI turn.
+    }
+  }
+}
+
+/// §13.3 `[DESIGNED]` AI assassination. A content, solvent AI occasionally
+/// dispatches a squad of agents at a bordering rival ruler. Rare by design
+/// (the map should not drown in daggers), gated to the war years so the
+/// protected first decade stays safe, and never spends the whole treasury.
+void _maybeAssassinate(
+    GameState state, Realm realm, Rng rng, List<GameEvent> events) {
+  if (state.year < 1010) return; // share the war gate / protection window
+  if (state.activeWar != null) return;
+  if (rng.nextInt(40) != 0) return; // rare
+  // Keep a war chest — only act with comfortable reserves.
+  if (realm.treasury < 12 * assassinCost) return;
+
+  final targets = <int>[
+    for (final other in state.map.realmNeighbors(realm.slot))
+      if (!state.realm(other).isVacant &&
+          state.realm(other).rulerId != null &&
+          // Not a slot the AI's own ruler already holds (aliasing, §19).
+          state.realm(other).rulerId != realm.rulerId)
+        other,
+  ];
+  if (targets.isEmpty) return;
+  final target = targets[rng.nextInt(targets.length)];
+
+  // A squad scaled to a quarter of the war chest, 3–20 agents.
+  final agents = ((realm.treasury ~/ 4) ~/ assassinCost).clamp(3, 20);
+  if (realm.treasury < agents * assassinCost) return;
+  try {
+    _act(
+        state,
+        OrderAssassination(
+            slot: realm.slot, targetSlot: target, agents: agents),
+        rng,
+        events);
+  } on ActionException {
+    // Defensive: an invalid target pick must not kill the AI turn.
+  }
 }
 
 /// AI war-round movement (§11.2): the attacker's units march toward the

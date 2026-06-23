@@ -268,20 +268,22 @@ void main() {
       wife.spouseId = husband.id;
 
       // The birth throttle is random(4) == 0 — try seeds until it fires.
+      // A human dynasty defers the public 'birth' event until the child is
+      // named, so detect the birth via the queued childName decision.
       var born = false;
       for (var seed = 0; seed < 40 && !born; seed++) {
         final trial = state.copy();
         final events = <GameEvent>[];
         runDynastyPhase(trial, 1, Rng(seed), events);
-        if (events.any((e) => e.type == 'birth')) {
+        if (trial.pendingDecisions.any((d) => d.type == 'childName')) {
           born = true;
           final child =
               trial.persons[trial.persons[husband.id]!.childrenIds.single]!;
           expect(child.age, 0, reason: 'original age bug fixed');
           expect(child.dynasty, 1);
           expect(trial.persons[wife.id]!.childrenIds, contains(child.id));
-          expect(
-              trial.pendingDecisions.any((d) => d.type == 'childName'), isTrue);
+          expect(events.any((e) => e.type == 'birth'), isFalse,
+              reason: 'human births announce only after naming');
         }
       }
       expect(born, isTrue, reason: 'birth should fire within 40 seeds');

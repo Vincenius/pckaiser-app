@@ -396,8 +396,8 @@ void main() {
           state, ChangeReligion(slot: 1, religion: Religion.evangelisch), rng);
       expect(result.state.dynasty(1).religion, Religion.evangelisch);
       expect(result.state.realm(1).treasury, 500, reason: '500 T cost');
-      expect(result.state.realm(1).popularity, 0,
-          reason: '50 − 70 clamped to 0');
+      expect(result.state.realm(1).popularity, 25,
+          reason: '50 − religionChangePopularityCost (25), floored at 25');
       expect(
         () => applyAction(result.state,
             ChangeReligion(slot: 1, religion: Religion.moslemisch), rng),

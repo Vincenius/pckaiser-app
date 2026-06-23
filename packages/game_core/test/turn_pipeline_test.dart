@@ -191,7 +191,7 @@ void main() {
       expect(upkeep3.payload['surplusPercent'], -30);
     });
 
-    test('a starving realm loses popularity, a fed one gains ≤ 5% + 3', () {
+    test('a starving realm loses popularity, a fed one gains (bounded)', () {
       final state = startGame(freshGame(), Rng(3)).state;
       final fed = state.realm(2)..grainHarvest = 100000;
       final starving = state.realm(3)
@@ -214,8 +214,10 @@ void main() {
       var s = completeTurn(state, Rng(state.rngSeed)).state; // slot 2
       s = completeTurn(s, Rng(s.rngSeed)).state; // slot 3
 
+      // A fed realm gains, bounded by the §8.4 food step cap (8) plus the
+      // ±3 balance nudge; a starving one loses.
       expect(s.realm(2).popularity,
-          inInclusiveRange(popBefore[2]!, (popBefore[2]! * 1.05).round() + 3));
+          inInclusiveRange(popBefore[2]! + 1, popBefore[2]! + 8 + 3));
       expect(s.realm(2).popularity, greaterThan(popBefore[2]!));
       expect(s.realm(3).popularity, lessThan(popBefore[3]!));
     });

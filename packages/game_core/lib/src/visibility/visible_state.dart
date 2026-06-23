@@ -24,9 +24,25 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
   // Never ship the RNG seed — it would make every future roll predictable.
   filtered.rngSeed = 0;
 
+  // Slots whose troops the viewer may see: their own, plus BOTH sides of an
+  // active war they fight in — combatants see each other's units (the war
+  // panel and the map render the enemy army).
+  final visibleTroopSlots = <int>{viewerSlot};
+  final war = state.activeWar;
+  if (war != null &&
+      (war.attackerSlot == viewerSlot || war.defenderSlot == viewerSlot)) {
+    visibleTroopSlots.addAll([war.attackerSlot, war.defenderSlot]);
+  }
+
   for (var i = 0; i < filtered.realms.length; i++) {
-    if (filtered.realms[i].slot != viewerSlot) {
-      filtered.realms[i] = _redactRealm(filtered.realms[i]);
+    final slot = filtered.realms[i].slot;
+    if (slot != viewerSlot) {
+      // The opponent in a war the viewer fights keeps its troop list and
+      // army size (visible to combatants); every other foreign realm is
+      // fully redacted. Without this the online client received an empty
+      // enemy troop list and showed no enemy units in war.
+      filtered.realms[i] = _redactRealm(filtered.realms[i],
+          keepTroops: visibleTroopSlots.contains(slot));
     }
   }
 
@@ -57,13 +73,7 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
 
   // The map's troop markers would betray foreign army positions: rebuild
   // them from the troops the viewer may see — their own, plus both sides'
-  // once the viewer fights in the active war.
-  final visibleTroopSlots = <int>{viewerSlot};
-  final war = state.activeWar;
-  if (war != null &&
-      (war.attackerSlot == viewerSlot || war.defenderSlot == viewerSlot)) {
-    visibleTroopSlots.addAll([war.attackerSlot, war.defenderSlot]);
-  }
+  // once the viewer fights in the active war (see visibleTroopSlots above).
   // The visible copy encodes the troop's owner slot in the marker, so the
   // client can pick the attacker/defender icon (the master state keeps the
   // plain 0/1 convention).
@@ -81,10 +91,13 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
 /// Strips a foreign realm down to its public face. Identity, title, capital
 /// and town tiers stay (visible on the map anyway); all economy and
 /// military numbers go to zero, meaning "unknown" — the UI must render
-/// foreign zeros as hidden, not as the value 0. Troops, colony ships,
-/// in-flight trade voyages and intel reports are simply omitted (the
-/// rebuilt realm defaults them empty).
-Realm _redactRealm(Realm realm) => Realm(
+/// foreign zeros as hidden, not as the value 0. Colony ships, in-flight
+/// trade voyages and intel reports are simply omitted (the rebuilt realm
+/// defaults them empty).
+///
+/// [keepTroops] retains the unit list and army size: set for the OPPONENT in
+/// a war the viewer fights, so combatants can see each other's armies.
+Realm _redactRealm(Realm realm, {bool keepTroops = false}) => Realm(
       slot: realm.slot,
       titleClass: realm.titleClass,
       capitalX: realm.capitalX,
@@ -92,6 +105,8 @@ Realm _redactRealm(Realm realm) => Realm(
       tileCount: List.of(realm.tileCount),
       rulerId: realm.rulerId,
       popularity: 0,
+      armySize: keepTroops ? realm.armySize : 0,
+      troops: keepTroops ? [for (final t in realm.troops) t.copy()] : null,
       towns: [
         for (final town in realm.towns)
           town.copy()

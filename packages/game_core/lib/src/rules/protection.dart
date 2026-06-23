@@ -15,5 +15,7 @@ bool newPlayerProtectionActive(GameState state) => state.year <= 1009;
 const int firstWarYear = 1010;
 
 /// Earthquakes never strike before this year [DEVIATION: build-up grace
-/// period; the original rolls earthquakes from year 1000].
-const int firstEarthquakeYear = 1005;
+/// period; the original rolls earthquakes from year 1000]. Aligned with the
+/// war/elimination gate (1010) so the protected first decade stays fully
+/// disaster-free.
+const int firstEarthquakeYear = 1010;

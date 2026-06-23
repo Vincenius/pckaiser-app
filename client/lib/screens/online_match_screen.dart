@@ -10,6 +10,7 @@ import '../services/online_game_session.dart';
 import '../services/online_service.dart';
 import '../state/game_controller.dart';
 import '../widgets/decisions.dart' show promptDecisionsFor;
+import '../widgets/event_feed.dart' show showDramaPopupsFor;
 import 'game_screen.dart';
 
 /// One online match: polls the server while waiting (for players or for
@@ -37,6 +38,12 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
   bool _playing = false;
   bool _promptingDecisions = false;
 
+  /// Absolute event positions already surfaced as out-of-turn drama popups
+  /// (so the 10 s poll never re-pops the same coronation). Seeded with the
+  /// history on first load so opening the screen never replays old drama.
+  final Set<int> _shownDrama = {};
+  bool _dramaSeeded = false;
+
   @override
   void initState() {
     super.initState();
@@ -63,10 +70,60 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         _view = view;
         _error = null;
       });
+      await _maybeShowDrama(view);
       await _maybePromptDecisions(view);
     } on ApiError catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
+    }
+  }
+
+  /// Strong, story-worthy events (a coronation of THIS player, a human
+  /// player losing their realm or ruler) get a popup the moment they happen
+  /// — even while this seat is only watching — instead of waiting for the
+  /// next own turn. Each is shown once (tracked by absolute event position).
+  Future<void> _maybeShowDrama(Map<String, dynamic> view) async {
+    if (_playing || _promptingDecisions) return;
+    if (view['status'] != 'active') return;
+    // On the player's own turn the turn-start recap (GameScreen handoff)
+    // shows these popups — don't also pop them here right before they play.
+    if (view['your_turn'] == true) return;
+    final stateJson = view['state'];
+    if (stateJson == null) return;
+    final session = OnlineGameSession(
+      api: widget.service.api,
+      matchId: widget.matchId,
+      playerId: widget.service.playerId!,
+      view: view,
+    );
+    final mySlot = session.yourSlot;
+    final state = session.state;
+    final base = state.prunedEventCount;
+
+    // First load: remember the whole history as "seen" so we never replay
+    // drama from before the screen was opened.
+    if (!_dramaSeeded) {
+      _dramaSeeded = true;
+      for (var i = 0; i < state.events.length; i++) {
+        _shownDrama.add(base + i);
+      }
+      return;
+    }
+
+    const strong = {'crowned', 'realmOverrun', 'rulerCaptured'};
+    final fresh = <gc.GameEvent>[];
+    for (var i = 0; i < state.events.length; i++) {
+      final pos = base + i;
+      if (!_shownDrama.add(pos)) continue; // already handled
+      final e = state.events[i];
+      if (strong.contains(e.type)) fresh.add(e);
+    }
+    if (fresh.isEmpty || !mounted) return;
+    _promptingDecisions = true; // reuse the lock so dialogs never overlap
+    try {
+      await showDramaPopupsFor(context, fresh, mySlot);
+    } finally {
+      _promptingDecisions = false;
     }
   }
 

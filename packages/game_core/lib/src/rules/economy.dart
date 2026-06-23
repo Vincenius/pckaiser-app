@@ -2,7 +2,6 @@ import '../rng/rng.dart';
 import '../state/constants.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
-import '../state/troop.dart';
 
 /// What the economy upkeep did this turn — feeds the §21.1 status report.
 class EconomyReport {

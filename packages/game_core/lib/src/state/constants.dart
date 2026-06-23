@@ -74,3 +74,19 @@ abstract final class World {
 
   static const int kurfuerstSeats = 7;
 }
+
+/// Popularity (Beliebtheit) tuning [DEVIATION from the original's §4 −70].
+///
+/// A religion change is a deliberate, high-stakes act, but the original's
+/// flat −70 swing was brutal and opaque: a single (often accidental) tap
+/// could crater a realm's mood and tip it straight into a §19.1 strife
+/// collapse. We charge a smaller penalty AND floor it like every other
+/// militarism cost (never below [militarismPopularityFloor]), so the people
+/// can be shocked but never revolt purely because of it.
+const int religionChangePopularityCost = 25;
+
+/// Militarism popularity costs (levies, wars, conversions) never push a
+/// realm below this floor — it sits above the §19.1 strife line (20) plus
+/// the ±3 harvest nudge, so deliberate actions alone can never tip a realm
+/// into collapse.
+const int militarismPopularityFloor = 25;

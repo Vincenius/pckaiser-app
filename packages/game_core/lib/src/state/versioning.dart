@@ -98,7 +98,31 @@ const int currentSchemaVersion = 1;
 ///    (`Realm.pendingShipReturns` / `_resolveShipReturns`). Departure fires
 ///    a `shipsSent` event; the return fires `shipsReturned` (now the
 ///    turn-start notice of what the ships brought back).
-const int currentRulesVersion = 6;
+///
+/// v7 (universal — applied to every game on load, ungated):
+///  - Earthquakes are gated to year ≥ 1010 (was 1005), so the protected
+///    first decade is fully disaster-free (`firstEarthquakeYear`).
+///  - A religion change costs a smaller, FLOORED popularity hit
+///    (`religionChangePopularityCost`, never below `militarismPopularityFloor`)
+///    instead of the original's flat −70 swing, and reports the exact loss in
+///    the `religionChanged` event — no more opaque "lost >30 at once" drops.
+///  - Food satisfaction (§8.4) nudges popularity toward a food-driven target
+///    with a small, bounded, symmetric step (`foodSatisfactionStepCap`)
+///    instead of the multiplicative crawl, so recovery from a slump is fair
+///    and the mood never swings violently.
+///  - Control follows the ruler: a realm whose ruler already plays another
+///    slot as a human is played by that human even after the home dynasty was
+///    couped to AI — "play the land yourself whenever your own heir is in
+///    power" (`alignSlotControl`).
+///  - A human dynasty's birth is announced publicly only once the child is
+///    named (the naming decision), so rivals see the chosen name a round
+///    later, never the provisional one (`_birth` / the `childName` decision).
+///  - `realmOverrun` / `rulerCaptured` carry whether a HUMAN player was the
+///    loser, so the client can pop a strong "a player fell" event to everyone.
+///  - AI scripting (ungated, like the build-tile randomization): the AI now
+///    redeploys its troops in peacetime, occasionally sends assassins at a
+///    bordering rival, and declares war a little more often.
+const int currentRulesVersion = 7;
 
 /// Upgrades a `GameState` JSON document to the latest gameplay rules
 /// (see the library docs: all games always play the latest ruleset).
