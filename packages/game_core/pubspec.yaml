@@ -1,6 +1,6 @@
 name: game_core
 description: >-
-  Pure Dart game logic for the PC Kaiser mobile clone. Shared verbatim by the
+  Pure Dart game logic for the PCKaiser mobile clone. Shared verbatim by the
   Flutter client (local mode) and the Dart shelf server (online mode).
 version: 0.1.0
 publish_to: none

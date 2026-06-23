@@ -1,4 +1,4 @@
-# PC Kaiser online server. Run from the REPOSITORY ROOT:
+# PCKaiser online server. Run from the REPOSITORY ROOT:
 #   docker compose -f backend/deploy/docker-compose.yml up -d --build
 #
 # FCM: put the base64-encoded service-account JSON into a `.env` file

@@ -1,4 +1,4 @@
-# Project Checklist — PC Kaiser Mobile
+# Project Checklist — PCKaiser Mobile
 
 Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 `docs/HISTORY.md`. Rules-version changelog: `game_core/src/state/versioning.dart`.

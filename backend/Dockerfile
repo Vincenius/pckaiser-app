@@ -1,4 +1,4 @@
-# PC Kaiser server (V2). Build from the REPOSITORY ROOT so the shared
+# PCKaiser server (V2). Build from the REPOSITORY ROOT so the shared
 # game_core package is in context:
 #   docker build -f backend/Dockerfile -t pckaiser-server .
 FROM dart:stable AS build

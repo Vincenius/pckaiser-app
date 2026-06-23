@@ -37,5 +37,5 @@ Future<void> main() async {
   final handler =
       const Pipeline().addMiddleware(logRequests()).addHandler(api.handler);
   final server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
-  print('PC Kaiser server listening on :${server.port} (store: $storeDir)');
+  print('PCKaiser server listening on :${server.port} (store: $storeDir)');
 }

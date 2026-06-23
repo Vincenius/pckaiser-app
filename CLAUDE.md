@@ -1,6 +1,6 @@
 # CLAUDE Project Guide
 
-PC Kaiser mobile clone (Flutter + Flame, Android/iOS). V1 = local hot-seat; V2 = online with the same state model and rules. Keep this file updated when scope/architecture changes.
+PCKaiser mobile clone (Flutter + Flame, Android/iOS). V1 = local hot-seat; V2 = online with the same state model and rules. Keep this file updated when scope/architecture changes.
 
 ## Key rules
 - Touch-only input, pinch-zoom map. Auto-save after every completed turn.

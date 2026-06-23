@@ -78,7 +78,7 @@ class FcmPushService implements PushService {
         player,
         match,
         'YOUR_TURN',
-        'PC Kaiser',
+        'PCKaiser',
         'Du bist am Zug !',
       );
 
@@ -87,7 +87,7 @@ class FcmPushService implements PushService {
         player,
         match,
         'YOUR_DECISION',
-        'PC Kaiser',
+        'PCKaiser',
         'Eine Entscheidung wartet auf dich.',
       );
 
@@ -96,7 +96,7 @@ class FcmPushService implements PushService {
         player,
         match,
         'WAR_STARTED',
-        'PC Kaiser',
+        'PCKaiser',
         'Krieg ! Dein Reich wird angegriffen.',
       );
 }

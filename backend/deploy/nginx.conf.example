@@ -1,4 +1,4 @@
-# Nginx reverse proxy for the PC Kaiser server (ARCHITECTURE.md).
+# Nginx reverse proxy for the PCKaiser server (ARCHITECTURE.md).
 # Pair with certbot/Let's Encrypt for TLS:
 #   certbot --nginx -d kaiser.example.com
 server {

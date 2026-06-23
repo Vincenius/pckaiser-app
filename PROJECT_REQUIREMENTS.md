@@ -1,6 +1,6 @@
-# PC Kaiser Mobile — Project Requirements
+# PCKaiser Mobile — Project Requirements
 
-Mobile-first clone of PC Kaiser (1992, Martin Gelter); Holy Roman Empire ~1000 AD.
+Mobile-first clone of PCKaiser++ (1992, Martin Gelter & Lorenz Giefing); Holy Roman Empire ~1000 AD.
 Always **30 realms**, up to **16** human players, rest AI. Goal: last dynasty standing.
 
 ## Platform & Tech

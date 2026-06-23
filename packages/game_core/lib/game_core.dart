@@ -1,4 +1,4 @@
-/// Pure Dart game logic for the PC Kaiser mobile clone, shared by the
+/// Pure Dart game logic for the PCKaiser mobile clone, shared by the
 /// Flutter client (local mode) and the Dart shelf server (online mode).
 ///
 /// All rules are pure and deterministic: `(state, action, rng) → state`,

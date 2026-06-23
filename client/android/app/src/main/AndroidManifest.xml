@@ -3,7 +3,7 @@
          system dialog when the player uses online play. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="PC Kaiser"
+        android:label="PCKaiser"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

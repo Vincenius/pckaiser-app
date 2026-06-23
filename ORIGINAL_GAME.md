@@ -1,6 +1,6 @@
-# PC Kaiser — Complete Clone Implementation Guide
+# PCKaiser — Complete Clone Implementation Guide
 
-Self-contained specification for building a faithful clone of **PC Kaiser**
+Self-contained specification for building a faithful clone of **PCKaiser**
 ("PCKAISER++"), a German shareware medieval strategy/dynasty-simulation game
 by Martin Gelter (with Lorenz Giefing), originally released 1992 (the
 disassembled final build is from 1999). Setting: the Holy

@@ -1,6 +1,6 @@
 name: backend
 description: >-
-  PC Kaiser online server (V2): Dart shelf REST API over the shared
+  PCKaiser online server (V2): Dart shelf REST API over the shared
   game_core rules engine. See ARCHITECTURE.md "API (/api/v1)".
 version: 0.1.0
 publish_to: none

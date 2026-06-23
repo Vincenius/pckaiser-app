@@ -7,7 +7,7 @@ final ValueNotifier<String> appLocale = ValueNotifier('de');
 
 const Map<String, Map<String, String>> _table = {
   'en': {
-    'appTitle': 'PC Kaiser',
+    'appTitle': 'PCKaiser',
     'tagline': 'From knight to emperor — conquer the realm',
     'newGame': 'New game',
     'tutorial': 'Tutorial — learn the game',
@@ -25,11 +25,11 @@ const Map<String, Map<String, String>> _table = {
         'Saved with a newer app version — update the app to play it.',
     'about': 'About',
     'aboutDescription':
-        'A mobile remake of the 1992 DOS strategy classic "PC Kaiser": '
+        'A mobile remake of the 1992 DOS strategy classic "PCKaiser++": '
         'lead a small realm in the medieval Holy Roman Empire — '
         'build, trade, marry, scheme and wage war until the '
         'electors crown you Kaiser.',
-    'creditsOriginal': 'Original game: "PC Kaiser" by Martin Gelter, 1992.',
+    'creditsOriginal': 'Original game: "PCKaiser" by Martin Gelter & Lorenz Giefing, 1992.',
     'creditsApp': 'This app: Vincent Will.',
     'resume': 'Resume',
     'endTurn': 'End turn',
@@ -64,7 +64,7 @@ const Map<String, Map<String, String>> _table = {
     'cancel': 'Cancel',
   },
   'de': {
-    'appTitle': 'PC Kaiser',
+    'appTitle': 'PCKaiser',
     'tagline': 'Vom Ritter zum Kaiser — erobere das Reich',
     'newGame': 'Neues Spiel',
     'tutorial': 'Tutorial — das Spiel lernen',
@@ -83,11 +83,11 @@ const Map<String, Map<String, String>> _table = {
         'um weiterzuspielen.',
     'about': 'Über das Spiel',
     'aboutDescription':
-        'Ein mobiles Remake des DOS-Strategieklassikers „PC Kaiser" von '
+        'Ein mobiles Remake des DOS-Strategieklassikers „PCKaiser++" von '
         '1992: Führe ein Kleinstaat-Reich im mittelalterlichen '
         'Heiligen Römischen Reich — baue, handle, heirate, intrigiere '
         'und führe Krieg, bis die Kurfürsten dich zum Kaiser wählen.',
-    'creditsOriginal': 'Originalspiel: „PC Kaiser" von Martin Gelter, 1992.',
+    'creditsOriginal': 'Originalspiel: „PCKaiser++" von Martin Gelter & Lorenz Giefing, 1992.',
     'creditsApp': 'App: Vincent Will.',
     'resume': 'Fortsetzen',
     'endTurn': 'Zug beenden',

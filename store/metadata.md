@@ -1,19 +1,19 @@
-# Store Metadata — PC Kaiser
+# Store Metadata — PCKaiser
 
-App identity: `com.vincentwill.pckaiser` · display name **PC Kaiser** ·
+App identity: `com.vincentwill.pckaiser` · display name **PCKaiser** ·
 category Games / Strategy · content rating: mild violence (medieval war,
 text-based), no ads, no in-app purchases, fully offline.
 
 ## English
 
-**Title (30):** PC Kaiser — Dynasty Strategy
+**Title (30):** PCKaiser — Dynasty Strategy
 
 **Short description (80):**
 Rule a medieval dynasty: build, trade, marry, scheme and conquer. Hot-seat
 for 1–16.
 
 **Full description:**
-PC Kaiser is a faithful mobile remake of the 1992 German strategy classic.
+PCKaiser is a faithful mobile remake of the 1992 German strategy classic.
 Take a dynasty from a single village in the year 1000 to dominion over the
 whole map — by farming and trade, marriage and inheritance, espionage and
 assassination, elections and open war.
@@ -31,14 +31,14 @@ assassination, elections and open war.
 
 ## Deutsch
 
-**Titel (30):** PC Kaiser — Dynastie-Strategie
+**Titel (30):** PCKaiser — Dynastie-Strategie
 
 **Kurzbeschreibung (80):**
 Führe eine Dynastie: bauen, handeln, heiraten, intrigieren, erobern.
 Hot-Seat 1–16.
 
 **Beschreibung:**
-PC Kaiser ist eine werkgetreue Neuauflage des deutschen Strategie-Klassikers
+PCKaiser ist eine werkgetreue Neuauflage des deutschen Strategie-Klassikers
 von 1992. Führe deine Dynastie vom ersten Dorf im Jahr 1000 zur
 Alleinherrschaft — durch Landwirtschaft und Handel, Heirat und Erbschaft,
 Spionage und Attentate, Kaiserwahlen und offenen Krieg.

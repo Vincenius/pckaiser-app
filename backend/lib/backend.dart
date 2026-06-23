@@ -1,4 +1,4 @@
-/// PC Kaiser online server (V2): the shelf API, match orchestration and
+/// PCKaiser online server (V2): the shelf API, match orchestration and
 /// storage. The rules live in `game_core` — shared verbatim with the
 /// Flutter client.
 library;
