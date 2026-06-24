@@ -71,8 +71,10 @@ void main() {
     // Over-fill the quarters: a regular must hit the capacity guard.
     final overshoot = s.realm(1).troopCapacity + 1;
     expect(
-      () => applyAction(s,
-          ReinforceTroop(slot: 1, unitIndex: idx, men: overshoot), Rng(s.rngSeed)),
+      () => applyAction(
+          s,
+          ReinforceTroop(slot: 1, unitIndex: idx, men: overshoot),
+          Rng(s.rngSeed)),
       throwsA(isA<ActionException>()),
     );
   });

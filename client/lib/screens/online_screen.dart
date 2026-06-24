@@ -353,10 +353,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
         'Partie löschen?',
         'Die wartende Partie wird für alle Spieler gelöscht.',
       ),
-      'waiting' => (
-        'Partie verlassen?',
-        'Dein Platz wird wieder frei.',
-      ),
+      'waiting' => ('Partie verlassen?', 'Dein Platz wird wieder frei.'),
       'active' => (
         'Partie verlassen?',
         'Dein Reich wird ab sofort vom Computer weitergespielt — '
@@ -509,13 +506,13 @@ class _OnlineScreenState extends State<OnlineScreen> {
                 _ => Icons.emoji_events,
               }),
               title: Text(switch (m['status'] as String) {
-                'waiting' =>
-                  'Wartet auf Spieler (${m['joined']} beigetreten)',
-                'active' => m['your_turn'] == true
-                    ? 'Du bist am Zug !'
-                    : m['awaited_name'] != null
-                        ? '${m['awaited_name']} ist am Zug …'
-                        : 'Warten auf Mitspieler …',
+                'waiting' => 'Wartet auf Spieler (${m['joined']} beigetreten)',
+                'active' =>
+                  m['your_turn'] == true
+                      ? 'Du bist am Zug !'
+                      : m['awaited_name'] != null
+                      ? '${m['awaited_name']} ist am Zug …'
+                      : 'Warten auf Mitspieler …',
                 _ => 'Beendet',
               }),
               subtitle: Text(
@@ -529,9 +526,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
                     tooltip: 'Raum-Code kopieren',
                     icon: const Icon(Icons.copy, size: 18),
                     onPressed: () {
-                      Clipboard.setData(
-                        ClipboardData(text: m['id'] as String),
-                      );
+                      Clipboard.setData(ClipboardData(text: m['id'] as String));
                       _toast('Raum-Code kopiert');
                     },
                   ),

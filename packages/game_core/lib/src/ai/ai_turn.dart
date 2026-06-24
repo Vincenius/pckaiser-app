@@ -499,8 +499,7 @@ void runAiWarMovement(
       // Own land, the enemy's, and neutral unowned tiles are passable in
       // war (mirrors [applyWarMove]); only third realms block the march.
       final warOwners = {slot, war.opponentOf(slot), World.niemand};
-      final step =
-          _bfsStep(state.map, troop.x, troop.y, tx, ty,
+      final step = _bfsStep(state.map, troop.x, troop.y, tx, ty,
               allowedOwners: warOwners) ??
           _stepToward(state, troop.x, troop.y, tx, ty,
               allowedOwners: warOwners);

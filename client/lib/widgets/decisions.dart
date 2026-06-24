@@ -26,7 +26,8 @@ Future<void> showRecapAndDecisions(
   int slot,
 ) async {
   final war = controller.state.activeWar;
-  final inWar = war != null &&
+  final inWar =
+      war != null &&
       war.phase == gc.WarPhase.rounds &&
       (war.attackerSlot == slot || war.defenderSlot == slot);
   if (inWar) {
@@ -232,7 +233,10 @@ Future<void> _promptDecision(
       if (candidates.isEmpty) {
         // No eligible tile left — nothing to choose; clear the prompt.
         await controller.resolveDecision(
-            decision.id, decision.decidingSlot, const {});
+          decision.id,
+          decision.decidingSlot,
+          const {},
+        );
         return;
       }
       final pick = await showDialog<(int, int)>(
@@ -244,9 +248,7 @@ Future<void> _promptDecision(
             for (final (x, y, building) in candidates)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, (x, y)),
-                child: Text(
-                  '${buildingNames[building]} (${x + 1}, ${y + 1})',
-                ),
+                child: Text('${buildingNames[building]} (${x + 1}, ${y + 1})'),
               ),
           ],
         ),

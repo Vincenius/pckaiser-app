@@ -41,10 +41,7 @@ class ApiClient {
   }) => _request(
     'PATCH',
     '/api/v1/players/$id',
-    body: {
-      'display_name': ?displayName,
-      'fcm_token': ?fcmToken,
-    },
+    body: {'display_name': ?displayName, 'fcm_token': ?fcmToken},
   );
 
   Future<Map<String, dynamic>> createMatch({
@@ -109,11 +106,7 @@ class ApiClient {
   }) => _request(
     'POST',
     '/api/v1/matches/$matchId/turn',
-    body: {
-      'player_id': playerId,
-      'app_version': appVersion,
-      'action': action,
-    },
+    body: {'player_id': playerId, 'app_version': appVersion, 'action': action},
   );
 
   Future<Map<String, dynamic>> endTurn({

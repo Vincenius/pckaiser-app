@@ -116,26 +116,31 @@ Future<void> showTileActionSheet(
       owner == slot && building == gc.Building.none && isLand && hasMoves;
   final money = realm.treasury;
 
+  // Build prices come straight from the engine's Building.cost table — the
+  // menu only offers what the treasury can pay; the engine re-validates the
+  // price on apply, so the two can never silently drift.
+  int costOf(int b) => gc.Building.cost[b]!;
+
   if (buildable || expandable) {
-    if (terrain == gc.Terrain.ebene && money >= 100) {
+    if (terrain == gc.Terrain.ebene && money >= costOf(gc.Building.kornfeld)) {
       act(
         'Kornfeld',
-        '100 T',
+        '${costOf(gc.Building.kornfeld)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.kornfeld),
       );
     }
-    if (money >= 150) {
+    if (money >= costOf(gc.Building.weide)) {
       act(
         'Weide',
-        '150 T',
+        '${costOf(gc.Building.weide)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.weide),
       );
     }
-    if (money >= 1000) {
+    if (money >= costOf(gc.Building.dorf)) {
       actions.add(
         ListTile(
           title: const Text('Dorf'),
-          trailing: const Text('1000 T'),
+          trailing: Text('${costOf(gc.Building.dorf)} T'),
           onTap: () async {
             Navigator.pop(context);
             final name = await _askTownName(context);
@@ -156,17 +161,17 @@ Future<void> showTileActionSheet(
         ),
       );
     }
-    if (money >= 5000) {
+    if (money >= costOf(gc.Building.burg)) {
       act(
         'Burg',
-        '5000 T',
+        '${costOf(gc.Building.burg)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.burg),
       );
     }
-    if (money >= 10000) {
+    if (money >= costOf(gc.Building.palast)) {
       act(
         'Palast',
-        '10000 T',
+        '${costOf(gc.Building.palast)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.palast),
       );
     }
@@ -176,10 +181,10 @@ Future<void> showTileActionSheet(
   if (gc.Terrain.isWater(terrain) &&
       owner == gc.World.niemand &&
       hasMoves &&
-      money >= 700) {
+      money >= costOf(gc.Building.hafen)) {
     act(
       'Hafen',
-      '700 T',
+      '${costOf(gc.Building.hafen)} T',
       gc.Build(slot: slot, x: x, y: y, building: gc.Building.hafen),
     );
   }

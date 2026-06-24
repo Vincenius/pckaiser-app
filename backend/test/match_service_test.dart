@@ -72,8 +72,7 @@ void main() {
       expect(view['id'], match.id);
     });
 
-    test('only the creator can start; nobody joins a started match',
-        () async {
+    test('only the creator can start; nobody joins a started match', () async {
       final (a, b) = await twoPlayers();
       final match = await service.createMatch(
         playerId: a.id,
@@ -358,8 +357,8 @@ void main() {
         actionJson: WarEndRound(slot: 1).toJson(),
       );
       expect(handed['awaited_player_id'], b.id);
-      final handedState = GameState.fromJson(
-          (handed['state'] as Map).cast<String, dynamic>());
+      final handedState =
+          GameState.fromJson((handed['state'] as Map).cast<String, dynamic>());
       expect(handedState.activeWar!.round, 0, reason: 'same round');
 
       // Berta's round end advances the round — back to Anna.
@@ -450,7 +449,8 @@ void main() {
           matchId: match.id, playerId: c.id, setup: setupFor('Clara', 2));
     });
 
-    test('leaving a running match hands the realm to the AI and play '
+    test(
+        'leaving a running match hands the realm to the AI and play '
         'continues', () async {
       final (a, b) = await twoPlayers();
       final match = await service.createMatch(
@@ -464,8 +464,8 @@ void main() {
 
       // Whoever is awaited leaves — the hardest case: their open turn
       // must complete via the AI and pass to the remaining human.
-      final awaitedId = (await service.view(match.id, a.id))['awaited_player_id']
-          as String;
+      final awaitedId =
+          (await service.view(match.id, a.id))['awaited_player_id'] as String;
       final (leaver, stays) = awaitedId == a.id ? (a, b) : (b, a);
       final leaverSlot =
           (await service.view(match.id, leaver.id))['your_slot'] as int;
@@ -584,8 +584,7 @@ void main() {
       expect(berta['controlled_slots'], <int>[2]);
     });
 
-    test('a second realm is visible and actionable on its own turn',
-        () async {
+    test('a second realm is visible and actionable on its own turn', () async {
       final (a, b) = await twoPlayers();
       final match = await service.createMatch(
         playerId: a.id,
@@ -646,8 +645,8 @@ void main() {
       state.dynasty(3).status = DynastyStatus.human;
       state.dynasty(3).humanPlayer = 0;
       state.currentPlayer = 2;
-      state.pendingDecisions.add(PendingDecision(
-          id: 'd1', type: 'marriageConsent', decidingSlot: 3));
+      state.pendingDecisions.add(
+          PendingDecision(id: 'd1', type: 'marriageConsent', decidingSlot: 3));
       record.stateJson = state.toJson();
       await store.saveMatch(record);
 
@@ -673,6 +672,28 @@ void main() {
       expect(stale['server_app_version'], appVersion);
     });
   });
+
+  group('write serialization', () {
+    test('concurrent player writes do not clobber each other', () async {
+      // The real FileStore read-modify-writes a single shared players
+      // document; this store reproduces that gap. Without the service's
+      // per-key lock, ten concurrent registrations all read the (near-empty)
+      // document, yield, and write back only their own entry — last writer
+      // wins and the rest are lost.
+      final racy = RacyPlayerStore();
+      final svc = MatchService(racy, LogPushService());
+
+      await Future.wait([
+        for (var i = 0; i < 10; i++)
+          svc.registerPlayer(id: 'p$i', displayName: 'P$i'),
+      ]);
+
+      for (var i = 0; i < 10; i++) {
+        expect(await racy.player('p$i'), isNotNull,
+            reason: 'registration p$i must survive the concurrent writes');
+      }
+    });
+  });
 }
 
 /// Matcher: the iterable contains [value] exactly once.
@@ -680,3 +701,26 @@ Matcher containsOnce(Object? value) => predicate<Iterable>(
       (items) => items.where((e) => e == value).length == 1,
       'contains $value exactly once',
     );
+
+/// Mimics [FileStore]'s `players.json` read-modify-write: [savePlayer]
+/// reads the whole shared document, yields (the I/O gap), then writes it
+/// back — so two unserialized concurrent saves clobber each other.
+class RacyPlayerStore extends InMemoryStore {
+  Map<String, dynamic> _doc = {};
+
+  @override
+  Future<void> savePlayer(PlayerRecord player) async {
+    final doc = Map<String, dynamic>.of(_doc); // read
+    await Future<void>.delayed(Duration.zero); // the read-modify-write gap
+    doc[player.id] = player.toJson();
+    _doc = doc; // write back — last writer wins without a lock
+  }
+
+  @override
+  Future<PlayerRecord?> player(String id) async {
+    final json = _doc[id];
+    return json == null
+        ? null
+        : PlayerRecord.fromJson((json as Map).cast<String, dynamic>());
+  }
+}

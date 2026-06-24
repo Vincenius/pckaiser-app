@@ -143,7 +143,6 @@ void main() {
           greaterThanOrEqualTo(loserValueBefore ~/ 2),
           reason: 'the rolled share never falls below the old half cap');
     });
-
   });
 
   group('realmOverrun event', () {
@@ -202,7 +201,8 @@ void main() {
 
       // Loser must be vacant — not a zombie with 0 tiles.
       expect(s.realm(2).isVacant, isTrue,
-          reason: 'a realm that lost every tile must become vacant immediately');
+          reason:
+              'a realm that lost every tile must become vacant immediately');
 
       // Vacate all AI slots (3–30) so slot 1 is the sole living ruler:
       // this simulates the win-condition scenario without running a full game.
@@ -211,8 +211,7 @@ void main() {
       }
       final result = completeTurn(s, Rng(s.rngSeed));
       expect(result.events.any((e) => e.type == 'gameWon'), isTrue);
-      expect(
-          result.events.firstWhere((e) => e.type == 'gameWon').slot, 1,
+      expect(result.events.firstWhere((e) => e.type == 'gameWon').slot, 1,
           reason: 'the human wins — not the zombie slot');
     });
   });

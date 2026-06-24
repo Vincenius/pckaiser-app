@@ -134,7 +134,8 @@ void main() {
   });
 
   group('economy (§7)', () {
-    test('no tribute accrues while the throne is vacant; then the Kaiser '
+    test(
+        'no tribute accrues while the throne is vacant; then the Kaiser '
         'collects the pot and pays none', () {
       final state = startGame(freshGame(), Rng(7)).state;
       expect(state.kaiserId, isNull);
@@ -371,14 +372,17 @@ void main() {
       realm.tileCount[Building.hafen] = 1;
       realm.treasury = 600;
       final sent = applyAction(
-          state, InvestShips(slot: 1, amount: 600), Rng(state.rngSeed)).state;
+              state, InvestShips(slot: 1, amount: 600), Rng(state.rngSeed))
+          .state;
       final voyage = sent.realm(1).pendingShipReturns.single;
       expect(sent.events.last.type, 'shipsSent', reason: 'departure notice');
 
       // Advance the pipeline until slot 1 begins its next turn (the voyage
       // resolves there).
       var s = sent;
-      for (var i = 0; i < 200 && s.realm(1).pendingShipReturns.isNotEmpty; i++) {
+      for (var i = 0;
+          i < 200 && s.realm(1).pendingShipReturns.isNotEmpty;
+          i++) {
         s = completeTurn(s, Rng(s.rngSeed)).state;
       }
 

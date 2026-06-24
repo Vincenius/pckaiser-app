@@ -43,7 +43,8 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
     source.tileCount[b] = 0;
   }
 
-  // Towns, troops, ships, intel, sums, money, stocks.
+  // Towns, troops, ships, intel, pending trade-ship returns, sums, money,
+  // stocks.
   target.towns.addAll(source.towns);
   source.towns.clear();
   target.troops.addAll(source.troops);
@@ -52,6 +53,12 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
   source.ships.clear();
   target.intelReports.addAll(source.intelReports);
   source.intelReports.clear();
+  // Trade ships still at sea must follow the ruler — the vacated source
+  // never takes another turn, so its outstanding voyages would otherwise
+  // never be credited (the staked Taler lost). The target resolves any
+  // due voyage at its next turn-start (_resolveShipReturns).
+  target.pendingShipReturns.addAll(source.pendingShipReturns);
+  source.pendingShipReturns.clear();
   target.population += source.population;
   target.troopCapacity += source.troopCapacity;
   target.armySize += source.armySize;

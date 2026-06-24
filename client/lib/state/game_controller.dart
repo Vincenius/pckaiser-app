@@ -124,25 +124,9 @@ class GameController extends ChangeNotifier {
           state.events.last.type == 'gameDraw' ||
           state.events.last.type == 'humansDefeated');
 
-  /// The active war, when the seated player participates in it.
-  ActiveWar? get warForCurrentPlayer {
-    final war = state.activeWar;
-    if (war == null) return null;
-    final humanSide = [
-      war.attackerSlot,
-      war.defenderSlot,
-    ].where((s) => state.dynasty(s).status == DynastyStatus.human);
-    if (humanSide.isEmpty) return null;
-    return war;
-  }
-
   /// The human slot that must act in the current war (the acting side —
   /// in a human-vs-human war the input alternates within each round).
   int? get warHumanSlot => warActingSlot(state);
-
-  List<PendingDecision> get decisionsForCurrent => state.pendingDecisions
-      .where((d) => d.decidingSlot == currentSlot)
-      .toList();
 
   /// Events the seated player has not seen yet — the recap card. The
   /// baseline is an absolute event position (`prunedEventCount + index`,
@@ -193,19 +177,33 @@ class GameController extends ChangeNotifier {
   /// Deterministic in-turn action — undoable locally
   /// (PROJECT_REQUIREMENTS); online there is no undo, the action is final.
   Future<ActionResult> applyUndoable(PlayerAction action) async {
+    if (_busy) return ActionResult(state, const []);
     final snapshot = state;
-    final result = await _session.apply(action);
-    if (_session.canUndo) _undoStack.add(snapshot);
+    _busy = true;
     notifyListeners();
-    return result;
+    try {
+      final result = await _session.apply(action);
+      if (_session.canUndo) _undoStack.add(snapshot);
+      return result;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   /// Randomized or irreversible action — clears the undo stack.
   Future<ActionResult> applyIrreversible(PlayerAction action) async {
-    final result = await _session.apply(action);
-    _undoStack.clear();
+    if (_busy) return ActionResult(state, const []);
+    _busy = true;
     notifyListeners();
-    return result;
+    try {
+      final result = await _session.apply(action);
+      _undoStack.clear();
+      return result;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   void undo() {
@@ -400,12 +398,19 @@ class GameController extends ChangeNotifier {
   /// the seat to the paused turn's player — hot-seat then needs a
   /// handoff before the successor's view appears.
   Future<ActionResult> applyWarAction(PlayerAction action) async {
-    final result = await _session.apply(action);
-    _undoStack.clear();
-    if (state.activeWar == null) selectedWarUnit = null;
-    _maybeRequestSeatHandoff();
+    if (_busy) return ActionResult(state, const []);
+    _busy = true;
     notifyListeners();
-    return result;
+    try {
+      final result = await _session.apply(action);
+      _undoStack.clear();
+      if (state.activeWar == null) selectedWarUnit = null;
+      _maybeRequestSeatHandoff();
+      return result;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   /// Resolves a pending decision for [slot].
@@ -414,10 +419,17 @@ class GameController extends ChangeNotifier {
     int slot,
     Map<String, dynamic> choice,
   ) async {
-    await _session.apply(
-      ResolveDecision(slot: slot, decisionId: decisionId, choice: choice),
-    );
-    await _session.save();
+    if (_busy) return;
+    _busy = true;
     notifyListeners();
+    try {
+      await _session.apply(
+        ResolveDecision(slot: slot, decisionId: decisionId, choice: choice),
+      );
+      await _session.save();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 }

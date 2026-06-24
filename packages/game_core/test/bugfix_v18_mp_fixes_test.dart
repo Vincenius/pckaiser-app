@@ -48,14 +48,15 @@ void main() {
 
       final result = applyAction(
         state,
-        ResolveDecision(slot: 1, decisionId: 'childname-${child.id}',
+        ResolveDecision(
+            slot: 1,
+            decisionId: 'childname-${child.id}',
             choice: {'name': 'Heinrich'}),
         Rng(state.rngSeed),
       );
 
       expect(result.state.persons[child.id]!.name, 'Heinrich');
-      final birth =
-          result.events.where((e) => e.type == 'birth').toList();
+      final birth = result.events.where((e) => e.type == 'birth').toList();
       expect(birth, hasLength(1), reason: 'announced now, once');
       expect(birth.single.visibility, EventVisibility.public,
           reason: 'rivals see it');
@@ -68,15 +69,13 @@ void main() {
       // spurious birth event.
       final state = fresh();
       final child = Person(
-          id: state.nextPersonId++,
-          name: 'X',
-          age: 0,
-          dynasty: 1,
-          gender: 0);
+          id: state.nextPersonId++, name: 'X', age: 0, dynasty: 1, gender: 0);
       state.persons[child.id] = child;
       state.dynasty(1).memberIds.add(child.id);
       state.pendingDecisions.add(PendingDecision(
-          id: 'cn', type: 'childName', decidingSlot: 1,
+          id: 'cn',
+          type: 'childName',
+          decidingSlot: 1,
           payload: {'childId': child.id}));
 
       final result = applyAction(
@@ -102,7 +101,8 @@ void main() {
         ChangeReligion(slot: 1, religion: Religion.evangelisch),
         Rng(state.rngSeed),
       );
-      expect(result.state.realm(1).popularity, 80 - religionChangePopularityCost);
+      expect(
+          result.state.realm(1).popularity, 80 - religionChangePopularityCost);
       final event =
           result.events.firstWhere((e) => e.type == 'religionChanged');
       expect(event.payload['popularityLost'], religionChangePopularityCost);

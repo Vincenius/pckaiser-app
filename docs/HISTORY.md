@@ -6,6 +6,55 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-23 — Codebase review: bug fixes, hardening & simplification (appVersion 0.1.3)
+
+A full review pass (parallel subsystem audits + adversarial diff review).
+All three suites stayed green throughout; new regression tests added.
+
+Bug fixes:
+- **Merge carries trade ships at sea.** `mergeRealms` now also moves the
+  source realm's `pendingShipReturns` to the target. The vacated source never
+  takes another turn, so its outstanding voyages were never credited — the
+  staked Taler were silently lost. (`realm_merge.dart`; test in
+  `bugfix_v20_test.dart`.)
+- **Conquest can't drive a harvest negative.** `transferTile` now clamps the
+  grain/cattle harvest shares with `math.min` (like the treasury share); a
+  doubled high-value-capital share could exceed the whole stock. (`war.dart`.)
+- **Earthquake tolerates a town/building desync.** The town lookup uses a
+  null-tolerant loop instead of `firstWhere`, so a desync no longer throws
+  mid-event-phase and leaves the world half-mutated. (`events.dart`.)
+- **Backend write serialization.** A per-key async lock (`_locked`) serializes
+  every read-modify-write of a match document and the shared players file, so
+  a turn submission racing the once-a-minute timeout sweep (or concurrent
+  player/token writes) can no longer lose an update. `sweepExpired` re-reads
+  and re-validates each match under the lock. (`match_service.dart`; test.)
+- **Submission events scoped to all controlled realms.** The turn response
+  filters emitted events against every realm the seat controls, not just its
+  home slot, so a player on a conquered/inherited realm still receives that
+  realm's own battle reports and spy reveals. (`match_service.dart`.)
+- **API never bare-500s.** `_guard` now wraps non-`ApiException` errors in the
+  standard `{data,error}` envelope, so one corrupt match can't take down the
+  whole lobby request. (`api.dart`.)
+- **Client double-submit guard.** `applyUndoable`/`applyIrreversible`/
+  `applyWarAction`/`resolveDecision` now honour the `_busy` re-entry flag, so a
+  rapid double-tap online can't fire two concurrent submissions. (Test.)
+- **War-panel crash guards.** "Runde beenden" and `_finishSettlement` now catch
+  `ActionException` (like their sibling buttons) — an online rejection / double
+  tap shows the message instead of crashing. (`war_panel.dart`.)
+- **Online poll re-entrancy.** `_refresh` guards against overlapping fetches so
+  a stale view can't clobber a newer one. (`online_match_screen.dart`.)
+
+Simplification / dead code:
+- Collapsed the two byte-identical troop-marker rebuilds into
+  `GameState.rebuildTroopMarkers()`; inlined the `_requireNotAtWarPeacetime`
+  pass-through; deduped the backend `turnOrder→player` lookup into
+  `MatchRecord.playerByTurnOrder`; sourced the tile-sheet build prices from
+  `Building.cost` instead of hardcoded literals.
+- Removed dead code: `townAt`, `WorldMap.shipReachable`, the unused
+  `warForCurrentPlayer`/`decisionsForCurrent` getters, the unreachable
+  "simultaneous annihilation" combat branch, and the unused `resume`/
+  `warDeclared` l10n keys.
+
 ## 2026-06-23 — Online war playtest fixes (appVersion 0.1.2)
 
 Reported from a human-vs-human online war: the attacked player saw the

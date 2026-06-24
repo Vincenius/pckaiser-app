@@ -75,38 +75,6 @@ class WorldMap {
     return neighbors;
   }
 
-  /// True if the land tile [x],[y] touches water reachable from one of
-  /// [slot]'s harbors — the colony ship's sea route (§9.3): BFS over
-  /// water tiles seeded with every own Hafen.
-  bool shipReachable(int slot, int x, int y) {
-    final visited = List<bool>.filled(terrain.length, false);
-    final queue = <int>[];
-    for (var i = 0; i < terrain.length; i++) {
-      if (owner[i] == slot &&
-          building[i] == Building.hafen &&
-          Terrain.isWater(terrain[i])) {
-        visited[i] = true;
-        queue.add(i);
-      }
-    }
-    final target = index(x, y);
-    for (var head = 0; head < queue.length; head++) {
-      final tx = queue[head] % width;
-      final ty = queue[head] ~/ width;
-      for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-        final nx = tx + dx;
-        final ny = ty + dy;
-        if (!inBounds(nx, ny)) continue;
-        final ni = index(nx, ny);
-        if (ni == target) return true;
-        if (visited[ni] || !Terrain.isWater(terrain[ni])) continue;
-        visited[ni] = true;
-        queue.add(ni);
-      }
-    }
-    return false;
-  }
-
   /// True if a troop at land tile ([fromX],[fromY]) can be transported by sea
   /// to land tile ([toX],[toY]) using [slot]'s harbors: requires an own harbor
   /// water tile adjacent to the troop's position and a connected water path
@@ -153,7 +121,8 @@ class WorldMap {
   /// Drives the client's "tap a sea-separated tile → march to the harbor,
   /// then ship across" routing; [canNavalTransport] from the returned tile
   /// to the target is guaranteed true.
-  (int, int)? navalEmbarkTile(int slot, int fromX, int fromY, int toX, int toY) {
+  (int, int)? navalEmbarkTile(
+      int slot, int fromX, int fromY, int toX, int toY) {
     if (!inBounds(toX, toY) || !isLandAt(toX, toY)) return null;
     (int, int)? best;
     var bestDist = 1 << 30;

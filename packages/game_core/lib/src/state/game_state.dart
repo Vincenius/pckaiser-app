@@ -205,6 +205,21 @@ class GameState {
 
   Person? person(int? id) => id == null ? null : persons[id];
 
+  /// Rebuilds the map's troop-presence index (`map.troopMarker`, one cell
+  /// per tile, 1 where any realm has a unit) from the current troop
+  /// positions. Call after any move/merge/disband/death so a removed unit's
+  /// marker doesn't linger.
+  void rebuildTroopMarkers() {
+    for (var i = 0; i < map.troopMarker.length; i++) {
+      map.troopMarker[i] = 0;
+    }
+    for (final realm in realms) {
+      for (final troop in realm.troops) {
+        map.troopMarker[map.index(troop.x, troop.y)] = 1;
+      }
+    }
+  }
+
   /// Deep copy — the working idiom for `(state, action, rng) → state`
   /// until a real persistent-structure need shows up.
   GameState copy() => GameState(

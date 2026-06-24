@@ -9,7 +9,6 @@ import '../state/game_state.dart';
 import '../state/pending_decision.dart';
 import '../state/person.dart';
 import '../state/realm.dart';
-import '../state/town.dart';
 import '../state/troop.dart';
 import '../state/war.dart';
 import 'dynasty.dart' as dyn;
@@ -156,21 +155,15 @@ List<GameEvent> resolveCombat(
 
   int winnerLosses(int men) => math.min(men - 1, (men * winnerShare).round());
 
+  // The winner is decided by `eff`, and `winnerLosses` always keeps it at
+  // ≥ 1 man — so exactly one side can ever be wiped, never both. (There is
+  // therefore no "simultaneous annihilation" case to break.)
   if (effA >= effB) {
     lossesA = winnerLosses(a.men);
     lossesB = loserLosses(b.men);
   } else {
     lossesA = loserLosses(a.men);
     lossesB = winnerLosses(b.men);
-  }
-
-  if (lossesA == a.men && lossesB == b.men) {
-    // Simultaneous annihilation: random(2) picks one side to keep 1 man.
-    if (rng.nextInt(2) == 0) {
-      lossesA = a.men - 1;
-    } else {
-      lossesB = b.men - 1;
-    }
   }
 
   final destroyedA = lossesA >= a.men;
@@ -248,14 +241,19 @@ void transferTile(
     // compute a share larger than the whole treasury — the winner must
     // never take more money than the loser has, so war can't push a
     // treasury negative.
-    final share =
-        math.min(loser.treasury, loser.treasury * t1[building] * factor ~/ sum1);
+    final share = math.min(
+        loser.treasury, loser.treasury * t1[building] * factor ~/ sum1);
     loser.treasury -= share;
     winner.treasury += share;
   }
   if (sum2 > 0) {
-    final grainShare = loser.grainHarvest * t2[building] * factor ~/ sum2;
-    final cattleShare = loser.livestockHarvest * t2[building] * factor ~/ sum2;
+    // Clamp like the treasury share above: a high-value capital tile
+    // (factor 2) can compute a share larger than the whole stock, which
+    // would drive the loser's harvest negative.
+    final grainShare = math.min(
+        loser.grainHarvest, loser.grainHarvest * t2[building] * factor ~/ sum2);
+    final cattleShare = math.min(loser.livestockHarvest,
+        loser.livestockHarvest * t2[building] * factor ~/ sum2);
     loser.grainHarvest -= grainShare;
     loser.livestockHarvest -= cattleShare;
     winner.grainHarvest += grainShare;
@@ -875,7 +873,7 @@ void _returnTroops(GameState state, ActiveWar war, List<GameEvent> events) {
       }
     }
   }
-  _refreshTroopMarkers(state);
+  state.rebuildTroopMarkers();
 }
 
 /// Moves any troop that ended up on non-owned territory (e.g. because its
@@ -907,18 +905,6 @@ void _rehomeStrandedTroops(GameState state, Realm realm) {
     }
     troop.x = homeX;
     troop.y = homeY!;
-  }
-}
-
-void _refreshTroopMarkers(GameState state) {
-  final map = state.map;
-  for (var i = 0; i < map.troopMarker.length; i++) {
-    map.troopMarker[i] = 0;
-  }
-  for (final realm in state.realms) {
-    for (final troop in realm.troops) {
-      map.troopMarker[map.index(troop.x, troop.y)] = 1;
-    }
   }
 }
 
@@ -959,7 +945,7 @@ void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   final dynasty = state.dynasty(loser.slot);
   dynasty.status = DynastyStatus.ai;
   dynasty.humanPlayer = null;
-  _refreshTroopMarkers(state);
+  state.rebuildTroopMarkers();
 }
 
 /// §11.5 plunder during war rounds, once per side per round.
@@ -1022,12 +1008,4 @@ List<GameEvent> plunderTile(
     },
   ));
   return events;
-}
-
-/// Convenience used by tests and the (Phase 5) AI: a town object lookup.
-Town? townAt(GameState state, int slot, int x, int y) {
-  for (final town in state.realm(slot).towns) {
-    if (town.x == x && town.y == y) return town;
-  }
-  return null;
 }

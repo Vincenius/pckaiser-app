@@ -70,9 +70,9 @@ void main() {
 
   group('war march across neutral land (rules v4)', () {
     test('a unit may step onto a neutral, unowned land tile', () {
-      var s =
-          applyAction(state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
-              .state;
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
       final map = s.map;
       final troop = s.realm(1).troops.single;
       // Find a neutral land tile orthogonally adjacent to the unit; carve
@@ -105,9 +105,9 @@ void main() {
     });
 
     test('marching through a THIRD realm is still forbidden', () {
-      var s =
-          applyAction(state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
-              .state;
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
       final map = s.map;
       final troop = s.realm(1).troops.single;
       for (final (cdx, cdy) in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
@@ -117,8 +117,10 @@ void main() {
           map.owner[map.index(tx, ty)] = 5; // an uninvolved realm
           s.activeWar!.movesLeft[1]![0] = 5;
           expect(
-              () => applyAction(s,
-                  WarMove(slot: 1, unitIndex: 0, dx: cdx, dy: cdy), Rng(s.rngSeed)),
+              () => applyAction(
+                  s,
+                  WarMove(slot: 1, unitIndex: 0, dx: cdx, dy: cdy),
+                  Rng(s.rngSeed)),
               throwsA(isA<ActionException>()));
           return;
         }
@@ -153,8 +155,7 @@ void main() {
       final events = <GameEvent>[];
       reseatLostCapitals(state, Rng(1), events);
 
-      expect(
-          map.buildingAt(state.realm(2).capitalX, state.realm(2).capitalY),
+      expect(map.buildingAt(state.realm(2).capitalX, state.realm(2).capitalY),
           Building.palast,
           reason: 'AI picks the highest-value eligible tile');
       expect(events.any((e) => e.type == 'capitalReseated'), isTrue);
@@ -224,7 +225,8 @@ void main() {
 
       expect(s.realm(1).capitalX, target.$1);
       expect(s.realm(1).capitalY, target.$2);
-      expect(s.realm(1).treasury, treasuryBefore, reason: 'forced re-seat is free');
+      expect(s.realm(1).treasury, treasuryBefore,
+          reason: 'forced re-seat is free');
       expect(
           s.pendingDecisions.any((d) => d.type == 'relocateCapital'), isFalse);
     });

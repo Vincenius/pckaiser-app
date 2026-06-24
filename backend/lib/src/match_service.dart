@@ -3,6 +3,8 @@
 /// server validates every submission; clients never mutate state.
 library;
 
+import 'dart:async';
+
 import 'package:game_core/game_core.dart';
 
 import 'models.dart';
@@ -29,37 +31,73 @@ class MatchService {
   final PushService _push;
   final DateTime Function() _clock;
 
+  /// Per-key in-flight operation, chained so the mutations that
+  /// read-modify-write one persisted document run one at a time. Without it
+  /// two awaited operations on the same match (e.g. a turn submission racing
+  /// the once-a-minute timeout sweep) both read the same stored state and
+  /// the second save silently overwrites the first — a lost update. Keyed by
+  /// canonical match id, plus a single [_playersKey] for the shared players
+  /// file. The server runs on one isolate, so an in-process lock suffices.
+  final Map<String, Future<void>> _locks = {};
+  static const String _playersKey = 'players';
+
+  /// Runs [body] after any prior operation on [key] completes, making the
+  /// read-modify-write atomic with respect to other [_locked] calls.
+  Future<T> _locked<T>(String key, Future<T> Function() body) async {
+    final previous = _locks[key];
+    final gate = Completer<void>();
+    _locks[key] = gate.future;
+    try {
+      await previous; // the gate always completes normally — never throws
+      return await body();
+    } finally {
+      gate.complete();
+      // Drop the entry once we are the tail so the map can't grow unbounded.
+      if (identical(_locks[key], gate.future)) _locks.remove(key);
+    }
+  }
+
+  /// Room codes are read out loud and typed by hand — match them
+  /// case-insensitively (legacy UUID ids are left as-is).
+  String _canonicalId(String id) => id.length == 5 ? id.toUpperCase() : id;
+
   // --- Players ----------------------------------------------------------
 
   Future<PlayerRecord> registerPlayer({
     String? id,
     required String displayName,
     String? fcmToken,
-  }) async {
+  }) {
     if (displayName.trim().isEmpty) {
       throw ApiException(400, 'display_name must not be empty');
     }
-    final player = PlayerRecord(
-      id: id ?? uuidV4(),
-      displayName: displayName.trim(),
-      fcmToken: fcmToken,
-    );
-    await _store.savePlayer(player);
-    return player;
+    // All players share one document; serialize writes so concurrent
+    // registrations / token refreshes don't clobber each other.
+    return _locked(_playersKey, () async {
+      final player = PlayerRecord(
+        id: id ?? uuidV4(),
+        displayName: displayName.trim(),
+        fcmToken: fcmToken,
+      );
+      await _store.savePlayer(player);
+      return player;
+    });
   }
 
   Future<PlayerRecord> updatePlayer(
     String id, {
     String? displayName,
     String? fcmToken,
-  }) async {
-    final player = await _requirePlayer(id);
-    if (displayName != null && displayName.trim().isNotEmpty) {
-      player.displayName = displayName.trim();
-    }
-    if (fcmToken != null) player.fcmToken = fcmToken;
-    await _store.savePlayer(player);
-    return player;
+  }) {
+    return _locked(_playersKey, () async {
+      final player = await _requirePlayer(id);
+      if (displayName != null && displayName.trim().isNotEmpty) {
+        player.displayName = displayName.trim();
+      }
+      if (fcmToken != null) player.fcmToken = fcmToken;
+      await _store.savePlayer(player);
+      return player;
+    });
   }
 
   // --- Match lifecycle ---------------------------------------------------
@@ -93,28 +131,30 @@ class MatchService {
     required String matchId,
     required String playerId,
     required Map<String, dynamic> setup,
-  }) async {
-    await _requirePlayer(playerId);
-    final match = await _requireMatch(matchId);
-    if (match.status != MatchStatus.waiting) {
-      throw ApiException(400, 'match is not open for joining');
-    }
-    if (match.playerById(playerId) != null) {
-      throw ApiException(400, 'player already joined');
-    }
-    if (match.players.length >= 16) {
-      throw ApiException(400, 'match is full');
-    }
-    _seat(match, playerId, setup);
-    // Legacy fixed-size matches (pre room codes) still auto-start when
-    // the last announced seat fills.
-    if (match.humanCount != null &&
-        match.players.length == match.humanCount) {
-      await _start(match);
-    }
-    match.updatedAt = _clock();
-    await _store.saveMatch(match);
-    return match;
+  }) {
+    return _locked(_canonicalId(matchId), () async {
+      await _requirePlayer(playerId);
+      final match = await _requireMatch(matchId);
+      if (match.status != MatchStatus.waiting) {
+        throw ApiException(400, 'match is not open for joining');
+      }
+      if (match.playerById(playerId) != null) {
+        throw ApiException(400, 'player already joined');
+      }
+      if (match.players.length >= 16) {
+        throw ApiException(400, 'match is full');
+      }
+      _seat(match, playerId, setup);
+      // Legacy fixed-size matches (pre room codes) still auto-start when
+      // the last announced seat fills.
+      if (match.humanCount != null &&
+          match.players.length == match.humanCount) {
+        await _start(match);
+      }
+      match.updatedAt = _clock();
+      await _store.saveMatch(match);
+      return match;
+    });
   }
 
   /// Starts a waiting match — only the creator (first seat) may. The
@@ -123,19 +163,21 @@ class MatchService {
   Future<MatchRecord> startMatch({
     required String matchId,
     required String playerId,
-  }) async {
-    await _requirePlayer(playerId);
-    final match = await _requireMatch(matchId);
-    if (match.status != MatchStatus.waiting) {
-      throw ApiException(400, 'match already started');
-    }
-    if (match.players.isEmpty || match.players.first.playerId != playerId) {
-      throw ApiException(403, 'only the creator can start the match');
-    }
-    await _start(match);
-    match.updatedAt = _clock();
-    await _store.saveMatch(match);
-    return match;
+  }) {
+    return _locked(_canonicalId(matchId), () async {
+      await _requirePlayer(playerId);
+      final match = await _requireMatch(matchId);
+      if (match.status != MatchStatus.waiting) {
+        throw ApiException(400, 'match already started');
+      }
+      if (match.players.isEmpty || match.players.first.playerId != playerId) {
+        throw ApiException(403, 'only the creator can start the match');
+      }
+      await _start(match);
+      match.updatedAt = _clock();
+      await _store.saveMatch(match);
+      return match;
+    });
   }
 
   /// Leaving a match. Waiting: the creator leaving deletes the whole
@@ -148,7 +190,11 @@ class MatchService {
   Future<bool> leaveMatch({
     required String matchId,
     required String playerId,
-  }) async {
+  }) {
+    return _locked(_canonicalId(matchId), () => _leaveMatch(matchId, playerId));
+  }
+
+  Future<bool> _leaveMatch(String matchId, String playerId) async {
     final match = await _requireMatch(matchId);
     final seat = match.playerById(playerId);
     if (seat == null) {
@@ -196,9 +242,8 @@ class MatchService {
         // A war that now awaits nobody (the leaver's side fell to the
         // AI) runs to its end like a pure AI war.
         var guard = 0;
-        while (s.activeWar != null &&
-            warActingSlot(s) == null &&
-            guard++ < 30) {
+        while (
+            s.activeWar != null && warActingSlot(s) == null && guard++ < 30) {
           if (s.activeWar!.phase == WarPhase.settlement) {
             autoSettleClaim(s, rng, ev);
           } else {
@@ -323,15 +368,13 @@ class MatchService {
       'status': match.status.name,
       'human_count': match.humanCount,
       // The first seat is the creator — they alone may start the match.
-      'creator_id':
-          match.players.isEmpty ? null : match.players.first.playerId,
+      'creator_id': match.players.isEmpty ? null : match.players.first.playerId,
       'players': [
         for (final p in match.players)
           {
             'player_id': p.playerId,
             'display_name':
-                (await _store.player(p.playerId))?.displayName ??
-                    p.founderName,
+                (await _store.player(p.playerId))?.displayName ?? p.founderName,
             'turn_order': p.turnOrder,
             // The seat's HOME slot (where they started).
             'dynasty_index': p.slot,
@@ -354,8 +397,7 @@ class MatchService {
       'server_app_version': appVersion,
       'update_required':
           clientAppVersion != null && clientAppVersion != appVersion,
-      'state':
-          state == null ? null : visibleStateFor(state, playSlot).toJson(),
+      'state': state == null ? null : visibleStateFor(state, playSlot).toJson(),
     };
   }
 
@@ -432,6 +474,24 @@ class MatchService {
     String? clientAppVersion,
     Map<String, dynamic>? actionJson,
     bool endTurn = false,
+  }) {
+    return _locked(
+        _canonicalId(matchId),
+        () => _submit(
+              matchId: matchId,
+              playerId: playerId,
+              clientAppVersion: clientAppVersion,
+              actionJson: actionJson,
+              endTurn: endTurn,
+            ));
+  }
+
+  Future<Map<String, dynamic>> _submit({
+    required String matchId,
+    required String playerId,
+    String? clientAppVersion,
+    Map<String, dynamic>? actionJson,
+    bool endTurn = false,
   }) async {
     final match = await _requireMatch(matchId);
     final seat = match.playerById(playerId);
@@ -500,10 +560,8 @@ class MatchService {
           // (a home-seat slot would skip the handover and the defender's
           // half of the round).
           final warSlot = _awaitedSlot(state)!;
-          state = _mutate(
-              state,
-              (s, rng, ev) => endWarRoundFor(s, warSlot, rng, ev),
-              emitted);
+          state = _mutate(state,
+              (s, rng, ev) => endWarRoundFor(s, warSlot, rng, ev), emitted);
           // Mark the war report "seen up to here" for the side that just
           // finished its round (mirrors the local client's markRecapSeen on
           // endWarRound): the opponent's next round of battles then arrives
@@ -525,9 +583,18 @@ class MatchService {
     await _commit(match, state, notify: true);
     await _store.saveMatch(match);
     final result = await view(matchId, playerId);
+    // Filter the returned events against EVERY realm this seat controls, not
+    // just its home slot — control follows the ruler, so a player on a
+    // conquered/inherited realm must still receive that realm's own (owner /
+    // participants) battle reports and spy reveals. `seat.slot` is always
+    // included so public events survive even if the seat lost its realms.
+    final visibleSlots = {
+      seat.slot,
+      ..._controlledSlots(state, seat.turnOrder, seat.slot),
+    };
     result['events'] = [
       for (final e in emitted)
-        if (e.visibleTo(seat.slot)) e.toJson(),
+        if (visibleSlots.any(e.visibleTo)) e.toJson(),
     ];
     return result;
   }
@@ -541,49 +608,68 @@ class MatchService {
   Future<int> sweepExpired() async {
     final now = _clock();
     final expired = await _store.expiredMatches(now);
-    for (final match in expired) {
-      var state = _load(match);
-      final ignored = <GameEvent>[];
-      if (state.activeWar != null) {
-        // The awaited combatant idles: their war round falls back to the
-        // AI war logic for this side (ARCHITECTURE "war clock"), then
-        // their round end is submitted for them — in a human-vs-human
-        // war an idle attacker thereby hands over to the defender. An
-        // idle winner's open claim settlement settles like the AI's.
-        final idleSlot = warActingSlot(state);
-        state = _mutate(state, (s, rng, ev) {
-          final war = s.activeWar;
-          if (war == null) return;
-          if (war.phase == WarPhase.settlement) {
-            autoSettleClaim(s, rng, ev);
-            return;
-          }
-          if (idleSlot != null) runAiWarMovement(s, idleSlot, rng, ev);
-          if (s.activeWar != null) {
-            endWarRoundFor(s, idleSlot ?? war.attackerSlot, rng, ev);
-          }
-        }, ignored);
-        state = _resumeAfterWarIfOver(state, ignored);
-      } else {
-        final awaitedSlot = _awaitedSlot(state);
-        if (awaitedSlot != null) {
-          // Resolve the idle player's pending decisions with their
-          // defaults, then end the turn with no actions.
-          for (final d in [...state.pendingDecisions]) {
-            if (d.decidingSlot != awaitedSlot) continue;
-            state = _apply(
-                state,
-                ResolveDecision(
-                    slot: awaitedSlot, decisionId: d.id, choice: const {}),
-                ignored);
-          }
-          state = _endTurnAndAdvance(state, ignored);
+    var swept = 0;
+    for (final stale in expired) {
+      final didSweep = await _locked(stale.id, () async {
+        // Re-read under the lock: a turn submitted between the bulk scan
+        // above and acquiring this lock may already have advanced the match
+        // past its old deadline, so it must no longer be swept.
+        final match = await _store.match(stale.id);
+        if (match == null ||
+            match.status != MatchStatus.active ||
+            match.turnDeadline == null ||
+            !match.turnDeadline!.isBefore(now)) {
+          return false;
         }
-      }
-      await _commit(match, state, notify: true);
-      await _store.saveMatch(match);
+        await _sweepMatch(match);
+        return true;
+      });
+      if (didSweep) swept++;
     }
-    return expired.length;
+    return swept;
+  }
+
+  Future<void> _sweepMatch(MatchRecord match) async {
+    var state = _load(match);
+    final ignored = <GameEvent>[];
+    if (state.activeWar != null) {
+      // The awaited combatant idles: their war round falls back to the
+      // AI war logic for this side (ARCHITECTURE "war clock"), then
+      // their round end is submitted for them — in a human-vs-human
+      // war an idle attacker thereby hands over to the defender. An
+      // idle winner's open claim settlement settles like the AI's.
+      final idleSlot = warActingSlot(state);
+      state = _mutate(state, (s, rng, ev) {
+        final war = s.activeWar;
+        if (war == null) return;
+        if (war.phase == WarPhase.settlement) {
+          autoSettleClaim(s, rng, ev);
+          return;
+        }
+        if (idleSlot != null) runAiWarMovement(s, idleSlot, rng, ev);
+        if (s.activeWar != null) {
+          endWarRoundFor(s, idleSlot ?? war.attackerSlot, rng, ev);
+        }
+      }, ignored);
+      state = _resumeAfterWarIfOver(state, ignored);
+    } else {
+      final awaitedSlot = _awaitedSlot(state);
+      if (awaitedSlot != null) {
+        // Resolve the idle player's pending decisions with their
+        // defaults, then end the turn with no actions.
+        for (final d in [...state.pendingDecisions]) {
+          if (d.decidingSlot != awaitedSlot) continue;
+          state = _apply(
+              state,
+              ResolveDecision(
+                  slot: awaitedSlot, decisionId: d.id, choice: const {}),
+              ignored);
+        }
+        state = _endTurnAndAdvance(state, ignored);
+      }
+    }
+    await _commit(match, state, notify: true);
+    await _store.saveMatch(match);
   }
 
   // --- Pipeline helpers ----------------------------------------------------
@@ -660,10 +746,7 @@ class MatchService {
     // player index (= turn order) after conquests and inheritances.
     final humanIndex = state.dynasty(slot).humanPlayer;
     if (humanIndex == null) return match.playerBySlot(slot)?.playerId;
-    for (final p in match.players) {
-      if (p.turnOrder == humanIndex) return p.playerId;
-    }
-    return null;
+    return match.playerByTurnOrder(humanIndex)?.playerId;
   }
 
   /// Writes the new state into the record, refreshes status/winner and
@@ -695,9 +778,9 @@ class MatchService {
       final last = state.events.last;
       if (last.type == 'gameWon') {
         final humanIndex = state.dynasty(last.slot).humanPlayer;
-        for (final p in match.players) {
-          if (p.turnOrder == humanIndex) match.winnerPlayerId = p.playerId;
-        }
+        final winner =
+            humanIndex == null ? null : match.playerByTurnOrder(humanIndex);
+        if (winner != null) match.winnerPlayerId = winner.playerId;
       }
       return;
     }
@@ -746,10 +829,7 @@ class MatchService {
   String? _playerForSlot(MatchRecord match, GameState state, int slot) {
     final humanIndex = state.dynasty(slot).humanPlayer;
     if (humanIndex == null) return null;
-    for (final p in match.players) {
-      if (p.turnOrder == humanIndex) return p.playerId;
-    }
-    return null;
+    return match.playerByTurnOrder(humanIndex)?.playerId;
   }
 
   // --- Lookups -----------------------------------------------------------
@@ -761,9 +841,7 @@ class MatchService {
   }
 
   Future<MatchRecord> _requireMatch(String id) async {
-    // Room codes are read out loud and typed by hand — accept lowercase.
-    final match =
-        await _store.match(id.length == 5 ? id.toUpperCase() : id);
+    final match = await _store.match(_canonicalId(id));
     if (match == null) throw ApiException(404, 'unknown match');
     return match;
   }

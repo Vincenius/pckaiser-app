@@ -67,8 +67,19 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
           map.owner[map.index(x, y)] = World.niemand;
           realm.tileCount[building]--;
         case Building.dorf || Building.markt || Building.stadt:
-          final town = realm.towns.firstWhere((t) => t.x == x && t.y == y);
-          _damageTown(state, realm, town, rng.nextInt(town.population));
+          // Tolerate a building/town desync rather than aborting the whole
+          // event phase mid-pass (a thrown firstWhere would leave the world
+          // partially mutated): skip a town tile with no matching object.
+          Town? town;
+          for (final t in realm.towns) {
+            if (t.x == x && t.y == y) {
+              town = t;
+              break;
+            }
+          }
+          if (town != null) {
+            _damageTown(state, realm, town, rng.nextInt(town.population));
+          }
       }
     }
   }
@@ -99,13 +110,13 @@ void reseatLostCapitals(GameState state, Rng rng, List<GameEvent> events) {
     if (realm.isVacant) continue;
     if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
       // Seat is valid again — drop any stale re-seat prompt.
-      state.pendingDecisions.removeWhere((d) =>
-          d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
+      state.pendingDecisions.removeWhere(
+          (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
       continue;
     }
     if (state.dynasty(realm.slot).status == DynastyStatus.human) {
-      final already = state.pendingDecisions.any((d) =>
-          d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
+      final already = state.pendingDecisions.any(
+          (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
       if (!already && _bestSeatTile(state, realm.slot, rng) != null) {
         state.pendingDecisions.add(PendingDecision(
           id: 'relocate-${realm.slot}-${state.year}',

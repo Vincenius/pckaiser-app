@@ -24,8 +24,8 @@ String uuidV4() {
 String matchCode() {
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   final rng = Random.secure();
-  return String.fromCharCodes(List.generate(
-      5, (_) => letters.codeUnitAt(rng.nextInt(letters.length))));
+  return String.fromCharCodes(
+      List.generate(5, (_) => letters.codeUnitAt(rng.nextInt(letters.length))));
 }
 
 /// A registered device (`players` table). No auth in V2's first cut:
@@ -203,6 +203,15 @@ class MatchRecord {
   MatchPlayer? playerBySlot(int slot) {
     for (final p in players) {
       if (p.slot == slot) return p;
+    }
+    return null;
+  }
+
+  /// The seat whose [MatchPlayer.turnOrder] equals [turnOrder] (= the
+  /// `humanPlayer` index a dynasty carries after conquests/inheritances).
+  MatchPlayer? playerByTurnOrder(int turnOrder) {
+    for (final p in players) {
+      if (p.turnOrder == turnOrder) return p;
     }
     return null;
   }

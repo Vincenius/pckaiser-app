@@ -227,8 +227,14 @@ class _GameScreenState extends State<GameScreen> {
         if ((goalX != tx || goalY != ty) &&
             report.isEmpty &&
             map.canNavalTransport(slot, troop.x, troop.y, tx, ty)) {
-          final navError =
-              await _navalTransport(controller, slot, unitIndex, tx, ty, report);
+          final navError = await _navalTransport(
+            controller,
+            slot,
+            unitIndex,
+            tx,
+            ty,
+            report,
+          );
           if (navError != null) _toast(navError);
         }
         break;
@@ -254,8 +260,14 @@ class _GameScreenState extends State<GameScreen> {
         if (report.isEmpty && !map.isWaterAt(beforeX, beforeY)) {
           // Standing next to a harbor that reaches the target → ship across.
           if (map.canNavalTransport(slot, beforeX, beforeY, tx, ty)) {
-            final navError =
-                await _navalTransport(controller, slot, unitIndex, tx, ty, report);
+            final navError = await _navalTransport(
+              controller,
+              slot,
+              unitIndex,
+              tx,
+              ty,
+              report,
+            );
             if (navError != null) _toast(navError);
             break;
           }
@@ -304,8 +316,7 @@ class _GameScreenState extends State<GameScreen> {
   ) async {
     try {
       final result = await controller.applyWarAction(
-        gc.WarNavalTransport(
-            slot: slot, unitIndex: unitIndex, x: tx, y: ty),
+        gc.WarNavalTransport(slot: slot, unitIndex: unitIndex, x: tx, y: ty),
       );
       report.addAll(result.events);
       return null;
@@ -693,8 +704,9 @@ class _GameScreenState extends State<GameScreen> {
     // the GameScreen is rebuilt every turn, so an instance flag wouldn't
     // survive), so once this side has played one war round the warDeclared
     // event is no longer in the recap and the briefing never repeats.
-    final freshDeclaration =
-        controller.recapFor(slot).any((e) => e.type == 'warDeclared');
+    final freshDeclaration = controller
+        .recapFor(slot)
+        .any((e) => e.type == 'warDeclared');
     if (!freshDeclaration) return;
     if (!mounted) return;
     await showDialog<void>(
@@ -785,7 +797,8 @@ class _GameScreenState extends State<GameScreen> {
   /// Plain-language reason for the defeat screen, keyed off the
   /// `humansDefeated` event's `reason` payload (set by `advanceUntilHuman`).
   String _defeatReasonText(String? reason) {
-    const tail = 'Keine menschliche Dynastie hält mehr die Macht — '
+    const tail =
+        'Keine menschliche Dynastie hält mehr die Macht — '
         'eure Herrschaft ist Geschichte.';
     final cause = switch (reason) {
       'internalStrife' =>
@@ -796,10 +809,9 @@ class _GameScreenState extends State<GameScreen> {
         'Eine Thronfolgekrise hat dein Reich unter fremde (computergesteuerte) Kontrolle gebracht.',
       'rulerCaptured' =>
         'Dein Herrscher wurde im Krieg gefangen genommen und das Reich erobert.',
-      'realmOverrun' =>
-        'Dein Reich wurde im Krieg vollständig überrannt.',
-      'dynastyExtinct' || 'totalExtinction' =>
-        'Deine Dynastie ist ausgestorben.',
+      'realmOverrun' => 'Dein Reich wurde im Krieg vollständig überrannt.',
+      'dynastyExtinct' ||
+      'totalExtinction' => 'Deine Dynastie ist ausgestorben.',
       _ => null,
     };
     return cause == null ? tail : '$cause\n\n$tail';

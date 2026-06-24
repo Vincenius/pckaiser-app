@@ -217,8 +217,9 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
 /// (its profit/loss is the turn-start "Benachrichtigung").
 void _resolveShipReturns(GameState state, Realm realm, List<GameEvent> events) {
   if (realm.pendingShipReturns.isEmpty) return;
-  final due =
-      realm.pendingShipReturns.where((r) => r.returnYear <= state.year).toList();
+  final due = realm.pendingShipReturns
+      .where((r) => r.returnYear <= state.year)
+      .toList();
   if (due.isEmpty) return;
   realm.pendingShipReturns.removeWhere((r) => r.returnYear <= state.year);
   for (final r in due) {

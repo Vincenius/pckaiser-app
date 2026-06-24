@@ -53,7 +53,7 @@ void _levyPopularityCost(GameState state, Realm realm, int men) {
 
 List<GameEvent> applyRecruitTroops(
     GameState state, Realm realm, RecruitTroops action, Rng rng) {
-  _requireNotAtWarPeacetime(state, realm);
+  _requireNotAtWar(state, realm);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   if (action.troopClass < TroopClass.infanterie ||
       action.troopClass > TroopClass.artillerie) {
@@ -104,7 +104,7 @@ List<GameEvent> applyRecruitTroops(
 
 List<GameEvent> applyHireSoeldner(
     GameState state, Realm realm, HireSoeldner action) {
-  _requireNotAtWarPeacetime(state, realm);
+  _requireNotAtWar(state, realm);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   final cost = 50 * action.men;
   if (realm.treasury < cost) {
@@ -136,7 +136,7 @@ List<GameEvent> applyHireSoeldner(
 
 List<GameEvent> applyReinforceTroop(
     GameState state, Realm realm, ReinforceTroop action, Rng rng) {
-  _requireNotAtWarPeacetime(state, realm);
+  _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
   final int cost;
@@ -162,11 +162,11 @@ List<GameEvent> applyReinforceTroop(
   troop.men += action.men;
   // New recruits dilute the trained quality toward regular (1).
   if (troop.garrisonCounted && troop.quality > TroopQuality.regular) {
-    troop.quality = ((oldMen * troop.quality +
-                action.men * TroopQuality.regular) /
-            troop.men)
-        .round()
-        .clamp(TroopQuality.regular, troop.quality);
+    troop.quality =
+        ((oldMen * troop.quality + action.men * TroopQuality.regular) /
+                troop.men)
+            .round()
+            .clamp(TroopQuality.regular, troop.quality);
   }
   return const [];
 }
@@ -238,21 +238,17 @@ List<GameEvent> applyRenameTroop(
   return const [];
 }
 
-/// Merging/disbanding reshapes the troop list, which the active war's
-/// `movesLeft` and snapshots are keyed to — forbidden while at war.
+/// Forbidden for a war participant: recruiting, hiring, reinforcing,
+/// drilling, merging/disbanding and peacetime troop moves all reshape or
+/// reposition the troop list, which the active war's `movesLeft` and
+/// snapshots are keyed to — new units desync those lists until the next
+/// round roll, and a normal move would teleport a unit past the war
+/// movement rules for one movement point.
 void _requireNotAtWar(GameState state, Realm realm) {
   final war = state.activeWar;
   if (war != null && war.isParticipant(realm.slot)) {
     throw ActionException('Nicht mitten im Krieg !');
   }
-}
-
-/// The at-war gate also covers recruiting, hiring, reinforcing and
-/// peacetime troop moves: new units desync the war's `movesLeft`/snapshot
-/// lists until the next round roll, and a normal move would teleport a
-/// unit past the war movement rules for one movement point.
-void _requireNotAtWarPeacetime(GameState state, Realm realm) {
-  _requireNotAtWar(state, realm);
 }
 
 List<GameEvent> applyMergeTroops(
@@ -268,7 +264,7 @@ List<GameEvent> applyMergeTroops(
   }
   to.men += from.men;
   realm.troops.remove(from);
-  _refreshMarkers(state); // the absorbed unit's marker must not linger
+  state.rebuildTroopMarkers(); // the absorbed unit's marker must not linger
   return const [];
 }
 
@@ -278,12 +274,12 @@ List<GameEvent> applyDisbandTroop(
   final troop = unitAt(realm, action.unitIndex);
   if (troop.garrisonCounted) releaseGarrison(realm, troop.men);
   realm.troops.remove(troop);
-  _refreshMarkers(state); // the disbanded unit's marker must not linger
+  state.rebuildTroopMarkers(); // the disbanded unit's marker must not linger
   return const [];
 }
 
 List<GameEvent> applyMoveTroop(GameState state, Realm realm, MoveTroop action) {
-  _requireNotAtWarPeacetime(state, realm);
+  _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   final map = state.map;
   if (!map.inBounds(action.x, action.y) ||
@@ -409,7 +405,8 @@ List<GameEvent> applyWarMove(
   if (tileOwner != realm.slot &&
       tileOwner != enemySlot &&
       tileOwner != World.niemand) {
-    throw ActionException('Durch fremde Reiche darf man im Krieg nicht ziehen !');
+    throw ActionException(
+        'Durch fremde Reiche darf man im Krieg nicht ziehen !');
   }
 
   moves[action.unitIndex]--;
@@ -424,11 +421,11 @@ List<GameEvent> applyWarMove(
     events.addAll(
         resolveCombat(state, realm.slot, troop, enemySlot, enemyUnit, rng));
     if (!realm.troops.contains(troop)) {
-      _refreshMarkers(state);
+      state.rebuildTroopMarkers();
       return events; // the mover was annihilated
     }
     if (enemyRealm.troops.contains(enemyUnit)) {
-      _refreshMarkers(state);
+      state.rebuildTroopMarkers();
       return events; // defender held the tile
     }
   }
@@ -443,18 +440,6 @@ List<GameEvent> applyWarMove(
   // through the enemy's full response round — `endWarRound` resolves it
   // and opens the claim settlement.
   return events;
-}
-
-void _refreshMarkers(GameState state) {
-  final map = state.map;
-  for (var i = 0; i < map.troopMarker.length; i++) {
-    map.troopMarker[i] = 0;
-  }
-  for (final realm in state.realms) {
-    for (final troop in realm.troops) {
-      map.troopMarker[map.index(troop.x, troop.y)] = 1;
-    }
-  }
 }
 
 /// Seetransport im Krieg: embark a unit standing next to an own Hafen and
@@ -476,7 +461,8 @@ List<GameEvent> applyWarNavalTransport(
         'Diese Truppe kann in dieser Runde nicht weiter ziehen !');
   }
   final map = state.map;
-  if (!map.canNavalTransport(realm.slot, troop.x, troop.y, action.x, action.y)) {
+  if (!map.canNavalTransport(
+      realm.slot, troop.x, troop.y, action.x, action.y)) {
     throw ActionException(
         'Keine Seeverbindung von einem eigenen Hafen zu diesem Ziel !');
   }
@@ -494,17 +480,18 @@ List<GameEvent> applyWarNavalTransport(
   final enemyRealm = state.realm(enemySlot);
 
   // Contested landing: fight the defenders stacked on the target tile.
-  final defenders =
-      enemyRealm.troops.where((t) => t.x == action.x && t.y == action.y).toList();
+  final defenders = enemyRealm.troops
+      .where((t) => t.x == action.x && t.y == action.y)
+      .toList();
   for (final enemyUnit in defenders) {
     events.addAll(
         resolveCombat(state, realm.slot, troop, enemySlot, enemyUnit, rng));
     if (!realm.troops.contains(troop)) {
-      _refreshMarkers(state);
+      state.rebuildTroopMarkers();
       return events; // the landing force was annihilated at sea/shore
     }
     if (enemyRealm.troops.contains(enemyUnit)) {
-      _refreshMarkers(state);
+      state.rebuildTroopMarkers();
       return events; // landing repelled — the unit stays at its embark coast
     }
   }

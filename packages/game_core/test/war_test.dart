@@ -109,10 +109,8 @@ void main() {
     test('reinforcing regular troops costs popularity like a levy', () {
       final popBefore = state.realm(1).popularity;
       // Free capacity = 200 - 50 = 150; 100 men cost 500 T and 1 popularity.
-      final result = applyAction(
-          state,
-          ReinforceTroop(slot: 1, unitIndex: 0, men: 100),
-          Rng(state.rngSeed));
+      final result = applyAction(state,
+          ReinforceTroop(slot: 1, unitIndex: 0, men: 100), Rng(state.rngSeed));
       expect(result.state.realm(1).popularity, lessThan(popBefore),
           reason: 'levy cost: 1 + 100/200 = 1 popularity');
     });
@@ -1010,13 +1008,12 @@ void main() {
       expect(warActingSlot(war), 1);
       // The defender may not act while the attacker's half runs.
       expect(
-        () => applyAction(
-            war, WarEndRound(slot: 2), Rng(war.rngSeed)),
+        () => applyAction(war, WarEndRound(slot: 2), Rng(war.rngSeed)),
         throwsA(isA<ActionException>()),
       );
       expect(
-        () => applyAction(war,
-            WarMove(slot: 2, unitIndex: 0, dx: 1, dy: 0), Rng(war.rngSeed)),
+        () => applyAction(war, WarMove(slot: 2, unitIndex: 0, dx: 1, dy: 0),
+            Rng(war.rngSeed)),
         throwsA(isA<ActionException>()),
       );
 
@@ -1089,8 +1086,7 @@ void main() {
           reason: 'input returns to the attacker, not the empty defender');
     });
 
-    test('endWarRoundFor with an AI opponent advances the round directly',
-        () {
+    test('endWarRoundFor with an AI opponent advances the round directly', () {
       state.dynasty(2).status = DynastyStatus.ai;
       state.dynasty(2).humanPlayer = null;
       final s = applyAction(
@@ -1126,15 +1122,15 @@ void main() {
       outer:
       for (var y = 0; y < map.height; y++) {
         for (var x = 0; x < map.width; x++) {
-          if (map.ownerAt(x, y) == 2 &&
-              map.buildingAt(x, y) == Building.none) {
+          if (map.ownerAt(x, y) == 2 && map.buildingAt(x, y) == Building.none) {
             borderX = x;
             borderY = y;
             break outer;
           }
         }
       }
-      expect(borderX, greaterThanOrEqualTo(0), reason: 'setUp adds a border tile');
+      expect(borderX, greaterThanOrEqualTo(0),
+          reason: 'setUp adds a border tile');
 
       // Place slot 2's troop at the border tile BEFORE war declaration so
       // the snapshot captures that position.
@@ -1142,15 +1138,15 @@ void main() {
       state.realm(2).troops.single.y = borderY;
 
       // Declare war and reach settlement via capital capture.
-      var s =
-          applyAction(state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
-              .state;
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
       // March slot 1's unit onto slot 2's capital.
       s.realm(1).troops.single.x = s.realm(2).capitalX - 1;
       s.realm(1).troops.single.y = s.realm(2).capitalY;
       s.activeWar!.movesLeft[1]![0] = 5;
-      s = applyAction(s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0),
-              Rng(s.rngSeed))
+      s = applyAction(
+              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
           .state;
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
@@ -1173,7 +1169,8 @@ void main() {
       if (!loserAfter.isVacant) {
         for (final t in loserAfter.troops) {
           expect(s.map.ownerAt(t.x, t.y), loserAfter.slot,
-              reason: 'no troop may be stranded on enemy territory after settlement');
+              reason:
+                  'no troop may be stranded on enemy territory after settlement');
         }
       }
     });

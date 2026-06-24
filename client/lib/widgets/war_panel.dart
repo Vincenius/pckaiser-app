@@ -328,7 +328,20 @@ class _WarPanelState extends State<WarPanel> {
         ),
         FilledButton(
           onPressed: () async {
-            final events = await controller.endWarRound();
+            final List<gc.GameEvent> events;
+            try {
+              events = await controller.endWarRound();
+            } on gc.ActionException catch (e) {
+              // Online the server can reject the round end (turn already
+              // advanced, or the build is out of date) — show the message
+              // instead of crashing, like the plunder/peace buttons.
+              if (context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(e.message)));
+              }
+              return;
+            }
             if (context.mounted) {
               await showWarReport(
                 context,
@@ -497,9 +510,20 @@ class _WarPanelState extends State<WarPanel> {
   }
 
   Future<void> _finishSettlement(BuildContext context, int slot) async {
-    final result = await controller.applyWarAction(
-      gc.SettlementFinish(slot: slot),
-    );
+    final gc.ActionResult result;
+    try {
+      result = await controller.applyWarAction(gc.SettlementFinish(slot: slot));
+    } on gc.ActionException catch (e) {
+      // A double-tap of "Fertig", or an online rejection, can hit a war
+      // that already left the settlement phase — show the message instead
+      // of crashing (mirrors _takeAllLand).
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
     await controller.endWarRound(); // resumes AI advance
     if (context.mounted) {
       await showWarReport(

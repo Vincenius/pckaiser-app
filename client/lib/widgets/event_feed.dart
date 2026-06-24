@@ -362,7 +362,11 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
   /// person badge highlighting events of OTHER human players (so real
   /// rivals' moves stand out from the AI's bookkeeping, especially online).
   Widget _eventRow(
-      ThemeData theme, gc.GameEvent e, int slot, Set<int> humanSlots) {
+    ThemeData theme,
+    gc.GameEvent e,
+    int slot,
+    Set<int> humanSlots,
+  ) {
     final (icon, color) = _eventStyle(e);
     final mine = e.slot == slot;
     final otherHuman = !mine && e.slot >= 1 && humanSlots.contains(e.slot);
@@ -395,8 +399,11 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
           if (otherHuman)
             Padding(
               padding: const EdgeInsets.only(left: 6, top: 1),
-              child: Icon(Icons.person,
-                  size: 14, color: theme.colorScheme.primary),
+              child: Icon(
+                Icons.person,
+                size: 14,
+                color: theme.colorScheme.primary,
+              ),
             ),
         ],
       ),
@@ -511,7 +518,8 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'succession' ||
   'islamicSuccessionCrisis' => (Icons.account_balance, Colors.indigo),
   'titlePromoted' => (Icons.military_tech, Colors.amber),
-  'capitalRelocated' || 'capitalReseated' => (Icons.location_city, Colors.brown),
+  'capitalRelocated' ||
+  'capitalReseated' => (Icons.location_city, Colors.brown),
   'capitalLost' => (Icons.location_off, Colors.red),
   'townFounded' || 'townPromoted' => (Icons.home_work, Colors.brown),
   'townDied' => (Icons.home_work, Colors.blueGrey),
@@ -597,7 +605,9 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
 }
 
 Future<void> _showDramaDialog(
-    BuildContext context, (IconData, Color, String, String) c) async {
+  BuildContext context,
+  (IconData, Color, String, String) c,
+) async {
   final (icon, color, title, body) = c;
   await showDialog<void>(
     context: context,

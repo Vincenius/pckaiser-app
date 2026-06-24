@@ -29,9 +29,9 @@ const Map<String, Map<String, String>> _table = {
         'lead a small realm in the medieval Holy Roman Empire — '
         'build, trade, marry, scheme and wage war until the '
         'electors crown you Kaiser.',
-    'creditsOriginal': 'Original game: "PCKaiser" by Martin Gelter & Lorenz Giefing, 1992.',
+    'creditsOriginal':
+        'Original game: "PCKaiser" by Martin Gelter & Lorenz Giefing, 1992.',
     'creditsApp': 'This app: Vincent Will.',
-    'resume': 'Resume',
     'endTurn': 'End turn',
     'undo': 'Undo',
     'treasury': 'Treasury',
@@ -48,7 +48,6 @@ const Map<String, Map<String, String>> _table = {
     'demolish': 'Demolish (100 T)',
     'handoff': 'Hand the device to',
     'yourTurn': 'Begin turn',
-    'warDeclared': 'War declared!',
     'sellGrain': 'Sell grain',
     'sellCattle': 'Sell cattle',
     'investShips': 'Send trade ships',
@@ -87,9 +86,9 @@ const Map<String, Map<String, String>> _table = {
         '1992: Führe ein Kleinstaat-Reich im mittelalterlichen '
         'Heiligen Römischen Reich — baue, handle, heirate, intrigiere '
         'und führe Krieg, bis die Kurfürsten dich zum Kaiser wählen.',
-    'creditsOriginal': 'Originalspiel: „PCKaiser++" von Martin Gelter & Lorenz Giefing, 1992.',
+    'creditsOriginal':
+        'Originalspiel: „PCKaiser++" von Martin Gelter & Lorenz Giefing, 1992.',
     'creditsApp': 'App: Vincent Will.',
-    'resume': 'Fortsetzen',
     'endTurn': 'Zug beenden',
     'undo': 'Rückgängig',
     'treasury': 'Schatzkammer',
@@ -106,7 +105,6 @@ const Map<String, Map<String, String>> _table = {
     'demolish': 'Abreißen (100 T)',
     'handoff': 'Gerät weitergeben an',
     'yourTurn': 'Zug beginnen',
-    'warDeclared': 'Krieg erklärt!',
     'sellGrain': 'Korn verkaufen',
     'sellCattle': 'Rinder verkaufen',
     'investShips': 'Handelsschiffe aussenden',

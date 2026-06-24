@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game_core/game_core.dart';
+import 'package:pckaiser/services/game_session.dart';
 import 'package:pckaiser/services/local_game_session.dart';
 import 'package:pckaiser/services/save_service.dart';
 import 'package:pckaiser/state/game_controller.dart';
@@ -174,83 +176,82 @@ void main() {
     },
   );
 
-  test(
-    'a human-vs-human war hands the seat between the two sides',
-    () async {
-      final controller = await twoPlayerGame();
-      controller.confirmHandoff();
-      final state = controller.state;
-      state.year = 1010;
+  test('a human-vs-human war hands the seat between the two sides', () async {
+    final controller = await twoPlayerGame();
+    controller.confirmHandoff();
+    final state = controller.state;
+    state.year = 1010;
 
-      // Arm both human realms and give them a shared border, then let
-      // slot 1 declare war on human slot 5 (allowed since ruleset v2).
-      for (final slot in [1, 5]) {
-        final realm = state.realm(slot);
-        realm.treasury = 10000;
-        realm.troops.add(
-          Troop(
-            name: 'Heer$slot',
-            men: 50,
-            troopClass: TroopClass.infanterie,
-            quality: TroopQuality.regular,
-            garrisonCounted: false,
-            x: realm.capitalX,
-            y: realm.capitalY,
-          ),
-        );
-      }
-      final map = state.map;
-      final (bx, by) = claimableTile(state, 1);
-      map.owner[map.index(bx, by)] = 5;
-      state.realm(5).tileCount[Building.none]++;
-
-      await controller.applyIrreversible(DeclareWar(slot: 1, targetSlot: 5));
-      expect(controller.state.activeWar, isNotNull);
-      expect(
-        controller.currentSlot,
-        1,
-        reason: 'attacker before defender — no handoff for the declarer',
+    // Arm both human realms and give them a shared border, then let
+    // slot 1 declare war on human slot 5 (allowed since ruleset v2).
+    for (final slot in [1, 5]) {
+      final realm = state.realm(slot);
+      realm.treasury = 10000;
+      realm.troops.add(
+        Troop(
+          name: 'Heer$slot',
+          men: 50,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: false,
+          x: realm.capitalX,
+          y: realm.capitalY,
+        ),
       );
-      expect(controller.handoffPending, isFalse);
+    }
+    final map = state.map;
+    final (bx, by) = claimableTile(state, 1);
+    map.owner[map.index(bx, by)] = 5;
+    state.realm(5).tileCount[Building.none]++;
 
-      // The attacker finishes their half: the seat passes to the
-      // defender behind a handoff blocker.
-      await controller.endWarRound();
-      expect(controller.state.activeWar!.round, 0, reason: 'same round');
-      expect(controller.currentSlot, 5);
-      expect(controller.warPauseActive, isTrue,
-          reason: 'the defender acts inside the attacker\'s paused turn');
-      expect(controller.handoffPending, isTrue);
-      expect(controller.handoffToSlot, 5);
-      controller.confirmHandoff();
+    await controller.applyIrreversible(DeclareWar(slot: 1, targetSlot: 5));
+    expect(controller.state.activeWar, isNotNull);
+    expect(
+      controller.currentSlot,
+      1,
+      reason: 'attacker before defender — no handoff for the declarer',
+    );
+    expect(controller.handoffPending, isFalse);
 
-      // The defender's round end advances the round — back to the
-      // attacker, again behind a handoff.
-      await controller.endWarRound();
-      expect(controller.state.activeWar!.round, 1);
-      expect(controller.currentSlot, 1);
-      expect(controller.handoffPending, isTrue);
-      expect(controller.handoffToSlot, 1);
-      controller.confirmHandoff();
+    // The attacker finishes their half: the seat passes to the
+    // defender behind a handoff blocker.
+    await controller.endWarRound();
+    expect(controller.state.activeWar!.round, 0, reason: 'same round');
+    expect(controller.currentSlot, 5);
+    expect(
+      controller.warPauseActive,
+      isTrue,
+      reason: 'the defender acts inside the attacker\'s paused turn',
+    );
+    expect(controller.handoffPending, isTrue);
+    expect(controller.handoffToSlot, 5);
+    controller.confirmHandoff();
 
-      // Mutual peace ends the war; the seat stays with the attacker,
-      // whose interrupted turn resumes.
-      await controller.applyWarAction(
-        WarPeaceWish(slot: 1, wantsPeace: true),
-      );
-      await controller.endWarRound(); // hands to the defender
-      controller.confirmHandoff();
-      await controller.applyWarAction(
-        WarPeaceWish(slot: 5, wantsPeace: true),
-      );
-      await controller.endWarRound(); // both wish peace → white peace
-      expect(controller.state.activeWar, isNull);
-      expect(controller.currentSlot, 1);
-      expect(controller.handoffPending, isTrue,
-          reason: 'the device goes back to the attacker');
-      expect(controller.handoffToSlot, 1);
-    },
-  );
+    // The defender's round end advances the round — back to the
+    // attacker, again behind a handoff.
+    await controller.endWarRound();
+    expect(controller.state.activeWar!.round, 1);
+    expect(controller.currentSlot, 1);
+    expect(controller.handoffPending, isTrue);
+    expect(controller.handoffToSlot, 1);
+    controller.confirmHandoff();
+
+    // Mutual peace ends the war; the seat stays with the attacker,
+    // whose interrupted turn resumes.
+    await controller.applyWarAction(WarPeaceWish(slot: 1, wantsPeace: true));
+    await controller.endWarRound(); // hands to the defender
+    controller.confirmHandoff();
+    await controller.applyWarAction(WarPeaceWish(slot: 5, wantsPeace: true));
+    await controller.endWarRound(); // both wish peace → white peace
+    expect(controller.state.activeWar, isNull);
+    expect(controller.currentSlot, 1);
+    expect(
+      controller.handoffPending,
+      isTrue,
+      reason: 'the device goes back to the attacker',
+    );
+    expect(controller.handoffToSlot, 1);
+  });
 
   test('a full round returns to player 1 and the year advances', () async {
     final controller = await twoPlayerGame();
@@ -262,4 +263,81 @@ void main() {
     expect(controller.currentSlot, 1);
     expect(controller.state.year, 1001);
   });
+
+  test(
+    'a second action while one is in flight is ignored (no double-submit)',
+    () async {
+      // Online actions round-trip: a rapid double-tap must not fire two
+      // concurrent submissions and double-apply an irreversible action.
+      final base = await twoPlayerGame();
+      final session = _GatedSession(base.state);
+      final controller = GameController(session);
+
+      final action = SellGood(slot: 1, good: MarketGood.grain, amount: 1);
+      final first = controller.applyIrreversible(action); // not awaited
+      expect(controller.busy, isTrue, reason: 'the in-flight action blocks');
+      expect(session.applyCount, 1);
+
+      final second = await controller.applyIrreversible(action);
+      expect(second.events, isEmpty, reason: 'the second tap is a no-op');
+      expect(
+        session.applyCount,
+        1,
+        reason: 'the second tap never reached the session',
+      );
+
+      session.release();
+      await first;
+      expect(controller.busy, isFalse);
+      expect(session.applyCount, 1);
+    },
+  );
+}
+
+/// A session whose [apply] hangs on a gate until [release] — lets a test
+/// hold one action "in flight" and prove a concurrent second one is
+/// dropped by the controller's busy guard.
+class _GatedSession implements GameSession {
+  _GatedSession(this._state);
+
+  GameState _state;
+  int applyCount = 0;
+  Completer<void>? _gate;
+
+  @override
+  GameState get state => _state;
+  @override
+  bool get isOnline => true;
+  @override
+  bool get canUndo => false;
+  @override
+  bool get awaitingRemote => false;
+
+  @override
+  Future<ActionResult> apply(PlayerAction action) async {
+    applyCount++;
+    final gate = _gate = Completer<void>();
+    await gate.future;
+    return ActionResult(_state, [
+      GameEvent(
+        year: _state.year,
+        slot: 1,
+        type: 'applied',
+        visibility: EventVisibility.public,
+      ),
+    ]);
+  }
+
+  void release() => _gate?.complete();
+
+  @override
+  void restore(GameState snapshot) => _state = snapshot;
+  @override
+  Future<List<GameEvent>> endWarRound(int slot) async => const [];
+  @override
+  Future<List<GameEvent>> endTurnAndAdvance() async => const [];
+  @override
+  Future<void> resumeAfterWar() async {}
+  @override
+  Future<void> save() async {}
 }

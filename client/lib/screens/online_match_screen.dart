@@ -37,6 +37,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
   Timer? _poll;
   bool _playing = false;
   bool _promptingDecisions = false;
+  bool _refreshing = false;
 
   /// Absolute event positions already surfaced as out-of-turn drama popups
   /// (so the 10 s poll never re-pops the same coronation). Seeded with the
@@ -59,7 +60,23 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     super.dispose();
   }
 
+  /// Poll/manual/return-from-play entry point. Guards against overlapping
+  /// refreshes (the 10 s poll firing while a manual refresh — or a slow
+  /// request, or an open drama/decision dialog — is still in flight): an
+  /// older response resolving last would clobber a newer _view with stale
+  /// state. The post-decision re-fetch below runs nested via [_fetchView],
+  /// which bypasses this guard but is already serialized under it.
   Future<void> _refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      await _fetchView();
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  Future<void> _fetchView() async {
     try {
       final view = await widget.service.api.match(
         widget.matchId,
@@ -153,7 +170,9 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     } finally {
       _promptingDecisions = false;
     }
-    if (mounted) await _refresh();
+    // Re-fetch to reflect the answered decision. Nested inside the guarded
+    // _refresh, so call _fetchView directly (the guard is already held).
+    if (mounted) await _fetchView();
   }
 
   Future<void> _play() async {
@@ -192,7 +211,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           ),
           if (view != null)
             IconButton(
-              tooltip: view['status'] == 'waiting' &&
+              tooltip:
+                  view['status'] == 'waiting' &&
                       view['creator_id'] == widget.service.playerId
                   ? 'Partie löschen'
                   : 'Partie verlassen',
@@ -253,15 +273,15 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               _ => Icons.emoji_events,
             }),
             title: Text(switch (status) {
-              'waiting' =>
-                'Wartet auf Spieler (${players.length} beigetreten)',
-              'active' => yourTurn
-                  ? 'Du bist am Zug !'
-                  : awaitedName != null
-                      ? '$awaitedName '
+              'waiting' => 'Wartet auf Spieler (${players.length} beigetreten)',
+              'active' =>
+                yourTurn
+                    ? 'Du bist am Zug !'
+                    : awaitedName != null
+                    ? '$awaitedName '
                           '(${gc.countryNames[awaitedSlot!]}) '
                           'ist am Zug …'
-                      : 'Warten auf Mitspieler …',
+                    : 'Warten auf Mitspieler …',
               _ =>
                 view['winner'] == widget.service.playerId
                     ? 'Sieg ! Die Partie ist beendet.'
@@ -413,8 +433,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final view = _view;
     if (view == null) return;
     final status = view['status'] as String;
-    final deletes = status == 'waiting' &&
-        view['creator_id'] == widget.service.playerId;
+    final deletes =
+        status == 'waiting' && view['creator_id'] == widget.service.playerId;
     final sure = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

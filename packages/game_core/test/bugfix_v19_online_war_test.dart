@@ -119,7 +119,7 @@ void main() {
       final result = applyAction(
         state,
         ResolveDecision(
-            slot: 1, decisionId: bribe.id, choice: const {'gifts': []}),
+            slot: 1, decisionId: bribe.id, choice: const {'gifts': <int>[]}),
         Rng(state.rngSeed),
       );
       expect(

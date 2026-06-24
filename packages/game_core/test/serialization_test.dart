@@ -142,8 +142,8 @@ void main() {
       // VIEW over the decoded document. Mutating the loaded state then leaked
       // back into the source JSON (and vice versa). The lists must be copies.
       final state = sampleState();
-      final source =
-          (jsonDecode(jsonEncode(state.toJson())) as Map).cast<String, dynamic>();
+      final source = (jsonDecode(jsonEncode(state.toJson())) as Map)
+          .cast<String, dynamic>();
       final loaded = GameState.fromJson(source);
 
       final sourceMap = (source['map'] as Map).cast<String, dynamic>();
@@ -155,10 +155,9 @@ void main() {
 
       expect((sourceMap['terrain'] as List)[0], terrainBefore,
           reason: 'loaded map must not write back into the source JSON');
-      final sourceRealm1 =
-          ((source['realms'] as List).cast<Map<String, dynamic>>().firstWhere(
-                  (r) => r['slot'] == 1))
-              .cast<String, dynamic>();
+      final sourceRealm1 = ((source['realms'] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((r) => r['slot'] == 1)).cast<String, dynamic>();
       final sourceTile = (sourceRealm1['tileCount'] as List)[Building.dorf];
       expect(loaded.realm(1).tileCount[Building.dorf], isNot(sourceTile));
     });

@@ -142,7 +142,8 @@ void main() {
       war.activeWar!.movesLeft[1]![0] = 5;
 
       final result = applyAction(
-          war, WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
+          war,
+          WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
           Rng(war.rngSeed));
       final moved = result.state.realm(1).troops.single;
       expect((moved.x, moved.y), (23, 20), reason: 'landed on enemy coast');
@@ -158,7 +159,8 @@ void main() {
       war.activeWar!.movesLeft[1]![0] = 5;
 
       final moved = applyAction(
-              war, WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
+              war,
+              WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
               Rng(war.rngSeed))
           .state
           .realm(1)
@@ -179,7 +181,8 @@ void main() {
       war.activeWar!.movesLeft[1]![0] = 5;
 
       final result = applyAction(
-          war, WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
+          war,
+          WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
           Rng(war.rngSeed));
       expect(result.events.any((e) => e.type == 'battle'), isTrue,
           reason: 'an opposed landing resolves combat');
@@ -194,14 +197,14 @@ void main() {
 
       expect(
         () => applyAction(
-            war, WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
+            war,
+            WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
             Rng(war.rngSeed)),
         throwsA(isA<ActionException>()),
       );
     });
 
-    test('manual steering: embark at own harbor, sail, disembark on coast',
-        () {
+    test('manual steering: embark at own harbor, sail, disembark on coast', () {
       paintCoast(war, 2);
       final troop = war.realm(1).troops.single;
       troop.x = 20;
@@ -210,23 +213,23 @@ void main() {
 
       var s = war;
       // Step east onto the own Hafen (embark).
-      s = applyAction(s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0),
-              Rng(s.rngSeed))
+      s = applyAction(
+              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
           .state;
-      expect((s.realm(1).troops.single.x, s.realm(1).troops.single.y),
-          (21, 20));
+      expect(
+          (s.realm(1).troops.single.x, s.realm(1).troops.single.y), (21, 20));
       // Sail one open-water tile.
-      s = applyAction(s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0),
-              Rng(s.rngSeed))
+      s = applyAction(
+              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
           .state;
-      expect((s.realm(1).troops.single.x, s.realm(1).troops.single.y),
-          (22, 20));
+      expect(
+          (s.realm(1).troops.single.x, s.realm(1).troops.single.y), (22, 20));
       // Disembark onto the enemy coast.
-      s = applyAction(s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0),
-              Rng(s.rngSeed))
+      s = applyAction(
+              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
           .state;
-      expect((s.realm(1).troops.single.x, s.realm(1).troops.single.y),
-          (23, 20));
+      expect(
+          (s.realm(1).troops.single.x, s.realm(1).troops.single.y), (23, 20));
     });
 
     test('manual steering: cannot enter open water except via an own harbor',
@@ -243,8 +246,8 @@ void main() {
       war.activeWar!.movesLeft[1]![0] = 5;
 
       expect(
-        () => applyAction(
-            war, WarMove(slot: 1, unitIndex: 0, dx: 0, dy: 1), Rng(war.rngSeed)),
+        () => applyAction(war, WarMove(slot: 1, unitIndex: 0, dx: 0, dy: 1),
+            Rng(war.rngSeed)),
         throwsA(isA<ActionException>()),
         reason: 'stepping onto non-harbor sea from land is refused',
       );

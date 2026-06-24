@@ -159,6 +159,17 @@ class Api {
         body: jsonEncode({'data': null, 'error': e.message}),
         headers: {'content-type': 'application/json'},
       );
+    } catch (e, stack) {
+      // Any non-ApiException (a corrupt match document, an engine
+      // StateError, …) must still return the documented {data,error}
+      // envelope the client parses — never a bare shelf 500 — and must not
+      // be allowed to take down an unrelated request (e.g. the lobby list).
+      print('[api] unhandled error: $e\n$stack');
+      return Response(
+        500,
+        body: jsonEncode({'data': null, 'error': 'internal server error'}),
+        headers: {'content-type': 'application/json'},
+      );
     }
   }
 }

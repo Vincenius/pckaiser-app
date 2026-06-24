@@ -63,13 +63,12 @@ void main() {
     expect((started['data'] as Map)['status'], 'active');
     expect((started['data'] as Map)['your_turn'], true);
 
-    final (turnStatus, turned) = await call(
-        'POST', '/api/v1/matches/$matchId/turn',
-        body: {
-          'player_id': playerId,
-          'app_version': appVersion,
-          'end_turn': true,
-        });
+    final (turnStatus, turned) =
+        await call('POST', '/api/v1/matches/$matchId/turn', body: {
+      'player_id': playerId,
+      'app_version': appVersion,
+      'end_turn': true,
+    });
     expect(turnStatus, 200);
     expect((turned['data'] as Map)['your_turn'], true,
         reason: 'sole human: the next year comes right back to them');
@@ -99,12 +98,12 @@ void main() {
         body: {'player_id': playerId});
 
     // A client on an old build may not take its turn until it updates.
-    final (stale, body) = await call('POST', '/api/v1/matches/$matchId/turn',
-        body: {
-          'player_id': playerId,
-          'app_version': '0.0.1',
-          'end_turn': true,
-        });
+    final (stale, body) =
+        await call('POST', '/api/v1/matches/$matchId/turn', body: {
+      'player_id': playerId,
+      'app_version': '0.0.1',
+      'end_turn': true,
+    });
     expect(stale, 426);
     expect(body['error'], contains('aktualisiere'));
 
