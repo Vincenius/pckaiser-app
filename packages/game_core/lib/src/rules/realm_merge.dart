@@ -2,10 +2,12 @@ import '../rng/rng.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
+import '../state/realm.dart';
 
 /// "Reiche zusammenlegen" (§6.2): merge slot [sourceSlot] into
-/// [targetSlot] — both ruled by the same person. Free; the only gate is
-/// that the source owns ≥ 1 tile (validated by the caller).
+/// [targetSlot] — both under the same control (the same player, even across
+/// different heirs of the dynasty; see [mergeableSlots]). Free; the only gate
+/// is that the source owns ≥ 1 tile (validated by the caller).
 ///
 /// Population, harvests, all map tiles, towns, troops and the dynasty
 /// members move to the target; the target's popularity becomes the
@@ -101,17 +103,34 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
   ));
 }
 
-/// Other slots ruled by the same ruler as [slot] that own ≥ 1 tile AND
-/// share a land border with [slot] — merge candidates for the Handel menu
-/// and the AI (§6.2, §20.7).
+/// Slots that own ≥ 1 tile, share a land border with [slot], and are under
+/// the SAME control as [slot] — merge candidates for the Handel menu and the
+/// AI (§6.2, §20.7).
+///
+/// "Same control" is the player, not the single ruler: a human may merge any
+/// realm their dynasty holds, even one ruled by a different heir/branch
+/// (inheritance, §15.4) — control already follows the dynasty
+/// (`alignSlotControl`), so a slot whose `humanPlayer` matches is "yours".
+/// AI/free seats keep plain ruler aliasing (§19/§20.7: one ruler, many slots).
 List<int> mergeableSlots(GameState state, int slot) {
   final rulerId = state.realm(slot).rulerId;
   if (rulerId == null) return const [];
+  final dynasty = state.dynasty(slot);
   final neighbors = state.map.realmNeighbors(slot);
+
+  bool sameController(Realm other) {
+    if (dynasty.status == DynastyStatus.human) {
+      final otherDynasty = state.dynasty(other.slot);
+      return otherDynasty.status == DynastyStatus.human &&
+          otherDynasty.humanPlayer == dynasty.humanPlayer;
+    }
+    return other.rulerId == rulerId;
+  }
+
   return [
     for (final realm in state.realms)
       if (realm.slot != slot &&
-          realm.rulerId == rulerId &&
+          sameController(realm) &&
           realm.tileCount.fold(0, (a, b) => a + b) > 0 &&
           neighbors.contains(realm.slot))
         realm.slot,

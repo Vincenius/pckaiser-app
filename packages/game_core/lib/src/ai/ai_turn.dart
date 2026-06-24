@@ -423,6 +423,44 @@ void _repositionTroops(
       // Defensive: a stale destination must not kill the AI turn.
     }
   }
+
+  // `[DESIGNED]` Always leave a home guard on the capital — never strip the
+  // base of its last defender (mirrors the war-time home guard). If the
+  // reposition above left the capital empty, send the nearest unit back.
+  if (!realm.troops
+      .any((t) => t.x == realm.capitalX && t.y == realm.capitalY)) {
+    final guard = _nearestToCapital(realm);
+    if (guard != null) {
+      try {
+        _act(
+            state,
+            MoveTroop(
+                slot: slot,
+                unitIndex: realm.troops.indexOf(guard),
+                x: realm.capitalX,
+                y: realm.capitalY),
+            rng,
+            events);
+      } on ActionException {
+        // Defensive: the capital is always own land, so this should not throw.
+      }
+    }
+  }
+}
+
+/// The unit nearest the realm's capital (Manhattan distance), or null when
+/// the realm has no troops. Used to pick the home guard.
+Troop? _nearestToCapital(Realm realm) {
+  Troop? best;
+  var bestD = 1 << 30;
+  for (final troop in realm.troops) {
+    final d = (troop.x - realm.capitalX).abs() + (troop.y - realm.capitalY).abs();
+    if (d < bestD) {
+      bestD = d;
+      best = troop;
+    }
+  }
+  return best;
 }
 
 /// §13.3 `[DESIGNED]` AI assassination. A content, solvent AI occasionally
@@ -481,6 +519,18 @@ void runAiWarMovement(
   if (war == null || war.phase != WarPhase.rounds) return;
   final realm = state.realm(slot);
 
+  // `[DESIGNED]` A real AI side always keeps a HOME GUARD on its base: the
+  // unit nearest the capital is reserved and never marched out, so the realm
+  // is never left wholly undefended (the player always has a defender to
+  // fight at the AI's base). Held by reference so it survives the troop-list
+  // reshaping as units die. Not applied to an autopiloted human side (its
+  // per-unit stance already governs defence), nor to a one-unit realm (it
+  // cannot both guard the base and field an army).
+  final Troop? homeGuard = state.dynasty(slot).status == DynastyStatus.ai &&
+          realm.troops.length >= 2
+      ? _nearestToCapital(realm)
+      : null;
+
   for (var i = 0; i < realm.troops.length; i++) {
     var guard = 0;
     while (identical(state.activeWar, war) &&
@@ -489,6 +539,7 @@ void runAiWarMovement(
         (war.movesLeft[slot]?[i] ?? 0) > 0 &&
         guard++ < 30) {
       final troop = realm.troops[i];
+      if (identical(troop, homeGuard)) break; // the home guard holds the base
       // Recomputed every step: kills and deaths reshape the troop list
       // and can change the nearest-intruder pick.
       final target = _warTarget(state, war, slot, i, troop);
@@ -521,6 +572,26 @@ void runAiWarMovement(
   final realm = state.realm(slot);
   final enemy = state.realm(war.opponentOf(slot));
 
+  // The unit's snapshotted pre-war position (its base). Recomputed because
+  // deaths reshape the troop list (matchedSnapshots pairs by list order).
+  (int, int)? homeSnapshot() {
+    final home =
+        matchedSnapshots(realm.troops, war.snapshots[slot] ?? const [])[index];
+    return home == null ? null : (home.x, home.y);
+  }
+
+  // An idle human's side is fought on AUTOPILOT, per unit, by its stance
+  // ([TroopStance]) — the online war clock ran out before the player acted
+  // (or they left the match). A holdPosition unit returns to its base and
+  // defends; it only marches on the enemy capital once the enemy has no
+  // troops left. An attack unit advances straight away.
+  if (state.dynasty(slot).status == DynastyStatus.human) {
+    if (troop.stance == TroopStance.attack || enemy.troops.isEmpty) {
+      return (enemy.capitalX, enemy.capitalY);
+    }
+    return homeSnapshot();
+  }
+
   if (slot == war.attackerSlot) {
     return (enemy.capitalX, enemy.capitalY);
   }
@@ -545,11 +616,8 @@ void runAiWarMovement(
     return (enemy.capitalX, enemy.capitalY);
   }
 
-  // Walk back home. Distinct snapshot per unit — recomputed because
-  // deaths reshape the troop list (matchedSnapshots pairs by list order).
-  final home =
-      matchedSnapshots(realm.troops, war.snapshots[slot] ?? const [])[index];
-  return home == null ? null : (home.x, home.y);
+  // Walk back home.
+  return homeSnapshot();
 }
 
 /// First step of a shortest land path from ([x],[y]) to ([tx],[ty]);

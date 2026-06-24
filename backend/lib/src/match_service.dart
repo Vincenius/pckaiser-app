@@ -726,6 +726,16 @@ class MatchService {
       const {'gameWon', 'gameDraw', 'humansDefeated'}
           .contains(state.events.last.type);
 
+  /// True when an active war has a HUMAN on both sides (a live duel that runs
+  /// on the short war clock). A human-vs-AI war instead uses the normal turn
+  /// clock — see [_commit]'s timeout.
+  bool _warIsHumanVsHuman(GameState state) {
+    final war = state.activeWar;
+    if (war == null) return false;
+    return state.dynasty(war.attackerSlot).status == DynastyStatus.human &&
+        state.dynasty(war.defenderSlot).status == DynastyStatus.human;
+  }
+
   /// Realm slot whose human input the match is waiting for, or null.
   int? _awaitedSlot(GameState state) {
     if (_gameOver(state)) return null;
@@ -786,11 +796,18 @@ class MatchService {
     }
 
     final awaited = _awaitedPlayerId(match, state);
-    final timeout = state.activeWar != null
+    final turnTimeout = match.settings.turnTimeoutHours == null
+        ? null
+        : Duration(hours: match.settings.turnTimeoutHours!);
+    // The short war clock only governs a human-vs-human war round (a live
+    // duel, both players expected online). A human fighting an AI gets the
+    // FULL turn clock instead — "time like a normal turn" — so an attacked
+    // player can fight the war at their leisure (or not at all and let their
+    // troops' stance autopilot it) rather than have it swept out from under
+    // them in 10 minutes. null turnTimeoutHours ⇒ no deadline (match waits).
+    final timeout = state.activeWar != null && _warIsHumanVsHuman(state)
         ? Duration(seconds: match.settings.warRoundTimeoutSeconds)
-        : match.settings.turnTimeoutHours == null
-            ? null
-            : Duration(hours: match.settings.turnTimeoutHours!);
+        : turnTimeout;
     match.turnDeadline =
         awaited == null || timeout == null ? null : _clock().add(timeout);
 

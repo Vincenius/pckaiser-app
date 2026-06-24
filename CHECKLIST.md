@@ -51,6 +51,7 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Client online foundation: device identity, `ApiClient`, lobby (create/join/list, polling); server URL via `--dart-define=PCKAISER_SERVER_URL`
 - [x] In-match play screen against the server (async `GameSession` round-trips; submissions return their events; out-of-turn decisions prompted from the waiting view)
 - [x] Human-vs-human wars: two-sided war-round input (`ActiveWar.actingSlot`, attacker hands over to the defender), hot-seat handoff locally, `war_round_timeout` war clock online with AI fallback on timeout
+- [x] Online wars vs the AI are interactive on the **full turn timer** (the short war clock now only governs human-vs-human duels); per-unit war stance (`TroopStance`: hold position / attack) steers unattended rounds; AI keeps a home guard on its base (2026-06-24, appVersion 0.1.4)
 - [x] Lobby rework: 5-letter room codes, no fixed player count, creator starts the match (`POST /matches/:id/start`)
 - [x] FCM HTTP-v1 push (`FIREBASE_SERVICE_ACCOUNT`, logged stub without it); Docker compose + Nginx example in `backend/deploy/` (backups = volume tar cron, see nginx.conf.example)
 - [x] Leave/delete matches (`POST /matches/:id/leave`): creator deletes a waiting match, leaving a running one hands the realm(s) to the AI (`playerLeft` event); lobby + match-screen UI; `--dart-define=PCKAISER_INSTANCE` for two clients on one desktop

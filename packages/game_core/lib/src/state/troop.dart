@@ -12,6 +12,20 @@ abstract final class TroopQuality {
   static const int janitscharen = 50;
 }
 
+/// `[DESIGNED]` How a unit behaves when its side's war round is fought on
+/// AUTOPILOT — the online war clock running out on an idle human, or a
+/// player who left the match. (When the human fights the round live in the
+/// war panel they move every unit by hand; the stance is ignored.)
+///
+///  - [holdPosition] (default): the unit walks back to its pre-war position
+///    and defends the base. It only marches on the enemy capital once the
+///    enemy has no troops left.
+///  - [attack]: the unit advances on the enemy capital straight away.
+abstract final class TroopStance {
+  static const int holdPosition = 0;
+  static const int attack = 1;
+}
+
 /// A troop unit (ORIGINAL_GAME.md §2, §10).
 class Troop {
   Troop({
@@ -22,6 +36,7 @@ class Troop {
     required this.garrisonCounted,
     required this.x,
     required this.y,
+    this.stance = TroopStance.holdPosition,
   });
 
   factory Troop.fromJson(Map<String, dynamic> json) => Troop(
@@ -32,6 +47,9 @@ class Troop {
         garrisonCounted: json['garrisonCounted'] as bool,
         x: json['x'] as int,
         y: json['y'] as int,
+        // Additive field — units from older saves default to holding their
+        // position (defending the base).
+        stance: json['stance'] as int? ?? TroopStance.holdPosition,
       );
 
   String name;
@@ -55,6 +73,10 @@ class Troop {
   int x;
   int y;
 
+  /// Autopilot behaviour for an unattended war round (see [TroopStance]).
+  /// Mutable: set per unit via the "Verhalten im Krieg" toggle.
+  int stance;
+
   Troop copy() => Troop(
         name: name,
         men: men,
@@ -63,6 +85,7 @@ class Troop {
         garrisonCounted: garrisonCounted,
         x: x,
         y: y,
+        stance: stance,
       );
 
   Map<String, dynamic> toJson() => {
@@ -73,5 +96,6 @@ class Troop {
         'garrisonCounted': garrisonCounted,
         'x': x,
         'y': y,
+        'stance': stance,
       };
 }

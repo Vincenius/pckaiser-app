@@ -6,6 +6,55 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-24 — Merge realms held by your own dynasty across different heirs (§6.2)
+
+`mergeableSlots` gated the Handel "Reiche zusammenlegen" on the **same ruler
+person** (plain aliasing, §19). But control follows the *dynasty*, not the one
+ruler: when a different heir/branch of your house inherits a neighbouring realm
+(peaceful inheritance, §15.4), `alignSlotControl` already hands you control of
+it (its `humanPlayer` becomes yours) — yet the realm stayed locked out of the
+merge menu because its `rulerId` differed. Fix: for a **human** seat the merge
+candidacy is now keyed on the controlling **player** (`dynasty.status == human
+&& humanPlayer` match), so any adjacent realm your dynasty holds is mergeable
+regardless of which heir rules it; AI/free seats keep plain ruler aliasing
+(§20.7 — "one ruler, many slots" — unchanged, so AI balance is untouched). A
+different *human* player's realm is still rejected (humanPlayer must match).
+Control of an heir-ruled realm was already correct (verified) — only the merge
+gate was too strict. (`realm_merge.dart`; `bugfix_v21_heir_merge_test.dart`:
+control + merge + cross-player rejection. Ships in the same uncommitted 0.1.4
+batch as the war-stance change — no separate bump; no save-format or wire
+change, only a wider legal-action set.)
+
+## 2026-06-24 — Online wars vs the AI are fought interactively + per-unit war stance (appVersion 0.1.4)
+
+Online, an AI that attacked a human ran the war on the short **war clock**
+(`war_round_timeout`, default 10 min): in async play the timeout sweep played
+the defender's side with the AI war logic and the war was over before the
+player ever opened the app. Three changes, gated behind the new appVersion:
+
+- **Human-vs-AI wars use the full turn timer.** The match service now picks the
+  clock by `_warIsHumanVsHuman`: the short war clock only governs a live
+  human-vs-human duel; a human fighting an AI gets the normal turn timer
+  ("time like a normal turn") so they can fight every round in the war panel at
+  their leisure. `null` turn timer ⇒ no deadline. Server-only change; the
+  interactive war UI already existed. (`match_service.dart`; two timeout tests.)
+- **Per-unit war stance (`TroopStance`).** New additive `Troop.stance`
+  (default `holdPosition`; no schema bump — old units default in) and a
+  `SetTroopStance` action (allowed mid-war; it touches neither the troop list
+  nor `movesLeft`). It steers only an UNATTENDED (autopiloted) war round: when
+  the war clock runs out on an idle human (or they left the match),
+  `runAiWarMovement` moves that human's units by stance — *hold position*
+  defends the base and marches on the enemy capital only once the enemy has no
+  troops left; *attack* advances immediately. A player fighting live still
+  moves every unit by hand. Client: a "Verhalten im Krieg" toggle per unit in
+  the troop sheet, plus a stance chip/toggle in the war panel.
+  (`troop.dart`, `military_actions.dart`, `apply_military.dart`, `ai_turn.dart`,
+  `menus.dart`, `war_panel.dart`; tests in `bugfix_v21_test.dart`.)
+- **AI keeps a home guard.** `runAiWarMovement` reserves the AI side's unit
+  nearest the capital and never marches it out (when it has ≥2 units), and
+  peacetime repositioning always leaves one unit on the capital — so an AI base
+  is never left wholly undefended. (`ai_turn.dart`.)
+
 ## 2026-06-23 — Codebase review: bug fixes, hardening & simplification (appVersion 0.1.3)
 
 A full review pass (parallel subsystem audits + adversarial diff review).

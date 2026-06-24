@@ -541,6 +541,74 @@ void showTroopActions(
                 ),
               ),
               const Divider(height: 1),
+              // Per-unit stance for an UNATTENDED war round (online war clock
+              // run out, or the player left): the engine autopilots the side
+              // by each unit's stance. When the player fights live, it's
+              // ignored.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.policy_outlined,
+                      size: 20,
+                      color: Theme.of(sheetContext).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Verhalten im automatischen Krieg',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+                child: SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                      value: gc.TroopStance.holdPosition,
+                      icon: Icon(Icons.shield_outlined, size: 16),
+                      label: Text('Halten'),
+                    ),
+                    ButtonSegment(
+                      value: gc.TroopStance.attack,
+                      icon: Icon(Icons.gps_fixed, size: 16),
+                      label: Text('Angreifen'),
+                    ),
+                  ],
+                  selected: {troop.stance},
+                  onSelectionChanged: (selection) async {
+                    try {
+                      await controller.applyUndoable(
+                        gc.SetTroopStance(
+                          slot: slot,
+                          unitIndex: index,
+                          stance: selection.first,
+                        ),
+                      );
+                    } on gc.ActionException catch (e) {
+                      if (screenContext.mounted) {
+                        _toast(screenContext, e.message);
+                      }
+                    }
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  troop.stance == gc.TroopStance.holdPosition
+                      ? 'Verteidigt die Basis; greift erst an, wenn der Gegner '
+                          'keine Truppen mehr hat.'
+                      : 'Marschiert sofort auf den gegnerischen Königssitz.',
+                  style: Theme.of(sheetContext).textTheme.bodySmall,
+                ),
+              ),
+              const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.open_with),
                 title: const Text('Truppe verlegen'),

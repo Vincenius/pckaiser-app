@@ -173,6 +173,51 @@ void main() {
       return service.startMatch(matchId: match.id, playerId: a.id);
     }
 
+    // Test-only state surgery: make a war declarable right now between slots
+    // 1 and 2 — year past 1010, troops on both sides, a shared border, slot 1
+    // to move. Leaves dynasty statuses untouched (so it works for a solo
+    // match's AI slot 2 and a two-human match alike).
+    Future<void> armWar(MatchRecord match) async {
+      final record = (await store.match(match.id))!;
+      final state = GameState.fromJson(record.stateJson!);
+      state.year = 1010;
+      for (final slot in [1, 2]) {
+        final realm = state.realm(slot);
+        realm.treasury = 10000;
+        realm.towns.first.troopCapacity = 200;
+        realm.troopCapacity = 200;
+        realm.troops.add(Troop(
+          name: 'Heer$slot',
+          men: 50,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: false,
+          x: realm.capitalX,
+          y: realm.capitalY,
+        ));
+      }
+      final map = state.map;
+      outer:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
+            continue;
+          }
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 1) {
+              map.owner[map.index(x, y)] = 2;
+              state.realm(2).tileCount[Building.none]++;
+              break outer;
+            }
+          }
+        }
+      }
+      state.currentPlayer = 1;
+      record.stateJson = state.toJson();
+      await store.saveMatch(record);
+    }
+
     test(
         'the awaited player acts and ends the turn; the server advances '
         'to the next human', () async {
@@ -371,6 +416,56 @@ void main() {
       final advancedState = GameState.fromJson(
           (advanced['state'] as Map).cast<String, dynamic>());
       expect(advancedState.activeWar!.round, 1);
+    });
+
+    test('human-vs-AI war runs on the full turn clock, not the war clock',
+        () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final a = await service.registerPlayer(displayName: 'Anna');
+      // Solo match: slot 2 is AI — a human-vs-AI war.
+      final match = await createStarted(
+        a.id,
+        MatchSettings(
+            seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600),
+        setupFor('Anna', 1),
+      );
+      await armWar(match);
+
+      final declared = await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      expect(declared['awaited_player_id'], a.id);
+      final post =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(post.activeWar, isNotNull);
+      expect(post.dynasty(post.activeWar!.defenderSlot).status,
+          DynastyStatus.ai);
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(hours: 24)),
+          reason: 'a human fighting an AI gets the normal turn time, '
+              'not the 10-minute war clock');
+    });
+
+    test('human-vs-human war keeps the short war clock', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(seconds: 600)),
+          reason: 'a live human-vs-human duel stays on the short war clock');
     });
   });
 

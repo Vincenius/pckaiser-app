@@ -189,6 +189,35 @@ class RenameTroop extends PlayerAction {
       };
 }
 
+/// "Verhalten im Krieg" — set a unit's autopilot war stance (see
+/// [TroopStance]). Free, and allowed during a war too: it only flips a flag
+/// the unattended round-resolution reads, never the troop list or moves.
+class SetTroopStance extends PlayerAction {
+  SetTroopStance({
+    required super.slot,
+    required this.unitIndex,
+    required this.stance,
+  });
+
+  factory SetTroopStance.fromJson(Map<String, dynamic> json) => SetTroopStance(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        stance: json['stance'] as int,
+      );
+
+  static const kind = 'setTroopStance';
+
+  final int unitIndex;
+  final int stance;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'unitIndex': unitIndex, 'stance': stance};
+}
+
 /// "Truppen vereinigen" — merge unit [fromIndex] into [toIndex] (§10.2).
 class MergeTroops extends PlayerAction {
   MergeTroops(

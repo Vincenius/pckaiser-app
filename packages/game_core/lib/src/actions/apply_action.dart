@@ -75,6 +75,7 @@ List<GameEvent> applyActionInPlace(
     TrainTroop() => applyTrainTroop(state, realm, action),
     DrillTroop() => applyDrillTroop(state, realm, action),
     RenameTroop() => applyRenameTroop(state, realm, action),
+    SetTroopStance() => applySetTroopStance(state, realm, action),
     MergeTroops() => applyMergeTroops(state, realm, action),
     DisbandTroop() => applyDisbandTroop(state, realm, action),
     MoveTroop() => applyMoveTroop(state, realm, action),

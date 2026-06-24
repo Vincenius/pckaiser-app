@@ -238,6 +238,22 @@ List<GameEvent> applyRenameTroop(
   return const [];
 }
 
+/// "Verhalten im Krieg" — set a unit's autopilot stance (§ [TroopStance]).
+/// Allowed mid-war on purpose: the stance only steers an UNATTENDED round's
+/// resolution; it touches neither the troop list nor `movesLeft`, so it
+/// never desyncs the active war's parallel lists (unlike the actions guarded
+/// by [_requireNotAtWar]).
+List<GameEvent> applySetTroopStance(
+    GameState state, Realm realm, SetTroopStance action) {
+  final troop = unitAt(realm, action.unitIndex);
+  if (action.stance != TroopStance.holdPosition &&
+      action.stance != TroopStance.attack) {
+    throw ActionException('Unbekannte Truppenhaltung !');
+  }
+  troop.stance = action.stance;
+  return const [];
+}
+
 /// Forbidden for a war participant: recruiting, hiring, reinforcing,
 /// drilling, merging/disbanding and peacetime troop moves all reshape or
 /// reposition the troop list, which the active war's `movesLeft` and

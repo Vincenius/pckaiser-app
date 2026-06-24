@@ -171,10 +171,71 @@ class _WarPanelState extends State<WarPanel> {
                     ),
                 ],
               ),
+              if (selectedTroop != null && selected != null)
+                _stanceToggle(context, slot, selected, selectedTroop),
               _actions(context, war, slot, selectedTroop, enemySlot),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Lets the player set the selected unit's autopilot stance (used if the
+  /// war clock runs out before they finish — see [gc.TroopStance]). Its own
+  /// thin row so it never crowds the move/plunder/peace actions.
+  Widget _stanceToggle(
+    BuildContext context,
+    int slot,
+    int unitIndex,
+    gc.Troop troop,
+  ) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Bei Auto-Krieg: ', style: theme.textTheme.bodySmall),
+          const SizedBox(width: 4),
+          SegmentedButton<int>(
+            showSelectedIcon: false,
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            segments: const [
+              ButtonSegment(
+                value: gc.TroopStance.holdPosition,
+                icon: Icon(Icons.shield_outlined, size: 14),
+                label: Text('Halten'),
+              ),
+              ButtonSegment(
+                value: gc.TroopStance.attack,
+                icon: Icon(Icons.gps_fixed, size: 14),
+                label: Text('Angreifen'),
+              ),
+            ],
+            selected: {troop.stance},
+            onSelectionChanged: (selection) async {
+              try {
+                await controller.applyWarAction(
+                  gc.SetTroopStance(
+                    slot: slot,
+                    unitIndex: unitIndex,
+                    stance: selection.first,
+                  ),
+                );
+              } on gc.ActionException catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(e.message)));
+                }
+              }
+            },
+          ),
+        ],
       ),
     );
   }
@@ -209,10 +270,12 @@ class _WarPanelState extends State<WarPanel> {
     required VoidCallback onTap,
   }) {
     final onEnemyLand = state.map.ownerAt(troop.x, troop.y) == enemySlot;
+    final attackStance = troop.stance == gc.TroopStance.attack;
     return Tooltip(
       message:
           'Verbleibende Züge: $movesLeft'
-          '${onEnemyLand ? ' — besetzt feindliches Gebiet' : ''}',
+          '${onEnemyLand ? ' — besetzt feindliches Gebiet' : ''}'
+          '\nHaltung: ${attackStance ? 'Angreifen' : 'Position halten'}',
       child: ChoiceChip(
         selected: selected,
         showCheckmark: false,
@@ -231,6 +294,14 @@ class _WarPanelState extends State<WarPanel> {
                 padding: const EdgeInsets.only(right: 2),
                 child: Icon(Icons.flag, size: 14, color: Colors.green.shade800),
               ),
+            Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: Icon(
+                attackStance ? Icons.gps_fixed : Icons.shield_outlined,
+                size: 12,
+                color: theme.colorScheme.outline,
+              ),
+            ),
             Text(
               '${troop.name} · ${troop.men} Mann · '
               '⚔ ${gc.troopStrength(troop).round()}',
