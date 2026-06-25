@@ -9,7 +9,10 @@ void main() {
   test('appVersion constant matches pubspec.yaml', () {
     final pubspec = File('pubspec.yaml').readAsLinesSync();
     final line = pubspec.firstWhere((l) => l.startsWith('version:'));
-    final pubspecVersion = line.substring('version:'.length).trim();
+    // Strip the optional Android build number (`+N`); appVersion tracks the
+    // semantic version name only, not the per-upload versionCode.
+    final pubspecVersion =
+        line.substring('version:'.length).trim().split('+').first;
     expect(
       appVersion,
       pubspecVersion,
