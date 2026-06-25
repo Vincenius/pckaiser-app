@@ -1,6 +1,6 @@
 # Store Metadata — PCKaiser
 
-App identity: `com.vincentwill.pckaiser` · display name **PCKaiser** ·
+App identity: `com.pckaiser.app` · display name **PCKaiser** ·
 category Games / Strategy · content rating: mild violence (medieval war,
 text-based), no ads, no in-app purchases, fully offline.
 

@@ -1,4 +1,4 @@
-package com.vincentwill.pckaiser
+package com.pckaiser.app
 
 import io.flutter.embedding.android.FlutterActivity
 

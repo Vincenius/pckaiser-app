@@ -176,7 +176,7 @@ One-time Firebase setup (free Spark plan suffices — FCM costs nothing):
 
 1. Create a project at <https://console.firebase.google.com>.
 2. **Android:** add an Android app with package name
-   `com.vincentwill.pckaiser`, download `google-services.json` and put it
+   `com.pckaiser.app`, download `google-services.json` and put it
    at `client/android/app/google-services.json`. That file's presence
    activates the Google-services Gradle plugin; rebuild the app.
 3. **Server:** Project settings → Service accounts → *Generate new
@@ -188,7 +188,7 @@ One-time Firebase setup (free Spark plan suffices — FCM costs nothing):
    ```
 
 4. **iOS** (needs an Apple Developer account): add an iOS app with bundle
-   id `com.vincentwill.pckaiser`, put the downloaded
+   id `com.pckaiser.app`, put the downloaded
    `GoogleService-Info.plist` into `client/ios/Runner/` (add it to the
    Runner target in Xcode), enable the *Push Notifications* capability
    and *Background Modes → Remote notifications*, and upload your APNs
