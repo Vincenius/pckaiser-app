@@ -103,9 +103,17 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
   ));
 }
 
-/// Slots that own ≥ 1 tile, share a land border with [slot], and are under
-/// the SAME control as [slot] — merge candidates for the Handel menu and the
-/// AI (§6.2, §20.7).
+/// Slots that own ≥ 1 tile, share a border with [slot], and are under the SAME
+/// control as [slot] — merge candidates for the Handel menu and the AI
+/// (§6.2, §20.7).
+///
+/// The shared-border gate is faithful to the original: "Reiche zusammenlegen"
+/// builds its candidate list from the same neighbour helper as war declaration
+/// (confirmed in the disassembly — both reject with a "Nachbarn" message when
+/// empty). Adjacency is plain orthogonal tile-touch on the ownership grid;
+/// an owned Hafen sits on a water tile the realm owns, so it participates in
+/// adjacency like any owned tile — but a harbour does NOT bridge an open-water
+/// gap (the original has no sea/ship adjacency for merge or war).
 ///
 /// "Same control" is the player, not the single ruler: a human may merge any
 /// realm their dynasty holds, even one ruled by a different heir/branch

@@ -53,11 +53,23 @@ void runDynastyPhase(
 
     if (person.age >= 14 && rng.nextInt(4) == 0) {
       final candidate = findMarriageCandidate(state, person, rng);
-      // [DEVIATION] The original's 50% "phantom birth" (§15.3: a
-      // single-parent child when no candidate exists) is removed —
-      // children require married parents.
       if (candidate != null) {
         proposeMarriage(state, person, candidate, rng, events);
+      } else if (dynasty.status != DynastyStatus.human) {
+        // [DEVIATION] The original's 50% "phantom birth" fallback (§14.3 /
+        // §15.3: a single-parent child when no royal partner exists) was
+        // removed for plausibility — children require married parents. But
+        // with NO fallback, an AI line that can't find a royal match never
+        // reproduces and dies out: across a game the 30 dynasties consolidate
+        // to ~3 and late-game royal marriage partners all but vanish (the
+        // candidate pool requires a DIFFERENT dynasty). So an AI member with
+        // no candidate instead marries a commoner — the same always-accepted
+        // "Bürgerlich heiraten" path the player has (§14.1) — and the couple
+        // rejoins the §14.3 birth loop, keeping the line (and the pool) alive.
+        // Human dynasties are left to the player's explicit menu choice so a
+        // royal match can still be planned for; this auto-path is AI-only.
+        marry(state, person, createCommonerSpouse(state, person, rng), events,
+            announce: false);
       }
     }
   }
@@ -114,14 +126,19 @@ void proposeMarriage(GameState state, Person proposer, Person target, Rng rng,
 }
 
 /// §14.2 the wedding: spouse pointers set; the children lists merge and
-/// attach to the husband, the wife's is cleared.
-void marry(GameState state, Person a, Person b, List<GameEvent> events) {
+/// attach to the husband, the wife's is cleared. [announce] is false for the
+/// AI commoner-marriage fallback (§14.3 loop) — that is a hidden internal
+/// demographic event, not a diplomatically meaningful union, so it is not
+/// posted to the public feed (and AI internal state is hidden info anyway).
+void marry(GameState state, Person a, Person b, List<GameEvent> events,
+    {bool announce = true}) {
   a.spouseId = b.id;
   b.spouseId = a.id;
   final husband = a.isMale ? a : b;
   final wife = a.isMale ? b : a;
   husband.childrenIds.addAll(wife.childrenIds);
   wife.childrenIds.clear();
+  if (!announce) return;
   events.add(GameEvent(
     year: state.year,
     slot: a.dynasty,
@@ -129,6 +146,33 @@ void marry(GameState state, Person a, Person b, List<GameEvent> events) {
     visibility: EventVisibility.public,
     payload: {'a': a.name, 'b': b.name, 'aId': a.id, 'bId': b.id},
   ));
+}
+
+/// §14.1 "Bürgerlich heiraten": creates a commoner spouse for [person] —
+/// opposite gender, religion-appropriate name, age within the §14.1 gap
+/// (< 10, never below 14) — registered in the world and joined to [person]'s
+/// dynasty so the §14.3 birth loop applies to the couple. Does NOT wed them;
+/// the caller passes the result to [marry]. Shared by the player action
+/// (`MarryCommoner`) and the AI annual fallback so both stay in lock-step.
+Person createCommonerSpouse(GameState state, Person person, Rng rng) {
+  final dynasty = state.dynasty(person.dynasty);
+  final gender = 1 - person.gender;
+  final names = dynasty.religion == Religion.moslemisch
+      ? (gender == 0 ? ottomanMaleNames : ottomanFemaleNames)
+      : (gender == 0 ? europeanMaleNames : europeanFemaleNames);
+  // Age gap < 10 like every §14.1 match, but never below 14.
+  var age = person.age - 9 + rng.nextInt(19);
+  if (age < 14) age = 14;
+  final spouse = Person(
+    id: state.nextPersonId++,
+    name: names[rng.nextInt(names.length)],
+    age: age,
+    dynasty: person.dynasty,
+    gender: gender,
+  );
+  state.persons[spouse.id] = spouse;
+  dynasty.memberIds.add(spouse.id);
+  return spouse;
 }
 
 /// §14.4: a religion change dissolves religiously incompatible marriages.

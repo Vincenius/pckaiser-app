@@ -6,6 +6,73 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-25 — AI commoner-marriage fallback so the royal partner pool survives (§14.3) — appVersion 0.1.5
+
+A user reported his heirs could find no one to marry late in the game and asked
+whether births were too rare. Investigation (headless dynasty sims under
+`packages/game_core/tool/`, 16 seeds × 200 years, all-Catholic best case):
+
+- The marriage logic is correct — engine `findMarriageCandidate` and the client
+  candidate list both apply §14.1 exactly (unmarried, opposite gender, age ≥ 14,
+  gap < 10, **different dynasty**, same religion). Not a bug.
+- Global population GROWS; births are not too rare. The real cause is **dynasty
+  consolidation**: female-founded lines merge into their husband's dynasty
+  (§15.4 spouse inheritance), and — unlike the original — an AI member who finds
+  no royal partner had NO fallback (the 50% phantom birth was removed for
+  plausibility, see deviations table), so AI lines that can't marry simply stop
+  reproducing and die out. Across a game the 30 dynasties collapse to ~3, and
+  since a royal match must be from a *different* dynasty, the late-game pool
+  evaporates. Sim: by year 1200 only ~2.8 dynasties survive and a dominant
+  dynasty's single 14+ members find a partner only ~39% of the time.
+- The human is never truly stuck — "Bürgerlich heiraten" (`MarryCommoner`) is
+  always available and always accepted (deviations table). The complaint was the
+  empty *royal* list, which is the expected consequence of the AI collapse.
+
+**Fix (chosen with the user over restoring the phantom birth or a flat
+birth-rate bump):** give AI dynasties the same commoner-marriage fallback the
+player already has. In the §14.3 annual loop, an **AI** member who rolls the
+~25% marriage attempt but finds no royal candidate now weds a freshly created
+commoner (joins the dynasty, rejoins the birth loop) instead of doing nothing;
+the wedding is silent (hidden AI internal state, avoids feed clutter). Human
+dynasties are untouched — the player still chooses via the menu so a royal match
+can be planned for. Sim with the fix: ~6.8 dynasties survive to 1200 and the
+partner-availability rate rises to ~96%, with far more controlled population
+growth than a birth-rate increase (which left dynasties dying while the
+population exploded to ~786). `marry` gained an `announce` flag and the shared
+`createCommonerSpouse` helper now backs both `MarryCommoner` and the AI fallback
+(RNG-identical, so the player path is unchanged). Tests in `dynasty_test.dart`.
+
+## 2026-06-25 — Merge needs a shared border IS faithful (original-binary check; §6.2)
+
+A user reported he could not "Reiche zusammenlegen" two of his own realms that
+lie next to each other across water (adjacent only through a Hafen). First read
+of the traced spec suggested the merge adjacency gate added in `c85b2b1` was a
+regression — §6.2 of `ORIGINAL_GAME.md` lists the *only* merge gate as "source
+owns ≥ 1 tile". **Disassembly of the original `PCKAISER.OVR` overturned that.**
+The merge menu handler (`proc_00F462`) builds its candidate list from the SAME
+neighbour helper (`0x75e:0x4a4`) as war declaration (`proc_00A5F1`); both reject
+an empty list with a "Nachbarn" message ("Sie haben keine Nachbarn !" /
+"…nur unmittelbare Nachbarn angreifen !"). That helper is a pure orthogonal
+owner-byte tile scan: a realm is a neighbour iff one of its owned tiles
+orthogonally touches one of yours. So the original DID require adjacency to
+merge; the §6.2 note only described the merge *implementation* (`proc_00F200`,
+which alone gates on ≥ 1 tile), missing the candidate-selection gate. The
+adjacency gate in `mergeableSlots` is therefore CORRECT — left in place.
+
+Harbour nuance (the user's actual case): an owned Hafen sits on a water tile the
+realm owns, so it counts in the adjacency scan like any owned tile and CAN
+bridge a one-tile strait (Hafen tile touching the other realm → neighbours →
+mergeable). But a harbour does NOT reach across an open-water gap — the original
+has no sea/ship adjacency for merge or war (crossing water is the separate ship
+mechanic). So two realms only "near" each other across open sea were
+un-mergeable in the original too; the clone matches. If we ever want cross-sea
+merging it must be a documented DEVIATION (`PROJECT_REQUIREMENTS.md`), not a
+"fix". Net code change: clarified the `mergeableSlots` doc comment only;
+behaviour unchanged. Regression test `bugfix_v22_harbor_merge_test.dart` pins
+both halves (Hafen-bridge mergeable; open-water gap not). (Original RE evidence:
+`~/Downloads/pckaiser/ovr_analysis/` — `proc_00F462`/`proc_00A5F1`, helper
+`0x75e:0x4a4`.)
+
 ## 2026-06-24 — Merge realms held by your own dynasty across different heirs (§6.2)
 
 `mergeableSlots` gated the Handel "Reiche zusammenlegen" on the **same ruler

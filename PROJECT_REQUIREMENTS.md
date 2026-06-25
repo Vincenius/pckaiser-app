@@ -61,7 +61,7 @@ Unversioned design deviations:
 | Island starts possible | Starting landmass ≥ 50 connected tiles | No boxed-in starts |
 | Unlimited proposals/turn | One royal proposal per turn; commoner marriage always available and always accepted | Pacing; reliable fallback |
 | Wars against any realm | Only shared-border realms; never against a slot your ruler already holds; human-vs-human wars run sequentially (attacker's half, then the defender's — hot-seat handoff locally, war clock online) | Plausibility; self-war nonsense; one global war needs ordered two-sided input |
-| 50% phantom birth (§15.3) | Removed — children require married parents | Plausibility |
+| 50% phantom birth (§15.3) | Removed (children require married parents); the §14.3 no-partner case instead falls back to a commoner marriage — manual for humans, automatic for AI so AI lines don't die out and the late-game royal-partner pool stays alive | Plausibility; keep dynasties alive without single-parent births |
 | Other realms' stats visible | Hidden + espionage reveals | Makes espionage matter |
 | Modal text walls | Event feed + recap | Mobile UX |
 | Single implicit save | Named slots, auto-saved | Mobile expectations |

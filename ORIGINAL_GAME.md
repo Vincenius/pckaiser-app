@@ -293,7 +293,16 @@ Commerce-menu extras:
   A's popularity becomes the population-weighted average of both (plain 50 if
   A had no population; B's slot is left at 60); population, harvests, all map
   tiles and the dynasty members move to A; A gets a one-off movement bonus
-  `B.titleClass + random(6)`. Only gate: the source realm must own ≥ 1 tile.
+  `B.titleClass + random(6)`. The merge *implementation* gates only on the
+  source owning ≥ 1 tile, **but the candidate list does require a shared
+  border**: the menu handler (`proc_00F462`) builds its targets from the same
+  neighbour helper (`0x75e:0x4a4`) as war declaration and rejects an empty list
+  with "Sie haben keine Nachbarn !". Adjacency is a plain orthogonal owner-tile
+  scan — an owned Hafen (a building on an owned water tile) counts and can
+  bridge a one-tile strait, but a harbour does **not** reach across an
+  open-water gap (no sea/ship adjacency for merge or war; cf. §11/§20.8). So
+  two realms separated by open sea cannot be merged, only land- or
+  Hafen-adjacent ones. (Verified against the binary 2026-06-25.)
 - **Relocate capital** ("Sitz verlegen"): costs **5,000 T**; valid target =
   own tile with Stadt/Burg/Palast (building 5/6/7); only when the capital is
   unset/lost.

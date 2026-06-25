@@ -1,4 +1,3 @@
-import '../data/tables.dart';
 import '../rng/rng.dart';
 import '../rules/dynasty.dart';
 import '../rules/offices.dart';
@@ -9,7 +8,6 @@ import '../state/constants.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/pending_ship_return.dart';
-import '../state/person.dart';
 import '../state/realm.dart';
 import '../state/ship.dart';
 import '../state/town.dart';
@@ -663,24 +661,9 @@ List<GameEvent> _marryCommoner(
     throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
   }
   final events = <GameEvent>[];
-  final dynasty = state.dynasty(realm.slot);
-  final gender = 1 - person.gender;
-  final names = dynasty.religion == Religion.moslemisch
-      ? (gender == 0 ? ottomanMaleNames : ottomanFemaleNames)
-      : (gender == 0 ? europeanMaleNames : europeanFemaleNames);
-  // Age gap < 10 like every §14.1 match, but never below 14.
-  var age = person.age - 9 + rng.nextInt(19);
-  if (age < 14) age = 14;
-  final spouse = Person(
-    id: state.nextPersonId++,
-    name: names[rng.nextInt(names.length)],
-    age: age,
-    dynasty: realm.slot,
-    gender: gender,
-  );
-  state.persons[spouse.id] = spouse;
-  dynasty.memberIds.add(spouse.id);
-  marry(state, person, spouse, events); // "Angenommen !"
+  // Shared with the AI annual fallback (§14.3) so both stay in lock-step.
+  marry(state, person, createCommonerSpouse(state, person, rng),
+      events); // "Angenommen !"
   return events;
 }
 

@@ -35,6 +35,54 @@ void main() {
     });
   });
 
+  group('marriage fallback (§14.3): AI weds a commoner when no royal partner', () {
+    test('an isolated AI member weds a commoner so the line survives', () {
+      // All-AI game: slot 1's founder is computer-controlled, not the player.
+      final state = startGame(freshGame(humanSlots: const []), Rng(1)).state;
+      expect(state.dynasty(1).status, DynastyStatus.ai);
+      // Strip every other person so findMarriageCandidate can never succeed —
+      // the only path left to continue the line is the commoner fallback.
+      final founderId = state.dynasty(1).memberIds.single;
+      state.persons.removeWhere((id, _) => id != founderId);
+      final founder = state.persons[founderId]!;
+      expect(founder.spouseId, isNull);
+
+      // Year stays in the 1000–1009 protection window so nobody dies before
+      // the throttled (~25%/turn) marriage roll lands.
+      final rng = Rng(7);
+      for (var i = 0; i < 60 && founder.spouseId == null; i++) {
+        runDynastyPhase(state, 1, rng, <GameEvent>[]);
+      }
+
+      expect(founder.spouseId, isNotNull,
+          reason: 'an AI member with no royal partner should wed a commoner');
+      final spouse = state.persons[founder.spouseId!]!;
+      expect(spouse.dynasty, 1, reason: 'the commoner joins the dynasty');
+      expect(spouse.gender, isNot(founder.gender));
+      expect(state.dynasty(1).memberIds, contains(spouse.id));
+      expect(spouse.age, greaterThanOrEqualTo(14));
+      expect((spouse.age - founder.age).abs(), lessThan(10),
+          reason: '§14.1 age gap holds for the commoner too');
+    });
+
+    test('a human member is NOT auto-wed to a commoner (the player chooses)',
+        () {
+      final state = startGame(freshGame(humanSlots: const [1]), Rng(1)).state;
+      expect(state.dynasty(1).status, DynastyStatus.human);
+      final founderId = state.dynasty(1).memberIds.single;
+      state.persons.removeWhere((id, _) => id != founderId);
+
+      final rng = Rng(7);
+      for (var i = 0; i < 60; i++) {
+        runDynastyPhase(state, 1, rng, <GameEvent>[]);
+      }
+      expect(state.persons[founderId]!.spouseId, isNull,
+          reason: 'humans keep the explicit "Bürgerlich heiraten" choice');
+      expect(state.dynasty(1).memberIds, [founderId],
+          reason: 'no commoner was injected into the human line');
+    });
+  });
+
   group('aging & death (§15.1)', () {
     test('protection window suppresses death rolls but not aging', () {
       final state = startGame(freshGame(), Rng(1)).state;
