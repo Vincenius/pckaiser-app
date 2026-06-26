@@ -6,6 +6,42 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-26 — War-end round (user feedback, rules v15) — appVersion 0.1.8
+
+Four items from a user playtest:
+
+- **Auto-war stance is online-only.** The per-unit "Verhalten im automatischen
+  Krieg" stance steers a side fought on autopilot when the online war clock runs
+  out. Offline the player moves every unit by hand, so the toggle is now hidden
+  in local games (`war_panel.dart`, `menus.dart`, gated on
+  `GameController.isOnline`). Engine behavior unchanged — the stance was always
+  ignored during live play.
+- **Lost-capital re-seating already covers AI** (war conquest, earthquake,
+  bankruptcy seizure): `reseatLostCapitals` auto-moves an AI seat onto its
+  highest-value Stadt/Burg/Palast at the next round rollover; humans get a
+  `relocateCapital` decision. Verified, no change (covered by `bugfix_v15_test`).
+- **War claim floor + small realms.** The settlement claim is capped at 50–80 %
+  of the loser's remaining territory value (so one war never swallows a realm
+  whole). Two fixes: (a) a realm worth **less than a single Burg (5,000)** all
+  told is now taken WHOLE — the cap only shields sizeable realms, so a tiny rump
+  state can always be finished off; (b) above that, `_cappedClaim` floors to the
+  single cheapest loser tile bordering the winner, so a victory can always claim
+  at least the remaining part (e.g. a lone Hafen after the Burg was lost) instead
+  of the cap falling below the cheapest tile. Generalizes the v13 capital floor.
+- **Sole-ruler victory fires immediately + landless-zombie sweep.**
+  `checkWinCondition` (moved to `rules/victory.dart`) is now consulted the
+  instant a war's settlement overruns the last rival, so a HUMAN winner sees the
+  victory popup right after the war instead of only at their next "Zug beenden".
+  AI-vs-AI conquests still resolve at the normal end-of-turn check. Separately, a
+  user reported owning everything but seeing no popup: a realm stripped of its
+  last tile by a NON-war cause (earthquake levelling a town-less rump) was never
+  vacated, so its landless ruler counted as a living rival and blocked the win
+  forever. `vacateLandlessRealms` now sweeps every round rollover (after world
+  events) and vacates any 0-tile realm — war losses are still handled inline.
+  Tests in `bugfix_v23_test.dart`.
+- Credits: added a link to the original "PCKaiser++" on
+  `goodolddays.net` on the About screen.
+
 ## 2026-06-25 — AI commoner-marriage fallback so the royal partner pool survives (§14.3) — appVersion 0.1.5
 
 A user reported his heirs could find no one to marry late in the game and asked

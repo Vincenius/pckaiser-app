@@ -171,7 +171,12 @@ class _WarPanelState extends State<WarPanel> {
                     ),
                 ],
               ),
-              if (selectedTroop != null && selected != null)
+              // The autopilot stance only matters online, where an idle
+              // war round is fought by each unit's stance. Offline the
+              // player moves every unit by hand, so the toggle is hidden.
+              if (controller.isOnline &&
+                  selectedTroop != null &&
+                  selected != null)
                 _stanceToggle(context, slot, selected, selectedTroop),
               _actions(context, war, slot, selectedTroop, enemySlot),
             ],

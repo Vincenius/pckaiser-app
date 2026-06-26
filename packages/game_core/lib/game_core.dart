@@ -23,6 +23,7 @@ export 'src/rules/protection.dart';
 export 'src/rules/realm_merge.dart';
 export 'src/rules/titles.dart';
 export 'src/rules/troops.dart';
+export 'src/rules/victory.dart';
 export 'src/rules/war.dart';
 export 'src/setup/new_game.dart';
 export 'src/state/war.dart';

@@ -7,6 +7,9 @@ import '../l10n/strings.dart';
 /// Source repository of this app.
 const String _githubUrl = 'https://github.com/Vincenius/pckaiser-app';
 
+/// The original "PCKaiser++" on the Good Old Days archive.
+const String _originalGameUrl = 'https://www.goodolddays.net/en/game/PCKaiser/';
+
 /// About: a short description of the game, the app version, and the
 /// credits (original author + remake author).
 class AboutScreen extends StatelessWidget {
@@ -57,6 +60,16 @@ class AboutScreen extends StatelessWidget {
                 tr('creditsOriginal'),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 4),
+              // Link to the original game on the Good Old Days archive.
+              TextButton.icon(
+                onPressed: () => launchUrl(
+                  Uri.parse(_originalGameUrl),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('goodolddays.net'),
               ),
               const SizedBox(height: 8),
               Text(

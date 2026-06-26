@@ -8,6 +8,8 @@ import '../rules/movement.dart';
 import '../rules/offices.dart';
 import '../rules/population.dart';
 import '../rules/titles.dart';
+import '../rules/victory.dart';
+import '../rules/war.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
@@ -81,12 +83,17 @@ TurnResult completeTurn(GameState state, Rng rng) {
 
   final winner = checkWinCondition(next);
   if (winner != null) {
-    events.add(GameEvent(
-      year: next.year,
-      slot: winner,
-      type: 'gameWon',
-      visibility: EventVisibility.public,
-    ));
+    // A war that overran the last rival this turn already emitted `gameWon`
+    // from the settlement (so a human sees the popup right after the war);
+    // don't emit a second one when the turn then completes.
+    if (next.events.isEmpty || next.events.last.type != 'gameWon') {
+      events.add(GameEvent(
+        year: next.year,
+        slot: winner,
+        type: 'gameWon',
+        visibility: EventVisibility.public,
+      ));
+    }
     next.rngSeed = rng.seed;
     next.events.addAll(events);
     _pruneEvents(next);
@@ -121,24 +128,6 @@ TurnResult completeTurn(GameState state, Rng rng) {
   return TurnResult(next, events);
 }
 
-/// §19.3 win check: the game is over when a single distinct non-null ruler
-/// points at all still-ruled slots. Returns the winning slot, or null.
-int? checkWinCondition(GameState state) {
-  int? winnerSlot;
-  int? winnerRuler;
-  for (final realm in state.realms) {
-    final ruler = realm.rulerId;
-    if (ruler == null) continue;
-    if (winnerRuler == null) {
-      winnerRuler = ruler;
-      winnerSlot = realm.slot;
-    } else if (ruler != winnerRuler) {
-      return null;
-    }
-  }
-  return winnerSlot;
-}
-
 /// Round rollover (§6.1): year += 1, global market prices re-roll, world
 /// events (§18, Phase 4), normalization pass (§8.3), per-year flags reset.
 void _startRound(GameState state, Rng rng, List<GameEvent> events) {
@@ -146,6 +135,11 @@ void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   rollMarketPrices(state, rng);
   runWorldEvents(state, rng, events); // §18
   normalizeTowns(state);
+  // Vacate any realm an earthquake (or other non-war loss) just stripped of
+  // its last tile, BEFORE re-seating or the win check sees it: a landless
+  // ruler would otherwise linger as a "zombie" and keep the last player
+  // standing from ever owning everything. War losses are vacated inline.
+  vacateLandlessRealms(state, events);
   // Re-seat any realm whose capital tile was lost this round (earthquake,
   // war claim, bankruptcy seizure): AI picks automatically, humans are
   // prompted with a `relocateCapital` decision.

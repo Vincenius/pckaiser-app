@@ -16,6 +16,7 @@ import 'movement.dart';
 import 'population.dart' show cutGarrisonTroops;
 import 'titles.dart' show switchTitleLadder;
 import 'troops.dart';
+import 'victory.dart';
 
 /// §11.1: starts a war. Prunes empty units, snapshots positions, rolls the
 /// first round's movement allowance.
@@ -486,7 +487,19 @@ int? capitalOccupier(GameState state, ActiveWar war) {
 /// The cap share is ROLLED per war end, 50–80% (rather than a flat 50%,
 /// which made every victory against a similar-sized realm pay out the
 /// same, predictable claim).
-int _cappedClaim(GameState state, int loserSlot, int claim, Rng rng) {
+///
+/// SMALL REALMS: a loser worth less than a single Burg (5,000) all told is
+/// taken WHOLE — the cap only shields sizeable realms, so a tiny rump state
+/// can always be finished off.
+///
+/// FLOOR: above that, a clear victory can still always claim at least the
+/// single cheapest loser tile bordering the winner. Against a realm ground
+/// down to a few cheap fragments the 50–80 % cap of the remaining value can
+/// fall BELOW the cheapest tile, so the winner could take nothing of what
+/// they fought for. The floor fixes that; the cap still keeps a sizeable
+/// realm from being swallowed whole in one war.
+int _cappedClaim(
+    GameState state, int winnerSlot, int loserSlot, int claim, Rng rng) {
   final map = state.map;
   var total = 0;
   for (var i = 0; i < map.terrain.length; i++) {
@@ -494,8 +507,38 @@ int _cappedClaim(GameState state, int loserSlot, int claim, Rng rng) {
       total += settlementTileValue(state, map.building[i]);
     }
   }
+  // A small realm — worth less than a single Burg (5,000) all told — can be
+  // taken WHOLE: the anti-swallow cap only shields sizeable realms. Below
+  // that the claim covers the loser's entire remaining territory, so a
+  // victory is never left unable to finish off a tiny rump state.
+  if (total < 5000) return total;
   final sharePercent = 50 + rng.nextInt(31);
-  return math.min(claim, total * sharePercent ~/ 100);
+  final capped = math.min(claim, total * sharePercent ~/ 100);
+  final cheapestBorder =
+      _cheapestBorderingLoserTile(state, winnerSlot, loserSlot);
+  if (cheapestBorder != null && capped < cheapestBorder) {
+    return cheapestBorder;
+  }
+  return capped;
+}
+
+/// The lowest [settlementTileValue] among the loser's tiles that border the
+/// winner's land (the only tiles the settlement can ever annex), or null
+/// when the loser holds no bordering tile. Used to floor the war claim so a
+/// victory is never too small to take a single remaining part.
+int? _cheapestBorderingLoserTile(
+    GameState state, int winnerSlot, int loserSlot) {
+  final map = state.map;
+  int? cheapest;
+  for (var y = 0; y < map.height; y++) {
+    for (var x = 0; x < map.width; x++) {
+      if (map.ownerAt(x, y) != loserSlot) continue;
+      if (!_bordersTerritory(state, winnerSlot, x, y)) continue;
+      final value = settlementTileValue(state, map.buildingAt(x, y));
+      if (cheapest == null || value < cheapest) cheapest = value;
+    }
+  }
+  return cheapest;
 }
 
 /// Ruler capture, resolved at ROUND END: the captor holds the enemy
@@ -515,7 +558,8 @@ void _endWarByCapitalOccupation(
   // win — a quick war against a depleted enemy yields a tiny war score,
   // and the winner could otherwise never take the seat they conquered.
   final claim = math.max(
-      _cappedClaim(state, loserSlot, warScore(state, captorSlot), rng),
+      _cappedClaim(
+          state, captorSlot, loserSlot, warScore(state, captorSlot), rng),
       settlementTileValue(
           state, state.map.buildingAt(loser.capitalX, loser.capitalY)));
 
@@ -750,8 +794,8 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   final winnerSlot =
       scoreAttacker > scoreDefender ? war.attackerSlot : war.defenderSlot;
   final loserSlot = war.opponentOf(winnerSlot);
-  final claim = _cappedClaim(
-      state, loserSlot, math.max(scoreAttacker, scoreDefender), rng);
+  final claim = _cappedClaim(state, winnerSlot, loserSlot,
+      math.max(scoreAttacker, scoreDefender), rng);
 
   events.add(GameEvent(
     year: state.year,
@@ -854,7 +898,26 @@ void finishSettlement(GameState state, List<GameEvent> events) {
   // the nearest owned tile if the capital itself was annexed).
   _rehomeStrandedTroops(state, state.realm(loserSlot));
   state.activeWar = null;
-  _checkLandLoss(state, state.realm(loserSlot), events);
+  checkLandLoss(state, state.realm(loserSlot), events);
+
+  // A war that overruns the last rival leaves the winner as sole ruler.
+  // Surface the victory the instant the enemy's land is gone — for a HUMAN
+  // winner, so the popup appears right after the war instead of only at
+  // their next "Zug beenden". AI-vs-AI victories resolve at the normal
+  // end-of-turn win check (completeTurn); a war can only ever annex tiles
+  // here, so this is the one mid-turn path that can produce a sole ruler.
+  if (state.dynasty(winnerSlot).status == DynastyStatus.human &&
+      (state.events.isEmpty || state.events.last.type != 'gameWon')) {
+    final champion = checkWinCondition(state);
+    if (champion != null) {
+      events.add(GameEvent(
+        year: state.year,
+        slot: champion,
+        type: 'gameWon',
+        visibility: EventVisibility.public,
+      ));
+    }
+  }
 }
 
 /// Afterwards every surviving unit returns to its snapshotted pre-war
@@ -901,7 +964,7 @@ void _rehomeStrandedTroops(GameState state, Realm realm) {
           }
         }
       }
-      if (homeX == null) break; // realm is landless; _checkLandLoss handles it
+      if (homeX == null) break; // realm is landless; checkLandLoss handles it
     }
     troop.x = homeX;
     troop.y = homeY!;
@@ -918,8 +981,12 @@ void _rehomeStrandedTroops(GameState state, Realm realm) {
 /// Without this a "zombie realm" with no tiles stays in the turn order;
 /// when the human player's own ruler later dies with no heirs, the only
 /// surviving ruler is the zombie's — it inherits the human slot, converts
-/// it to AI control, and `advanceUntilHuman` fires `humansDefeated`.
-void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
+/// it to AI control, and `advanceUntilHuman` fires `humansDefeated`. It
+/// would ALSO keep [checkWinCondition] from ever firing — a landless rival
+/// counts as a living ruler, so the last player standing never "owns
+/// everything". Called inline at war settlement and swept once per round
+/// ([vacateLandlessRealms]) for non-war losses (earthquake, §18.1).
+void checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   final owned = loser.tileCount.fold(0, (a, b) => a + b);
   if (owned > 0) return;
   if (loser.rulerId != null) {
@@ -946,6 +1013,18 @@ void _checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   dynasty.status = DynastyStatus.ai;
   dynasty.humanPlayer = null;
   state.rebuildTroopMarkers();
+}
+
+/// Defensive round sweep: vacate any realm that lost its LAST tile to a
+/// non-war cause — an earthquake levelling a town-less rump, a bankruptcy
+/// seizure taking the final seat — so a landless "zombie" never lingers in
+/// the turn order or blocks the §19.3 sole-ruler win. War losses are
+/// already handled inline at the settlement ([checkLandLoss]).
+void vacateLandlessRealms(GameState state, List<GameEvent> events) {
+  for (final realm in state.realms) {
+    if (realm.isVacant) continue;
+    checkLandLoss(state, realm, events);
+  }
 }
 
 /// §11.5 plunder during war rounds, once per side per round.
