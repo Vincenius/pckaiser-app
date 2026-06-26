@@ -72,6 +72,13 @@ flutter run --profile            # realistic performance (60 fps target)
 dart run tool/sim_report.dart    # in packages/game_core: headless 200-year sim
 ```
 
+Client build-time flags (`--dart-define`), all optional:
+
+| Define | Effect |
+|---|---|
+| `PCKAISER_SERVER_URL=https://…` | Bakes in the online server URL (skips the in-app prompt). |
+| `PCKAISER_INSTANCE=2` | Separate online profile — run two instances on one machine for multiplayer testing. |
+
 ## Tests & analysis
 
 Run this before every push — keep it green (no CI for the app yet;

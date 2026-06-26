@@ -6,6 +6,20 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-26 — Outdated-app Play Store link + About scroll fix — appVersion 0.1.8
+
+- **Play Store update link.** The online match's "App-Update erforderlich"
+  banner (shown via the server's `update_required` flag) is now a reusable
+  `UpdateRequiredBanner` (`client/lib/widgets/update_banner.dart`) that, on
+  Android, offers a one-tap link to the Play Store listing
+  (`com.pckaiser.app`). iOS hides the link (no published build yet). Covered
+  by `client/test/update_banner_test.dart`.
+- **About screen overflow fix.** `AboutScreen`'s body was a non-scrollable
+  `Column` that overflowed (and failed `app_version_test`) on a short test
+  surface / with large font scaling. Wrapped in
+  `LayoutBuilder` → `SingleChildScrollView` → `ConstrainedBox`: scrolls when
+  tall, stays centered when there is room.
+
 ## 2026-06-26 — War-end round (user feedback, rules v15) — appVersion 0.1.8
 
 Four items from a user playtest:

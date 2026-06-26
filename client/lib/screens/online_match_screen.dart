@@ -11,6 +11,7 @@ import '../services/online_service.dart';
 import '../state/game_controller.dart';
 import '../widgets/decisions.dart' show promptDecisionsFor;
 import '../widgets/event_feed.dart' show showDramaPopupsFor;
+import '../widgets/update_banner.dart';
 import 'game_screen.dart';
 
 /// One online match: polls the server while waiting (for players or for
@@ -296,24 +297,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           ),
         ),
         if (updateRequired)
-          Card(
-            color: theme.colorScheme.errorContainer,
-            child: ListTile(
-              leading: Icon(
-                Icons.system_update,
-                color: theme.colorScheme.onErrorContainer,
-              ),
-              title: Text(
-                'App-Update erforderlich',
-                style: TextStyle(color: theme.colorScheme.onErrorContainer),
-              ),
-              subtitle: Text(
-                'Diese Partie läuft auf Version '
-                '${view['server_app_version'] ?? '?'}. Bitte aktualisiere '
-                'die App, um deinen Zug zu machen.',
-                style: TextStyle(color: theme.colorScheme.onErrorContainer),
-              ),
-            ),
+          UpdateRequiredBanner(
+            serverVersion: view['server_app_version'] as String?,
           ),
         if (status == 'waiting') ...[
           const SizedBox(height: 8),

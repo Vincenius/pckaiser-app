@@ -29,8 +29,11 @@ const Map<String, Map<String, String>> _table = {
         'lead a small realm in the medieval Holy Roman Empire — '
         'build, trade, marry, scheme and wage war until the '
         'electors crown you Kaiser.',
-    'creditsOriginal':
-        'Original game: "PCKaiser" by Martin Gelter & Lorenz Giefing, 1992.',
+    // Split so the game title can be rendered as a link to the archive
+    // (see AboutScreen); the three pieces concatenate to the full credit.
+    'creditsOriginalPrefix': 'Original game: ',
+    'creditsOriginalGame': '"PCKaiser"',
+    'creditsOriginalSuffix': ' by Martin Gelter & Lorenz Giefing, 1992.',
     'creditsApp': 'This app: Vincent Will.',
     'endTurn': 'End turn',
     'undo': 'Undo',
@@ -86,8 +89,10 @@ const Map<String, Map<String, String>> _table = {
         '1992: Führe ein Kleinstaat-Reich im mittelalterlichen '
         'Heiligen Römischen Reich — baue, handle, heirate, intrigiere '
         'und führe Krieg, bis die Kurfürsten dich zum Kaiser wählen.',
-    'creditsOriginal':
-        'Originalspiel: „PCKaiser++" von Martin Gelter & Lorenz Giefing, 1992.',
+    // Split so the game title links to the archive (see AboutScreen).
+    'creditsOriginalPrefix': 'Originalspiel: ',
+    'creditsOriginalGame': '„PCKaiser++"',
+    'creditsOriginalSuffix': ' von Martin Gelter & Lorenz Giefing, 1992.',
     'creditsApp': 'App: Vincent Will.',
     'endTurn': 'Zug beenden',
     'undo': 'Rückgängig',
