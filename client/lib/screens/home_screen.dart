@@ -168,6 +168,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The home route is built once and cached by the Navigator, so the
+    // ValueListenableBuilder around MaterialApp (main.dart) cannot refresh
+    // this already-visible screen. Listen here too so toggling the language
+    // updates the home screen immediately, not only after a route change.
+    return ValueListenableBuilder<String>(
+      valueListenable: appLocale,
+      builder: (context, _, _) => _buildHome(context),
+    );
+  }
+
+  Widget _buildHome(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(

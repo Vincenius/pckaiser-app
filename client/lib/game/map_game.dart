@@ -33,10 +33,16 @@ const double tileSize = 32.0;
 /// changes; per-frame rendering is a single drawPicture — comfortably 60
 /// fps even on low-end devices.
 class MapGame extends FlameGame with ScaleDetector {
-  MapGame({required gc.GameState initial, this.onTileTap}) : _state = initial;
+  MapGame({required gc.GameState initial, this.onTileTap, this.focusSlot})
+    : _state = initial;
 
   /// Called with tile coordinates when the player taps the map.
   void Function(int x, int y)? onTileTap;
+
+  /// Realm to center on once the camera is ready; defaults to whoever is
+  /// currently at the turn ([gc.GameState.currentPlayer]). The read-only
+  /// map viewer passes the watching seat's own realm here.
+  final int? focusSlot;
 
   /// Tile of the currently selected war unit (pulsing ring); null = none.
   (int, int)? selectedTile;
@@ -95,7 +101,7 @@ class MapGame extends FlameGame with ScaleDetector {
     camera.viewfinder.zoom = 0.5;
     world.add(_MapLayer(this));
     _rebuild();
-    focusOnRealm(_state.currentPlayer);
+    focusOnRealm(focusSlot ?? _state.currentPlayer);
   }
 
   /// Swap in a new game state and re-rasterize.

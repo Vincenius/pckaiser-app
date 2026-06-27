@@ -6,6 +6,26 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-27 — Online lobby turn-order + off-turn map view (client UI only)
+
+User feedback on the online match screen. No rules/state/server change, so no
+`appVersion` bump (the 426 gate only guards rules).
+
+- **Turn-order list sorted correctly, one row per realm.** The lobby listed
+  seats in join order and labelled each with its join index ("Zugreihenfolge N").
+  But within a game year seats play in **slot order** (realm 1 → 30), not join
+  order, so the shown order was wrong. Now: before the start it is just a
+  "Spieler" list with no order numbers; after the start there is **one row per
+  controlled realm** (a seat holding several after a conquest/inheritance appears
+  at each realm's own position), sorted by slot and numbered "Zug 1…N" in that
+  play order. The ▶ marker is on the exact awaited realm (`awaited_slot`).
+  Eliminated seats get a single trailing "ausgeschieden" row. `online_match_screen.dart`.
+- **Off-turn "Karte ansehen".** While another seat is at the turn, a read-only
+  `OutlinedButton` opens the new `MapViewerScreen` — the Flame map with pan/zoom,
+  no HUD/actions — using the server's already-filtered per-seat state (foreign
+  realms stay fuzzed). `MapGame` gained an optional `focusSlot` so the viewer
+  centers on the watching seat's own realm. New file: `map_viewer_screen.dart`.
+
 ## 2026-06-26 — Outdated-app Play Store link + About scroll fix — appVersion 0.1.8
 
 - **Play Store update link.** The online match's "App-Update erforderlich"

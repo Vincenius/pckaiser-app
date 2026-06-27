@@ -13,6 +13,7 @@ import '../widgets/decisions.dart' show promptDecisionsFor;
 import '../widgets/event_feed.dart' show showDramaPopupsFor;
 import '../widgets/update_banner.dart';
 import 'game_screen.dart';
+import 'map_viewer_screen.dart';
 
 /// One online match: polls the server while waiting (for players or for
 /// the other seats' turns) and opens the regular game screen on this
@@ -257,6 +258,39 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         view['awaited_slot'] as int? ?? awaitedSeat?['dynasty_index'] as int?;
     final updateRequired = view['update_required'] == true;
     final myId = widget.service.playerId;
+    final started = status != 'waiting';
+    final awaitedPid = view['awaited_player_id'];
+
+    // One row PER controlled realm, so a seat holding several realms (control
+    // follows the ruler after a conquest/inheritance) appears at each realm's
+    // own turn position. Within a game year the seats play in SLOT order
+    // (realm 1 → 30), not join order, so the rows are sorted by slot once the
+    // game has started. Eliminated seats (no realm) get a single trailing row.
+    // Before the start every seat controls only its home realm → one row each.
+    final rows =
+        <({int slot, String realm, String? name, bool isYou, bool isAwaited})>[];
+    final eliminated = <({String? name, bool isYou})>[];
+    for (final p in players) {
+      final controlled =
+          (p['controlled_slots'] as List?)?.cast<int>() ??
+          [p['dynasty_index'] as int];
+      final name = p['display_name'] as String?;
+      final isYou = p['player_id'] == myId;
+      if (controlled.isEmpty) {
+        eliminated.add((name: name, isYou: isYou));
+        continue;
+      }
+      for (final s in controlled) {
+        rows.add((
+          slot: s,
+          realm: gc.countryNames[s],
+          name: name,
+          isYou: isYou,
+          isAwaited: p['player_id'] == awaitedPid && s == awaitedSlot,
+        ));
+      }
+    }
+    if (started) rows.sort((a, b) => a.slot.compareTo(b.slot));
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -334,37 +368,30 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           ),
         ],
         const SizedBox(height: 8),
-        Text('Spieler', style: theme.textTheme.titleSmall),
-        for (final p in players)
-          Builder(
-            builder: (context) {
-              // Every realm this seat currently plays — one player can hold
-              // several after a conquest or inheritance (control follows the
-              // ruler). An eliminated seat controls none.
-              final controlled =
-                  (p['controlled_slots'] as List?)?.cast<int>() ??
-                  [p['dynasty_index'] as int];
-              final isYou = p['player_id'] == myId;
-              final isAwaited = p['player_id'] == view['awaited_player_id'];
-              final realms = controlled.isEmpty
-                  ? 'ausgeschieden'
-                  : [for (final s in controlled) gc.countryNames[s]].join(', ');
-              return ListTile(
-                dense: true,
-                leading: Icon(
-                  isAwaited ? Icons.play_arrow : Icons.person,
-                  size: 18,
-                ),
-                title: Text(
-                  '${p['display_name'] != null ? '${p['display_name']} — ' : ''}'
-                  '$realms${isYou ? ' (du)' : ''}',
-                ),
-                subtitle: Text(
-                  'Zugreihenfolge ${(p['turn_order'] as int) + 1}'
-                  '${controlled.length > 1 ? ' · ${controlled.length} Reiche' : ''}',
-                ),
-              );
-            },
+        Text(
+          started ? 'Zugreihenfolge' : 'Spieler',
+          style: theme.textTheme.titleSmall,
+        ),
+        // After the start each realm carries its 1-based position in the
+        // year's slot-play order; before it there is no order to show yet.
+        for (final (i, r) in rows.indexed)
+          ListTile(
+            dense: true,
+            leading: Icon(r.isAwaited ? Icons.play_arrow : Icons.person, size: 18),
+            title: Text(
+              '${r.name != null ? '${r.name} — ' : ''}'
+              '${r.realm}${r.isYou ? ' (du)' : ''}',
+            ),
+            subtitle: started ? Text('Zug ${i + 1}') : null,
+          ),
+        for (final r in eliminated)
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.person_off, size: 18),
+            title: Text(
+              '${r.name != null ? '${r.name} — ' : ''}'
+              'ausgeschieden${r.isYou ? ' (du)' : ''}',
+            ),
           ),
         const SizedBox(height: 16),
         // The creator opens the game once everyone joined — no fixed
@@ -407,8 +434,43 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               child: Text('Zug spielen'),
             ),
           ),
+        // Off-turn: let the seat study the board (read-only) while waiting
+        // for the others. The server already ships this seat's filtered
+        // state, so no extra request is needed.
+        if (status == 'active' && !yourTurn && view['state'] != null)
+          OutlinedButton.icon(
+            onPressed: () => _viewMap(view),
+            icon: const Icon(Icons.map_outlined),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('Karte ansehen'),
+            ),
+          ),
       ],
     );
+  }
+
+  /// Opens the read-only map for this seat while another player is at the
+  /// turn. Pauses polling like [_play] so a background refresh can't pop a
+  /// drama dialog over the viewer; refreshes again on return.
+  Future<void> _viewMap(Map<String, dynamic> view) async {
+    final session = OnlineGameSession(
+      api: widget.service.api,
+      matchId: widget.matchId,
+      playerId: widget.service.playerId!,
+      view: view,
+    );
+    _playing = true;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MapViewerScreen(
+          state: session.state,
+          focusSlot: session.yourSlot,
+        ),
+      ),
+    );
+    _playing = false;
+    await _refresh();
   }
 
   /// Leave/delete this match (mirrors the lobby's per-match action):
