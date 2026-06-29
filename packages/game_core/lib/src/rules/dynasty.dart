@@ -336,7 +336,9 @@ void handleDeath(
   if (heir != null) {
     // §15.5 Islamic succession crisis: a Muslim realm cannot be ruled by a
     // woman — the realm falls to computer control (heir still crowned).
-    if (dynasty.religion == Religion.moslemisch &&
+    // Disabled when the game opts into gender-equal succession.
+    if (!state.genderEqualSuccession &&
+        dynasty.religion == Religion.moslemisch &&
         !heir.isMale &&
         dynasty.status == DynastyStatus.human) {
       state.humanLossReason = 'islamicSuccessionCrisis';
@@ -451,6 +453,11 @@ void handleDeath(
 /// first child → first member → random member. The deceased is already
 /// removed from all lists; the spouse may belong to another dynasty (the
 /// peaceful inheritance path).
+///
+/// When the game opts into gender-equal succession the male-priority steps
+/// are dropped: the eldest child (any gender) inherits first, then the
+/// eldest member, then the spouse — so a daughter inherits ahead of a
+/// distant male relative.
 Person? _chooseHeirByPriority(
     GameState state, Person deceased, Dynasty dynasty, Rng rng) {
   Person? firstAlive(Iterable<int> ids, {bool? male}) {
@@ -462,11 +469,15 @@ Person? _chooseHeirByPriority(
   }
 
   final spouse = state.person(deceased.spouseId);
-  final heir = firstAlive(deceased.childrenIds, male: true) ??
-      firstAlive(dynasty.memberIds, male: true) ??
-      spouse ??
-      firstAlive(deceased.childrenIds) ??
-      firstAlive(dynasty.memberIds);
+  final heir = state.genderEqualSuccession
+      ? firstAlive(deceased.childrenIds) ??
+          firstAlive(dynasty.memberIds) ??
+          spouse
+      : firstAlive(deceased.childrenIds, male: true) ??
+          firstAlive(dynasty.memberIds, male: true) ??
+          spouse ??
+          firstAlive(deceased.childrenIds) ??
+          firstAlive(dynasty.memberIds);
   if (heir != null) return heir;
   if (dynasty.memberIds.isEmpty) return null;
   return state

@@ -208,54 +208,7 @@ class MatchService {
     }
 
     if (match.status == MatchStatus.active) {
-      var state = _load(match);
-      final ignored = <GameEvent>[];
-      // Answer the leaver's open decisions with their defaults while the
-      // dynasty still counts as human (mirrors the timeout sweep).
-      for (final d in [...state.pendingDecisions]) {
-        if (state.dynasty(d.decidingSlot).humanPlayer != seat.turnOrder) {
-          continue;
-        }
-        state = _apply(
-            state,
-            ResolveDecision(
-                slot: d.decidingSlot, decisionId: d.id, choice: const {}),
-            ignored);
-      }
-      state = _mutate(state, (s, rng, ev) {
-        // Control follows the ruler: every dynasty this player holds
-        // (after conquests/inheritances) becomes an AI dynasty.
-        for (final d in s.dynasties) {
-          if (d.status != DynastyStatus.human ||
-              d.humanPlayer != seat.turnOrder) {
-            continue;
-          }
-          d.status = DynastyStatus.ai;
-          d.humanPlayer = null;
-          ev.add(GameEvent(
-            year: s.year,
-            slot: d.index,
-            type: 'playerLeft',
-            visibility: EventVisibility.public,
-          ));
-        }
-        // A war that now awaits nobody (the leaver's side fell to the
-        // AI) runs to its end like a pure AI war.
-        var guard = 0;
-        while (
-            s.activeWar != null && warActingSlot(s) == null && guard++ < 30) {
-          if (s.activeWar!.phase == WarPhase.settlement) {
-            autoSettleClaim(s, rng, ev);
-          } else {
-            endWarRoundWithAi(s, rng, ev);
-          }
-        }
-      }, ignored);
-      // If it was the leaver's turn, the now-AI turn completes and play
-      // advances to the next human (or the game ends humansDefeated).
-      state = _resumeAfterWarIfOver(state, ignored);
-      match.players.remove(seat);
-      await _commit(match, state, notify: true);
+      await _dropSeatToAi(match, seat, eventType: 'playerLeft');
     } else {
       match.players.remove(seat);
       match.updatedAt = _clock();
@@ -267,6 +220,107 @@ class MatchService {
     }
     await _store.saveMatch(match);
     return false;
+  }
+
+  /// Consecutive timed-out turns after which the creator may kick a seat.
+  static const int idleKickThreshold = 3;
+
+  /// Kicks an idle seat and replaces its realm(s) with the AI — creator
+  /// only, only once the seat has missed [idleKickThreshold] turns in a
+  /// row. Everyone learns about it via a public `playerKicked` event.
+  Future<MatchRecord> kickPlayer({
+    required String matchId,
+    required String requesterId,
+    required String targetPlayerId,
+  }) {
+    return _locked(_canonicalId(matchId), () async {
+      await _requirePlayer(requesterId);
+      final match = await _requireMatch(matchId);
+      if (match.status != MatchStatus.active) {
+        throw ApiException(400, 'match is not active');
+      }
+      if (match.players.isEmpty ||
+          match.players.first.playerId != requesterId) {
+        throw ApiException(403, 'only the creator can remove a player');
+      }
+      final target = match.playerById(targetPlayerId);
+      if (target == null) {
+        throw ApiException(404, 'player is not part of this match');
+      }
+      if (target.playerId == requesterId) {
+        throw ApiException(400, 'the creator cannot remove themselves');
+      }
+      if (target.idleTurns < idleKickThreshold) {
+        throw ApiException(400, 'player has not been idle long enough');
+      }
+      await _dropSeatToAi(match, target, eventType: 'playerKicked');
+      if (match.players.isEmpty) {
+        await _store.deleteMatch(match.id);
+      } else {
+        await _store.saveMatch(match);
+      }
+      return match;
+    });
+  }
+
+  /// Hands every realm a seat still holds to the AI and removes the seat:
+  /// resolves its open decisions with their defaults, flips its dynasties
+  /// to AI (emitting [eventType] per realm), runs any now-ownerless war to
+  /// its end and lets a half-finished AI turn continue — then commits the
+  /// new state. Shared by [leaveMatch] (`playerLeft`) and [kickPlayer]
+  /// (`playerKicked`). The caller persists/deletes the record.
+  Future<void> _dropSeatToAi(
+    MatchRecord match,
+    MatchPlayer seat, {
+    required String eventType,
+  }) async {
+    var state = _load(match);
+    final ignored = <GameEvent>[];
+    // Answer the seat's open decisions with their defaults while the
+    // dynasty still counts as human (mirrors the timeout sweep).
+    for (final d in [...state.pendingDecisions]) {
+      if (state.dynasty(d.decidingSlot).humanPlayer != seat.turnOrder) {
+        continue;
+      }
+      state = _apply(
+          state,
+          ResolveDecision(
+              slot: d.decidingSlot, decisionId: d.id, choice: const {}),
+          ignored);
+    }
+    state = _mutate(state, (s, rng, ev) {
+      // Control follows the ruler: every dynasty this player holds
+      // (after conquests/inheritances) becomes an AI dynasty.
+      for (final d in s.dynasties) {
+        if (d.status != DynastyStatus.human ||
+            d.humanPlayer != seat.turnOrder) {
+          continue;
+        }
+        d.status = DynastyStatus.ai;
+        d.humanPlayer = null;
+        ev.add(GameEvent(
+          year: s.year,
+          slot: d.index,
+          type: eventType,
+          visibility: EventVisibility.public,
+        ));
+      }
+      // A war that now awaits nobody (the dropped side fell to the AI)
+      // runs to its end like a pure AI war.
+      var guard = 0;
+      while (s.activeWar != null && warActingSlot(s) == null && guard++ < 30) {
+        if (s.activeWar!.phase == WarPhase.settlement) {
+          autoSettleClaim(s, rng, ev);
+        } else {
+          endWarRoundWithAi(s, rng, ev);
+        }
+      }
+    }, ignored);
+    // If it was this seat's turn, the now-AI turn completes and play
+    // advances to the next human (or the game ends humansDefeated).
+    state = _resumeAfterWarIfOver(state, ignored);
+    match.players.remove(seat);
+    await _commit(match, state, notify: true);
   }
 
   void _seat(MatchRecord match, String playerId, Map<String, dynamic> setup) {
@@ -325,6 +379,8 @@ class MatchService {
       ],
       reformationYear: match.settings.reformationYear,
       ottomanYear: match.settings.ottomanYear,
+      warStartYear: match.settings.warStartYear,
+      genderEqualSuccession: match.settings.genderEqualSuccession,
       seed: match.settings.seed,
     );
     var state = newGame(setup);
@@ -382,6 +438,9 @@ class MatchService {
             // ruler, so a conquest or inheritance can leave one player on
             // several realms. The turn-order UI lists them all.
             'controlled_slots': _controlledSlots(state, p.turnOrder, p.slot),
+            // Consecutive timed-out turns — the creator's UI offers a kick
+            // once this reaches [idleKickThreshold].
+            'idle_turns': p.idleTurns,
           },
       ],
       'settings': match.settings.toJson(),
@@ -459,6 +518,30 @@ class MatchService {
             : (await _store.player(awaited))?.displayName ??
                 m.playerById(awaited)?.founderName,
         'updated_at': m.updatedAt.toIso8601String(),
+      });
+    }
+    return result;
+  }
+
+  /// Open public matches anyone may join — the lobby's discovery list.
+  /// Carries enough to decide whether to join (settings + how full it is +
+  /// who hosts it) but never the game state. Newest first.
+  Future<List<Map<String, dynamic>>> publicMatches() async {
+    final matches = await _store.publicWaitingMatches();
+    matches.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final result = <Map<String, dynamic>>[];
+    for (final m in matches) {
+      final creatorId = m.players.isEmpty ? null : m.players.first.playerId;
+      result.add({
+        'id': m.id,
+        'status': m.status.name,
+        'joined': m.players.length,
+        'settings': m.settings.toJson(),
+        'creator_name': creatorId == null
+            ? null
+            : (await _store.player(creatorId))?.displayName ??
+                m.players.first.founderName,
+        'created_at': m.createdAt.toIso8601String(),
       });
     }
     return result;
@@ -580,6 +663,10 @@ class MatchService {
       throw ApiException(400, 'provide action or end_turn');
     }
 
+    // The seat showed up and submitted — clear its idle streak (the
+    // creator's kick-idle option keys off consecutive timed-out turns).
+    seat.idleTurns = 0;
+
     await _commit(match, state, notify: true);
     await _store.saveMatch(match);
     final result = await view(matchId, playerId);
@@ -655,6 +742,12 @@ class MatchService {
     } else {
       final awaitedSlot = _awaitedSlot(state);
       if (awaitedSlot != null) {
+        // The awaited seat never showed up — count this missed turn so the
+        // creator can replace a persistently idle player with the AI.
+        final humanIndex = state.dynasty(awaitedSlot).humanPlayer;
+        final idleSeat =
+            humanIndex == null ? null : match.playerByTurnOrder(humanIndex);
+        if (idleSeat != null) idleSeat.idleTurns += 1;
         // Resolve the idle player's pending decisions with their
         // defaults, then end the turn with no actions.
         for (final d in [...state.pendingDecisions]) {

@@ -39,11 +39,15 @@ Key API: `applyAction(GameState, PlayerAction, Rng)`, `runAiTurn`, `advanceUntil
 players       (id UUID PK, display_name TEXT, fcm_token TEXT, created_at)
 matches       (id TEXT PK,                -- 5-letter room code (legacy rows: UUID)
                current_turn UUID→players, state JSONB,
-               settings JSONB,         -- e.g. {"turn_timeout_hours":24,"war_round_timeout":600}
+               settings JSONB,         -- e.g. {"turn_timeout_hours":24,"war_round_timeout":600,
+                                       --        "reformation_year":1020,"ottoman_year":1040,
+                                       --        "war_start_year":1010,"is_public":false,
+                                       --        "gender_equal_succession":true}
                turn_deadline TIMESTAMPTZ, status TEXT,  -- waiting|active|finished
                winner UUID→players, created_at, updated_at)
 match_players (match_id, player_id, turn_order SMALLINT,
                dynasty_index SMALLINT,  -- realm slot 1–30
+               idle_turns SMALLINT,     -- consecutive timed-out turns; ≥3 ⇒ creator may kick
                PK (match_id, player_id))
 turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- audit/replay
 ```
@@ -54,12 +58,14 @@ turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- au
 |--------|------|-------------|
 | POST | `/players` | Register device `{id, display_name, fcm_token}` |
 | PATCH | `/players/:id` | Update name / FCM token |
-| POST | `/matches` | Create `{player_id, settings}` → `status: waiting`, id = 5-letter room code |
+| POST | `/matches` | Create `{player_id, settings}` → `status: waiting`, id = 5-letter room code. `settings.is_public` lists it publicly; `settings.gender_equal_succession` (default true) drops male-priority heirs + the §15.5 Islamic crisis |
+| GET | `/matches/public` | List open **public** waiting matches with their settings (turn timer, joined count, host) — the lobby's discovery list |
 | POST | `/matches/:id/join` | Join a waiting match (≤ 16 seats, no fixed count) |
 | POST | `/matches/:id/start` | Start the match — creator (first seat) only |
 | POST | `/matches/:id/leave` | Leave/delete: waiting + creator → match deleted, otherwise the seat is freed; in a running game the realm falls to the AI (`playerLeft` event, awaited input auto-resolves like the timeout sweep); an empty match is deleted |
-| GET | `/matches/:id?player_id=` | State **filtered for the requester** |
-| POST | `/matches/:id/turn` | Submit turn action or pending decision |
+| POST | `/matches/:id/kick` | `{player_id, target_player_id}` — creator only, allowed once the target has missed ≥ 3 turns by timeout (`idle_turns`); the realm falls to the AI (`playerKicked` public event) |
+| GET | `/matches/:id?player_id=` | State **filtered for the requester**; each player row carries `idle_turns` |
+| POST | `/matches/:id/turn` | Submit turn action or pending decision (resets the seat's `idle_turns`) |
 | GET | `/players/:id/matches` | List player's matches (incl. `is_creator`) |
 
 Match ids are 5-letter uppercase room codes (typed by hand; lowercase

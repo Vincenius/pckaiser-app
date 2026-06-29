@@ -1,7 +1,14 @@
 import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
-GameState freshGame({int seed = 2026, List<int> humanSlots = const [1]}) =>
+GameState freshGame({
+  int seed = 2026,
+  List<int> humanSlots = const [1],
+  // Default false here so the succession tests exercise the faithful
+  // original behaviour (male-priority heirs, §15.5 Islamic crisis); the
+  // gender-equal option is covered by its own tests below.
+  bool genderEqualSuccession = false,
+}) =>
     newGame(GameSetup(
       humans: [
         for (var i = 0; i < humanSlots.length; i++)
@@ -15,6 +22,7 @@ GameState freshGame({int seed = 2026, List<int> humanSlots = const [1]}) =>
       reformationYear: 1020,
       ottomanYear: 1040,
       seed: seed,
+      genderEqualSuccession: genderEqualSuccession,
     ));
 
 void main() {
@@ -215,6 +223,68 @@ void main() {
       expect(dynasty.humanPlayer, isNull);
       expect(state.realm(1).rulerId, daughter.id);
       expect(events.any((e) => e.type == 'islamicSuccessionCrisis'), isTrue);
+    });
+
+    test(
+        'gender-equal option keeps a Muslim realm human under a female heir '
+        '(§15.5 disabled)', () {
+      final state =
+          startGame(freshGame(genderEqualSuccession: true), Rng(1)).state;
+      state.year = 1041;
+      final dynasty = state.dynasty(1);
+      dynasty.religion = Religion.moslemisch;
+      final ruler = state.person(state.realm(1).rulerId)!;
+      final daughter = Person(
+          id: state.nextPersonId++,
+          name: 'Fatima',
+          age: 16,
+          dynasty: 1,
+          gender: 1);
+      state.persons[daughter.id] = daughter;
+      dynasty.memberIds.add(daughter.id);
+      ruler.childrenIds.add(daughter.id);
+
+      final events = <GameEvent>[];
+      handleDeath(state, ruler, Rng(5), events);
+
+      expect(dynasty.status, DynastyStatus.human,
+          reason: 'no Islamic succession crisis when the option is on');
+      expect(dynasty.humanPlayer, isNotNull);
+      expect(state.realm(1).rulerId, daughter.id);
+      expect(events.any((e) => e.type == 'islamicSuccessionCrisis'), isFalse);
+    });
+
+    test('gender-equal option: the eldest child inherits regardless of gender',
+        () {
+      final state =
+          startGame(freshGame(genderEqualSuccession: true), Rng(1)).state;
+      state.year = 1010;
+      final dynasty = state.dynasty(1);
+      final ruler = state.person(state.realm(1).rulerId)!;
+      // A daughter (the ruler's own child) and an unrelated male member: the
+      // original rules would crown the male member first; gender-equal
+      // succession crowns the child.
+      final daughter = Person(
+          id: state.nextPersonId++,
+          name: 'Tochter',
+          age: 18,
+          dynasty: 1,
+          gender: 1);
+      final cousin = Person(
+          id: state.nextPersonId++,
+          name: 'Vetter',
+          age: 30,
+          dynasty: 1,
+          gender: 0);
+      state.persons[daughter.id] = daughter;
+      state.persons[cousin.id] = cousin;
+      dynasty.memberIds.addAll([daughter.id, cousin.id]);
+      ruler.childrenIds.add(daughter.id);
+
+      handleDeath(state, ruler, Rng(5), <GameEvent>[]);
+
+      expect(state.realm(1).rulerId, daughter.id,
+          reason: 'the child inherits before a distant male relative');
     });
   });
 

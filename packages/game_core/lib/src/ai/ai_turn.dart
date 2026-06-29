@@ -122,7 +122,7 @@ void _runAiTurnInPlace(
   if ((warFlag || rng.nextInt(20) == 0) &&
       rng.nextInt(3) == 0 &&
       warMoodOk &&
-      state.year > 1009 &&
+      state.year >= state.warStartYear &&
       !realm.warThisYear &&
       state.activeWar == null &&
       realm.troops.any((t) => t.men > 0)) {

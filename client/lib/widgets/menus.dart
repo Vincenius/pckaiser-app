@@ -191,8 +191,8 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
   // The §11.1 war gates, mirrored so the button is disabled (with the
   // reason shown) instead of failing on tap.
   final hasTroops = realm.troops.any((t) => t.men > 0);
-  final String? warBlocked = state.year < gc.firstWarYear
-      ? 'Kriege sind erst ab dem Jahr 1010 erlaubt !'
+  final String? warBlocked = state.year < state.warStartYear
+      ? 'Kriege sind erst ab dem Jahr ${state.warStartYear} erlaubt !'
       : realm.warThisYear
       ? 'Du hast dieses Jahr schon einmal Krieg geführt !'
       : !hasTroops

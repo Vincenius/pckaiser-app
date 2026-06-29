@@ -32,8 +32,11 @@ class _SetupScreenState extends State<SetupScreen> {
   final _slotName = TextEditingController(text: 'Partie 1');
   final _reformation = TextEditingController(text: '1020');
   final _ottoman = TextEditingController(text: '1040');
+  final _warStart = TextEditingController(text: '1010');
   final List<_PlayerDraft> _players = [_PlayerDraft(1)];
   bool _starting = false;
+  // Deviation from the original — on by default for new games.
+  bool _genderEqualSuccession = true;
 
   int _nextFreeSlot() {
     for (var slot = 1; slot <= 30; slot++) {
@@ -50,6 +53,10 @@ class _SetupScreenState extends State<SetupScreen> {
     }
     if (ottoman == null || ottoman < minEventYear) {
       return 'Das ist zu früh !!! (Osmanen ≥ $minEventYear)';
+    }
+    final warStart = int.tryParse(_warStart.text);
+    if (warStart == null || warStart < 1000) {
+      return 'Das ist zu früh !!! (Krieg ab ≥ 1000)';
     }
     if (_slotName.text.trim().isEmpty) {
       return 'Bitte dem Spielstand einen Namen geben';
@@ -90,6 +97,8 @@ class _SetupScreenState extends State<SetupScreen> {
       ],
       reformationYear: int.parse(_reformation.text),
       ottomanYear: int.parse(_ottoman.text),
+      warStartYear: int.parse(_warStart.text),
+      genderEqualSuccession: _genderEqualSuccession,
       seed: DateTime.now().microsecondsSinceEpoch & 0xFFFFFFFF,
     );
     if (!mounted) return;
@@ -121,29 +130,63 @@ class _SetupScreenState extends State<SetupScreen> {
               labelText: 'Name des Spielstands',
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _reformation,
+          const SizedBox(height: 8),
+          Theme(
+            data: Theme.of(
+              context,
+            ).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: const Text('Erweiterte Optionen'),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _reformation,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Jahr der Reformation',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _ottoman,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Jahr der Osmanen-Invasion',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _warStart,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    labelText: 'Jahr der Reformation',
+                    labelText: 'Krieg möglich ab Jahr',
+                    helperText: 'Original: 1010',
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _ottoman,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Jahr der Osmanen-Invasion',
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _genderEqualSuccession,
+                  onChanged: (v) =>
+                      setState(() => _genderEqualSuccession = v),
+                  title: const Text('Frauen können überall herrschen'),
+                  subtitle: const Text(
+                    'Abweichend vom Original: das älteste Kind erbt '
+                    'unabhängig vom Geschlecht und Frauen können auch '
+                    'islamische Reiche erben, ohne auszuscheiden.',
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const Divider(height: 32),
           for (var i = 0; i < _players.length; i++) _playerCard(i),

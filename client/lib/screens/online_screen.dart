@@ -24,6 +24,7 @@ class OnlineScreen extends StatefulWidget {
 class _OnlineScreenState extends State<OnlineScreen> {
   OnlineService? _service;
   List<dynamic> _matches = const [];
+  List<dynamic> _publicMatches = const [];
   bool _loading = true;
   String? _error;
   Timer? _refresh;
@@ -62,9 +63,23 @@ class _OnlineScreenState extends State<OnlineScreen> {
     if (!silent) setState(() => _loading = true);
     try {
       final matches = await service.api.myMatches(service.playerId!);
+      // Open public games anyone may join — best-effort: an older server
+      // without the endpoint shouldn't break the player's own match list.
+      List<dynamic> public = const [];
+      try {
+        public = await service.api.publicMatches();
+      } on ApiError {
+        public = const [];
+      }
       if (!mounted) return;
+      // Hide public games the player already joined (they appear above).
+      final mine = {for (final m in matches.cast<Map>()) m['id']};
       setState(() {
         _matches = matches;
+        _publicMatches = [
+          for (final m in public.cast<Map>())
+            if (!mine.contains(m['id'])) m,
+        ];
         _error = null;
         _loading = false;
       });
@@ -154,7 +169,15 @@ class _OnlineScreenState extends State<OnlineScreen> {
     try {
       final view = await service.api.createMatch(
         playerId: service.playerId!,
-        settings: {'turn_timeout_hours': setup.turnTimeoutHours},
+        settings: {
+          'turn_timeout_hours': setup.turnTimeoutHours,
+          'war_round_timeout': setup.warRoundTimeoutSeconds,
+          'reformation_year': setup.reformationYear,
+          'ottoman_year': setup.ottomanYear,
+          'war_start_year': setup.warStartYear,
+          'is_public': setup.isPublic,
+          'gender_equal_succession': setup.genderEqualSuccession,
+        },
         setup: setup.toJson(),
       );
       await _reload();
@@ -227,6 +250,24 @@ class _OnlineScreenState extends State<OnlineScreen> {
     }
   }
 
+  /// Join a public game straight from the open-games list (no code needed).
+  Future<void> _joinPublic(String id) async {
+    final setup = await _askSetup(hostChoices: false);
+    if (setup == null) return;
+    final service = _service!;
+    try {
+      await service.api.joinMatch(
+        matchId: id,
+        playerId: service.playerId!,
+        setup: setup.toJson(),
+      );
+      await _reload();
+      if (mounted) await _open(id);
+    } on ApiError catch (e) {
+      _toast(e.message);
+    }
+  }
+
   /// Founder setup (and for the host: the turn timer — mitspieler join
   /// via room code until the host starts the game, no fixed count).
   Future<_MatchSetup?> _askSetup({required bool hostChoices}) async {
@@ -234,9 +275,15 @@ class _OnlineScreenState extends State<OnlineScreen> {
       text: _service?.displayName ?? '',
     );
     final dorfController = TextEditingController();
+    final reformationController = TextEditingController(text: '1020');
+    final ottomanController = TextEditingController(text: '1040');
+    final warStartController = TextEditingController(text: '1010');
     var gender = 0;
     int? slot;
     int? timeoutHours = 24;
+    var warRoundMinutes = 10;
+    var isPublic = false;
+    var genderEqualSuccession = true;
     return showDialog<_MatchSetup>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -262,6 +309,113 @@ class _OnlineScreenState extends State<OnlineScreen> {
                         onChanged: (v) => setState(() => timeoutHours = v),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Expanded(child: Text('Sichtbarkeit')),
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(value: false, label: Text('Privat')),
+                          ButtonSegment(
+                            value: true,
+                            label: Text('Öffentlich'),
+                          ),
+                        ],
+                        selected: {isPublic},
+                        onSelectionChanged: (s) =>
+                            setState(() => isPublic = s.first),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      isPublic
+                          ? 'Jeder kann diese Partie in der Liste sehen und '
+                                'beitreten.'
+                          : 'Nur Spieler mit dem Raum-Code können beitreten.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: EdgeInsets.zero,
+                      title: const Text('Erweiterte Optionen'),
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text('Zugzeit im Krieg'),
+                            ),
+                            DropdownButton<int>(
+                              value: warRoundMinutes,
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 5, child: Text('5 min')),
+                                DropdownMenuItem(
+                                    value: 10, child: Text('10 min')),
+                                DropdownMenuItem(
+                                    value: 15, child: Text('15 min')),
+                                DropdownMenuItem(
+                                    value: 30, child: Text('30 min')),
+                              ],
+                              onChanged: (v) => setState(
+                                  () => warRoundMinutes = v ?? warRoundMinutes),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: reformationController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Reformation',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: ottomanController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Osmanen',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: warStartController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Krieg möglich ab Jahr',
+                            helperText: 'Original: 1010',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: genderEqualSuccession,
+                          onChanged: (v) =>
+                              setState(() => genderEqualSuccession = v),
+                          title:
+                              const Text('Frauen können überall herrschen'),
+                          subtitle: const Text(
+                            'Geschlechtsneutrale Erbfolge — Frauen erben '
+                            'auch islamische Reiche, ohne auszuscheiden.',
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const Divider(),
                 ],
@@ -330,6 +484,14 @@ class _OnlineScreenState extends State<OnlineScreen> {
                     countrySlot: slot,
                     dorfName: dorf,
                     turnTimeoutHours: timeoutHours,
+                    warRoundTimeoutSeconds: warRoundMinutes * 60,
+                    reformationYear:
+                        int.tryParse(reformationController.text) ?? 1020,
+                    ottomanYear: int.tryParse(ottomanController.text) ?? 1040,
+                    warStartYear:
+                        int.tryParse(warStartController.text) ?? 1010,
+                    isPublic: isPublic,
+                    genderEqualSuccession: genderEqualSuccession,
                   ),
                 );
               },
@@ -550,8 +712,43 @@ class _OnlineScreenState extends State<OnlineScreen> {
               ),
               onTap: () => _open(m['id'] as String),
             ),
+          if (_publicMatches.isNotEmpty) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                'Öffentliche Partien',
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            for (final m in _publicMatches.cast<Map>())
+              _publicMatchTile(theme, m),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _publicMatchTile(ThemeData theme, Map m) {
+    final settings = (m['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+    final hours = settings['turn_timeout_hours'] as int?;
+    final timer = hours == null
+        ? 'kein Zeitlimit'
+        : hours == 168
+        ? '7 Tage/Zug'
+        : '$hours h/Zug';
+    final host = m['creator_name'] as String?;
+    return ListTile(
+      leading: const Icon(Icons.public),
+      title: Text(host != null ? 'Partie von $host' : 'Offene Partie'),
+      subtitle: Text(
+        'Raum ${m['id']} · ${m['joined']} beigetreten · $timer',
+      ),
+      trailing: FilledButton(
+        onPressed: () => _joinPublic(m['id'] as String),
+        child: const Text('Beitreten'),
+      ),
+      onTap: () => _joinPublic(m['id'] as String),
     );
   }
 }
@@ -563,6 +760,12 @@ class _MatchSetup {
     required this.countrySlot,
     required this.dorfName,
     required this.turnTimeoutHours,
+    this.warRoundTimeoutSeconds = 600,
+    this.reformationYear = 1020,
+    this.ottomanYear = 1040,
+    this.warStartYear = 1010,
+    this.isPublic = false,
+    this.genderEqualSuccession = true,
   });
 
   final String founderName;
@@ -570,6 +773,13 @@ class _MatchSetup {
   final int? countrySlot;
   final String dorfName;
   final int? turnTimeoutHours;
+  // Host-only choices (ignored when joining an existing match).
+  final int warRoundTimeoutSeconds;
+  final int reformationYear;
+  final int ottomanYear;
+  final int warStartYear;
+  final bool isPublic;
+  final bool genderEqualSuccession;
 
   Map<String, dynamic> toJson() => {
     'founder_name': founderName,

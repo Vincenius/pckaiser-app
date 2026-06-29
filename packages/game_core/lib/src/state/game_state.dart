@@ -19,6 +19,8 @@ class GameState {
     required this.year,
     required this.reformationYear,
     required this.ottomanYear,
+    this.warStartYear = 1010,
+    this.genderEqualSuccession = false,
     this.grainPrice = 0,
     this.cattlePrice = 0,
     this.kaiserId,
@@ -63,6 +65,11 @@ class GameState {
         year: json['year'] as int,
         reformationYear: json['reformationYear'] as int,
         ottomanYear: json['ottomanYear'] as int,
+        // Additive — old saves default to the original §11.1 war gate (1010).
+        warStartYear: json['warStartYear'] as int? ?? 1010,
+        // Per-game option (additive — old saves default to the original
+        // male-priority + Islamic-succession-crisis behaviour).
+        genderEqualSuccession: json['genderEqualSuccession'] as bool? ?? false,
         grainPrice: (json['grainPrice'] as num? ?? 0).toDouble(),
         cattlePrice: (json['cattlePrice'] as num? ?? 0).toDouble(),
         kaiserId: json['kaiserId'] as int?,
@@ -131,6 +138,20 @@ class GameState {
   /// Player-chosen at setup, validated ≥ 1011 (§5).
   final int reformationYear;
   final int ottomanYear;
+
+  /// Player-chosen at setup: the first year war declarations are allowed
+  /// (§11.1, original 1010). Old saves default to 1010 (see
+  /// [GameState.fromJson]).
+  final int warStartYear;
+
+  /// Per-game option (deviation from the original, chosen at setup). When
+  /// true the succession is gender-neutral: the eldest child inherits
+  /// regardless of gender (no male priority, §15.4) AND the Islamic
+  /// succession crisis (§15.5) is disabled, so a female heir never costs a
+  /// player their realm. False = faithful original behaviour. Old saves
+  /// default to false (see [GameState.fromJson]); new games default it on
+  /// in the setup UI.
+  final bool genderEqualSuccession;
 
   /// Global market prices, rolled once per year (§9.1).
   double grainPrice;
@@ -248,6 +269,8 @@ class GameState {
         year: year,
         reformationYear: reformationYear,
         ottomanYear: ottomanYear,
+        warStartYear: warStartYear,
+        genderEqualSuccession: genderEqualSuccession,
         grainPrice: grainPrice,
         cattlePrice: cattlePrice,
         kaiserId: kaiserId,
@@ -279,6 +302,8 @@ class GameState {
         'year': year,
         'reformationYear': reformationYear,
         'ottomanYear': ottomanYear,
+        'warStartYear': warStartYear,
+        'genderEqualSuccession': genderEqualSuccession,
         'grainPrice': grainPrice,
         'cattlePrice': cattlePrice,
         'kaiserId': kaiserId,

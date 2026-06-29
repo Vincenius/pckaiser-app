@@ -40,6 +40,8 @@ class GameSetup {
     required this.reformationYear,
     required this.ottomanYear,
     required this.seed,
+    this.warStartYear = 1010,
+    this.genderEqualSuccession = true,
   }) {
     // 1–16 humans for real games; 0 is allowed for headless simulations
     // (e.g. the full-AI smoke test).
@@ -59,6 +61,15 @@ class GameSetup {
   final int reformationYear;
   final int ottomanYear;
   final int seed;
+
+  /// First year war declarations are allowed (§11.1; original 1010).
+  final int warStartYear;
+
+  /// Deviation from the original (default on for new games): gender-neutral
+  /// succession — the eldest child inherits regardless of gender and the
+  /// Islamic succession crisis (§15.5) never eliminates a player. See
+  /// [GameState.genderEqualSuccession].
+  final bool genderEqualSuccession;
 }
 
 /// Creates a fresh game world (ORIGINAL_GAME.md §5): random map, 30
@@ -136,6 +147,8 @@ GameState newGame(GameSetup setup) {
     year: 999,
     reformationYear: setup.reformationYear,
     ottomanYear: setup.ottomanYear,
+    warStartYear: setup.warStartYear,
+    genderEqualSuccession: setup.genderEqualSuccession,
     persons: persons,
     nextPersonId: nextPersonId,
     currentPlayer: 1,

@@ -6,6 +6,42 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-29 — Gender-equal succession option, public rooms, online loading hint, idle kick, advanced game settings — appVersion 0.1.11
+
+Several feature requests. Rules-affecting changes (succession + the
+configurable war-start year) → appVersion bump to 0.1.11 (client
+`0.1.11+7`); the rest is online orchestration + UI. Schema unchanged (all
+new state/settings fields are additive with `fromJson` defaults).
+
+- **Gender-equal succession (per-game option, default ON for new games).**
+  New `GameState.genderEqualSuccession` (and `GameSetup` / `MatchSettings`).
+  When on, `_chooseHeirByPriority` drops the male-priority steps (the eldest
+  child inherits regardless of gender) and the §15.5 Islamic succession
+  crisis is skipped, so a female heir never costs a player their realm. Old
+  saves migrate to `false` (faithful original behaviour); the setup screens
+  default the toggle on. Exposed in the local setup screen ("Erweiterte
+  Optionen") and the online host dialog.
+- **Public vs. private online rooms.** `MatchSettings.is_public`; new
+  `GameStore.publicWaitingMatches` + `MatchService.publicMatches` +
+  `GET /matches/public`. The lobby lists open public games (settings, host,
+  joined count) with a one-tap join; private games stay code-only.
+- **Home-screen online loading hint.** The home screen shows a "loading
+  online games" row while the first match fetch is in flight instead of
+  silently nothing.
+- **Kick idle players → AI.** `match_players.idle_turns` counts consecutive
+  timed-out turns (reset on any submission); once it reaches 3 the creator
+  may `POST /matches/:id/kick` to hand the realm to the AI. A public
+  `playerKicked` event (drama popup + recap) tells everyone. The leave/kick
+  AI-conversion logic is shared via `MatchService._dropSeatToAi`.
+- **Advanced game settings (grouped).** New `GameState.warStartYear` (and
+  `GameSetup` / `MatchSettings`) makes the §11.1 war gate configurable
+  (default 1010); `applyDeclareWar`, the AI war check and the Militär menu
+  now read `state.warStartYear`. The setup screens gained an "Erweiterte
+  Optionen" section that holds Reformation year, Ottoman year, war-start
+  year and the succession toggle; the online host dialog adds the war-round
+  clock (default 10 min) there too. The `firstWarYear` constant stays 1010
+  (still the election gate in `offices.dart` + the default).
+
 ## 2026-06-29 — Correct defeat reason + hidden enemy strength + war-panel layout — appVersion 0.1.10
 
 Three offline bug reports. An event-label engine fix plus client UI; no

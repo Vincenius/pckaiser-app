@@ -30,6 +30,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _onlineMatches = const [];
   Timer? _onlinePoll;
   bool _pushWired = false;
+  // True while the first online-match fetch is in flight, so the home
+  // screen can show a loading hint instead of silently nothing.
+  bool _onlineLoading = false;
 
   @override
   void initState() {
@@ -62,9 +65,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     _online = online;
     if (!online.isConfigured) {
-      setState(() => _onlineMatches = const []);
+      setState(() {
+        _onlineMatches = const [];
+        _onlineLoading = false;
+      });
       return;
     }
+    // Show the loading hint until the first fetch resolves.
+    setState(() => _onlineLoading = true);
     if (!_pushWired) {
       _pushWired = true;
       // Permission prompt + token upload (ARCHITECTURE.md "FCM": token
@@ -95,10 +103,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ...all.where((m) => m['your_turn'] == true),
           ...all.where((m) => m['your_turn'] != true),
         ];
+        _onlineLoading = false;
       });
     } on Object {
       // Server unreachable — the home screen stays quiet about it; the
       // online screen reports connection errors.
+      if (mounted) setState(() => _onlineLoading = false);
     }
   }
 
@@ -232,6 +242,9 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(tr('onlineGames'), style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               for (final m in _onlineMatches) _onlineMatchCard(theme, m),
+            ] else if (_onlineLoading) ...[
+              const SizedBox(height: 28),
+              _onlineLoadingCard(theme),
             ],
             const SizedBox(height: 28),
             if (_saves == null)
@@ -323,6 +336,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _onlineLoadingCard(ThemeData theme) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        leading: const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        title: Text(tr('onlineLoading')),
       ),
     );
   }

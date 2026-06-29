@@ -789,6 +789,149 @@ void main() {
       }
     });
   });
+
+  group('public matches', () {
+    test('lists only public waiting matches with their settings', () async {
+      final host = await service.registerPlayer(displayName: 'Host');
+      final pub = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 1, isPublic: true, turnTimeoutHours: 24),
+        setup: setupFor('Host', 1),
+      );
+      // A private match must never appear in the discovery list.
+      await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 2, isPublic: false),
+        setup: setupFor('Host', 2),
+      );
+
+      final list = await service.publicMatches();
+      expect(list.map((m) => m['id']), [pub.id]);
+      expect(list.first['creator_name'], 'Host');
+      expect(list.first['joined'], 1);
+      expect((list.first['settings'] as Map)['turn_timeout_hours'], 24);
+    });
+
+    test('a started public match drops off the list', () async {
+      final host = await service.registerPlayer(displayName: 'Host');
+      final m = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 1, isPublic: true),
+        setup: setupFor('Host', 1),
+      );
+      await service.startMatch(matchId: m.id, playerId: host.id);
+      expect(await service.publicMatches(), isEmpty);
+    });
+  });
+
+  group('idle kick', () {
+    test('repeated timeouts accrue idle turns; the creator kicks to AI',
+        () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42, turnTimeoutHours: 24),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
+
+      // Nobody plays — sweep until Berta has missed the kick threshold.
+      var guard = 0;
+      while (((await store.match(match.id))!.playerById(b.id)!.idleTurns) <
+              MatchService.idleKickThreshold &&
+          guard++ < 40) {
+        now = now.add(const Duration(hours: 25));
+        await service.sweepExpired();
+      }
+      final beforeKick = (await store.match(match.id))!;
+      expect(beforeKick.playerById(b.id)!.idleTurns,
+          greaterThanOrEqualTo(MatchService.idleKickThreshold));
+      final bSlot = beforeKick.playerById(b.id)!.slot;
+
+      // Only the creator may kick.
+      expect(
+        () => service.kickPlayer(
+            matchId: match.id, requesterId: b.id, targetPlayerId: a.id),
+        throwsA(isA<ApiException>()),
+      );
+
+      await service.kickPlayer(
+          matchId: match.id, requesterId: a.id, targetPlayerId: b.id);
+      final after = (await store.match(match.id))!;
+      expect(after.playerById(b.id), isNull, reason: 'kicked seat removed');
+      final state = GameState.fromJson(after.stateJson!);
+      expect(state.dynasty(bSlot).status, DynastyStatus.ai);
+      expect(state.events.any((e) => e.type == 'playerKicked'), isTrue,
+          reason: 'all players learn about the replacement');
+    });
+
+    test('kicking a seat below the threshold is rejected', () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42, turnTimeoutHours: 24),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
+      expect(
+        () => service.kickPlayer(
+            matchId: match.id, requesterId: a.id, targetPlayerId: b.id),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'status', 400)),
+      );
+    });
+
+    test('submitting a turn resets the idle streak', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42, turnTimeoutHours: 24),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.startMatch(matchId: match.id, playerId: a.id);
+
+      // Lapse both seats' first turn so the next awaited player carries a
+      // non-zero idle count, then have them play.
+      now = now.add(const Duration(hours: 25));
+      await service.sweepExpired();
+      now = now.add(const Duration(hours: 25));
+      await service.sweepExpired();
+
+      final awaited =
+          (await service.view(match.id, a.id))['awaited_player_id'] as String;
+      expect((await store.match(match.id))!.playerById(awaited)!.idleTurns,
+          greaterThanOrEqualTo(1));
+      await service.submit(
+          matchId: match.id, playerId: awaited, endTurn: true);
+      expect((await store.match(match.id))!.playerById(awaited)!.idleTurns, 0,
+          reason: 'showing up clears the streak');
+    });
+  });
+
+  group('settings flow into the game', () {
+    test('warStartYear and gender-equal succession reach the game state',
+        () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await createStarted(
+        a.id,
+        MatchSettings(seed: 42, warStartYear: 1015, genderEqualSuccession: false),
+        setupFor('Solo', 1),
+      );
+      final state = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(state.warStartYear, 1015);
+      expect(state.genderEqualSuccession, isFalse);
+    });
+  });
 }
 
 /// Matcher: the iterable contains [value] exactly once.

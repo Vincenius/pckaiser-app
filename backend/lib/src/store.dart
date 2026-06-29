@@ -21,6 +21,9 @@ abstract class GameStore {
 
   /// Matches whose turn deadline has passed — the timeout sweep input.
   Future<List<MatchRecord>> expiredMatches(DateTime now);
+
+  /// Public matches still waiting for players — the lobby's open-games list.
+  Future<List<MatchRecord>> publicWaitingMatches();
 }
 
 /// Volatile store for tests and local development.
@@ -57,6 +60,12 @@ class InMemoryStore implements GameStore {
               m.turnDeadline != null &&
               m.turnDeadline!.isBefore(now))
             m,
+      ];
+
+  @override
+  Future<List<MatchRecord>> publicWaitingMatches() async => [
+        for (final m in _matches.values)
+          if (m.status == MatchStatus.waiting && m.settings.isPublic) m,
       ];
 }
 
@@ -138,5 +147,11 @@ class FileStore implements GameStore {
               m.turnDeadline != null &&
               m.turnDeadline!.isBefore(now))
             m,
+      ];
+
+  @override
+  Future<List<MatchRecord>> publicWaitingMatches() async => [
+        for (final m in await _allMatches())
+          if (m.status == MatchStatus.waiting && m.settings.isPublic) m,
       ];
 }

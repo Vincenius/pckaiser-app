@@ -129,7 +129,12 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       return;
     }
 
-    const strong = {'crowned', 'realmOverrun', 'rulerCaptured'};
+    const strong = {
+      'crowned',
+      'realmOverrun',
+      'rulerCaptured',
+      'playerKicked',
+    };
     final fresh = <gc.GameEvent>[];
     for (var i = 0; i < state.events.length; i++) {
       final pos = base + i;
@@ -267,8 +272,15 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     // (realm 1 → 30), not join order, so the rows are sorted by slot once the
     // game has started. Eliminated seats (no realm) get a single trailing row.
     // Before the start every seat controls only its home realm → one row each.
-    final rows =
-        <({int slot, String realm, String? name, bool isYou, bool isAwaited})>[];
+    final rows = <({
+      int slot,
+      String realm,
+      String? name,
+      String? playerId,
+      int idleTurns,
+      bool isYou,
+      bool isAwaited,
+    })>[];
     final eliminated = <({String? name, bool isYou})>[];
     for (final p in players) {
       final controlled =
@@ -285,11 +297,16 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           slot: s,
           realm: gc.countryNames[s],
           name: name,
+          playerId: p['player_id'] as String?,
+          idleTurns: p['idle_turns'] as int? ?? 0,
           isYou: isYou,
           isAwaited: p['player_id'] == awaitedPid && s == awaitedSlot,
         ));
       }
     }
+    // The creator may replace a persistently idle seat (3 missed turns) with
+    // the AI — mirrors the server's kick guard.
+    final iAmCreator = started && view['creator_id'] == myId;
     if (started) rows.sort((a, b) => a.slot.compareTo(b.slot));
 
     return ListView(
@@ -382,7 +399,19 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               '${r.name != null ? '${r.name} — ' : ''}'
               '${r.realm}${r.isYou ? ' (du)' : ''}',
             ),
-            subtitle: started ? Text('Zug ${i + 1}') : null,
+            subtitle: started
+                ? Text(
+                    'Zug ${i + 1}'
+                    '${r.idleTurns >= 3 ? ' · ${r.idleTurns} Züge inaktiv' : ''}',
+                  )
+                : null,
+            trailing: iAmCreator && !r.isYou && r.idleTurns >= 3 && r.playerId != null
+                ? TextButton.icon(
+                    icon: const Icon(Icons.person_off, size: 18),
+                    label: const Text('Rauswerfen'),
+                    onPressed: () => _kick(r.playerId!, r.name ?? r.realm),
+                  )
+                : null,
           ),
         for (final r in eliminated)
           ListTile(
@@ -514,6 +543,47 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         playerId: widget.service.playerId!,
       );
       if (mounted) Navigator.of(context).pop();
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    }
+  }
+
+  /// Creator only: replace a persistently idle seat with the AI. The
+  /// server enforces the same "3 missed turns" guard.
+  Future<void> _kick(String targetPlayerId, String label) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Spieler rauswerfen?'),
+        content: Text(
+          '$label hat mehrere Züge in Folge nicht gespielt. Das Reich '
+          'wird ab sofort vom Computer weitergeführt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Rauswerfen'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true) return;
+    try {
+      final view = await widget.service.api.kickPlayer(
+        matchId: widget.matchId,
+        playerId: widget.service.playerId!,
+        targetPlayerId: targetPlayerId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _view = view;
+        _error = null;
+      });
     } on ApiError catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);

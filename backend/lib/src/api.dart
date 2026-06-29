@@ -25,9 +25,12 @@ class Api {
       ..patch('/api/v1/players/<id>', _updatePlayer)
       ..get('/api/v1/players/<id>/matches', _playerMatches)
       ..post('/api/v1/matches', _createMatch)
+      // Must precede `/matches/<id>` so "public" isn't taken as a match id.
+      ..get('/api/v1/matches/public', _publicMatches)
       ..post('/api/v1/matches/<id>/join', _joinMatch)
       ..post('/api/v1/matches/<id>/start', _startMatch)
       ..post('/api/v1/matches/<id>/leave', _leaveMatch)
+      ..post('/api/v1/matches/<id>/kick', _kickPlayer)
       ..get('/api/v1/matches/<id>', _getMatch)
       ..post('/api/v1/matches/<id>/turn', _submitTurn);
     return router.call;
@@ -64,6 +67,9 @@ class Api {
 
   Future<Response> _playerMatches(Request request, String id) =>
       _guard(() => _service.matchesForPlayer(id));
+
+  Future<Response> _publicMatches(Request request) =>
+      _guard(() => _service.publicMatches());
 
   Future<Response> _createMatch(Request request) => _guard(() async {
         final body = await _json(request);
@@ -102,6 +108,18 @@ class Api {
           playerId: _requireString(body, 'player_id'),
         );
         return {'left': true, 'deleted': deleted};
+      });
+
+  Future<Response> _kickPlayer(Request request, String id) =>
+      _guard(() async {
+        final body = await _json(request);
+        final requesterId = _requireString(body, 'player_id');
+        await _service.kickPlayer(
+          matchId: id,
+          requesterId: requesterId,
+          targetPlayerId: _requireString(body, 'target_player_id'),
+        );
+        return _service.view(id, requesterId);
       });
 
   Future<Response> _getMatch(Request request, String id) => _guard(() {

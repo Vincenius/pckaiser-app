@@ -5,7 +5,6 @@ library;
 
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
-import '../rules/protection.dart';
 import '../rules/troops.dart';
 import '../rules/war.dart';
 import '../state/constants.dart';
@@ -314,8 +313,9 @@ List<GameEvent> applyMoveTroop(GameState state, Realm realm, MoveTroop action) {
 
 List<GameEvent> applyDeclareWar(
     GameState state, Realm realm, DeclareWar action, Rng rng) {
-  if (state.year < firstWarYear) {
-    throw ActionException('Kriege sind erst ab dem Jahr 1010 erlaubt !');
+  if (state.year < state.warStartYear) {
+    throw ActionException(
+        'Kriege sind erst ab dem Jahr ${state.warStartYear} erlaubt !');
   }
   if (realm.warThisYear) {
     throw ActionException('Du hast dieses Jahr schon einmal Krieg geführt !');

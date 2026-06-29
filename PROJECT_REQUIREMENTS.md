@@ -72,6 +72,7 @@ Unversioned design deviations:
 | Unbounded event history | Log capped at 1,000 (`prunedEventCount` keeps positions stable) | Bounded saves |
 | Hafen next to any own tile | Needs an adjacent own LAND tile | Stops coast-chaining exploit |
 | Troop merge/disband/rename any time | Forbidden at war (war state is keyed to the troop list) | Consistent bookkeeping |
+| Male-priority heirs; a Muslim realm under a female heir is lost (§15.4/§15.5) | Per-game **"Frauen können überall herrschen"** option (default on for new games, off for old saves): the eldest child inherits regardless of gender and the Islamic succession crisis never eliminates a player | Player request; equal succession |
 
 ## Protect-New-Players Rule
 

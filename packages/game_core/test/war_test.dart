@@ -173,6 +173,44 @@ void main() {
       expect(s.activeWar!.snapshots[1], hasLength(1));
     });
 
+    test('a custom warStartYear moves the declaration gate', () {
+      GameState withWarYear(int warStart) => startGame(
+              newGame(GameSetup(
+                humans: [
+                  HumanPlayerSetup(
+                      founderName: 'Anna',
+                      gender: 1,
+                      countrySlot: 1,
+                      dorfName: 'A'),
+                ],
+                reformationYear: 1020,
+                ottomanYear: 1040,
+                seed: 2026,
+                warStartYear: warStart,
+              )),
+              Rng(7))
+          .state;
+
+      // A later gate blocks war past the original 1010.
+      final late = withWarYear(1015)..year = 1010;
+      expect(
+        () => applyAction(
+            late, DeclareWar(slot: 1, targetSlot: 2), Rng(late.rngSeed)),
+        throwsA(isA<ActionException>()
+            .having((e) => e.message, 'message', contains('1015'))),
+      );
+
+      // An earlier gate lets war happen inside the former protected decade:
+      // the year no longer blocks (the declaration fails later, on troops).
+      final early = withWarYear(1005)..year = 1005;
+      expect(
+        () => applyAction(
+            early, DeclareWar(slot: 1, targetSlot: 2), Rng(early.rngSeed)),
+        throwsA(isA<ActionException>().having(
+            (e) => e.message, 'message', isNot(contains('erst ab dem Jahr')))),
+      );
+    });
+
     test('combat applies the defense-scaled losses and never both wipe', () {
       var s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))

@@ -137,6 +137,9 @@ String describeEvent(gc.GameEvent e) {
       'Keine menschliche Dynastie hält mehr die Macht — das Spiel ist aus',
     'playerLeft' =>
       '$realm: der Spieler hat die Partie verlassen — der Computer übernimmt',
+    'playerKicked' =>
+      '$realm: der Spieler wurde wegen Inaktivität ersetzt — '
+          'der Computer übernimmt',
     'forcedMarriage' => '${p['victor']} erzwingt die Heirat mit ${p['spouse']}',
     'forcedAbdication' => '${p['name']} muss abdanken !',
     'execution' => '${p['name']} wird hingerichtet !!!',
@@ -438,6 +441,8 @@ bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
   // the victim themselves above all.
   'realmOverrun' => e.payload['human'] == true,
   'rulerCaptured' => e.payload['loserHuman'] == true,
+  // An idle player replaced by the AI — the whole table should be told.
+  'playerKicked' => true,
   _ => false,
 };
 
@@ -454,7 +459,8 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'assassination' ||
   'assassinationFailed' ||
   'totalExtinction' ||
-  'realmInherited' => true,
+  'realmInherited' ||
+  'playerKicked' => true,
   'realmOverrun' => e.slot == slot,
   // Caught foreign spies confessed the sponsor — big news for the realm
   // they were caught in.
@@ -531,6 +537,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'shipBought' || 'shipColonized' || 'shipsSent' => (Icons.sailing, null),
   'gameWon' => (Icons.emoji_events, Colors.amber),
   'gameDraw' || 'humansDefeated' => (Icons.history_edu, Colors.blueGrey),
+  'playerLeft' || 'playerKicked' => (Icons.person_off, Colors.blueGrey),
   _ => (Icons.campaign, null),
 };
 
@@ -599,6 +606,14 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
       '${gc.countryNames[e.slot]} nimmt den Herrscher von '
           '${gc.countryNames[p['loserSlot'] as int]}'
           '${p['ruler'] == null ? '' : ' (${p['ruler']})'} gefangen !',
+    ),
+    'playerKicked' => (
+      Icons.person_off,
+      Colors.blueGrey,
+      'Spieler ersetzt',
+      'Der Spieler von ${gc.countryNames[e.slot]} wurde wegen '
+          'Inaktivität aus der Partie entfernt — der Computer übernimmt '
+          'das Reich.',
     ),
     _ => (Icons.campaign, Colors.blueGrey, 'Nachricht', describeEvent(e)),
   };

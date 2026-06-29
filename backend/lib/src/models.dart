@@ -68,6 +68,7 @@ class MatchPlayer {
     required this.founderName,
     required this.gender,
     required this.dorfName,
+    this.idleTurns = 0,
   });
 
   factory MatchPlayer.fromJson(Map<String, dynamic> json) => MatchPlayer(
@@ -77,6 +78,7 @@ class MatchPlayer {
         founderName: json['founder_name'] as String,
         gender: json['gender'] as int,
         dorfName: json['dorf_name'] as String,
+        idleTurns: json['idle_turns'] as int? ?? 0,
       );
 
   final String playerId;
@@ -92,6 +94,12 @@ class MatchPlayer {
   final int gender;
   final String dorfName;
 
+  /// Consecutive turns this seat let expire by timeout (never showed up).
+  /// Reset to 0 on any submitted action / end-turn. Once it reaches 3 the
+  /// match creator may kick the seat and hand its realm to the AI
+  /// (`POST /matches/:id/kick`).
+  int idleTurns;
+
   Map<String, dynamic> toJson() => {
         'player_id': playerId,
         'turn_order': turnOrder,
@@ -99,6 +107,7 @@ class MatchPlayer {
         'founder_name': founderName,
         'gender': gender,
         'dorf_name': dorfName,
+        'idle_turns': idleTurns,
       };
 }
 
@@ -109,6 +118,9 @@ class MatchSettings {
     this.warRoundTimeoutSeconds = 600,
     this.reformationYear = 1020,
     this.ottomanYear = 1040,
+    this.warStartYear = 1010,
+    this.genderEqualSuccession = true,
+    this.isPublic = false,
     int? seed,
   }) : seed = seed ?? Random.secure().nextInt(1 << 31);
 
@@ -117,6 +129,10 @@ class MatchSettings {
         warRoundTimeoutSeconds: json['war_round_timeout'] as int? ?? 600,
         reformationYear: json['reformation_year'] as int? ?? 1020,
         ottomanYear: json['ottoman_year'] as int? ?? 1040,
+        warStartYear: json['war_start_year'] as int? ?? 1010,
+        genderEqualSuccession:
+            json['gender_equal_succession'] as bool? ?? true,
+        isPublic: json['is_public'] as bool? ?? false,
         seed: json['seed'] as int?,
       );
 
@@ -128,6 +144,18 @@ class MatchSettings {
 
   final int reformationYear;
   final int ottomanYear;
+
+  /// First year war declarations are allowed (§11.1; original 1010).
+  final int warStartYear;
+
+  /// Gender-neutral succession (deviation from the original) — passed into
+  /// the game world at start as `GameState.genderEqualSuccession`.
+  final bool genderEqualSuccession;
+
+  /// Public match: listed in the lobby's open-games list so anyone can
+  /// join, not only those who know the room code. Default private.
+  final bool isPublic;
+
   final int seed;
 
   Map<String, dynamic> toJson() => {
@@ -135,6 +163,9 @@ class MatchSettings {
         'war_round_timeout': warRoundTimeoutSeconds,
         'reformation_year': reformationYear,
         'ottoman_year': ottomanYear,
+        'war_start_year': warStartYear,
+        'gender_equal_succession': genderEqualSuccession,
+        'is_public': isPublic,
         'seed': seed,
       };
 }

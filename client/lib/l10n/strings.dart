@@ -18,6 +18,7 @@ const Map<String, Map<String, String>> _table = {
     'onlineWaitingForOthers': 'Waiting for the other players …',
     // Suffixed to the awaited player's name: "Anna is taking her turn …"
     'onlineIsPlaying': 'is taking their turn …',
+    'onlineLoading': 'Loading online games …',
     'savedGames': 'Saved games',
     'noSaves': 'No saved games yet.',
     'noSavesHint': 'Start a new game, or learn the basics in the tutorial.',
@@ -76,6 +77,7 @@ const Map<String, Map<String, String>> _table = {
     'onlineWaitingForPlayers': 'Wartet auf Spieler',
     'onlineWaitingForOthers': 'Warten auf Mitspieler …',
     'onlineIsPlaying': 'ist am Zug …',
+    'onlineLoading': 'Online-Partien werden geladen …',
     'savedGames': 'Spielstände',
     'noSaves': 'Noch keine Spielstände.',
     'noSavesHint':

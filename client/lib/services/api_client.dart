@@ -64,6 +64,15 @@ class ApiClient {
     body: {'player_id': playerId, 'setup': setup},
   );
 
+  /// Open public matches anyone may join (the lobby's discovery list).
+  Future<List<dynamic>> publicMatches() async =>
+      (await _request(
+            'GET',
+            '/api/v1/matches/public',
+            expectList: true,
+          ))['list']
+          as List<dynamic>;
+
   /// Starts a waiting match — creator only.
   Future<Map<String, dynamic>> startMatch({
     required String matchId,
@@ -83,6 +92,18 @@ class ApiClient {
     'POST',
     '/api/v1/matches/$matchId/leave',
     body: {'player_id': playerId},
+  );
+
+  /// Kicks an idle seat and replaces its realm with the AI — creator only,
+  /// allowed once the seat has missed several turns in a row.
+  Future<Map<String, dynamic>> kickPlayer({
+    required String matchId,
+    required String playerId,
+    required String targetPlayerId,
+  }) => _request(
+    'POST',
+    '/api/v1/matches/$matchId/kick',
+    body: {'player_id': playerId, 'target_player_id': targetPlayerId},
   );
 
   Future<Map<String, dynamic>> match(String matchId, String playerId) =>
