@@ -489,6 +489,7 @@ void runEliminationChecks(
       realm.rulerId = newRuler;
       realm.popularity = 50;
       if (dynasty.status == DynastyStatus.human) {
+        state.humanLossReason = 'internalStrife';
         dynasty.status = DynastyStatus.ai;
         dynasty.humanPlayer = null;
       }
@@ -583,7 +584,9 @@ void runEliminationChecks(
     seizures--;
   }
 
+  final wasHuman = dynasty.status == DynastyStatus.human;
   foundReplacementDynasty(state, slot, rng, events);
+  if (wasHuman) state.humanLossReason = 'bankruptcy';
 }
 
 int _muslimEquivalent(int muslimClass) =>

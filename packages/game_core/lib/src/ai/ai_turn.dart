@@ -792,12 +792,14 @@ TurnResult advanceUntilHuman(GameState state, Rng rng) {
         type: 'humansDefeated',
         visibility: EventVisibility.public,
         // Surface WHY the last human dynasty lost the throne instead of a
-        // bare "no human dynasty" — the cause is the most recent control-
-        // losing event in the log (strife, bankruptcy, succession crisis,
-        // conquest, …). It often lands in the human's own end-of-turn
-        // (completeTurn) BEFORE this loop runs, so scan the full state log,
-        // not just this advance's events. The client renders a sentence.
-        payload: {'reason': _defeatReason(current.events)},
+        // bare "no human dynasty". The cause is recorded on the state at the
+        // exact moment each human seat falls (`noteHumanSeatLost`), so it
+        // reflects the PLAYER's own loss — not a stray AI-vs-AI event that
+        // merely happens to be the most recent in the shared log (which an
+        // earlier "scan the log backwards" approach mislabelled, e.g.
+        // showing "ruler captured in war" for a peaceful inheritance). The
+        // client renders a sentence.
+        payload: {'reason': current.humanLossReason ?? 'unknown'},
       );
       current = current.copy();
       current.events.add(defeat);
@@ -820,23 +822,4 @@ TurnResult advanceUntilHuman(GameState state, Rng rng) {
     events.addAll(turnResult.events);
   }
   return TurnResult(current, events);
-}
-
-/// The most recent event in [events] that explains why a human dynasty lost
-/// control, as a keyword the client renders into a sentence. Falls back to
-/// `'unknown'` when nothing obvious caused it.
-String _defeatReason(List<GameEvent> events) {
-  const causes = {
-    'internalStrife',
-    'bankruptcy',
-    'islamicSuccessionCrisis',
-    'rulerCaptured',
-    'realmOverrun',
-    'dynastyExtinct',
-    'totalExtinction',
-  };
-  for (final event in events.reversed) {
-    if (causes.contains(event.type)) return event.type;
-  }
-  return 'unknown';
 }

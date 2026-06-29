@@ -1010,6 +1010,7 @@ void checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   loser.troops.clear();
   loser.ships.clear();
   final dynasty = state.dynasty(loser.slot);
+  state.noteHumanSeatLost(loser.slot, 'realmOverrun');
   dynasty.status = DynastyStatus.ai;
   dynasty.humanPlayer = null;
   state.rebuildTroopMarkers();

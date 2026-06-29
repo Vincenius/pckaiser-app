@@ -119,7 +119,7 @@ class _WarPanelState extends State<WarPanel> {
           children: [
             header,
             if (!_collapsed) ...[
-              _enemyArmyLine(theme, enemy),
+              _enemyArmyLine(theme, realm, enemy, enemySlot),
               if (capitalNote != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
@@ -154,22 +154,30 @@ class _WarPanelState extends State<WarPanel> {
                   ),
                 ),
               const SizedBox(height: 4),
-              Wrap(
-                spacing: 4,
-                runSpacing: -8,
-                children: [
-                  for (var i = 0; i < realm.troops.length; i++)
-                    _unitChip(
-                      theme,
-                      state,
-                      realm.troops[i],
-                      enemySlot,
-                      movesLeft: i < moves.length ? moves[i] : 0,
-                      selected: i == selected,
-                      onTap: () =>
-                          controller.selectWarUnit(i == selected ? null : i),
-                    ),
-                ],
+              // Cap the unit list and let it scroll: a large army would
+              // otherwise grow the panel past the map's bottom edge and push
+              // the action buttons ("Runde beenden") off small screens.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 124),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 4,
+                    runSpacing: -8,
+                    children: [
+                      for (var i = 0; i < realm.troops.length; i++)
+                        _unitChip(
+                          theme,
+                          state,
+                          realm.troops[i],
+                          enemySlot,
+                          movesLeft: i < moves.length ? moves[i] : 0,
+                          selected: i == selected,
+                          onTap: () => controller
+                              .selectWarUnit(i == selected ? null : i),
+                        ),
+                    ],
+                  ),
+                ),
               ),
               // The autopilot stance only matters online, where an idle
               // war round is fought by each unit's stance. Offline the
@@ -245,24 +253,44 @@ class _WarPanelState extends State<WarPanel> {
     );
   }
 
-  /// During a war both sides see each other's units (visibility rules) —
-  /// summarize the enemy army so the player can judge peace vs. press on.
-  Widget _enemyArmyLine(ThemeData theme, gc.Realm enemy) {
-    final men = enemy.troops.fold(0, (a, t) => a + t.men);
-    final strength = enemy.troops
-        .fold(0.0, (a, t) => a + gc.troopStrength(t))
-        .round();
-    return Text(
-      enemy.troops.isEmpty
-          ? 'Das feindliche Heer ist vernichtet !'
-          : 'Feindliches Heer: ${enemy.troops.length} '
-                'Truppe${enemy.troops.length == 1 ? '' : 'n'} · $men Mann · '
-                '⚔ $strength',
-      style: theme.textTheme.bodySmall!.copyWith(
-        fontWeight: enemy.troops.isEmpty ? FontWeight.w600 : null,
-        color: enemy.troops.isEmpty ? Colors.green.shade800 : null,
-      ),
-    );
+  /// Summarizes the enemy army so the player can judge peace vs. press on.
+  /// During a war both sides see each other's units MOVE on the map, but the
+  /// enemy's strength (men/combat power) is hidden information — it is shown
+  /// only from the viewer's own espionage intel (fuzzed and dated), never
+  /// read off the live army. Whether the enemy host still stands is
+  /// observable on the battlefield, so that stays visible.
+  Widget _enemyArmyLine(
+    ThemeData theme,
+    gc.Realm viewer,
+    gc.Realm enemy,
+    int enemySlot,
+  ) {
+    if (enemy.troops.isEmpty) {
+      return Text(
+        'Das feindliche Heer ist vernichtet !',
+        style: theme.textTheme.bodySmall!.copyWith(
+          fontWeight: FontWeight.w600,
+          color: Colors.green.shade800,
+        ),
+      );
+    }
+    final units = enemy.troops.length;
+    final unitWord = 'Truppe${units == 1 ? '' : 'n'}';
+    // Newest military intel on this enemy (reports are in chronological
+    // order, so the last match wins).
+    gc.IntelReport? intel;
+    for (final report in viewer.intelReports) {
+      if (report.targetSlot == enemySlot &&
+          report.values.containsKey('armySize')) {
+        intel = report;
+      }
+    }
+    final text = intel != null
+        ? 'Feindliches Heer: $units $unitWord · laut Spionage '
+              '~${intel.values['armySize']} Mann (Stand Anno ${intel.year})'
+        : 'Feindliches Heer: $units $unitWord im Feld — ihre Stärke bleibt '
+              'ohne Spionage verborgen.';
+    return Text(text, style: theme.textTheme.bodySmall);
   }
 
   Widget _unitChip(
@@ -346,8 +374,13 @@ class _WarPanelState extends State<WarPanel> {
         ? 'Hier steht nichts zum Plündern'
         : 'Bebautes feindliches Feld plündern';
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    // Wrap (not Row): on a narrow screen three buttons in a single row
+    // overflow and clip the rightmost one — "Runde beenden" then becomes
+    // unreachable. Wrapping flows the overflow onto a second line instead.
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
       children: [
         Tooltip(
           message: plunderHint,

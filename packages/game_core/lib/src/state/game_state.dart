@@ -42,6 +42,7 @@ class GameState {
     List<GameEvent>? events,
     this.prunedEventCount = 0,
     Map<int, int>? recapBaselines,
+    this.humanLossReason,
   })  : assert(realms.length == World.realmCount),
         assert(dynasties.length == World.realmCount),
         kurfuerstenIds = kurfuerstenIds ?? [],
@@ -108,7 +109,8 @@ class GameState {
         recapBaselines: {
           for (final e in ((json['recapBaselines'] as Map?) ?? {}).entries)
             int.parse(e.key as String): e.value as int,
-        });
+        },
+        humanLossReason: json['humanLossReason'] as String?);
   }
 
   static List<ChronicleRecord> _recordList(Object? json) => (json as List? ??
@@ -197,6 +199,14 @@ class GameState {
   /// survives app restarts (local) and travels with the match (online).
   final Map<int, int> recapBaselines;
 
+  /// Why the most recent human-controlled seat lost control (keyword, e.g.
+  /// `internalStrife`, `realmInherited`). Set at the moment of the loss by
+  /// [noteHumanSeatLost]; read when the game ends in `humansDefeated` to
+  /// render an accurate defeat sentence. Last write wins — the final human
+  /// seat to fall is the one the message describes. Null until any human
+  /// seat is lost.
+  String? humanLossReason;
+
   /// Realm for a 1-based slot index.
   Realm realm(int slot) => realms[slot - 1];
 
@@ -204,6 +214,17 @@ class GameState {
   Dynasty dynasty(int slot) => dynasties[slot - 1];
 
   Person? person(int? id) => id == null ? null : persons[id];
+
+  /// Records [reason] as the cause of a human seat's loss (for the eventual
+  /// defeat screen). Call at the moment a control-losing event hits [slot],
+  /// BEFORE flipping that seat to AI; a no-op when [slot] is not human, so
+  /// AI-vs-AI losses never pollute the player's defeat reason. The last
+  /// human seat to fall wins (last write).
+  void noteHumanSeatLost(int slot, String reason) {
+    if (dynasty(slot).status == DynastyStatus.human) {
+      humanLossReason = reason;
+    }
+  }
 
   /// Rebuilds the map's troop-presence index (`map.troopMarker`, one cell
   /// per tile, 1 where any realm has a unit) from the current troop
@@ -250,6 +271,7 @@ class GameState {
         events: List.of(events),
         prunedEventCount: prunedEventCount,
         recapBaselines: Map.of(recapBaselines),
+        humanLossReason: humanLossReason,
       );
 
   Map<String, dynamic> toJson() => {
@@ -284,5 +306,6 @@ class GameState {
         'recapBaselines': {
           for (final e in recapBaselines.entries) '${e.key}': e.value,
         },
+        'humanLossReason': humanLossReason,
       };
 }

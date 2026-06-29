@@ -295,6 +295,14 @@ void alignSlotControl(GameState state, int slot, int? rulerId) {
   // 2./3. No human sibling slot.
   if (ruler.dynasty == slot) return; // home slot — its own status stands
   final home = state.dynasty(ruler.dynasty);
+  // A human seat passing under a non-human house (a foreign spouse or other
+  // dynasty's ruler inheriting it, §15.4) is a defeat for that player —
+  // record WHY so the eventual `humansDefeated` screen says "inherited away"
+  // rather than mislabelling it as a war loss.
+  if (dynasty.status == DynastyStatus.human &&
+      home.status != DynastyStatus.human) {
+    state.humanLossReason = 'realmInherited';
+  }
   dynasty.status = home.status;
   dynasty.humanPlayer = home.humanPlayer;
 }
@@ -331,6 +339,7 @@ void handleDeath(
     if (dynasty.religion == Religion.moslemisch &&
         !heir.isMale &&
         dynasty.status == DynastyStatus.human) {
+      state.humanLossReason = 'islamicSuccessionCrisis';
       dynasty.status = DynastyStatus.ai;
       dynasty.humanPlayer = null;
       events.add(GameEvent(
@@ -400,6 +409,7 @@ void handleDeath(
       visibility: EventVisibility.public,
     ));
     for (final slot in ruledSlots) {
+      state.noteHumanSeatLost(slot, 'dynastyExtinct');
       state.realm(slot).rulerId = null;
     }
     return;

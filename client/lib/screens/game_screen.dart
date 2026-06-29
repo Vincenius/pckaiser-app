@@ -807,6 +807,9 @@ class _GameScreenState extends State<GameScreen> {
         'Dein Reich ist bankrott gegangen und einem neuen Herrscherhaus zugefallen.',
       'islamicSuccessionCrisis' =>
         'Eine Thronfolgekrise hat dein Reich unter fremde (computergesteuerte) Kontrolle gebracht.',
+      'realmInherited' =>
+        'Beim Tod deines Herrschers ging dein Reich durch Erbfolge an ein '
+            'fremdes Herrscherhaus über.',
       'rulerCaptured' =>
         'Dein Herrscher wurde im Krieg gefangen genommen und das Reich erobert.',
       'realmOverrun' => 'Dein Reich wurde im Krieg vollständig überrannt.',

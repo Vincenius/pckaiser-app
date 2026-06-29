@@ -6,6 +6,42 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-06-29 — Correct defeat reason + hidden enemy strength + war-panel layout — appVersion 0.1.10
+
+Three offline bug reports. An event-label engine fix plus client UI; no
+rules/outcome or schema change. Released as appVersion 0.1.10 (client
+`0.1.10+6`).
+
+- **Defeat screen named the wrong cause.** `humansDefeated`'s `reason` was
+  derived by scanning the whole *shared* event log backwards for the first
+  "control-losing" event type — which could match an unrelated AI-vs-AI
+  `rulerCaptured` from an earlier turn. A player whose realm passed to a
+  foreign spouse by §15.4 inheritance (a female ruler dies and her
+  out-married husband outranks her daughters in the heir priority, so the
+  seat flips to his AI house) thus saw "Dein Herrscher wurde im Krieg
+  gefangen genommen" with the *inheriting* realm (e.g. Hessen) behind it —
+  though no war happened and she still had heirs. The inheritance itself is
+  intended (§14.2/§15.4: marriage is the peaceful path to inheriting realms);
+  only the message was wrong. Now the cause is recorded at the exact moment
+  each human seat falls — `GameState.humanLossReason`, set by
+  `noteHumanSeatLost` at every flip site (strife, bankruptcy, islamic
+  succession crisis, cross-dynasty inheritance, war overrun, extinction) — so
+  the message reflects the player's OWN loss. New `realmInherited` reason with
+  its own wording; the buggy log-scan (`_defeatReason`) is gone. Additive
+  nullable JSON field (`humanLossReason`), no schema bump. `game_state.dart`,
+  `dynasty.dart`, `events.dart`, `war.dart`, `ai_turn.dart`, `game_screen.dart`.
+- **Enemy army strength hidden without espionage.** The war panel printed the
+  live enemy men count and ⚔-strength to both combatants. Now it shows only
+  what the viewer's own (fuzzed, dated) intel reveals — `~N Mann (Stand Anno
+  Y)` — or "ihre Stärke bleibt ohne Spionage verborgen". Whether the enemy
+  host still stands stays visible (observable on the field), and enemy unit
+  positions still render on the map as before. `war_panel.dart`.
+- **"Runde beenden" reachable on small screens.** The three war actions sat in
+  a `Row(mainAxisSize.min)` that overflowed narrow phones and clipped the
+  rightmost button. Now a centered `Wrap`; the unit-chip list is also
+  height-capped + scrollable so a large army can't push the actions below the
+  map's bottom edge. `war_panel.dart`.
+
 ## 2026-06-27 — Online lobby turn-order + off-turn map view (client UI only)
 
 User feedback on the online match screen. No rules/state/server change, so no
