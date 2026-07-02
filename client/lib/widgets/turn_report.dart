@@ -115,9 +115,9 @@ Future<void> showTurnReport(
               Icons.agriculture,
               foodShort
                   ? 'Deine Felder ernähren nur $production von '
-                      '${realm.population} Leuten !'
+                        '${realm.population} Leuten !'
                   : 'Deine Felder ernähren die Bevölkerung '
-                      '($production ≥ ${realm.population}).',
+                        '($production ≥ ${realm.population}).',
               color: foodShort ? theme.colorScheme.error : null,
             ),
             if (foodShort)

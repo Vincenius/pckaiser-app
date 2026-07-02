@@ -211,6 +211,15 @@ class MatchService {
       await _dropSeatToAi(match, seat, eventType: 'playerLeft');
     } else {
       match.players.remove(seat);
+      if (match.status == MatchStatus.waiting) {
+        // Keep turnOrder contiguous: _start maps dynasties to the seats'
+        // POSITIONAL index (newGame's humanPlayer is 0..n-1), and a later
+        // join assigns turnOrder = players.length — a gap would orphan the
+        // seat behind it and a reused number would map to the wrong seat.
+        for (var i = 0; i < match.players.length; i++) {
+          match.players[i].turnOrder = i;
+        }
+      }
       match.updatedAt = _clock();
     }
 
@@ -443,7 +452,7 @@ class MatchService {
             'idle_turns': p.idleTurns,
           },
       ],
-      'settings': match.settings.toJson(),
+      'settings': match.settings.toJson(includeSeed: false),
       'turn_deadline': match.turnDeadline?.toIso8601String(),
       'winner': match.winnerPlayerId,
       // The realm the client should play/show this turn (see [playSlot]).
@@ -497,9 +506,15 @@ class MatchService {
     matches.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final result = <Map<String, dynamic>>[];
     for (final m in matches) {
-      final awaited = m.status == MatchStatus.active && m.stateJson != null
-          ? _awaitedPlayerId(m, _load(m))
-          : null;
+      String? awaited;
+      try {
+        awaited = m.status == MatchStatus.active && m.stateJson != null
+            ? _awaitedPlayerId(m, _load(m))
+            : null;
+      } catch (_) {
+        // One corrupt/legacy match document must not 500 the whole list —
+        // the match still shows up, just without the "whose turn" line.
+      }
       result.add({
         'id': m.id,
         'status': m.status.name,
@@ -536,7 +551,7 @@ class MatchService {
         'id': m.id,
         'status': m.status.name,
         'joined': m.players.length,
-        'settings': m.settings.toJson(),
+        'settings': m.settings.toJson(includeSeed: false),
         'creator_name': creatorId == null
             ? null
             : (await _store.player(creatorId))?.displayName ??
@@ -634,6 +649,17 @@ class MatchService {
         state = _apply(state, action, emitted);
       } else {
         if (awaited != playerId) throw ApiException(403, 'not your turn');
+        // Beyond controlling the realm, the action must act for the realm
+        // whose input is actually awaited (the running turn, or the war's
+        // acting side). A seat holding several realms may otherwise act for
+        // realm B during realm A's turn — doubling B's once-per-turn
+        // actions (grain sale, movement points) every year.
+        if (action.slot != _awaitedSlot(state)) {
+          throw ApiException(
+              403,
+              'action acts for a realm whose turn is '
+              'not running');
+        }
         if (action is WarEndRound) {
           // The engine entry point for awaited war-round input: a
           // human-vs-human attacker hands the round to the defender,

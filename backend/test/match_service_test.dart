@@ -441,8 +441,8 @@ void main() {
       final post =
           GameState.fromJson((await store.match(match.id))!.stateJson!);
       expect(post.activeWar, isNotNull);
-      expect(post.dynasty(post.activeWar!.defenderSlot).status,
-          DynastyStatus.ai);
+      expect(
+          post.dynasty(post.activeWar!.defenderSlot).status, DynastyStatus.ai);
       expect((await store.match(match.id))!.turnDeadline,
           now.add(const Duration(hours: 24)),
           reason: 'a human fighting an AI gets the normal turn time, '
@@ -542,6 +542,39 @@ void main() {
       final c = await service.registerPlayer(displayName: 'Clara');
       await service.joinMatch(
           matchId: match.id, playerId: c.id, setup: setupFor('Clara', 2));
+    });
+
+    test(
+        'a mid-list leave renumbers the remaining seats so everyone can '
+        'still play after the start', () async {
+      final (a, b) = await twoPlayers();
+      final c = await service.registerPlayer(displayName: 'Clara');
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Anna', 1),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 2));
+      await service.joinMatch(
+          matchId: match.id, playerId: c.id, setup: setupFor('Clara', 3));
+
+      // B (the middle seat) leaves while waiting: without renumbering,
+      // Clara keeps turnOrder 2 while the started game maps her dynasty to
+      // positional index 1 — she could never take a turn.
+      await service.leaveMatch(matchId: match.id, playerId: b.id);
+      final record = (await store.match(match.id))!;
+      expect(record.players.map((p) => p.turnOrder), [0, 1]);
+
+      await service.startMatch(matchId: match.id, playerId: a.id);
+      final viewA = await service.view(match.id, a.id);
+      final viewC = await service.view(match.id, c.id);
+      // Both seats are recognized: exactly one of them is awaited.
+      expect({viewA['your_turn'], viewC['your_turn']}, {true, false});
+      expect(viewA['awaited_player_id'], isNotNull);
+      // Clara's dynasty is mapped back to her seat, not to a ghost.
+      final awaited = viewA['awaited_player_id'] as String;
+      expect([a.id, c.id], contains(awaited));
     });
 
     test(
@@ -882,8 +915,7 @@ void main() {
       expect(
         () => service.kickPlayer(
             matchId: match.id, requesterId: a.id, targetPlayerId: b.id),
-        throwsA(isA<ApiException>()
-            .having((e) => e.statusCode, 'status', 400)),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 400)),
       );
     });
 
@@ -911,8 +943,7 @@ void main() {
           (await service.view(match.id, a.id))['awaited_player_id'] as String;
       expect((await store.match(match.id))!.playerById(awaited)!.idleTurns,
           greaterThanOrEqualTo(1));
-      await service.submit(
-          matchId: match.id, playerId: awaited, endTurn: true);
+      await service.submit(matchId: match.id, playerId: awaited, endTurn: true);
       expect((await store.match(match.id))!.playerById(awaited)!.idleTurns, 0,
           reason: 'showing up clears the streak');
     });
@@ -924,10 +955,12 @@ void main() {
       final a = await service.registerPlayer(displayName: 'Solo');
       final match = await createStarted(
         a.id,
-        MatchSettings(seed: 42, warStartYear: 1015, genderEqualSuccession: false),
+        MatchSettings(
+            seed: 42, warStartYear: 1015, genderEqualSuccession: false),
         setupFor('Solo', 1),
       );
-      final state = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      final state =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
       expect(state.warStartYear, 1015);
       expect(state.genderEqualSuccession, isFalse);
     });

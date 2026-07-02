@@ -21,11 +21,15 @@ GameState _game({int seed = 2026}) => newGame(GameSetup(
       reformationYear: 1020,
       ottomanYear: 1040,
       seed: seed,
+      // The first test needs the faithful §15.4 male-priority rules so the
+      // daughter is skipped and the realm falls to the foreign spouse.
+      genderEqualSuccession: false,
     ));
 
 void main() {
   group('humansDefeated reason reflects the human seat that fell', () {
-    test('a foreign spouse inheriting the realm reports realmInherited, not '
+    test(
+        'a foreign spouse inheriting the realm reports realmInherited, not '
         'a stray AI war capture', () {
       final state = startGame(_game(), Rng(1)).state;
       state.year = 1010;

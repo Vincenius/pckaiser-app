@@ -8,9 +8,15 @@ GameState warReadyGame() {
           newGame(GameSetup(
             humans: [
               HumanPlayerSetup(
-                  founderName: 'Anna', gender: 1, countrySlot: 1, dorfName: 'A'),
+                  founderName: 'Anna',
+                  gender: 1,
+                  countrySlot: 1,
+                  dorfName: 'A'),
               HumanPlayerSetup(
-                  founderName: 'Berta', gender: 1, countrySlot: 2, dorfName: 'B'),
+                  founderName: 'Berta',
+                  gender: 1,
+                  countrySlot: 2,
+                  dorfName: 'B'),
             ],
             reformationYear: 1020,
             ottomanYear: 1040,
@@ -266,8 +272,7 @@ void main() {
 
       // Take the loser's last tile: slot 2 is overrun and slot 1 stands
       // alone — the victory must surface right here.
-      final result =
-          applyAction(s, SettlementTakeAll(slot: 1), Rng(s.rngSeed));
+      final result = applyAction(s, SettlementTakeAll(slot: 1), Rng(s.rngSeed));
       s = result.state;
 
       expect(s.map.ownerAt(hx, hy), 1);

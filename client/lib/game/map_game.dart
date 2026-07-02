@@ -215,6 +215,9 @@ class MapGame extends FlameGame with ScaleDetector {
     _drawShips(canvas, paint);
     _drawSpiedTroops(canvas, paint);
     _drawRealmLabels(canvas);
+    // Release the previous rasterization's native memory right away —
+    // _rebuild runs on every state notification.
+    _picture?.dispose();
     _picture = recorder.endRecording();
   }
 

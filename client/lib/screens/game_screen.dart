@@ -73,35 +73,46 @@ class _GameScreenState extends State<GameScreen> {
   @override
   void initState() {
     super.initState();
-    widget.sessionFuture.then((session) {
-      if (!mounted) return;
-      final controller = GameController(session);
-      // The tutorial is single-player: skip the hot-seat handoff blocker
-      // and its recap popup so the first step card appears immediately.
-      if (widget.tutorial) controller.confirmHandoff();
-      final game = MapGame(initial: controller.visibleState);
-      game.onTileTap = (x, y) => _onTileTap(controller, x, y);
-      _syncWarOverlay(controller, game);
-      controller.addListener(() {
-        game.updateState(controller.visibleState);
+    widget.sessionFuture.then(
+      (session) {
+        if (!mounted) return;
+        final controller = GameController(session);
+        // The tutorial is single-player: skip the hot-seat handoff blocker
+        // and its recap popup so the first step card appears immediately.
+        if (widget.tutorial) controller.confirmHandoff();
+        final game = MapGame(initial: controller.visibleState);
+        game.onTileTap = (x, y) => _onTileTap(controller, x, y);
         _syncWarOverlay(controller, game);
-        // Online: the turn went to another player — hand back to the
-        // waiting lobby (once; guarded against re-entry).
-        if (controller.isOnline &&
-            controller.awaitingRemote &&
-            !controller.gameOver &&
-            !_poppedForRemote) {
-          _poppedForRemote = true;
-          if (mounted) Navigator.of(context).maybePop();
-          return;
-        }
-        if (mounted) setState(() {});
-      });
-      setState(() {
-        _controller = controller;
-        _game = game;
-      });
-    });
+        controller.addListener(() {
+          game.updateState(controller.visibleState);
+          _syncWarOverlay(controller, game);
+          // Online: the turn went to another player — hand back to the
+          // waiting lobby (once; guarded against re-entry).
+          if (controller.isOnline &&
+              controller.awaitingRemote &&
+              !controller.gameOver &&
+              !_poppedForRemote) {
+            _poppedForRemote = true;
+            if (mounted) Navigator.of(context).maybePop();
+            return;
+          }
+          if (mounted) setState(() {});
+        });
+        setState(() {
+          _controller = controller;
+          _game = game;
+        });
+      },
+      onError: (Object e, StackTrace _) {
+        // A corrupt save or failed session setup would otherwise leave the
+        // screen on the spinner forever.
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Spiel konnte nicht geladen werden: $e')),
+        );
+        Navigator.of(context).maybePop();
+      },
+    );
   }
 
   @override
@@ -122,6 +133,9 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _toast(String message) {
+    // Callers await war submissions first — online the listener may have
+    // popped this screen in the meantime.
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
@@ -598,15 +612,14 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      // The year never truncates — only the realm name flexes.
-                      Text(
-                        'Anno ${controller.state.year}',
-                        style: theme.textTheme.titleSmall,
-                      ),
+                      // One ellipsized text: the realm name (the tail)
+                      // truncates first; on extremely narrow screens the
+                      // year ellipsizes too instead of overflowing.
                       Flexible(
                         child: Text(
-                          ' — $realmName',
+                          'Anno ${controller.state.year} — $realmName',
                           style: theme.textTheme.titleSmall,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -725,19 +738,22 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ],
         ),
-        content: Text(
-          '${gc.countryNames[war.attackerSlot]} ist mit Armeen in dein '
-          'Land eingefallen !\n\n'
-          'Tippe eine deiner Truppen an (Schild auf farbigem Wappen) '
-          'und dann ein Ziel auf der Karte: feindliche Armeen werden '
-          'angegriffen. Einmal pro Runde kannst du auf feindlichem '
-          'Boden plündern.\n\n'
-          'Der Krieg endet, wenn beide Seiten Frieden wünschen '
-          '(ohne Gebietsänderungen), spätestens im Winter — oder '
-          'wenn eine Armee den gegnerischen Königssitz (Fahne) über '
-          'eine volle Runde hält: ihr Herrscher wird gefangen '
-          'genommen, und der Sieger wählt, welche Felder er '
-          'übernimmt.',
+        // Long briefing — must scroll on small screens / large text scale.
+        content: SingleChildScrollView(
+          child: Text(
+            '${gc.countryNames[war.attackerSlot]} ist mit Armeen in dein '
+            'Land eingefallen !\n\n'
+            'Tippe eine deiner Truppen an (Schild auf farbigem Wappen) '
+            'und dann ein Ziel auf der Karte: feindliche Armeen werden '
+            'angegriffen. Einmal pro Runde kannst du auf feindlichem '
+            'Boden plündern.\n\n'
+            'Der Krieg endet, wenn beide Seiten Frieden wünschen '
+            '(ohne Gebietsänderungen), spätestens im Winter — oder '
+            'wenn eine Armee den gegnerischen Königssitz (Fahne) über '
+            'eine volle Runde hält: ihr Herrscher wird gefangen '
+            'genommen, und der Sieger wählt, welche Felder er '
+            'übernimmt.',
+          ),
         ),
         actions: [
           FilledButton(
@@ -764,7 +780,7 @@ class _GameScreenState extends State<GameScreen> {
             const SizedBox(height: 12),
             Text(
               _controller?.isOnline == true
-                  ? 'Du bist am Zug !'
+                  ? tr('onlineYourTurn')
                   : tr('handoff'),
               style: Theme.of(context).textTheme.titleMedium,
             ),
@@ -828,37 +844,44 @@ class _GameScreenState extends State<GameScreen> {
     return ColoredBox(
       color: Colors.black87,
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              defeat
-                  ? Icons.cancel
-                  : draw
-                  ? Icons.history_edu
-                  : Icons.emoji_events,
-              size: 72,
-              color: defeat ? Colors.red : Colors.amber,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              tr(defeat ? 'gameLost' : 'gameOver'),
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            Text(
-              defeat
-                  ? _defeatReasonText(event.payload['reason'] as String?)
-                  : draw
-                  ? 'Alle Dynastien sind erloschen — das Land bleibt herrenlos.'
-                  : '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              child: const Text('Zurück zum Hauptmenü'),
-            ),
-          ],
+        // Scrolls when a long defeat reason plus large text scale exceeds
+        // the screen height; padded so the text never touches the edges.
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                defeat
+                    ? Icons.cancel
+                    : draw
+                    ? Icons.history_edu
+                    : Icons.emoji_events,
+                size: 72,
+                color: defeat ? Colors.red : Colors.amber,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                tr(defeat ? 'gameLost' : 'gameOver'),
+                style: Theme.of(context).textTheme.headlineMedium,
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                defeat
+                    ? _defeatReasonText(event.payload['reason'] as String?)
+                    : draw
+                    ? 'Alle Dynastien sind erloschen — das Land bleibt herrenlos.'
+                    : '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: const Text('Zurück zum Hauptmenü'),
+              ),
+            ],
+          ),
         ),
       ),
     );

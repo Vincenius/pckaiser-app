@@ -34,6 +34,9 @@ class _SetupScreenState extends State<SetupScreen> {
   final _ottoman = TextEditingController(text: '1040');
   final _warStart = TextEditingController(text: '1010');
   final List<_PlayerDraft> _players = [_PlayerDraft(1)];
+  // Removed drafts are disposed with the screen, not immediately — their
+  // TextFields may still be attached during the removal frame.
+  final List<_PlayerDraft> _removedPlayers = [];
   bool _starting = false;
   // Deviation from the original — on by default for new games.
   bool _genderEqualSuccession = true;
@@ -76,6 +79,19 @@ class _SetupScreenState extends State<SetupScreen> {
     return null;
   }
 
+  @override
+  void dispose() {
+    _slotName.dispose();
+    _reformation.dispose();
+    _ottoman.dispose();
+    _warStart.dispose();
+    for (final p in _players.followedBy(_removedPlayers)) {
+      p.name.dispose();
+      p.dorf.dispose();
+    }
+    super.dispose();
+  }
+
   Future<void> _start() async {
     final error = _validate();
     if (error != null) {
@@ -84,6 +100,33 @@ class _SetupScreenState extends State<SetupScreen> {
       ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
+    // Starting a game writes the save immediately — never silently destroy
+    // an existing slot (the name field is pre-filled with a default!).
+    if (await widget.saves.exists(_slotName.text.trim())) {
+      if (!mounted) return;
+      final overwrite = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Spielstand überschreiben ?'),
+          content: Text(
+            'Es gibt bereits einen Spielstand namens '
+            '"${_slotName.text.trim()}". Neues Spiel darüber speichern ?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Überschreiben'),
+            ),
+          ],
+        ),
+      );
+      if (overwrite != true) return;
+    }
+    if (!mounted) return;
     setState(() => _starting = true);
     final setup = GameSetup(
       humans: [
@@ -134,9 +177,7 @@ class _SetupScreenState extends State<SetupScreen> {
           ),
           const SizedBox(height: 8),
           Theme(
-            data: Theme.of(
-              context,
-            ).copyWith(dividerColor: Colors.transparent),
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
               tilePadding: EdgeInsets.zero,
               childrenPadding: EdgeInsets.zero,
@@ -178,8 +219,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _genderEqualSuccession,
-                  onChanged: (v) =>
-                      setState(() => _genderEqualSuccession = v),
+                  onChanged: (v) => setState(() => _genderEqualSuccession = v),
                   title: const Text('Frauen können überall herrschen'),
                   subtitle: const Text(
                     'Abweichend vom Original: das älteste Kind erbt '
@@ -236,7 +276,9 @@ class _SetupScreenState extends State<SetupScreen> {
                   IconButton(
                     icon: const Icon(Icons.close),
                     tooltip: 'Spieler entfernen',
-                    onPressed: () => setState(() => _players.removeAt(i)),
+                    onPressed: () => setState(
+                      () => _removedPlayers.add(_players.removeAt(i)),
+                    ),
                   ),
               ],
             ),

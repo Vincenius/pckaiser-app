@@ -73,10 +73,14 @@ class Api {
 
   Future<Response> _createMatch(Request request) => _guard(() async {
         final body = await _json(request);
+        // The seed is server-chosen: a creating client must not be able to
+        // pick (and thus predict) the match's random stream.
+        final settingsJson =
+            (body['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+        settingsJson.remove('seed');
         final match = await _service.createMatch(
           playerId: _requireString(body, 'player_id'),
-          settings: MatchSettings.fromJson(
-              (body['settings'] as Map?)?.cast<String, dynamic>() ?? {}),
+          settings: MatchSettings.fromJson(settingsJson),
           setup: (body['setup'] as Map?)?.cast<String, dynamic>() ?? {},
         );
         return _service.view(match.id, _requireString(body, 'player_id'));
@@ -110,8 +114,7 @@ class Api {
         return {'left': true, 'deleted': deleted};
       });
 
-  Future<Response> _kickPlayer(Request request, String id) =>
-      _guard(() async {
+  Future<Response> _kickPlayer(Request request, String id) => _guard(() async {
         final body = await _json(request);
         final requesterId = _requireString(body, 'player_id');
         await _service.kickPlayer(

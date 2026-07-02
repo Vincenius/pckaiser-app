@@ -454,7 +454,8 @@ Troop? _nearestToCapital(Realm realm) {
   Troop? best;
   var bestD = 1 << 30;
   for (final troop in realm.troops) {
-    final d = (troop.x - realm.capitalX).abs() + (troop.y - realm.capitalY).abs();
+    final d =
+        (troop.x - realm.capitalX).abs() + (troop.y - realm.capitalY).abs();
     if (d < bestD) {
       bestD = d;
       best = troop;
@@ -526,10 +527,10 @@ void runAiWarMovement(
   // reshaping as units die. Not applied to an autopiloted human side (its
   // per-unit stance already governs defence), nor to a one-unit realm (it
   // cannot both guard the base and field an army).
-  final Troop? homeGuard = state.dynasty(slot).status == DynastyStatus.ai &&
-          realm.troops.length >= 2
-      ? _nearestToCapital(realm)
-      : null;
+  final Troop? homeGuard =
+      state.dynasty(slot).status == DynastyStatus.ai && realm.troops.length >= 2
+          ? _nearestToCapital(realm)
+          : null;
 
   for (var i = 0; i < realm.troops.length; i++) {
     var guard = 0;
@@ -811,9 +812,16 @@ TurnResult advanceUntilHuman(GameState state, Rng rng) {
     final realm = current.realm(slot);
     if (dynasty.status == DynastyStatus.human && !realm.isVacant) break;
 
-    if (dynasty.status == DynastyStatus.ai && !realm.isVacant) {
+    // `aiTurnActed` skips a phase that already ran: a war against a human
+    // defender interrupts the loop AFTER the AI acted, and that state can
+    // be auto-saved — re-entering here (e.g. resuming such a save) must
+    // complete the parked turn without a second action phase.
+    if (dynasty.status == DynastyStatus.ai &&
+        !realm.isVacant &&
+        !current.aiTurnActed) {
       final aiResult = runAiTurn(current, slot, rng);
       current = aiResult.state;
+      current.aiTurnActed = true;
       events.addAll(aiResult.events);
       if (current.activeWar != null) break; // a human defender must act
     }

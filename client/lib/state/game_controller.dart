@@ -208,6 +208,10 @@ class GameController extends ChangeNotifier {
 
   void undo() {
     if (_undoStack.isEmpty) return;
+    // An armed tile pick captured indices from the pre-undo state (e.g.
+    // "station troop n") — cancel it so it can't act on the reverted list.
+    _tilePick = null;
+    tilePickHint = null;
     _session.restore(_undoStack.removeLast());
     notifyListeners();
   }
@@ -426,6 +430,9 @@ class GameController extends ChangeNotifier {
       await _session.apply(
         ResolveDecision(slot: slot, decisionId: decisionId, choice: choice),
       );
+      // Decision outcomes are randomized/irreversible — snapshots from
+      // before the resolution must not stay undoable.
+      _undoStack.clear();
       await _session.save();
     } finally {
       _busy = false;

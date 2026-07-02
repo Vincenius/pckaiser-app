@@ -6,6 +6,79 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-02 — Full-codebase review: engine/online/UI fixes — appVersion 0.1.11
+
+Four-subsystem code review (rules engine, client UI incl. small screens,
+online stack, state/persistence); all confirmed findings fixed in the same
+(unreleased) 0.1.11. Also resolved the `fixes`→`dev` merge (both sides'
+PROJECT_REQUIREMENTS rows and HISTORY entries kept) and its one semantic
+conflict: `bugfix_v24_defeat_reason_test` exercises the §15.4 male-priority
+fallthrough, so it now opts out of the new default-on gender-equal option.
+
+Engine (`game_core`):
+- **AI double-act guard.** New additive `GameState.aiTurnActed`: a save
+  written between an AI's action phase and its turn completing (the
+  war-interrupt window) no longer re-runs that phase on resume — no second
+  assassination roll / double spend. Set in `advanceUntilHuman`, cleared by
+  `completeTurn`; old saves default false.
+- **Mutual peace beats winter.** A peace both sides agreed to on the 20th
+  round is the negotiated white peace, not winter score arbitration
+  (`endWarRound` order swapped).
+- **Claim floor no longer inflates marginal wins.** The
+  cheapest-bordering-tile floor applies only when the anti-swallow cap cut
+  an EARNED claim below it — a score-50 winter win can no longer claim (or
+  cash in) a 5,000 T lone border Stadt.
+- **`gameWon` deduped structurally** (`events.any` instead of
+  `events.last`) — a build event between settlement victory and end of turn
+  no longer produces a second victory popup.
+- **Plunder tolerates a building/town desync** (no `firstWhere` crash;
+  mirrors the earthquake path). — **`clampName` never splits a surrogate
+  pair** at the 30-unit cap. — **Founder gender clamped to {0,1}** in
+  `newGame`. — **§14.3 marriage loop fires at age > 14** (was ≥ 14; the
+  ≥ 14 gate belongs to §14.1 candidates). — Drill doc corrected (repeatable
+  per turn like the original); stale "Phase 5" AI-war-movement comments
+  replaced with a real driver warning (`endWarRoundFor` is the entry point).
+
+Online (backend + client services):
+- **Seat renumbering on lobby leave.** A mid-list leave from a waiting match
+  renumbers `turnOrder` contiguously — previously the seat behind the gap
+  could NEVER take a turn after start (`playerByTurnOrder` mismatch), and a
+  later join could duplicate a number. Regression test added.
+- **Match seed no longer sent to clients** (view + public list omit it;
+  create-request seeds are ignored). The seed made the map and every early
+  random roll precomputable — `visibleStateFor` zeroes `rngSeed` for exactly
+  this reason. Persistence still stores it.
+- **Off-turn realm submissions rejected.** A seat holding several realms
+  (inheritance/conquest) could act for realm B during realm A's turn and
+  double B's once-per-turn actions; `_submit` now requires
+  `action.slot == _awaitedSlot(state)`.
+- One corrupt match document no longer 500s the whole lobby list; the 20 s
+  lobby poll got an overlap guard.
+
+Client (state/persistence + UI):
+- **"Neues Spiel" no longer silently overwrites a same-named save** (the
+  field is pre-filled "Partie 1"!) — confirm dialog via `SaveService.exists`.
+- **Undo cancels an armed tile pick** (stale unit index could move the wrong
+  troop); **decision resolutions clear the undo stack** (randomized outcomes
+  must not stay undoable).
+- Small screens: the tile action sheet and the Handel/Spionage/Sonstiges
+  menus are scrollable `ListView`s (bottom entries were unreachable on
+  ~640 dp phones); war-briefing dialog scrolls; status-row year+realm is one
+  ellipsizing text; online "Sichtbarkeit" row scales down; tutorial header
+  ellipsizes; defeat/victory screen padded + scrollable.
+- Lifecycle: war-panel settlement round-ends catch `ActionException` like
+  the header button; `_toast` and the session-load path guard `mounted` (+
+  error fallback instead of an eternal spinner); setup-screen controllers
+  disposed; the map's previous `ui.Picture` disposed on rebuild; online
+  handoff uses `tr('onlineYourTurn')`.
+- Removed the stale Flutter-template `widget_test.dart` (broke
+  `flutter test`); `build/**` excluded from analysis.
+
+Known, deliberately not fixed: save-slot names that differ only by case
+collide on macOS's case-insensitive FS (debug target only); raw
+`applyAction(WarEndRound)` still skips AI war movement (documented — tests
+encode it; real drivers use `endWarRoundFor`).
+
 ## 2026-07-02 — Small-screen dialogs + longer names — appVersion 0.1.11
 
 Follow-up UI report (same release). Client + one engine constant; no schema

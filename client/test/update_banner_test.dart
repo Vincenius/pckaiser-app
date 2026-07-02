@@ -1,11 +1,13 @@
-import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pckaiser/widgets/update_banner.dart';
 
 void main() {
-  Widget host(String? version) =>
-      MaterialApp(home: Scaffold(body: UpdateRequiredBanner(serverVersion: version)));
+  Widget host(String? version) => MaterialApp(
+    home: Scaffold(body: UpdateRequiredBanner(serverVersion: version)),
+  );
 
   testWidgets('shows the message with the match version', (tester) async {
     await tester.pumpWidget(host('9.9.9'));

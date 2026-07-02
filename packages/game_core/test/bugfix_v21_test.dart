@@ -55,7 +55,8 @@ void main() {
       for (var x = 0; x < map.width; x++) {
         if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) continue;
         for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-          if (map.inBounds(x + dx, y + dy) && map.ownerAt(x + dx, y + dy) == 1) {
+          if (map.inBounds(x + dx, y + dy) &&
+              map.ownerAt(x + dx, y + dy) == 1) {
             map.owner[map.index(x, y)] = 2;
             state.realm(2).tileCount[Building.none]++;
             out['borderX'] = x;
@@ -103,8 +104,10 @@ void main() {
     test('rejects an unknown stance value', () {
       final state = warReady({});
       expect(
-        () => applyAction(state,
-            SetTroopStance(slot: 1, unitIndex: 0, stance: 7), Rng(state.rngSeed)),
+        () => applyAction(
+            state,
+            SetTroopStance(slot: 1, unitIndex: 0, stance: 7),
+            Rng(state.rngSeed)),
         throwsA(isA<ActionException>()),
       );
     });

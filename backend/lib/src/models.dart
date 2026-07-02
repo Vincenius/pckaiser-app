@@ -84,8 +84,9 @@ class MatchPlayer {
   final String playerId;
 
   /// 0-based join order — equals the `humanPlayer` index inside the
-  /// game state's dynasties.
-  final int turnOrder;
+  /// game state's dynasties. Mutable: seats are renumbered when someone
+  /// leaves a waiting match so the sequence stays contiguous.
+  int turnOrder;
 
   /// Realm slot 1–30 (`dynasty_index`).
   final int slot;
@@ -130,8 +131,7 @@ class MatchSettings {
         reformationYear: json['reformation_year'] as int? ?? 1020,
         ottomanYear: json['ottoman_year'] as int? ?? 1040,
         warStartYear: json['war_start_year'] as int? ?? 1010,
-        genderEqualSuccession:
-            json['gender_equal_succession'] as bool? ?? true,
+        genderEqualSuccession: json['gender_equal_succession'] as bool? ?? true,
         isPublic: json['is_public'] as bool? ?? false,
         seed: json['seed'] as int?,
       );
@@ -158,7 +158,11 @@ class MatchSettings {
 
   final int seed;
 
-  Map<String, dynamic> toJson() => {
+  /// [includeSeed] is for persistence only. Client-facing views must pass
+  /// false: newGame/startGame are deterministic on the seed, so exposing it
+  /// lets anyone precompute the map and future random rolls —
+  /// `visibleStateFor` zeroes `rngSeed` for exactly this reason.
+  Map<String, dynamic> toJson({bool includeSeed = true}) => {
         'turn_timeout_hours': turnTimeoutHours,
         'war_round_timeout': warRoundTimeoutSeconds,
         'reformation_year': reformationYear,
@@ -166,7 +170,7 @@ class MatchSettings {
         'war_start_year': warStartYear,
         'gender_equal_succession': genderEqualSuccession,
         'is_public': isPublic,
-        'seed': seed,
+        if (includeSeed) 'seed': seed,
       };
 }
 

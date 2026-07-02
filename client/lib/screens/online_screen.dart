@@ -57,9 +57,15 @@ class _OnlineScreenState extends State<OnlineScreen> {
     );
   }
 
+  bool _reloading = false;
+
   Future<void> _reload({bool silent = false}) async {
     final service = _service;
     if (service == null || !service.isConfigured) return;
+    // No overlap: on a slow network the 20s poll could otherwise race a
+    // running reload and a stale response would win the setState.
+    if (_reloading) return;
+    _reloading = true;
     if (!silent) setState(() => _loading = true);
     try {
       final matches = await service.api.myMatches(service.playerId!);
@@ -89,6 +95,8 @@ class _OnlineScreenState extends State<OnlineScreen> {
         _error = e.message;
         _loading = false;
       });
+    } finally {
+      _reloading = false;
     }
   }
 
@@ -314,17 +322,29 @@ class _OnlineScreenState extends State<OnlineScreen> {
                   Row(
                     children: [
                       const Expanded(child: Text('Sichtbarkeit')),
-                      SegmentedButton<bool>(
-                        segments: const [
-                          ButtonSegment(value: false, label: Text('Privat')),
-                          ButtonSegment(
-                            value: true,
-                            label: Text('Öffentlich'),
+                      // Scale down on narrow dialogs instead of overflowing
+                      // (same pattern as the recruit sheet's class picker).
+                      Flexible(
+                        flex: 2,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: SegmentedButton<bool>(
+                            segments: const [
+                              ButtonSegment(
+                                value: false,
+                                label: Text('Privat'),
+                              ),
+                              ButtonSegment(
+                                value: true,
+                                label: Text('Öffentlich'),
+                              ),
+                            ],
+                            selected: {isPublic},
+                            onSelectionChanged: (s) =>
+                                setState(() => isPublic = s.first),
                           ),
-                        ],
-                        selected: {isPublic},
-                        onSelectionChanged: (s) =>
-                            setState(() => isPublic = s.first),
+                        ),
                       ),
                     ],
                   ),
@@ -349,23 +369,30 @@ class _OnlineScreenState extends State<OnlineScreen> {
                       children: [
                         Row(
                           children: [
-                            const Expanded(
-                              child: Text('Zugzeit im Krieg'),
-                            ),
+                            const Expanded(child: Text('Zugzeit im Krieg')),
                             DropdownButton<int>(
                               value: warRoundMinutes,
                               items: const [
                                 DropdownMenuItem(
-                                    value: 5, child: Text('5 min')),
+                                  value: 5,
+                                  child: Text('5 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 10, child: Text('10 min')),
+                                  value: 10,
+                                  child: Text('10 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 15, child: Text('15 min')),
+                                  value: 15,
+                                  child: Text('15 min'),
+                                ),
                                 DropdownMenuItem(
-                                    value: 30, child: Text('30 min')),
+                                  value: 30,
+                                  child: Text('30 min'),
+                                ),
                               ],
                               onChanged: (v) => setState(
-                                  () => warRoundMinutes = v ?? warRoundMinutes),
+                                () => warRoundMinutes = v ?? warRoundMinutes,
+                              ),
                             ),
                           ],
                         ),
@@ -407,8 +434,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
                           value: genderEqualSuccession,
                           onChanged: (v) =>
                               setState(() => genderEqualSuccession = v),
-                          title:
-                              const Text('Frauen können überall herrschen'),
+                          title: const Text('Frauen können überall herrschen'),
                           subtitle: const Text(
                             'Geschlechtsneutrale Erbfolge — Frauen erben '
                             'auch islamische Reiche, ohne auszuscheiden.',
@@ -488,8 +514,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
                     reformationYear:
                         int.tryParse(reformationController.text) ?? 1020,
                     ottomanYear: int.tryParse(ottomanController.text) ?? 1040,
-                    warStartYear:
-                        int.tryParse(warStartController.text) ?? 1010,
+                    warStartYear: int.tryParse(warStartController.text) ?? 1010,
                     isPublic: isPublic,
                     genderEqualSuccession: genderEqualSuccession,
                   ),
@@ -741,9 +766,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
     return ListTile(
       leading: const Icon(Icons.public),
       title: Text(host != null ? 'Partie von $host' : 'Offene Partie'),
-      subtitle: Text(
-        'Raum ${m['id']} · ${m['joined']} beigetreten · $timer',
-      ),
+      subtitle: Text('Raum ${m['id']} · ${m['joined']} beigetreten · $timer'),
       trailing: FilledButton(
         onPressed: () => _joinPublic(m['id'] as String),
         child: const Text('Beitreten'),

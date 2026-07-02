@@ -43,7 +43,8 @@ void main() {
     });
   });
 
-  group('marriage fallback (§14.3): AI weds a commoner when no royal partner', () {
+  group('marriage fallback (§14.3): AI weds a commoner when no royal partner',
+      () {
     test('an isolated AI member weds a commoner so the line survives', () {
       // All-AI game: slot 1's founder is computer-controlled, not the player.
       final state = startGame(freshGame(humanSlots: const []), Rng(1)).state;

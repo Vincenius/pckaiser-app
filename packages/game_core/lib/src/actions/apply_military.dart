@@ -567,6 +567,10 @@ List<GameEvent> applyWarPeaceWish(
   ];
 }
 
+/// WARNING for drivers: this raw dispatch advances the round WITHOUT the
+/// AI sides' war movement (`runAiWarMovement` lives in the ai/ layer, which
+/// imports this one). Real drivers must call `endWarRoundFor` instead —
+/// the local session and the server both do; only tests use this path.
 List<GameEvent> applyWarEndRound(
     GameState state, Realm realm, WarEndRound action, Rng rng) {
   _warFor(state, realm.slot, phase: WarPhase.rounds);

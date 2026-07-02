@@ -85,14 +85,17 @@ void main() {
     expect(state.map.realmNeighbors(1), isNot(contains(2)),
         reason: 'an open-water tile separates the two coasts');
     expect(mergeableSlots(state, 1), isNot(contains(2)),
-        reason: 'the original blocks merge across a sea gap ("keine Nachbarn")');
+        reason:
+            'the original blocks merge across a sea gap ("keine Nachbarn")');
   });
 
-  test('a Hafen tile that touches the other realm bridges adjacency → mergeable',
+  test(
+      'a Hafen tile that touches the other realm bridges adjacency → mergeable',
       () {
     final state = scenario(bridge: true);
     expect(state.map.realmNeighbors(1), contains(2),
-        reason: "realm 1's owned Hafen water tile orthogonally touches realm 2");
+        reason:
+            "realm 1's owned Hafen water tile orthogonally touches realm 2");
     expect(mergeableSlots(state, 1), contains(2));
 
     final otto = state.realm(1).rulerId;
@@ -100,6 +103,7 @@ void main() {
             state, MergeRealms(slot: 2, sourceSlot: 1), Rng(state.rngSeed))
         .state;
     expect(next.realm(1).rulerId, otto, reason: 'realm 1 absorbs realm 2');
-    expect(next.realm(2).rulerId, isNull, reason: 'the merged-away slot vacates');
+    expect(next.realm(2).rulerId, isNull,
+        reason: 'the merged-away slot vacates');
   });
 }

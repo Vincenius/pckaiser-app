@@ -45,6 +45,7 @@ class GameState {
     this.prunedEventCount = 0,
     Map<int, int>? recapBaselines,
     this.humanLossReason,
+    this.aiTurnActed = false,
   })  : assert(realms.length == World.realmCount),
         assert(dynasties.length == World.realmCount),
         kurfuerstenIds = kurfuerstenIds ?? [],
@@ -117,7 +118,9 @@ class GameState {
           for (final e in ((json['recapBaselines'] as Map?) ?? {}).entries)
             int.parse(e.key as String): e.value as int,
         },
-        humanLossReason: json['humanLossReason'] as String?);
+        humanLossReason: json['humanLossReason'] as String?,
+        // Additive — old saves have never marked an AI action phase.
+        aiTurnActed: json['aiTurnActed'] as bool? ?? false);
   }
 
   static List<ChronicleRecord> _recordList(Object? json) => (json as List? ??
@@ -228,6 +231,13 @@ class GameState {
   /// seat is lost.
   String? humanLossReason;
 
+  /// True while [currentPlayer] is an AI whose action phase already ran but
+  /// whose turn has not completed yet — the window a war against a human
+  /// defender leaves open (and auto-saves can persist). `advanceUntilHuman`
+  /// checks it so a resumed save never runs the same AI action phase twice
+  /// (double spend, second assassination roll). Reset by `completeTurn`.
+  bool aiTurnActed;
+
   /// Realm for a 1-based slot index.
   Realm realm(int slot) => realms[slot - 1];
 
@@ -295,6 +305,7 @@ class GameState {
         prunedEventCount: prunedEventCount,
         recapBaselines: Map.of(recapBaselines),
         humanLossReason: humanLossReason,
+        aiTurnActed: aiTurnActed,
       );
 
   Map<String, dynamic> toJson() => {
@@ -331,6 +342,7 @@ class GameState {
         'recapBaselines': {
           for (final e in recapBaselines.entries) '${e.key}': e.value,
         },
+        'aiTurnActed': aiTurnActed,
         'humanLossReason': humanLossReason,
       };
 }

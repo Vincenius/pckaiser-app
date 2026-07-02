@@ -129,12 +129,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       return;
     }
 
-    const strong = {
-      'crowned',
-      'realmOverrun',
-      'rulerCaptured',
-      'playerKicked',
-    };
+    const strong = {'crowned', 'realmOverrun', 'rulerCaptured', 'playerKicked'};
     final fresh = <gc.GameEvent>[];
     for (var i = 0; i < state.events.length; i++) {
       final pos = base + i;
@@ -272,15 +267,18 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     // (realm 1 → 30), not join order, so the rows are sorted by slot once the
     // game has started. Eliminated seats (no realm) get a single trailing row.
     // Before the start every seat controls only its home realm → one row each.
-    final rows = <({
-      int slot,
-      String realm,
-      String? name,
-      String? playerId,
-      int idleTurns,
-      bool isYou,
-      bool isAwaited,
-    })>[];
+    final rows =
+        <
+          ({
+            int slot,
+            String realm,
+            String? name,
+            String? playerId,
+            int idleTurns,
+            bool isYou,
+            bool isAwaited,
+          })
+        >[];
     final eliminated = <({String? name, bool isYou})>[];
     for (final p in players) {
       final controlled =
@@ -394,7 +392,10 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         for (final (i, r) in rows.indexed)
           ListTile(
             dense: true,
-            leading: Icon(r.isAwaited ? Icons.play_arrow : Icons.person, size: 18),
+            leading: Icon(
+              r.isAwaited ? Icons.play_arrow : Icons.person,
+              size: 18,
+            ),
             title: Text(
               '${r.name != null ? '${r.name} — ' : ''}'
               '${r.realm}${r.isYou ? ' (du)' : ''}',
@@ -405,7 +406,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
                     '${r.idleTurns >= 3 ? ' · ${r.idleTurns} Züge inaktiv' : ''}',
                   )
                 : null,
-            trailing: iAmCreator && !r.isYou && r.idleTurns >= 3 && r.playerId != null
+            trailing:
+                iAmCreator && !r.isYou && r.idleTurns >= 3 && r.playerId != null
                 ? TextButton.icon(
                     icon: const Icon(Icons.person_off, size: 18),
                     label: const Text('Rauswerfen'),
@@ -492,10 +494,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     _playing = true;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => MapViewerScreen(
-          state: session.state,
-          focusSlot: session.yourSlot,
-        ),
+        builder: (_) =>
+            MapViewerScreen(state: session.state, focusSlot: session.yourSlot),
       ),
     );
     _playing = false;

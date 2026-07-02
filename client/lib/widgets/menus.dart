@@ -48,7 +48,8 @@ void showCommerceMenu(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: Wrap(
+      child: ListView(
+        shrinkWrap: true,
         children: [
           ListTile(
             title: Text(tr('sellGrain')),
@@ -996,7 +997,8 @@ void showEspionageMenu(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: Wrap(
+      child: ListView(
+        shrinkWrap: true,
         children: [
           ListTile(
             title: const Text('Daten ausspionieren'),
@@ -1212,7 +1214,8 @@ void showMiscMenu(BuildContext context, GameController controller) {
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
-      child: Wrap(
+      child: ListView(
+        shrinkWrap: true,
         children: [
           ListTile(
             leading: const Icon(Icons.people),

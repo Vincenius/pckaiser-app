@@ -134,12 +134,17 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                 children: [
                   const Icon(Icons.school, size: 18),
                   const SizedBox(width: 8),
-                  Text(
-                    'Tutorial — Schritt ${_index + 1} von '
-                    '${tutorialSteps.length}',
-                    style: theme.textTheme.labelMedium,
+                  // Flexible: on narrow screens / large text the title must
+                  // ellipsize instead of pushing the buttons off the card.
+                  Expanded(
+                    child: Text(
+                      'Tutorial — Schritt ${_index + 1} von '
+                      '${tutorialSteps.length}',
+                      style: theme.textTheme.labelMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.expand_more, size: 20),
                     tooltip: 'Minimieren',

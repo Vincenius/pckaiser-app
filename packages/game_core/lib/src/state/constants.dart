@@ -13,7 +13,16 @@ const int maxNameLength = 30;
 /// empty string for a blank name — callers apply their own default.
 String clampName(String raw) {
   final name = raw.trim();
-  return name.length > maxNameLength ? name.substring(0, maxNameLength) : name;
+  if (name.length <= maxNameLength) return name;
+  var cut = name.substring(0, maxNameLength);
+  // Never split a UTF-16 surrogate pair (e.g. an emoji on the boundary) —
+  // a lone high surrogate is not a valid string and breaks JSON encoding
+  // for strict non-Dart parsers.
+  final last = cut.codeUnitAt(cut.length - 1);
+  if (last >= 0xD800 && last <= 0xDBFF) {
+    cut = cut.substring(0, cut.length - 1);
+  }
+  return cut;
 }
 
 /// Religions (§1).

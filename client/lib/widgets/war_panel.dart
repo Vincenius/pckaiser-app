@@ -611,7 +611,18 @@ class _WarPanelState extends State<WarPanel> {
       }
       return;
     }
-    await controller.endWarRound(); // resumes AI advance
+    try {
+      await controller.endWarRound(); // resumes AI advance
+    } on gc.ActionException catch (e) {
+      // Online the server can reject the round end (turn already advanced,
+      // or the build is out of date) — mirror the header button's handling.
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
     if (context.mounted) {
       await showWarReport(
         context,
@@ -640,7 +651,16 @@ class _WarPanelState extends State<WarPanel> {
       }
       return;
     }
-    await controller.endWarRound(); // resumes AI advance
+    try {
+      await controller.endWarRound(); // resumes AI advance
+    } on gc.ActionException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
     if (context.mounted) {
       await showWarReport(
         context,

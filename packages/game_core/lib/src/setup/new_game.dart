@@ -104,7 +104,10 @@ GameState newGame(GameSetup setup) {
     final humanIndex = humanBySlot[slot];
     final human = humanIndex == null ? null : setup.humans[humanIndex];
 
-    final gender = human?.gender ?? rng.nextInt(2);
+    // Clamp: anything outside {0, 1} (an unvalidated online setup payload)
+    // would corrupt the title class, name-table picks and `1 - gender`
+    // spouse math downstream.
+    final gender = (human?.gender ?? rng.nextInt(2)).clamp(0, 1);
     final founderRaw = human?.founderName ??
         (gender == 0
             ? europeanMaleNames[rng.nextInt(europeanMaleNames.length)]

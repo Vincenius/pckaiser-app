@@ -104,8 +104,9 @@ class ReinforceTroop extends PlayerAction {
 }
 
 /// "Truppe ausbilden" — drill (§10.2, the traced original
-/// `proc_00A316`): +1 quality for 5 T/man, no class change. Once per unit
-/// per turn, regulars only, capped at [Troop.drillCap].
+/// `proc_00A316`): +1 quality for 5 T/man, no class change. Repeatable
+/// within a turn like the original, regulars only, capped at
+/// [Troop.drillCap].
 class DrillTroop extends PlayerAction {
   DrillTroop({required super.slot, required this.unitIndex});
 

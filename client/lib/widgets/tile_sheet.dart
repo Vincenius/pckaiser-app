@@ -356,8 +356,8 @@ Future<void> showTileActionSheet(
   await showModalBottomSheet<void>(
     context: context,
     builder: (context) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: ListView(
+        shrinkWrap: true,
         children: [
           ListTile(
             title: Text(

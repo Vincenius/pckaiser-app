@@ -516,7 +516,14 @@ int _cappedClaim(
   final capped = math.min(claim, total * sharePercent ~/ 100);
   final cheapestBorder =
       _cheapestBorderingLoserTile(state, winnerSlot, loserSlot);
-  if (cheapestBorder != null && capped < cheapestBorder) {
+  // The floor only restores what the anti-swallow CAP took away: a war
+  // score that already earned the cheapest bordering tile stays claimable.
+  // It must never lift a marginal score (e.g. 50) up to an expensive lone
+  // border tile — the leftover claim is also payable in cash, so that
+  // would extract 100× the earned score from the loser's treasury.
+  if (cheapestBorder != null &&
+      capped < cheapestBorder &&
+      claim >= cheapestBorder) {
     return cheapestBorder;
   }
   return capped;
@@ -597,8 +604,9 @@ void _endWarByCapitalOccupation(
 
 /// Advances a war round (§11.2): applies the AI peace placeholders,
 /// checks mutual peace and winter, and otherwise rolls the next round.
-/// (AI unit movement arrives with Phase 5 — until then AI sides hold
-/// position, which makes the traced AI peace rules fire naturally.)
+/// (AI unit movement is NOT part of this function — drivers must go
+/// through `endWarRoundFor`/`endWarRoundWithAi` in ai_turn.dart, which
+/// run `runAiWarMovement` for the AI sides first.)
 ///
 /// Before anything else, a side holding the enemy capital across TWO
 /// consecutive round ends — i.e. through the opponent's full response
@@ -640,29 +648,28 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   // The war UI counts "Runde X/20", so the end must land on round 20, not
   // one round later.
   final winterReached = war.round >= 19;
-  if ((war.attackerWantsPeace && war.defenderWantsPeace) || winterReached) {
-    if (winterReached) {
-      events.add(GameEvent(
-        year: state.year,
-        slot: 0,
-        type: 'winterEndsWar',
-        visibility: EventVisibility.public,
-      ));
-    } else {
-      // A NEGOTIATED peace is a white peace — status quo ante, nobody
-      // gains tiles or money. Only a winter-forced end goes to score
-      // arbitration.
-      events.add(GameEvent(
-        year: state.year,
-        slot: 0,
-        type: 'peaceAgreed',
-        visibility: EventVisibility.public,
-        participants: [war.attackerSlot, war.defenderSlot],
-      ));
-      _returnTroops(state, war, events);
-      state.activeWar = null;
-      return;
-    }
+  // Mutual peace takes precedence over winter: a peace BOTH sides agreed
+  // to on the last round is still the negotiated white peace they were
+  // promised (status quo ante) — not winter's score arbitration.
+  if (war.attackerWantsPeace && war.defenderWantsPeace) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: 0,
+      type: 'peaceAgreed',
+      visibility: EventVisibility.public,
+      participants: [war.attackerSlot, war.defenderSlot],
+    ));
+    _returnTroops(state, war, events);
+    state.activeWar = null;
+    return;
+  }
+  if (winterReached) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: 0,
+      type: 'winterEndsWar',
+      visibility: EventVisibility.public,
+    ));
     resolveWarEnd(state, rng, events);
     return;
   }
@@ -907,7 +914,8 @@ void finishSettlement(GameState state, List<GameEvent> events) {
   // end-of-turn win check (completeTurn); a war can only ever annex tiles
   // here, so this is the one mid-turn path that can produce a sole ruler.
   if (state.dynasty(winnerSlot).status == DynastyStatus.human &&
-      (state.events.isEmpty || state.events.last.type != 'gameWon')) {
+      !state.events.any((e) => e.type == 'gameWon') &&
+      !events.any((e) => e.type == 'gameWon')) {
     final champion = checkWinCondition(state);
     if (champion != null) {
       events.add(GameEvent(
@@ -1054,17 +1062,24 @@ List<GameEvent> plunderTile(
       victim.tileCount[building]--;
       destroyed = true;
     case Building.dorf || Building.markt || Building.stadt:
-      final town = victim.towns.firstWhere((t) => t.x == x && t.y == y);
-      killed = rng.nextInt(town.population ~/ 2);
-      loot = rng.nextInt(town.population);
-      final capacityCut =
-          rng.nextInt(math.max(0, town.troopCapacity - town.garrison));
-      plunderer.treasury += loot; // victim's treasury is NOT touched
-      town.population -= killed;
-      victim.population -= killed;
-      if (capacityCut > 0) {
-        town.troopCapacity -= capacityCut;
-        victim.troopCapacity -= capacityCut;
+      // Tolerate a building/town desync (like the earthquake path in
+      // events.dart) — a missing town object means nothing to plunder,
+      // not a crash.
+      final townMatches =
+          victim.towns.where((t) => t.x == x && t.y == y).toList();
+      if (townMatches.isNotEmpty) {
+        final town = townMatches.first;
+        killed = rng.nextInt(town.population ~/ 2);
+        loot = rng.nextInt(town.population);
+        final capacityCut =
+            rng.nextInt(math.max(0, town.troopCapacity - town.garrison));
+        plunderer.treasury += loot; // victim's treasury is NOT touched
+        town.population -= killed;
+        victim.population -= killed;
+        if (capacityCut > 0) {
+          town.troopCapacity -= capacityCut;
+          victim.troopCapacity -= capacityCut;
+        }
       }
     case Building.burg || Building.palast || Building.hafen:
       loot = victim.treasury > 0 ? rng.nextInt(victim.treasury) : 0;

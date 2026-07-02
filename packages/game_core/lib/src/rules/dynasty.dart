@@ -51,7 +51,9 @@ void runDynastyPhase(
       continue;
     }
 
-    if (person.age >= 14 && rng.nextInt(4) == 0) {
+    // §14.3: the ANNUAL loop fires for age > 14 (the §14.1 candidate gate
+    // is the one that is ≥ 14).
+    if (person.age > 14 && rng.nextInt(4) == 0) {
       final candidate = findMarriageCandidate(state, person, rng);
       if (candidate != null) {
         proposeMarriage(state, person, candidate, rng, events);

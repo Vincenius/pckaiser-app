@@ -11,8 +11,11 @@ void main() {
     final line = pubspec.firstWhere((l) => l.startsWith('version:'));
     // Strip the optional Android build number (`+N`); appVersion tracks the
     // semantic version name only, not the per-upload versionCode.
-    final pubspecVersion =
-        line.substring('version:'.length).trim().split('+').first;
+    final pubspecVersion = line
+        .substring('version:'.length)
+        .trim()
+        .split('+')
+        .first;
     expect(
       appVersion,
       pubspecVersion,

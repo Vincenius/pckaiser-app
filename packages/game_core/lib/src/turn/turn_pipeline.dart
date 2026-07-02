@@ -74,6 +74,8 @@ TurnResult completeTurn(GameState state, Rng rng) {
   }
   final next = state.copy();
   final events = <GameEvent>[];
+  // Whatever AI action phase was parked on this turn is over now.
+  next.aiTurnActed = false;
 
   // End-of-turn for the active slot (§6.1 step 3): dynasty events,
   // pending assassinations, elimination checks.
@@ -85,8 +87,9 @@ TurnResult completeTurn(GameState state, Rng rng) {
   if (winner != null) {
     // A war that overran the last rival this turn already emitted `gameWon`
     // from the settlement (so a human sees the popup right after the war);
-    // don't emit a second one when the turn then completes.
-    if (next.events.isEmpty || next.events.last.type != 'gameWon') {
+    // don't emit a second one when the turn then completes — even if other
+    // events (a build, a report) landed in the log since.
+    if (!next.events.any((e) => e.type == 'gameWon')) {
       events.add(GameEvent(
         year: next.year,
         slot: winner,
