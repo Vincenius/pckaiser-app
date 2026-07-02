@@ -69,8 +69,9 @@ List<GameEvent> applyRecruitTroops(
   realm.treasury -= cost;
   _levyPopularityCost(state, realm, action.men);
   quarterRecruits(realm, action.men, rng);
+  final recruitName = clampName(action.name);
   realm.troops.add(Troop(
-    name: action.name.trim().isEmpty ? 'Rekruten' : action.name.trim(),
+    name: recruitName.isEmpty ? 'Rekruten' : recruitName,
     men: action.men,
     troopClass: action.troopClass,
     quality: TroopQuality.regular,
@@ -112,8 +113,9 @@ List<GameEvent> applyHireSoeldner(
   final (px, py) = _stationAt(state, realm, action.x, action.y);
   realm.treasury -= cost;
   _levyPopularityCost(state, realm, action.men);
+  final soeldnerName = clampName(action.name);
   realm.troops.add(Troop(
-    name: action.name.trim().isEmpty ? 'Söldner' : action.name.trim(),
+    name: soeldnerName.isEmpty ? 'Söldner' : soeldnerName,
     men: action.men,
     troopClass: TroopClass.infanterie,
     quality: TroopQuality.soeldner,
@@ -229,11 +231,11 @@ List<GameEvent> applyRenameTroop(
     GameState state, Realm realm, RenameTroop action) {
   _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
-  final name = action.name.trim();
+  final name = clampName(action.name);
   if (name.isEmpty) {
     throw ActionException('Die Truppe braucht einen Namen !');
   }
-  troop.name = name.length > 20 ? name.substring(0, 20) : name;
+  troop.name = name;
   return const [];
 }
 

@@ -375,60 +375,76 @@ void _recruitSheet(
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: TextField(
-                    controller: nameController,
-                    maxLength: 20,
-                    decoration: const InputDecoration(
-                      labelText: 'Name der Truppe',
-                      counterText: '',
-                      isDense: true,
+            // Scrollable so a small screen with the keyboard up never overflows.
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: TextField(
+                      controller: nameController,
+                      maxLength: gc.maxNameLength,
+                      decoration: const InputDecoration(
+                        labelText: 'Name der Truppe',
+                        counterText: '',
+                        isDense: true,
+                      ),
                     ),
                   ),
-                ),
-                SegmentedButton<int>(
-                  segments: const [
-                    ButtonSegment(value: 0, label: Text('Infanterie +0')),
-                    ButtonSegment(value: 1, label: Text('Kavallerie +500')),
-                    ButtonSegment(value: 2, label: Text('Artillerie +1000')),
-                  ],
-                  selected: {troopClass},
-                  onSelectionChanged: (s) =>
-                      setState(() => troopClass = s.first),
-                ),
-                if (maxMen < 1)
-                  const ListTile(title: Text('Du hast nicht genügend Taler !'))
-                else
-                  _AmountSlider(
-                    key: ValueKey(troopClass),
-                    title: tr('recruit'),
-                    max: maxMen,
-                    detail: (men) =>
-                        'kostet ${5 * men + gc.classSurcharge(troopClass)} T'
-                        ' — Stärke ${(men * (3 * troopClass + gc.TroopQuality.regular) / 10).round()}',
-                    onSubmit: (men) {
-                      Navigator.pop(sheetContext);
-                      _tryAction(
-                        context,
-                        controller,
-                        gc.RecruitTroops(
-                          slot: slot,
-                          men: men,
-                          troopClass: troopClass,
-                          name: nameController.text.trim().isEmpty
-                              ? 'Rekruten'
-                              : nameController.text.trim(),
-                          x: x,
-                          y: y,
-                        ),
-                      );
-                    },
+                  // FittedBox: three class labels overflow narrow phones in a
+                  // fixed SegmentedButton — scale the whole control down instead.
+                  // The one-time surcharge is reflected live in the cost line
+                  // below, so the segment labels stay short.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('Infanterie')),
+                          ButtonSegment(value: 1, label: Text('Kavallerie')),
+                          ButtonSegment(value: 2, label: Text('Artillerie')),
+                        ],
+                        selected: {troopClass},
+                        onSelectionChanged: (s) =>
+                            setState(() => troopClass = s.first),
+                      ),
+                    ),
                   ),
-              ],
+                  if (maxMen < 1)
+                    const ListTile(
+                      title: Text('Du hast nicht genügend Taler !'),
+                    )
+                  else
+                    _AmountSlider(
+                      key: ValueKey(troopClass),
+                      title: tr('recruit'),
+                      max: maxMen,
+                      detail: (men) =>
+                          'kostet ${5 * men + gc.classSurcharge(troopClass)} T'
+                          ' — Stärke ${(men * (3 * troopClass + gc.TroopQuality.regular) / 10).round()}',
+                      onSubmit: (men) {
+                        Navigator.pop(sheetContext);
+                        _tryAction(
+                          context,
+                          controller,
+                          gc.RecruitTroops(
+                            slot: slot,
+                            men: men,
+                            troopClass: troopClass,
+                            name: nameController.text.trim().isEmpty
+                                ? 'Rekruten'
+                                : nameController.text.trim(),
+                            x: x,
+                            y: y,
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
             ),
           ),
         );
@@ -604,7 +620,7 @@ void showTroopActions(
                   child: Text(
                     troop.stance == gc.TroopStance.holdPosition
                         ? 'Verteidigt die Basis; greift erst an, wenn der Gegner '
-                            'keine Truppen mehr hat.'
+                              'keine Truppen mehr hat.'
                         : 'Marschiert sofort auf den gegnerischen Königssitz.',
                     style: Theme.of(sheetContext).textTheme.bodySmall,
                   ),
@@ -872,7 +888,7 @@ void _renameTroopDialog(
       title: const Text('Truppe umbenennen'),
       content: TextField(
         controller: nameController,
-        maxLength: 20,
+        maxLength: gc.maxNameLength,
         autofocus: true,
       ),
       actions: [

@@ -105,11 +105,12 @@ GameState newGame(GameSetup setup) {
     final human = humanIndex == null ? null : setup.humans[humanIndex];
 
     final gender = human?.gender ?? rng.nextInt(2);
-    final founderName = human?.founderName ??
+    final founderRaw = human?.founderName ??
         (gender == 0
             ? europeanMaleNames[rng.nextInt(europeanMaleNames.length)]
             : europeanFemaleNames[rng.nextInt(europeanFemaleNames.length)]);
-    final dorfName = human?.dorfName ?? cityNames[slot - 1];
+    final founderName = clampName(founderRaw);
+    final dorfName = clampName(human?.dorfName ?? cityNames[slot - 1]);
 
     final founder = Person(
       id: nextPersonId++,

@@ -302,7 +302,11 @@ Future<String> _askText(
     barrierDismissible: false,
     builder: (context) => AlertDialog(
       title: Text(title),
-      content: TextField(controller: controller, autofocus: true),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        maxLength: gc.maxNameLength,
+      ),
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(context, controller.text.trim()),
@@ -342,6 +346,7 @@ class _BribeDialogState extends State<_BribeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final treasury = widget.controller.state.realm(widget.slot).treasury;
     // You can only ever spend what you actually have — a treasury in the red
     // (e.g. after a lost war's reparations) affords no bribe, but the dialog
@@ -349,58 +354,90 @@ class _BribeDialogState extends State<_BribeDialog> {
     // of soft-locking the finalist with a permanently disabled button.
     final affordable = treasury > 0 ? treasury : 0;
     final spent = _amounts.values.fold(0, (a, b) => a + b);
+    final remaining = affordable - spent;
     final broke = affordable <= 0;
     return AlertDialog(
-      title: Text('Bestechung ($spent / $treasury T)'),
+      title: const Text('Bestechung der Kurfürsten'),
+      // A per-elector slider stacked over its own row so nothing is crammed
+      // side by side (long names + six-digit amounts used to overflow narrow
+      // phones); the amount can never exceed the budget, so the confirm button
+      // is always enabled.
+      // One scrolling ListView (the budget line is its first item): a single
+      // viewport keeps the layout bounded on any screen and scrolls when many
+      // electors don't fit.
       content: SizedBox(
         width: double.maxFinite,
         child: ListView(
           shrinkWrap: true,
           children: [
-            if (broke)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Deine Schatzkammer ist leer — du kannst diesmal niemanden '
-                  'bestechen. Bestätige ohne Geschenk.',
-                ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                broke
+                    ? 'Deine Schatzkammer ist leer — du kannst diesmal niemanden '
+                          'bestechen. Bestätige ohne Geschenk.'
+                    : 'Ausgegeben: $spent T   ·   Verbleibend: $remaining T',
+                style: theme.textTheme.bodyMedium,
               ),
+            ),
             for (final id in widget.electorIds)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.controller.state.persons[id]?.name ?? '?',
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.controller.state.persons[id]?.name ?? '?',
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_amounts[id]} T',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      ],
                     ),
-                  ),
-                  SizedBox(
-                    width: 160,
-                    child: Slider(
+                    Slider(
                       value: _amounts[id]!.clamp(0, affordable).toDouble(),
-                      max: broke ? 1 : affordable.toDouble(),
+                      // Cap this elector at whatever is still unspent, so the
+                      // total can never exceed the treasury.
+                      max: broke
+                          ? 1
+                          : (_amounts[id]! + remaining)
+                                .clamp(1, affordable)
+                                .toDouble(),
                       onChanged: broke
                           ? null
-                          : (v) => setState(() => _amounts[id] = v.round()),
+                          : (v) => setState(
+                              () => _amounts[id] = v
+                                  .round()
+                                  // Never exceed this elector's share of the
+                                  // remaining budget (guards the max=1 floor
+                                  // when the treasury is fully committed).
+                                  .clamp(0, _amounts[id]! + remaining),
+                            ),
                     ),
-                  ),
-                  SizedBox(width: 56, child: Text('${_amounts[id]} T')),
-                ],
+                  ],
+                ),
               ),
           ],
         ),
       ),
       actions: [
         FilledButton(
-          onPressed: spent > affordable
-              ? null
-              : () {
-                  widget.onSubmit([
-                    for (final e in _amounts.entries)
-                      if (e.value > 0) {'electorId': e.key, 'amount': e.value},
-                  ]);
-                  Navigator.pop(context);
-                },
-          child: Text(broke ? 'Ohne Bestechung' : 'Fertig'),
+          onPressed: () {
+            widget.onSubmit([
+              for (final e in _amounts.entries)
+                if (e.value > 0) {'electorId': e.key, 'amount': e.value},
+            ]);
+            Navigator.pop(context);
+          },
+          child: Text(broke || spent == 0 ? 'Ohne Bestechung' : 'Bestätigen'),
         ),
       ],
     );

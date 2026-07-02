@@ -40,7 +40,14 @@ Future<void> showTurnReport(
   int n(String key) => (p[key] as num?)?.toInt() ?? 0;
 
   final ruler = state.person(realm.rulerId);
-  final stock = realm.grainHarvest + realm.livestockHarvest;
+  // Forward-looking food check: does THIS turn's harvest cover the
+  // population? (The realm's `grainHarvest`/`livestockHarvest` is the
+  // leftover AFTER everyone already ate — for a hand-to-mouth realm always
+  // ~0, so it made a useless, alarming-looking warning. Production vs.
+  // population is the number that actually tells you whether your fields
+  // keep up.)
+  final production = n('grainYield') + n('livestockYield');
+  final foodShort = production < realm.population;
   final theme = Theme.of(context);
 
   Widget row(IconData icon, String text, {Color? color, FontWeight? weight}) =>
@@ -106,9 +113,20 @@ Future<void> showTurnReport(
             ),
             row(
               Icons.agriculture,
-              'Die Vorräte reichen für $stock Leute.',
-              color: stock < realm.population ? theme.colorScheme.error : null,
+              foodShort
+                  ? 'Deine Felder ernähren nur $production von '
+                      '${realm.population} Leuten !'
+                  : 'Deine Felder ernähren die Bevölkerung '
+                      '($production ≥ ${realm.population}).',
+              color: foodShort ? theme.colorScheme.error : null,
             ),
+            if (foodShort)
+              row(
+                Icons.warning_amber,
+                'Nahrung wird knapp — baue mehr Kornfelder/Weiden, sonst '
+                'drohen Hungersnot und Desertion !',
+                color: theme.colorScheme.error,
+              ),
             if (n('famineLoss') > 0)
               row(
                 Icons.warning_amber,
