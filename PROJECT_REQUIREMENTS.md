@@ -72,6 +72,10 @@ Unversioned design deviations:
 | Unbounded event history | Log capped at 1,000 (`prunedEventCount` keeps positions stable) | Bounded saves |
 | Hafen next to any own tile | Needs an adjacent own LAND tile | Stops coast-chaining exploit |
 | Troop merge/disband/rename any time | Forbidden at war (war state is keyed to the troop list) | Consistent bookkeeping |
+| Population grows on surplus, unbounded vs. fields (§8.2) | Positive growth capped at the food ceiling (`pop ≤ grain+livestock yield`) — population plateaus at what the fields feed instead of overshooting and crashing | +10 %/turn growth outran the player's field-building; large realms starved "out of nowhere" |
+| Famine growth to −30 % (≈ −37 %/turn, §8.2) | Floored at −10 growth (≈ −12 %/turn); surplus still clamped −30 for popularity | One harvest could erase a third of a realm — an unrecoverable cliff |
+| Famine deserts ¼ of the population loss, up to the whole army (§8.2) | Capped at 25 %/turn and never below a 100-man home guard | A famine left the realm defenceless → conquered without a battle |
+| Names capped at 20 (troops) / uncapped (towns, children) | Single shared cap `maxNameLength = 30`, engine-clamped everywhere; inputs stop at the cap | Longer names; input never resets to a default |
 
 ## Protect-New-Players Rule
 

@@ -257,7 +257,7 @@ List<GameEvent> _colonizeShip(
   realm.tileCount[Building.dorf]++;
 
   final town = Town(
-    name: action.townName.trim(),
+    name: clampName(action.townName),
     population: 75 + rng.nextInt(50),
     troopCapacity: 25,
     garrison: 0,
@@ -370,7 +370,7 @@ List<GameEvent> _build(GameState state, Realm realm, Build action, Rng rng) {
 
   if (building == Building.dorf) {
     final town = Town(
-      name: action.townName!.trim(),
+      name: clampName(action.townName!),
       population: 75 + rng.nextInt(50),
       troopCapacity: 25,
       garrison: 0,
@@ -748,7 +748,7 @@ List<GameEvent> _resolveDecision(
 
     case 'childName':
       final child = state.persons[payload['childId'] as int];
-      final name = (choice['name'] as String?)?.trim() ?? '';
+      final name = clampName((choice['name'] as String?) ?? '');
       if (child != null && name.isNotEmpty) {
         child.name = name;
       }

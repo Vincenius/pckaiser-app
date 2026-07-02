@@ -1,6 +1,21 @@
 /// Shared game constants (ORIGINAL_GAME.md §1, §3, §4).
 library;
 
+/// Maximum stored length of a player-chosen name (towns, troops, children,
+/// founders, save slots). The single source of truth shared by the client's
+/// input fields (which block further typing at this length) and the engine
+/// (which defensively clamps every stored name, so no path — online peers,
+/// imported saves — can exceed it). Raised from the old hard-coded 20 so
+/// longer names are allowed.
+const int maxNameLength = 30;
+
+/// Trims a user-entered name and caps it at [maxNameLength]. Returns the
+/// empty string for a blank name — callers apply their own default.
+String clampName(String raw) {
+  final name = raw.trim();
+  return name.length > maxNameLength ? name.substring(0, maxNameLength) : name;
+}
+
 /// Religions (§1).
 abstract final class Religion {
   static const int katholisch = 0;

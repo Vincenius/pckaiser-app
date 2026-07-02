@@ -13,6 +13,28 @@ import '../state/town.dart';
 /// complained about. [DESIGNED.]
 const int foodSatisfactionStepCap = 8;
 
+/// `[DESIGNED]` Famine floor: the worst single-turn growth §8.2 may apply.
+/// The original clamped the surplus percent to −30 and then rolled a growth
+/// ∈ [−30, −1], so one bad harvest could erase a THIRD of the realm in a
+/// single turn (`pop × −30/82 ≈ −37 %`) — an unrecoverable cliff that wiped
+/// large realms "out of nowhere". We floor the famine growth so a starving
+/// realm shrinks GRADUALLY (≈ −12 %/turn worst case), giving several clearly
+/// warned turns to build fields before real damage — recovery stays possible.
+/// (The surplus percent itself is still clamped to −30 for the §8.4
+/// popularity update, so the mood still reflects a full-blown famine.)
+const int famineGrowthFloor = -10;
+
+/// `[DESIGNED]` Famine thins the army but never annihilates it in one turn:
+/// at most this share of the standing army may desert to hunger per turn.
+const int famineDesertionCapPercent = 25;
+
+/// `[DESIGNED]` … and a small home guard always survives a famine, so a
+/// starving realm is never left utterly defenceless. Players kept losing
+/// their whole realm without a battle: famine wiped the army, then any AI
+/// walked onto the undefended capital. A guaranteed remnant means a war is
+/// always FOUGHT, never a walkover.
+const int famineArmyFloor = 100;
+
 /// What the food/population upkeep did this turn (§8) — feeds the §21.1
 /// status report.
 class FoodReport {
@@ -80,9 +102,36 @@ FoodReport runFoodAndPopulation(
   step = step.clamp(-foodSatisfactionStepCap, foodSatisfactionStepCap);
   realm.popularity = (oldStat + step).clamp(0, 100);
 
-  // §8.2 Growth.
+  // §8.2 Growth. Floored on the famine side so a single bad harvest can
+  // never erase a third of the realm (see [famineGrowthFloor]); the +10%/turn
+  // growth cap (DS:[2]) is unchanged.
   var g = s == 0 ? 0 : s.sign * (rng.nextInt(s.abs()) + 1);
-  g = math.min(g, 10); // global +10%/turn cap (DS:[2])
+  g = g.clamp(famineGrowthFloor, 10);
+
+  // `[DESIGNED]` Couple growth to the food ceiling. Population lives in towns
+  // and grows up to +10 %/turn (thousands of people at scale), but each field
+  // feeds only ~50 and the player can build just a handful of fields per turn
+  // — so a large realm's population inevitably OVERSHOT what its farms (even a
+  // fully-built territory) could feed, then crashed into famine "out of
+  // nowhere". A lingering harvest STOCK kept the surplus positive past the
+  // real ceiling, deepening the overshoot. We now cap positive growth at what
+  // THIS turn's production can actually feed: the population climbs toward the
+  // food ceiling and plateaus there instead of overshooting. More fields /
+  // land raise the ceiling; famine is left to real causes (a plundered or
+  // quaked field, or selling the harvest your people needed to eat). Famine
+  // shrink (g < 0) is untouched — it still corrects any existing excess.
+  if (g > 0) {
+    final foodCeiling = report.grainYield + report.livestockYield;
+    final room = foodCeiling - realm.population;
+    if (room <= 0) {
+      g = 0; // already at or over what the fields can feed — hold steady
+    } else {
+      // Largest whole-percent growth that keeps population ≤ the food ceiling
+      // (delta ≈ population × g / 82, so g ≤ room × 82 / population).
+      final maxG = room * 82 ~/ realm.population;
+      if (maxG < g) g = maxG;
+    }
+  }
 
   var totalDelta = 0;
   for (final town in realm.towns) {
@@ -97,10 +146,17 @@ FoodReport runFoodAndPopulation(
   realm.troopCapacity = realm.towns.fold(0, (sum, t) => sum + t.troopCapacity);
   report.populationDelta = totalDelta;
 
-  // §8.2 Famine: soldiers desert/die.
-  if (totalDelta < 0) {
-    report.famineLoss = math.min((-totalDelta) ~/ 4, realm.armySize);
-    removeArmyMen(realm, report.famineLoss);
+  // §8.2 Famine: soldiers desert/die — but capped, and never below the
+  // home-guard floor, so a starving realm keeps a defensive core (a war is
+  // always fought, never a walkover). See [famineDesertionCapPercent] /
+  // [famineArmyFloor].
+  if (totalDelta < 0 && realm.armySize > 0) {
+    final raw = (-totalDelta) ~/ 4;
+    final fractionCap =
+        (realm.armySize * famineDesertionCapPercent / 100).round();
+    final aboveGuard = math.max(0, realm.armySize - famineArmyFloor);
+    report.famineLoss = math.min(raw, math.min(fractionCap, aboveGuard));
+    if (report.famineLoss > 0) removeArmyMen(realm, report.famineLoss);
   }
 
   // §8.3 Town transitions.

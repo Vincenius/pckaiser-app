@@ -502,7 +502,11 @@ Future<String?> _askTownName(BuildContext context) {
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('Wie soll dein Dorf heißen?'),
-      content: TextField(controller: controller, autofocus: true),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        maxLength: gc.maxNameLength,
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),

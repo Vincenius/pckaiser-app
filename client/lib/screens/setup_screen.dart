@@ -117,8 +117,10 @@ class _SetupScreenState extends State<SetupScreen> {
         children: [
           TextField(
             controller: _slotName,
+            maxLength: maxNameLength,
             decoration: const InputDecoration(
               labelText: 'Name des Spielstands',
+              counterText: '',
             ),
           ),
           const SizedBox(height: 12),
@@ -197,7 +199,11 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
             TextField(
               controller: p.name,
-              decoration: const InputDecoration(labelText: 'Name des Gründers'),
+              maxLength: maxNameLength,
+              decoration: const InputDecoration(
+                labelText: 'Name des Gründers',
+                counterText: '',
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -239,7 +245,11 @@ class _SetupScreenState extends State<SetupScreen> {
                 Expanded(
                   child: TextField(
                     controller: p.dorf,
-                    decoration: const InputDecoration(labelText: 'Erstes Dorf'),
+                    maxLength: maxNameLength,
+                    decoration: const InputDecoration(
+                      labelText: 'Erstes Dorf',
+                      counterText: '',
+                    ),
                   ),
                 ),
               ],

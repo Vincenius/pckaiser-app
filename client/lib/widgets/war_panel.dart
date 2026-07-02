@@ -172,8 +172,9 @@ class _WarPanelState extends State<WarPanel> {
                           enemySlot,
                           movesLeft: i < moves.length ? moves[i] : 0,
                           selected: i == selected,
-                          onTap: () => controller
-                              .selectWarUnit(i == selected ? null : i),
+                          onTap: () => controller.selectWarUnit(
+                            i == selected ? null : i,
+                          ),
                         ),
                     ],
                   ),
@@ -206,49 +207,55 @@ class _WarPanelState extends State<WarPanel> {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Bei Auto-Krieg: ', style: theme.textTheme.bodySmall),
-          const SizedBox(width: 4),
-          SegmentedButton<int>(
-            showSelectedIcon: false,
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            segments: const [
-              ButtonSegment(
-                value: gc.TroopStance.holdPosition,
-                icon: Icon(Icons.shield_outlined, size: 14),
-                label: Text('Halten'),
+      // FittedBox: the label + two-segment toggle overflows very narrow phones
+      // in a fixed Row — scale it down instead of clipping.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Bei Auto-Krieg: ', style: theme.textTheme.bodySmall),
+            const SizedBox(width: 4),
+            SegmentedButton<int>(
+              showSelectedIcon: false,
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              ButtonSegment(
-                value: gc.TroopStance.attack,
-                icon: Icon(Icons.gps_fixed, size: 14),
-                label: Text('Angreifen'),
-              ),
-            ],
-            selected: {troop.stance},
-            onSelectionChanged: (selection) async {
-              try {
-                await controller.applyWarAction(
-                  gc.SetTroopStance(
-                    slot: slot,
-                    unitIndex: unitIndex,
-                    stance: selection.first,
-                  ),
-                );
-              } on gc.ActionException catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(e.message)));
+              segments: const [
+                ButtonSegment(
+                  value: gc.TroopStance.holdPosition,
+                  icon: Icon(Icons.shield_outlined, size: 14),
+                  label: Text('Halten'),
+                ),
+                ButtonSegment(
+                  value: gc.TroopStance.attack,
+                  icon: Icon(Icons.gps_fixed, size: 14),
+                  label: Text('Angreifen'),
+                ),
+              ],
+              selected: {troop.stance},
+              onSelectionChanged: (selection) async {
+                try {
+                  await controller.applyWarAction(
+                    gc.SetTroopStance(
+                      slot: slot,
+                      unitIndex: unitIndex,
+                      stance: selection.first,
+                    ),
+                  );
+                } on gc.ActionException catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(e.message)));
+                  }
                 }
-              }
-            },
-          ),
-        ],
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

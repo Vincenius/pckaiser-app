@@ -6,6 +6,81 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-02 — Small-screen dialogs + longer names — appVersion 0.1.11
+
+Follow-up UI report (same release). Client + one engine constant; no schema
+change, no gameplay-outcome change.
+
+- **Bribery dialog broke on small screens.** Each elector was a fixed
+  `Row(name | 160px slider | 56px amount)` — a long name plus a six-digit gift
+  overflowed narrow phones, and the confirm button disabled itself once the
+  running total passed the treasury (a dead-end feeling). Redesigned: name +
+  live amount on one row, a full-width slider beneath, a running
+  "Ausgegeben / Verbleibend" budget line, and each slider capped at the unspent
+  remainder so the total can never exceed the treasury — the confirm button is
+  always enabled. `decisions.dart`.
+- **Other small-screen overflows.** The recruit sheet's class picker
+  (`Infanterie +0 / Kavallerie +500 / Artillerie +1000`) overflowed as a fixed
+  three-segment control — labels shortened to the class names (the surcharge is
+  already in the live cost line) and wrapped in a `FittedBox`; the sheet is now
+  scrollable so the keyboard can't push it off-screen. The war panel's
+  auto-war stance toggle row is likewise wrapped in a scale-down `FittedBox`.
+  `menus.dart`, `war_panel.dart`.
+- **Longer names, and no reset when the limit is hit.** Introduced a single
+  shared cap `maxNameLength = 30` (was a hard-coded 20 in a couple of spots)
+  with `clampName()` in `game_core`; the engine now clamps every stored name
+  (towns, troops, children, founders) to it, and all client name fields set
+  `maxLength: maxNameLength` so input simply stops at the cap instead of ever
+  resetting to a default. `constants.dart`, `apply_military.dart`,
+  `apply_action.dart`, `new_game.dart`, `menus.dart`, `tile_sheet.dart`,
+  `decisions.dart`, `setup_screen.dart`.
+
+## 2026-07-02 — Famine death-spiral made fair & legible — appVersion 0.1.11
+
+Offline bug report: a large, steadily-growing realm suddenly starved "out of
+nowhere", lost ~30 % of its population and thousands of troops per turn to
+desertion, then was conquered by an AI **without a fought battle** and finally
+overrun. Root cause was one cascade — food production scales only with fields
+(≈ 50/field, capped at efficiency 2.0) while population auto-grows up to
++10 %/turn, so once `population > ~50 × fields` the surplus fell off a cliff to
+the −30 clamp and famine (§8.2, faithfully ported) erased a third of the realm
+in a single turn. The desertion then emptied the army, and an AI attacker
+walked onto the undefended capital (`endWarRound`'s troopless-loser instant
+capture), forcing a `reseatLostCapitals` "Sitz verloren". The AI dodges all
+this because it aggressively over-builds fields (`Kornfeld ≈ pop/9`); a human
+got no such help and almost no warning. Balance/UX fix (rules change → new
+appVersion, client `0.1.11+7`), no schema change. The guaranteed home guard is
+the sole defence against the no-fight conquest — no war-side special-casing:
+a starving realm now always keeps troops, so the AI has to fight to reach the
+capital.
+
+- **Growth coupled to the food ceiling (the root fix).** Population grew up to
+  +10 %/turn (thousands of people at scale) while the player can build only a
+  handful of fields per turn (each feeding ~50), so a large realm's population
+  inevitably OUTGREW what even a fully-fielded territory could feed — a lingering
+  harvest stock kept the surplus positive past the real ceiling, so it
+  overshot and then crashed "out of nowhere". Positive growth §8.2 is now capped
+  so the population never climbs past what THIS turn's harvest can feed
+  (`g = 0` once `population ≥ grainYield + livestockYield`): it plateaus at the
+  food ceiling instead of overshooting. More fields/land raise the ceiling;
+  famine is left to real causes (a plundered/quaked field, or selling the
+  harvest your people needed). Famine shrink (`g < 0`) is untouched.
+- **Famine floored (`famineGrowthFloor = −10`).** Growth §8.2 is clamped on the
+  famine side so a starving realm shrinks gradually (≈ −12 %/turn worst case)
+  instead of losing a third at once — several clearly-warned turns to react,
+  recovery stays possible. The surplus percent is still clamped to −30 for the
+  §8.4 popularity update, so the mood still reflects a full famine.
+- **Desertion capped + home-guard floor (`famineDesertionCapPercent = 25`,
+  `famineArmyFloor = 100`).** Famine may thin at most a quarter of the army per
+  turn and never below a small remnant, so a starving realm is never left
+  utterly defenceless — a war is always fought, never a walkover.
+- **"Vorräte reichen für X Leute" was useless.** The number was the leftover
+  stock *after* everyone ate (≈ 0 for any hand-to-mouth realm) — alarming and
+  non-predictive. The turn report now compares THIS turn's harvest to the
+  population ("Deine Felder ernähren nur X von Y Leuten !") and adds an explicit
+  early warning to build more fields before a famine hits. `turn_report.dart`.
+- Files: `population.dart`, `turn_report.dart`, `versioning.dart`.
+
 ## 2026-06-29 — Correct defeat reason + hidden enemy strength + war-panel layout — appVersion 0.1.10
 
 Three offline bug reports. An event-label engine fix plus client UI; no
