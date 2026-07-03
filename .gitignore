@@ -12,3 +12,4 @@ packages/game_core/pubspec.lock
 # Secrets: FCM service-account key (README "Push notifications")
 backend/deploy/.env
 *service-account*.json
+.DS_Store
