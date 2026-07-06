@@ -1,8 +1,6 @@
-/// Phases of an active war (§11.2): for a human-vs-human war a preparation
-/// window first (both sides choose live control vs autopilot and review
-/// stances — user-designed mechanic, 2026-07-06), then the war-round loop,
-/// then possibly the claim-settlement screen of a limited victory.
-enum WarPhase { preparation, rounds, settlement }
+/// Phases of an active war (§11.2): the war-round loop, then possibly the
+/// claim-settlement screen of a limited victory.
+enum WarPhase { rounds, settlement }
 
 /// A unit's snapshotted pre-war position (§11.1) — used by the AI peace
 /// test and the post-war troop return.
@@ -40,17 +38,8 @@ class ActiveWar {
     this.remainingClaim = 0,
     this.heldCapitalSlot,
     this.actingSlot,
-    this.attackerMenLost = 0,
-    this.defenderMenLost = 0,
-    this.battles = 0,
-    this.attackerLoot = 0,
-    this.defenderLoot = 0,
-    this.attackerTilesTaken = 0,
-    this.defenderTilesTaken = 0,
-    Set<int>? autoSlots,
   })  : snapshots = snapshots ?? {},
-        movesLeft = movesLeft ?? {},
-        autoSlots = autoSlots ?? {};
+        movesLeft = movesLeft ?? {};
 
   factory ActiveWar.fromJson(Map<String, dynamic> json) => ActiveWar(
         attackerSlot: json['attackerSlot'] as int,
@@ -81,16 +70,6 @@ class ActiveWar {
         // Additive field — pre-HvH saves derive the acting side from the
         // dynasty statuses (warActingSlot falls back to the first human).
         actingSlot: json['actingSlot'] as int?,
-        // Additive fields — older saves start their war tally at zero.
-        attackerMenLost: json['attackerMenLost'] as int? ?? 0,
-        defenderMenLost: json['defenderMenLost'] as int? ?? 0,
-        battles: json['battles'] as int? ?? 0,
-        attackerLoot: json['attackerLoot'] as int? ?? 0,
-        defenderLoot: json['defenderLoot'] as int? ?? 0,
-        attackerTilesTaken: json['attackerTilesTaken'] as int? ?? 0,
-        defenderTilesTaken: json['defenderTilesTaken'] as int? ?? 0,
-        // Additive field — older saves have no delegated war sides.
-        autoSlots: (json['autoSlots'] as List?)?.cast<int>().toSet(),
       );
 
   final int attackerSlot;
@@ -129,37 +108,6 @@ class ActiveWar {
   /// `endWarRoundFor`). Null when no human fights — AI sides never await
   /// input. Read through `warActingSlot`, which also covers pre-HvH saves.
   int? actingSlot;
-
-  /// Cumulative war tally for the end-of-war overview: men lost per side,
-  /// battle count, plunder loot and conquered tiles per side. Incremented
-  /// in `resolveCombat`/`plunderTile`/`conquerTile`; copied into the
-  /// war-ending event's `summary` payload before the war state is cleared.
-  int attackerMenLost;
-  int defenderMenLost;
-  int battles;
-  int attackerLoot;
-  int defenderLoot;
-  int attackerTilesTaken;
-  int defenderTilesTaken;
-
-  /// Human war sides who handed THIS war to the computer (`warDefense`
-  /// decision): their rounds are played by the stance autopilot like an
-  /// AI side's, and their input is never awaited. Cleared with the war.
-  final Set<int> autoSlots;
-
-  /// The tally as a war-ending event payload fragment.
-  Map<String, dynamic> summary() => {
-        'attackerSlot': attackerSlot,
-        'defenderSlot': defenderSlot,
-        'rounds': round + 1,
-        'battles': battles,
-        'attackerMenLost': attackerMenLost,
-        'defenderMenLost': defenderMenLost,
-        'attackerLoot': attackerLoot,
-        'defenderLoot': defenderLoot,
-        'attackerTilesTaken': attackerTilesTaken,
-        'defenderTilesTaken': defenderTilesTaken,
-      };
 
   bool isParticipant(int slot) => slot == attackerSlot || slot == defenderSlot;
 
@@ -208,14 +156,6 @@ class ActiveWar {
         remainingClaim: remainingClaim,
         heldCapitalSlot: heldCapitalSlot,
         actingSlot: actingSlot,
-        attackerMenLost: attackerMenLost,
-        defenderMenLost: defenderMenLost,
-        battles: battles,
-        attackerLoot: attackerLoot,
-        defenderLoot: defenderLoot,
-        attackerTilesTaken: attackerTilesTaken,
-        defenderTilesTaken: defenderTilesTaken,
-        autoSlots: Set.of(autoSlots),
       );
 
   Map<String, dynamic> toJson() => {
@@ -238,13 +178,5 @@ class ActiveWar {
         'remainingClaim': remainingClaim,
         'heldCapitalSlot': heldCapitalSlot,
         'actingSlot': actingSlot,
-        'attackerMenLost': attackerMenLost,
-        'defenderMenLost': defenderMenLost,
-        'battles': battles,
-        'attackerLoot': attackerLoot,
-        'defenderLoot': defenderLoot,
-        'attackerTilesTaken': attackerTilesTaken,
-        'defenderTilesTaken': defenderTilesTaken,
-        'autoSlots': autoSlots.toList(),
       };
 }

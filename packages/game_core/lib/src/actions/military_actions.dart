@@ -484,43 +484,6 @@ class SettlementAnnex extends PlayerAction {
   Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
 }
 
-/// Claim settlement: annex SEVERAL loser tiles in one submission, in tap
-/// order, atomically (any invalid tile rejects the whole batch). The
-/// online client buffers its per-tile taps locally and flushes them as one
-/// of these with the settlement finish — one round-trip instead of one per
-/// tile.
-class SettlementAnnexMany extends PlayerAction {
-  SettlementAnnexMany({required super.slot, required this.tiles});
-
-  factory SettlementAnnexMany.fromJson(Map<String, dynamic> json) =>
-      SettlementAnnexMany(
-        slot: json['slot'] as int,
-        tiles: [
-          for (final t in json['tiles'] as List)
-            (
-              x: (t as Map)['x'] as int,
-              y: t['y'] as int,
-            ),
-        ],
-      );
-
-  static const kind = 'settlementAnnexMany';
-
-  final List<({int x, int y})> tiles;
-
-  @override
-  String get type => kind;
-
-  @override
-  Map<String, dynamic> toJson() => {
-        'type': kind,
-        'slot': slot,
-        'tiles': [
-          for (final t in tiles) {'x': t.x, 'y': t.y},
-        ],
-      };
-}
-
 /// Claim settlement: annex EVERY affordable loser tile
 /// bordering the own land in one stroke, then finish the settlement
 /// (rest in Taler). Offered by the client as "Ganzes Land übernehmen"

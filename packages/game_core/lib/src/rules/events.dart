@@ -15,7 +15,7 @@ import 'dynasty.dart' as dyn;
 import 'offices.dart' show closeChronicleIfOfficeHolder;
 import 'population.dart' show cutGarrisonTroops;
 import 'protection.dart';
-import 'titles.dart' show regenderTitle, switchTitleLadder;
+import 'titles.dart' show switchTitleLadder;
 
 /// `[DESIGNED]` How many consecutive end-of-turns a realm may stay below
 /// the §19.2 bankruptcy limit before the creditor forecloses. The first
@@ -410,10 +410,7 @@ Person foundReplacementDynasty(
         : livingRulers[rng.nextInt(livingRulers.length)];
     for (final aliased in aliasedSlots) {
       state.realm(aliased).rulerId = inheritor;
-      if (inheritor != null) {
-        dyn.alignSlotControl(state, aliased, inheritor);
-        regenderTitle(state, state.realm(aliased));
-      }
+      if (inheritor != null) dyn.alignSlotControl(state, aliased, inheritor);
       events.add(GameEvent(
         year: state.year,
         slot: aliased,
@@ -490,7 +487,6 @@ void runEliminationChecks(
     if (rivals.isNotEmpty) {
       final newRuler = rivals[rng.nextInt(rivals.length)];
       realm.rulerId = newRuler;
-      regenderTitle(state, realm);
       realm.popularity = 50;
       if (dynasty.status == DynastyStatus.human) {
         state.humanLossReason = 'internalStrife';

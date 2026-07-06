@@ -10,9 +10,6 @@ const String _githubUrl = 'https://github.com/Vincenius/pckaiser-app';
 /// The original "PCKaiser++" on the Good Old Days archive.
 const String _originalGameUrl = 'https://www.goodolddays.net/en/game/PCKaiser/';
 
-/// Community Discord server.
-const String _discordUrl = 'https://discord.gg/hdKzpWNZV';
-
 /// About: a short description of the game, the app version, and the
 /// credits (original author + remake author).
 class AboutScreen extends StatelessWidget {
@@ -109,15 +106,6 @@ class AboutScreen extends StatelessWidget {
                       ),
                       icon: const Icon(Icons.code),
                       label: const Text('GitHub — Quellcode'),
-                    ),
-                    const SizedBox(height: 8),
-                    FilledButton.tonalIcon(
-                      onPressed: () => launchUrl(
-                        Uri.parse(_discordUrl),
-                        mode: LaunchMode.externalApplication,
-                      ),
-                      icon: const Icon(Icons.forum),
-                      label: const Text('Discord — Community'),
                     ),
                   ],
                 ),

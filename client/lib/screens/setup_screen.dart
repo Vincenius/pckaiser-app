@@ -40,7 +40,6 @@ class _SetupScreenState extends State<SetupScreen> {
   bool _starting = false;
   // Deviation from the original — on by default for new games.
   bool _genderEqualSuccession = true;
-  bool _suggestChildNames = true;
 
   int _nextFreeSlot() {
     for (var slot = 1; slot <= 30; slot++) {
@@ -143,7 +142,6 @@ class _SetupScreenState extends State<SetupScreen> {
       ottomanYear: int.parse(_ottoman.text),
       warStartYear: int.parse(_warStart.text),
       genderEqualSuccession: _genderEqualSuccession,
-      suggestChildNames: _suggestChildNames,
       seed: DateTime.now().microsecondsSinceEpoch & 0xFFFFFFFF,
     );
     if (!mounted) return;
@@ -227,16 +225,6 @@ class _SetupScreenState extends State<SetupScreen> {
                     'Abweichend vom Original: das älteste Kind erbt '
                     'unabhängig vom Geschlecht und Frauen können auch '
                     'islamische Reiche erben, ohne auszuscheiden.',
-                  ),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _suggestChildNames,
-                  onChanged: (v) => setState(() => _suggestChildNames = v),
-                  title: const Text('Namensvorschläge für Kinder'),
-                  subtitle: const Text(
-                    'Bei Geburten einen zufälligen Namen vorschlagen — '
-                    'ausgeschaltet bleibt das Namensfeld leer.',
                   ),
                 ),
               ],

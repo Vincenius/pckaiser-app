@@ -150,10 +150,6 @@ void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   runOfficePhase(state, rng, events); // Kurfürsten + elections (§17)
 
   for (final realm in state.realms) {
-    // War weariness fades: every war-free year forgives one step of the
-    // escalating declaration penalty (checked BEFORE the flag reset, so
-    // the year the realm fought never counts as a peace year).
-    if (!realm.warThisYear && realm.recentWars > 0) realm.recentWars--;
     realm.warThisYear = false; // wars: once per year per player (§11.1)
   }
 
@@ -165,13 +161,10 @@ void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   // Decisions are only created for human dynasties; one whose slot has
   // since turned AI or vacant (strife, capture, merge) is never surfaced
   // again and would sit in the state forever — drop it. The rules treat
-  // an unresolved decision as its default anyway. A `warDefense` choice
-  // whose war has already ended is equally moot.
+  // an unresolved decision as its default anyway.
   state.pendingDecisions.removeWhere((d) =>
       state.dynasty(d.decidingSlot).status != DynastyStatus.human ||
-      state.realm(d.decidingSlot).isVacant ||
-      ((d.type == 'warDefense' || d.type == 'warPlan') &&
-          state.activeWar == null));
+      state.realm(d.decidingSlot).isVacant);
 }
 
 /// Per-turn upkeep for `state.currentPlayer` (§6.1 step 1): food →
@@ -207,6 +200,7 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
       'famineLoss': food.famineLoss,
       'tax': economy.tax,
       'tribute': economy.tribute,
+      'potCollected': economy.potCollected,
       'harborIncome': economy.harborIncome,
       'wages': economy.wages,
       'popularity': realm.popularity,

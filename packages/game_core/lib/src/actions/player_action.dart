@@ -25,7 +25,6 @@ sealed class PlayerAction {
         Build.kind => Build.fromJson(json),
         Demolish.kind => Demolish.fromJson(json),
         ChangeReligion.kind => ChangeReligion.fromJson(json),
-        CollectTribute.kind => CollectTribute.fromJson(json),
         SellGood.kind => SellGood.fromJson(json),
         InvestShips.kind => InvestShips.fromJson(json),
         SendMoney.kind => SendMoney.fromJson(json),
@@ -51,7 +50,6 @@ sealed class PlayerAction {
         WarEndRound.kind => WarEndRound.fromJson(json),
         WarNavalTransport.kind => WarNavalTransport.fromJson(json),
         SettlementAnnex.kind => SettlementAnnex.fromJson(json),
-        SettlementAnnexMany.kind => SettlementAnnexMany.fromJson(json),
         SettlementTakeAll.kind => SettlementTakeAll.fromJson(json),
         SettlementFinish.kind => SettlementFinish.fromJson(json),
         BuyShip.kind => BuyShip.fromJson(json),
@@ -478,25 +476,6 @@ class RelocateCapital extends PlayerAction {
 
   @override
   Map<String, dynamic> toJson() => {'type': kind, 'slot': slot, 'x': x, 'y': y};
-}
-
-/// "Staatskasse plündern" (§17.5): the Kaiser/Sultan collects the
-/// accumulated tribute pot into their treasury — a deliberate action, not
-/// an automatic payout `[DESIGNED 2026-07-06, user request]`. Free (no
-/// Zug); AI office holders trigger it at turn start.
-class CollectTribute extends PlayerAction {
-  CollectTribute({required super.slot});
-
-  factory CollectTribute.fromJson(Map<String, dynamic> json) =>
-      CollectTribute(slot: json['slot'] as int);
-
-  static const kind = 'collectTribute';
-
-  @override
-  String get type => kind;
-
-  @override
-  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
 }
 
 /// Change the dynasty's religion (§4): katholisch free, evangelisch 500 T,

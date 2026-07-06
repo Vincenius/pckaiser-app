@@ -1,4 +1,3 @@
-import '../state/dynasty.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
 
@@ -47,21 +46,7 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
     }
   }
 
-  // One player can control several slots (cross-dynasty inheritance,
-  // §15.4): decisions raised for ANY of their slots are their own hidden
-  // information and must surface at their next handoff — not only when the
-  // deciding slot's own turn comes around.
-  final viewerDynasty = state.dynasty(viewerSlot);
-  bool sameHumanPlayer(int slot) {
-    final dynasty = state.dynasty(slot);
-    return viewerDynasty.status == DynastyStatus.human &&
-        dynasty.status == DynastyStatus.human &&
-        dynasty.humanPlayer != null &&
-        dynasty.humanPlayer == viewerDynasty.humanPlayer;
-  }
-
-  filtered.pendingDecisions.retainWhere(
-      (d) => d.decidingSlot == viewerSlot || sameHumanPlayer(d.decidingSlot));
+  filtered.pendingDecisions.retainWhere((d) => d.decidingSlot == viewerSlot);
   filtered.assassinationOrders.retainWhere((o) => o.sponsorSlot == viewerSlot);
   filtered.events.retainWhere((e) => e.visibleTo(viewerSlot));
   filtered.recapBaselines.removeWhere((slot, _) => slot != viewerSlot);

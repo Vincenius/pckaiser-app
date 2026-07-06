@@ -46,18 +46,8 @@ void _runAiTurnInPlace(
   final realm = state.realm(slot);
   if (realm.isVacant) return;
 
-  // §20.3 Collect the crown pot when this realm's ruler holds the office —
-  // a deliberate action since 0.1.13 ("Staatskasse plündern"), no longer
-  // part of the upkeep, so the AI presses the button itself.
-  final holdsKaiser = state.kaiserId != null && realm.rulerId == state.kaiserId;
-  final holdsSultan = state.sultanId != null && realm.rulerId == state.sultanId;
-  if ((holdsKaiser && state.kaiserPot > 0) ||
-      (holdsSultan && state.sultanPot > 0)) {
-    _act(state, CollectTribute(slot: slot), rng, events);
-  }
-
   // §20.2 Sell harvests at the upper ~40% of each price range; never
-  // stockpiles.
+  // stockpiles. (§20.3 pot collection already happens in upkeep.)
   if (state.grainPrice > 1.6 && realm.grainHarvest > 0) {
     _act(
         state,
@@ -128,10 +118,7 @@ void _runAiTurnInPlace(
   // several times as often in the 200-year sim. `[DESIGNED]` The spontaneous
   // war chance was raised (~2–3×) so the map sees a bit more conflict
   // without the AI warring constantly.
-  // The declaration penalty escalates with war weariness (−5 × (recentWars
-  // + 1), floored below the strife line) — demand a matching mood cushion
-  // so a serial-warring AI never talks itself into a §19.1 revolt.
-  final warMoodOk = realm.popularity >= 50 + 5 * realm.recentWars;
+  final warMoodOk = realm.popularity >= 50;
   if ((warFlag || rng.nextInt(20) == 0) &&
       rng.nextInt(3) == 0 &&
       warMoodOk &&
@@ -746,8 +733,7 @@ void endWarRoundWithAi(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
   for (final slot in [war.attackerSlot, war.defenderSlot]) {
-    // Delegated human sides (war.autoSlots) are autopiloted like AI sides.
-    if (!warSideIsHuman(state, war, slot)) {
+    if (state.dynasty(slot).status != DynastyStatus.human) {
       runAiWarMovement(state, slot, rng, events);
     }
   }
@@ -763,50 +749,16 @@ void _fastForwardAiWar(GameState state, Rng rng, List<GameEvent> events) {
   while (state.activeWar != null && guard++ < 30) {
     final war = state.activeWar!;
     if (war.phase == WarPhase.settlement) {
-      // Only a live human winner leaves the settlement open.
+      // Only a human winner leaves the settlement open.
       return;
     }
     for (final slot in [war.attackerSlot, war.defenderSlot]) {
-      // Delegated human sides (autoSlots) fast-forward like AI sides.
-      if (warSideIsHuman(state, war, slot)) {
-        return; // a live human participant drives their own war rounds
+      if (state.dynasty(slot).status == DynastyStatus.human) {
+        return; // a human participant drives their own war rounds
       }
     }
     endWarRoundWithAi(state, rng, events);
   }
-}
-
-/// After a `warPlan` answer (or the online preparation deadline): begins
-/// the war rounds per the user-designed start rules (2026-07-06):
-///  - all answered, exactly ONE side plays live → start at once (the live
-///    player declared themself ready, the other delegated),
-///  - all answered, NOBODY plays live → begin and fast-forward the whole
-///    war like an AI-vs-AI war (both sides on the stance autopilot),
-///  - all answered, BOTH play live → start only when [waitWhenAllManual]
-///    is false (hot-seat / no online timer: both are present) or on
-///    [force] (the online deadline keeps the duel start fair — nobody
-///    misses it by seconds).
-/// [force] (deadline expiry) also defaults every unanswered side to the
-/// autopilot — an absent player is protected, never steamrolled.
-void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
-    {bool force = false, bool waitWhenAllManual = false}) {
-  final war = state.activeWar;
-  if (war == null || war.phase != WarPhase.preparation) return;
-  final sides = [war.attackerSlot, war.defenderSlot];
-  bool unanswered(int slot) => state.pendingDecisions
-      .any((d) => d.type == 'warPlan' && d.decidingSlot == slot);
-  if (force) {
-    for (final slot in sides.where(unanswered)) {
-      war.autoSlots.add(slot);
-    }
-    state.pendingDecisions.removeWhere((d) => d.type == 'warPlan');
-  } else if (sides.any(unanswered)) {
-    return;
-  }
-  final liveSides = sides.where((s) => warSideIsHuman(state, war, s)).length;
-  if (!force && waitWhenAllManual && liveSides == 2) return;
-  beginWarRounds(state, rng);
-  if (liveSides == 0) _fastForwardAiWar(state, rng, events);
 }
 
 /// Driver for local mode and the server (ARCHITECTURE.md "Turn Flow"):

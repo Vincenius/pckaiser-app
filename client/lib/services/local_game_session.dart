@@ -90,16 +90,6 @@ class LocalGameSession implements GameSession {
     final rng = Rng(_state.rngSeed);
     final result = applyAction(_state, action, rng);
     _state = result.state;
-    // A warPlan answer may complete the war preparation: run the start
-    // rules right away. Hot-seat passes no deadline — both players are at
-    // the device, so even a both-live war starts as soon as both chose.
-    if (action is ResolveDecision &&
-        _state.activeWar?.phase == WarPhase.preparation) {
-      final extra = mutate(
-        (s, rng, events) => resolveWarPreparation(s, rng, events),
-      );
-      return ActionResult(_state, [...result.events, ...extra]);
-    }
     return result;
   }
 

@@ -7,18 +7,14 @@ import '../state/realm.dart';
 class EconomyReport {
   int tax = 0;
   int tribute = 0;
+  int potCollected = 0;
   int harborIncome = 0;
   int wages = 0;
 }
 
-/// Economy upkeep (ORIGINAL_GAME.md §7), in order: taxes, tribute, harbor
-/// income, wages. Mutates [realm] and the global pots in place — the turn
-/// pipeline owns the state copy.
-///
-/// `[DESIGNED 2026-07-06, user request]` The crown pot (§17.5) is NOT
-/// auto-collected here anymore: the office holder empties it with the
-/// explicit `CollectTribute` action ("Staatskasse plündern"); AI office
-/// holders trigger that at turn start.
+/// Economy upkeep (ORIGINAL_GAME.md §7), in order: taxes, crown-pot
+/// collection (§17.5), tribute, harbor income, wages. Mutates [realm] and
+/// the global pots in place — the turn pipeline owns the state copy.
 EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
   final report = EconomyReport();
 
@@ -29,8 +25,19 @@ EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
   }
   realm.lastTax = report.tax;
 
+  // §17.5: the office holder collects the whole pot on their own turn.
   final isKaiser = state.kaiserId != null && realm.rulerId == state.kaiserId;
   final isSultan = state.sultanId != null && realm.rulerId == state.sultanId;
+  if (isKaiser) {
+    report.potCollected += state.kaiserPot;
+    realm.treasury += state.kaiserPot;
+    state.kaiserPot = 0;
+  }
+  if (isSultan) {
+    report.potCollected += state.sultanPot;
+    realm.treasury += state.sultanPot;
+    state.sultanPot = 0;
+  }
 
   // §7.2 Feudal tribute: 5% skim into the religion's crown pot
   // (simplified per spec note — the office holder does not pay their own

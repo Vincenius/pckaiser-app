@@ -2,7 +2,7 @@ import '../rng/rng.dart';
 import '../rules/dynasty.dart';
 import '../rules/offices.dart';
 import '../rules/realm_merge.dart';
-import '../rules/titles.dart' show regenderTitle, switchTitleLadder;
+import '../rules/titles.dart' show switchTitleLadder;
 import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
@@ -11,8 +11,6 @@ import '../state/pending_ship_return.dart';
 import '../state/realm.dart';
 import '../state/ship.dart';
 import '../state/town.dart';
-import '../state/troop.dart' show TroopStance;
-import '../state/war.dart' show WarPhase;
 import '../state/world_map.dart';
 import 'apply_military.dart';
 import 'player_action.dart';
@@ -61,7 +59,6 @@ List<GameEvent> applyActionInPlace(
     Build() => _build(state, realm, action, rng),
     Demolish() => _demolish(state, realm, action),
     ChangeReligion() => _changeReligion(state, realm, action),
-    CollectTribute() => _collectTribute(state, realm, action),
     SellGood() => _sellGood(state, realm, action),
     InvestShips() => _investShips(state, realm, action, rng),
     SendMoney() => _sendMoney(state, realm, action),
@@ -87,7 +84,6 @@ List<GameEvent> applyActionInPlace(
     WarPeaceWish() => applyWarPeaceWish(state, realm, action),
     WarEndRound() => applyWarEndRound(state, realm, action, rng),
     SettlementAnnex() => applySettlementAnnex(state, realm, action),
-    SettlementAnnexMany() => applySettlementAnnexMany(state, realm, action),
     SettlementTakeAll() => applySettlementTakeAll(state, realm, action),
     SettlementFinish() => applySettlementFinish(state, realm, action),
     SpyMission() => applySpyMission(state, realm, action, rng),
@@ -616,41 +612,6 @@ List<GameEvent> _relocateCapital(
   ];
 }
 
-/// "Staatskasse plündern" (§17.5): the office holder empties the crown pot
-/// into their treasury. Free (no Zug) — the original collected it as part
-/// of the turn; making it a button is the deliberate part `[DESIGNED
-/// 2026-07-06, user request]`. AI office holders trigger it at turn start
-/// (§20.3 step 3), so pots never rot on an AI throne.
-List<GameEvent> _collectTribute(
-    GameState state, Realm realm, CollectTribute action) {
-  final isKaiser = state.kaiserId != null && realm.rulerId == state.kaiserId;
-  final isSultan = state.sultanId != null && realm.rulerId == state.sultanId;
-  if (!isKaiser && !isSultan) {
-    throw ActionException('Nur der Kaiser oder Sultan darf das !');
-  }
-  final amount = isKaiser ? state.kaiserPot : state.sultanPot;
-  if (amount <= 0) {
-    throw ActionException('Die Staatskasse ist leer !');
-  }
-  realm.treasury += amount;
-  if (isKaiser) {
-    state.kaiserPot = 0;
-  } else {
-    state.sultanPot = 0;
-  }
-  return [
-    GameEvent(
-      year: state.year,
-      slot: realm.slot,
-      type: 'tributeCollected',
-      // The pot totals are public information (visibleStateFor keeps
-      // them), so the collection is too.
-      visibility: EventVisibility.public,
-      payload: {'amount': amount, 'office': isKaiser ? 'kaiser' : 'sultan'},
-    ),
-  ];
-}
-
 /// "H(e)irat vorschlagen" (§14.1): validates eligibility, then either the
 /// AI 25% roll or a pending decision for a human target.
 List<GameEvent> _proposeMarriage(
@@ -663,17 +624,8 @@ List<GameEvent> _proposeMarriage(
   if (proposer == null || target == null) {
     throw ActionException('Person nicht gefunden !');
   }
-  // The ruler's home dynasty counts too: after a cross-dynasty inheritance
-  // (§15.4) the ruling house differs from the slot, but its player must
-  // still be able to marry from this slot's turn.
-  if (!memberOfRulingHouse(state, realm, proposer)) {
+  if (proposer.dynasty != realm.slot) {
     throw ActionException('Diese Person gehört nicht zu deiner Dynastie !');
-  }
-  // Neither side may already sit on an unanswered proposal — marrying in
-  // the meantime would invalidate that pending consent.
-  if (awaitingMarriageConsent(state, proposer.id) ||
-      awaitingMarriageConsent(state, target.id)) {
-    throw ActionException('Hier wird noch auf eine Antwort gewartet !');
   }
   final eligible = proposer.spouseId == null &&
       target.spouseId == null &&
@@ -702,16 +654,11 @@ List<GameEvent> _proposeMarriage(
 List<GameEvent> _marryCommoner(
     GameState state, Realm realm, MarryCommoner action, Rng rng) {
   final person = state.persons[action.personId];
-  if (person == null || !memberOfRulingHouse(state, realm, person)) {
+  if (person == null || person.dynasty != realm.slot) {
     throw ActionException('Diese Person gehört nicht zu deiner Dynastie !');
   }
   if (person.spouseId != null || person.age < 14) {
     throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
-  }
-  // No commoner sidestep while a royal answer is pending (see
-  // _proposeMarriage) — it would invalidate the pending consent.
-  if (awaitingMarriageConsent(state, person.id)) {
-    throw ActionException('Hier wird noch auf eine Antwort gewartet !');
   }
   final events = <GameEvent>[];
   // Shared with the AI annual fallback (§14.3) so both stay in lock-step.
@@ -764,13 +711,7 @@ List<GameEvent> _resolveDecision(
             decision.decidingSlot,
             if (proposer != null) proposer.dynasty,
           ],
-          payload: {
-            ...payload,
-            // An ACCEPTED proposal that decayed in the meantime is not a
-            // rejection — tell the players the truth ("nicht mehr
-            // möglich" instead of "abgelehnt").
-            'reason': choice['accept'] == true ? 'invalid' : 'declined',
-          },
+          payload: payload,
         ));
       }
 
@@ -791,7 +732,6 @@ List<GameEvent> _resolveDecision(
       for (final slot in (payload['slots'] as List).cast<int>()) {
         if (state.realm(slot).rulerId == provisional) {
           state.realm(slot).rulerId = heirId;
-          regenderTitle(state, state.realm(slot));
         }
       }
       events.add(GameEvent(
@@ -805,45 +745,6 @@ List<GameEvent> _resolveDecision(
           'chosen': true,
         },
       ));
-
-    case 'warPlan':
-      // War-start preparation (user-designed mechanic): the combatant
-      // chooses live control (`auto: false`) or the stance autopilot —
-      // any NON-explicit answer (incl. the empty timeout default)
-      // delegates, so an absent player is protected, never steamrolled.
-      // Optionally re-sets all units' stance in the same answer. The
-      // caller layer (local session / server) runs the start rules via
-      // `resolveWarPreparation` afterwards. Stale decision → no-op.
-      final war = state.activeWar;
-      if (war == null ||
-          war.phase != WarPhase.preparation ||
-          !war.isParticipant(decision.decidingSlot)) {
-        break;
-      }
-      if (choice['auto'] != false) {
-        war.autoSlots.add(decision.decidingSlot);
-      }
-      final stance = choice['stance'];
-      if (stance == 'hold' || stance == 'attack') {
-        for (final troop in state.realm(decision.decidingSlot).troops) {
-          troop.stance =
-              stance == 'hold' ? TroopStance.holdPosition : TroopStance.attack;
-        }
-      }
-
-    case 'warDefense':
-      // Legacy (pre-preparation dev builds): `defend == false` hands THIS
-      // war to the stance autopilot; any other answer keeps human control.
-      final legacyWar = state.activeWar;
-      if (choice['defend'] == false &&
-          legacyWar != null &&
-          legacyWar.attackerSlot == payload['attackerSlot'] &&
-          legacyWar.defenderSlot == decision.decidingSlot) {
-        legacyWar.autoSlots.add(decision.decidingSlot);
-        if (legacyWar.actingSlot == decision.decidingSlot) {
-          legacyWar.actingSlot = legacyWar.attackerSlot;
-        }
-      }
 
     case 'childName':
       final child = state.persons[payload['childId'] as int];

@@ -36,66 +36,20 @@ ActiveWar startWar(
       for (final t in realm.troops) UnitSnapshot(name: t.name, x: t.x, y: t.y),
     ];
   }
+  war.actingSlot = _firstHumanSide(state, war);
+  _rollWarMoves(state, war, rng);
   state.activeWar = war;
   // §11.1: both sides are locked into one war per year — not just the attacker.
   state.realm(attackerSlot).warThisYear = true;
   state.realm(defenderSlot).warThisYear = true;
-  // `[DESIGNED 2026-07-06, user-designed mechanic]` A war between two
-  // HUMANS starts in a PREPARATION phase: both combatants choose (as a
-  // `warPlan` decision) whether they command their side live or hand it to
-  // the stance autopilot, and may re-set their units' stance. The rounds
-  // begin per `resolveWarPreparation`'s start rules (early start unless
-  // both play live; online deadline = half the turn timer). Any other
-  // constellation starts the rounds immediately, as before.
-  if (state.dynasty(attackerSlot).status == DynastyStatus.human &&
-      state.dynasty(defenderSlot).status == DynastyStatus.human) {
-    war.phase = WarPhase.preparation;
-    for (final (slot, role) in [
-      (attackerSlot, 'attacker'),
-      (defenderSlot, 'defender'),
-    ]) {
-      state.pendingDecisions.add(PendingDecision(
-        id: 'warplan-$slot-${state.year}',
-        type: 'warPlan',
-        decidingSlot: slot,
-        payload: {
-          'attackerSlot': attackerSlot,
-          'defenderSlot': defenderSlot,
-          'role': role,
-        },
-      ));
-    }
-  } else {
-    war.actingSlot = _firstHumanSide(state, war);
-    _rollWarMoves(state, war, rng);
-  }
   return war;
 }
 
-/// Ends the preparation phase: rolls the first round's movement allowance
-/// and hands the input to the first (non-delegated) human side. No-op
-/// outside the preparation phase.
-void beginWarRounds(GameState state, Rng rng) {
-  final war = state.activeWar;
-  if (war == null || war.phase != WarPhase.preparation) return;
-  war.phase = WarPhase.rounds;
-  war.actingSlot = _firstHumanSide(state, war);
-  _rollWarMoves(state, war, rng);
-}
-
-/// Whether [slot]'s war input is played by a human: a human dynasty that
-/// has NOT delegated this war to the computer (`war.autoSlots`, the
-/// `warDefense` decision). Delegated sides behave like AI sides — moved by
-/// the stance autopilot, never awaited.
-bool warSideIsHuman(GameState state, ActiveWar war, int slot) =>
-    state.dynasty(slot).status == DynastyStatus.human &&
-    !war.autoSlots.contains(slot);
-
 /// The first human war side in attacker-before-defender order (the
-/// original's round order), or null in a pure AI (or fully delegated) war.
+/// original's round order), or null in a pure AI war.
 int? _firstHumanSide(GameState state, ActiveWar war) {
   for (final slot in [war.attackerSlot, war.defenderSlot]) {
-    if (warSideIsHuman(state, war, slot)) return slot;
+    if (state.dynasty(slot).status == DynastyStatus.human) return slot;
   }
   return null;
 }
@@ -109,25 +63,14 @@ int? _firstHumanSide(GameState state, ActiveWar war) {
 int? warActingSlot(GameState state) {
   final war = state.activeWar;
   if (war == null) return null;
-  if (war.phase == WarPhase.preparation) {
-    // Awaited is whoever still owes their warPlan answer (attacker first);
-    // null once all have answered — the war then waits for its start
-    // (early-start rules / the online deadline, `resolveWarPreparation`).
-    for (final slot in [war.attackerSlot, war.defenderSlot]) {
-      if (state.dynasty(slot).status == DynastyStatus.human &&
-          state.pendingDecisions
-              .any((d) => d.type == 'warPlan' && d.decidingSlot == slot)) {
-        return slot;
-      }
-    }
-    return null;
-  }
   if (war.phase == WarPhase.settlement) {
     final winner = war.winnerSlot;
-    return winner != null && warSideIsHuman(state, war, winner) ? winner : null;
+    return winner != null && state.dynasty(winner).status == DynastyStatus.human
+        ? winner
+        : null;
   }
   final acting = war.actingSlot;
-  if (acting != null && warSideIsHuman(state, war, acting)) {
+  if (acting != null && state.dynasty(acting).status == DynastyStatus.human) {
     return acting;
   }
   return _firstHumanSide(state, war);
@@ -142,8 +85,8 @@ bool handWarRoundOver(GameState state, int slot) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return false;
   if (slot != war.attackerSlot) return false;
-  if (!warSideIsHuman(state, war, war.defenderSlot) ||
-      !warSideIsHuman(state, war, war.attackerSlot)) {
+  if (state.dynasty(war.defenderSlot).status != DynastyStatus.human ||
+      state.dynasty(war.attackerSlot).status != DynastyStatus.human) {
     return false;
   }
   war.actingSlot = war.defenderSlot;
@@ -228,14 +171,6 @@ List<GameEvent> resolveCombat(
   final destroyedB = lossesB >= b.men;
   _applyLosses(state, slotA, a, lossesA);
   _applyLosses(state, slotB, b, lossesB);
-
-  // Running war tally for the end-of-war overview (events are transient).
-  final war = state.activeWar;
-  if (war != null && war.isParticipant(slotA) && war.isParticipant(slotB)) {
-    war.battles++;
-    war.attackerMenLost += slotA == war.attackerSlot ? lossesA : lossesB;
-    war.defenderMenLost += slotA == war.attackerSlot ? lossesB : lossesA;
-  }
 
   return [
     GameEvent(
@@ -343,16 +278,6 @@ void transferTile(
     winner.towns.add(town);
     winner.population += town.population;
     winner.troopCapacity += town.troopCapacity;
-  }
-
-  // Running war tally for the end-of-war overview.
-  final war = state.activeWar;
-  if (war != null &&
-      war.isParticipant(winnerSlot) &&
-      war.isParticipant(loserSlot)) {
-    winnerSlot == war.attackerSlot
-        ? war.attackerTilesTaken++
-        : war.defenderTilesTaken++;
   }
 
   events.add(GameEvent(
@@ -661,11 +586,7 @@ void _endWarByCapitalOccupation(
     slot: captorSlot,
     type: 'warWon',
     visibility: EventVisibility.public,
-    payload: {
-      'claim': claim,
-      'loserSlot': loserSlot,
-      'summary': war.summary(),
-    },
+    payload: {'claim': claim, 'loserSlot': loserSlot},
   ));
 
   war.phase = WarPhase.settlement;
@@ -676,7 +597,7 @@ void _endWarByCapitalOccupation(
   if (capturedRuler != null) {
     runCoercion(state, captorSlot, capturedRuler, rng, events);
   }
-  if (!warSideIsHuman(state, war, captorSlot)) {
+  if (state.dynasty(captorSlot).status != DynastyStatus.human) {
     autoSettleClaim(state, rng, events);
   }
 }
@@ -717,9 +638,9 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
 
   // AI peace decisions (§11.2, incl. the original's dead-check quirk: an
   // AI attacker wants peace as soon as its units are back on/at their
-  // pre-war spots). Delegated human sides negotiate like AI sides.
+  // pre-war spots).
   for (final slot in [war.attackerSlot, war.defenderSlot]) {
-    if (warSideIsHuman(state, war, slot)) continue;
+    if (state.dynasty(slot).status == DynastyStatus.human) continue;
     war.setWantsPeace(slot, _aiWantsPeace(state, war, slot));
   }
 
@@ -737,7 +658,6 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
       type: 'peaceAgreed',
       visibility: EventVisibility.public,
       participants: [war.attackerSlot, war.defenderSlot],
-      payload: {'summary': war.summary()},
     ));
     _returnTroops(state, war, events);
     state.activeWar = null;
@@ -872,7 +792,6 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
       slot: 0,
       type: 'warDraw',
       visibility: EventVisibility.public,
-      payload: {'summary': war.summary()},
     ));
     _returnTroops(state, war, events);
     state.activeWar = null;
@@ -890,11 +809,7 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
     slot: winnerSlot,
     type: 'warWon',
     visibility: EventVisibility.public,
-    payload: {
-      'claim': claim,
-      'loserSlot': loserSlot,
-      'summary': war.summary(),
-    },
+    payload: {'claim': claim, 'loserSlot': loserSlot},
   ));
 
   // Victory → claim settlement: the winner chooses which tiles to take
@@ -903,7 +818,7 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
   war.winnerSlot = winnerSlot;
   war.remainingClaim = claim;
   war.actingSlot = winnerSlot; // the settlement awaits the winner
-  if (!warSideIsHuman(state, war, winnerSlot)) {
+  if (state.dynasty(winnerSlot).status != DynastyStatus.human) {
     autoSettleClaim(state, rng, events);
   }
 }
@@ -1170,14 +1085,6 @@ List<GameEvent> plunderTile(
       loot = victim.treasury > 0 ? rng.nextInt(victim.treasury) : 0;
       victim.treasury -= loot;
       plunderer.treasury += loot;
-  }
-
-  // Running war tally for the end-of-war overview.
-  final war = state.activeWar;
-  if (war != null && war.isParticipant(plundererSlot)) {
-    plundererSlot == war.attackerSlot
-        ? war.attackerLoot += loot
-        : war.defenderLoot += loot;
   }
 
   events.add(GameEvent(

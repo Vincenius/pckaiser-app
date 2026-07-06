@@ -23,20 +23,19 @@ Troop unitAt(Realm realm, int index) {
   return realm.troops[index];
 }
 
-/// Militarism costs popularity, but never below [floor] (default
-/// [militarismPopularityFloor]) — the people grumble over levies and
-/// conversions, yet those routine costs can never tip a realm into the
-/// §19.1 strife revolution (< 20): without the floor the AI (which
-/// recruits freely) collapsed into strife 5–9× as often in the 200-year
-/// sim. War declarations pass the lower [warPopularityFloor] so REPEATED
-/// aggression can reach the strife line (user feedback 2026-07-06). A stat
-/// already below the floor is left untouched, never raised. Returns the
-/// popularity actually lost (0 when the floor swallowed the cost) so
-/// callers can report it.
-int militarismPopularityCost(Realm realm, int cost,
-    {int floor = militarismPopularityFloor}) {
-  final floored =
-      realm.popularity - cost < floor ? floor : realm.popularity - cost;
+/// Militarism costs popularity, but never below [militarismPopularityFloor]
+/// — the people grumble over levies, wars and conversions, yet the §19.1
+/// strife revolution (popularity < 20) stays food-driven as in the
+/// original: the floor sits above the strife line plus the ±3 harvest
+/// nudge (§8.4), so militarism alone can never tip a realm into collapse.
+/// Without it the AI (which recruits and wars freely) collapsed into
+/// strife 5–9× as often in the 200-year sim. A stat already below the
+/// floor is left untouched, never raised. Returns the popularity actually
+/// lost (0 when the floor swallowed the cost) so callers can report it.
+int militarismPopularityCost(Realm realm, int cost) {
+  final floored = realm.popularity - cost < militarismPopularityFloor
+      ? militarismPopularityFloor
+      : realm.popularity - cost;
   if (floored < realm.popularity) {
     final lost = realm.popularity - floored;
     realm.popularity = floored;
@@ -348,16 +347,9 @@ List<GameEvent> applyDeclareWar(
     throw ActionException('Du hast keine gemeinsame Grenze !');
   }
   startWar(state, realm.slot, action.targetSlot, rng);
-  // The people resent war, and repeated aggression compounds: the penalty
-  // escalates with every war this realm started without a peace year in
-  // between (−5, −10, −15, …; recentWars decays at year start) and may
-  // drop popularity below the §19.1 strife line — a serial warmonger can
-  // now face revolt. `[DESIGNED 2026-07-06, user feedback]`; the traced
-  // original had no direct war penalty at all (§8.4), wars hurt only via
-  // food satisfaction.
-  militarismPopularityCost(realm, 5 * (realm.recentWars + 1),
-      floor: warPopularityFloor);
-  realm.recentWars++;
+  // The people resent war — the aggressor pays popularity (floored at
+  // militarismPopularityFloor, see militarismPopularityCost).
+  militarismPopularityCost(realm, 5);
   return [
     GameEvent(
       year: state.year,
@@ -622,20 +614,6 @@ List<GameEvent> applySettlementAnnex(
   final events = <GameEvent>[];
   transferTile(state, action.x, action.y, realm.slot, events);
   war.remainingClaim -= value;
-  return events;
-}
-
-/// Batched settlement annexes in tap order, atomic: any invalid tile
-/// throws before anything is committed (`applyAction` works on a copy).
-/// The online client validated each tap locally with the same rules, so a
-/// rejection here only happens on a genuine desync.
-List<GameEvent> applySettlementAnnexMany(
-    GameState state, Realm realm, SettlementAnnexMany action) {
-  final events = <GameEvent>[];
-  for (final tile in action.tiles) {
-    events.addAll(applySettlementAnnex(state, realm,
-        SettlementAnnex(slot: action.slot, x: tile.x, y: tile.y)));
-  }
   return events;
 }
 

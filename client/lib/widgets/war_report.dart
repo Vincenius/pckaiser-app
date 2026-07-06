@@ -71,42 +71,6 @@ Future<void> showWarReport(
     }
     final entry = _entryFor(event, viewerSlot);
     if (entry != null) entries.add(entry);
-    // War-ending events carry the cumulative tally — render it as its own
-    // "Kriegsbilanz" block right after the ending line.
-    final summary = (event.payload['summary'] as Map?)?.cast<String, dynamic>();
-    if (summary != null) entries.add(_warSummaryEntry(summary, viewerSlot));
-  }
-
-  // More than one battle in this report: lead with the round's totals so
-  // the player sees both sides' losses at a glance.
-  var ownLosses = 0, enemyLosses = 0, battles = 0;
-  for (final event in events) {
-    if (event.type != 'battle') continue;
-    final p = event.payload;
-    final attackerLosses = p['attackerLosses'] as int? ?? 0;
-    final defenderLosses = p['defenderLosses'] as int? ?? 0;
-    if (event.slot == viewerSlot) {
-      ownLosses += attackerLosses;
-      enemyLosses += defenderLosses;
-    } else if (p['defenderSlot'] == viewerSlot) {
-      ownLosses += defenderLosses;
-      enemyLosses += attackerLosses;
-    } else {
-      continue;
-    }
-    battles++;
-  }
-  if (battles > 1) {
-    entries.insert(
-      0,
-      _ReportEntry(
-        Icons.functions,
-        ownLosses > enemyLosses ? Colors.red : Colors.green,
-        'Verluste gesamt',
-        'Du: −$ownLosses Mann · Gegner: −$enemyLosses Mann '
-            '($battles Schlachten).',
-      ),
-    );
   }
   if (conquered > 0 && conqueredBy != null) {
     final mine = conqueredBy == viewerSlot;
@@ -171,49 +135,6 @@ Future<void> showWarReport(
         ),
       ],
     ),
-  );
-}
-
-/// The end-of-war overview: rounds, battles, and per side the men lost,
-/// plunder loot and tiles conquered over the WHOLE war (cumulative tally
-/// from `ActiveWar.summary()`).
-_ReportEntry _warSummaryEntry(Map<String, dynamic> s, int viewerSlot) {
-  String side(int? slot) {
-    if (slot == null || slot < 1 || slot >= gc.countryNames.length) return '?';
-    return slot == viewerSlot
-        ? '${gc.countryNames[slot]} (du)'
-        : gc.countryNames[slot];
-  }
-
-  String tally(String prefix, int menLost, int loot, int tiles) {
-    final parts = [
-      '−$menLost Mann',
-      if (loot > 0) '$loot T erbeutet',
-      if (tiles > 0) '$tiles ${tiles == 1 ? 'Feld' : 'Felder'} erobert',
-    ];
-    return '$prefix: ${parts.join(', ')}.';
-  }
-
-  final lines = [
-    '${s['rounds'] ?? '?'} Runden, ${s['battles'] ?? 0} Schlachten.',
-    tally(
-      side(s['attackerSlot'] as int?),
-      s['attackerMenLost'] as int? ?? 0,
-      s['attackerLoot'] as int? ?? 0,
-      s['attackerTilesTaken'] as int? ?? 0,
-    ),
-    tally(
-      side(s['defenderSlot'] as int?),
-      s['defenderMenLost'] as int? ?? 0,
-      s['defenderLoot'] as int? ?? 0,
-      s['defenderTilesTaken'] as int? ?? 0,
-    ),
-  ];
-  return _ReportEntry(
-    Icons.summarize,
-    Colors.blueGrey,
-    'Kriegsbilanz',
-    lines.join('\n'),
   );
 }
 

@@ -32,7 +32,6 @@ class Realm {
     this.investedThisTurn = false,
     this.proposedMarriageThisTurn = false,
     this.warThisYear = false,
-    this.recentWars = 0,
     this.rulerId,
     List<Troop>? troops,
     List<Town>? towns,
@@ -76,8 +75,6 @@ class Realm {
         proposedMarriageThisTurn:
             json['proposedMarriageThisTurn'] as bool? ?? false,
         warThisYear: json['warThisYear'] as bool? ?? false,
-        // Additive field — older saves carry no war-weariness yet.
-        recentWars: json['recentWars'] as int? ?? 0,
         rulerId: json['rulerId'] as int?,
         troops: (json['troops'] as List?)
             ?.map((t) => Troop.fromJson((t as Map).cast<String, dynamic>()))
@@ -158,12 +155,6 @@ class Realm {
   bool proposedMarriageThisTurn;
   bool warThisYear;
 
-  /// War weariness: wars this realm STARTED without a peace year in
-  /// between. Escalates the declaration's popularity penalty
-  /// (−5 × (recentWars + 1), see applyDeclareWar) and decays by one per
-  /// war-free year (turn pipeline year start).
-  int recentWars;
-
   /// Ruler person id; null = slot vacant. The same person can rule several
   /// slots (ruler aliasing, §19).
   int? rulerId;
@@ -210,7 +201,6 @@ class Realm {
         investedThisTurn: investedThisTurn,
         proposedMarriageThisTurn: proposedMarriageThisTurn,
         warThisYear: warThisYear,
-        recentWars: recentWars,
         rulerId: rulerId,
         troops: [for (final t in troops) t.copy()],
         towns: [for (final t in towns) t.copy()],
@@ -244,7 +234,6 @@ class Realm {
         'investedThisTurn': investedThisTurn,
         'proposedMarriageThisTurn': proposedMarriageThisTurn,
         'warThisYear': warThisYear,
-        'recentWars': recentWars,
         'rulerId': rulerId,
         'troops': [for (final t in troops) t.toJson()],
         'towns': [for (final t in towns) t.toJson()],

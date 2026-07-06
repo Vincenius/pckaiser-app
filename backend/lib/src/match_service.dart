@@ -390,7 +390,6 @@ class MatchService {
       ottomanYear: match.settings.ottomanYear,
       warStartYear: match.settings.warStartYear,
       genderEqualSuccession: match.settings.genderEqualSuccession,
-      suggestChildNames: match.settings.suggestChildNames,
       seed: match.settings.seed,
     );
     var state = newGame(setup);
@@ -648,18 +647,6 @@ class MatchService {
         // Pending decisions are answered out of turn (ARCHITECTURE
         // "Pending decisions") — the engine validates id and slot.
         state = _apply(state, action, emitted);
-        // A warPlan answer may complete the war preparation: apply the
-        // start rules. With a turn timer, a both-live duel waits for the
-        // deadline (fair start, `_sweepMatch` forces it); without one the
-        // early-start rules alone govern.
-        if (state.activeWar?.phase == WarPhase.preparation) {
-          state = _mutate(
-              state,
-              (s, rng, ev) => resolveWarPreparation(s, rng, ev,
-                  waitWhenAllManual: match.settings.turnTimeoutHours != null),
-              emitted);
-          state = _resumeAfterWarIfOver(state, emitted);
-        }
       } else {
         if (awaited != playerId) throw ApiException(403, 'not your turn');
         // Beyond controlling the realm, the action must act for the realm
@@ -758,17 +745,7 @@ class MatchService {
   Future<void> _sweepMatch(MatchRecord match) async {
     var state = _load(match);
     final ignored = <GameEvent>[];
-    if (state.activeWar?.phase == WarPhase.preparation) {
-      // The war-start reaction window expired: unanswered sides default
-      // to the stance autopilot and the war begins — a both-live duel
-      // starts exactly at the deadline (fair, nobody misses it), a fully
-      // delegated war fast-forwards to its end.
-      state = _mutate(
-          state,
-          (s, rng, ev) => resolveWarPreparation(s, rng, ev, force: true),
-          ignored);
-      state = _resumeAfterWarIfOver(state, ignored);
-    } else if (state.activeWar != null) {
+    if (state.activeWar != null) {
       // The awaited combatant idles: their war round falls back to the
       // AI war logic for this side (ARCHITECTURE "war clock"), then
       // their round end is submitted for them — in a human-vs-human
@@ -870,13 +847,12 @@ class MatchService {
 
   /// True when an active war has a HUMAN on both sides (a live duel that runs
   /// on the short war clock). A human-vs-AI war instead uses the normal turn
-  /// clock — see [_commit]'s timeout. A side that delegated the war to the
-  /// autopilot (`warDefense` decision) no longer counts as human.
+  /// clock — see [_commit]'s timeout.
   bool _warIsHumanVsHuman(GameState state) {
     final war = state.activeWar;
     if (war == null) return false;
-    return warSideIsHuman(state, war, war.attackerSlot) &&
-        warSideIsHuman(state, war, war.defenderSlot);
+    return state.dynasty(war.attackerSlot).status == DynastyStatus.human &&
+        state.dynasty(war.defenderSlot).status == DynastyStatus.human;
   }
 
   /// Realm slot whose human input the match is waiting for, or null.
@@ -942,28 +918,17 @@ class MatchService {
     final turnTimeout = match.settings.turnTimeoutHours == null
         ? null
         : Duration(hours: match.settings.turnTimeoutHours!);
-    // Clock selection: the war PREPARATION window runs on HALF the turn
-    // timer (user design — the reaction window before the duel; armed even
-    // when nobody is awaited, so a both-live start fires exactly at the
-    // deadline via the sweep). War ROUNDS of a live human-vs-human duel run
-    // on the short war clock; a human fighting an AI (or a delegated
-    // opponent) gets the FULL turn clock instead — "time like a normal
-    // turn". null turnTimeoutHours ⇒ no deadline (match waits; the
-    // preparation then starts via the early-start rules alone).
-    final prep = state.activeWar?.phase == WarPhase.preparation;
-    final Duration? timeout;
-    if (prep) {
-      timeout = turnTimeout == null
-          ? null
-          : Duration(seconds: turnTimeout.inSeconds ~/ 2);
-    } else if (state.activeWar != null && _warIsHumanVsHuman(state)) {
-      timeout = Duration(seconds: match.settings.warRoundTimeoutSeconds);
-    } else {
-      timeout = turnTimeout;
-    }
-    match.turnDeadline = timeout == null || (awaited == null && !prep)
-        ? null
-        : _clock().add(timeout);
+    // The short war clock only governs a human-vs-human war round (a live
+    // duel, both players expected online). A human fighting an AI gets the
+    // FULL turn clock instead — "time like a normal turn" — so an attacked
+    // player can fight the war at their leisure (or not at all and let their
+    // troops' stance autopilot it) rather than have it swept out from under
+    // them in 10 minutes. null turnTimeoutHours ⇒ no deadline (match waits).
+    final timeout = state.activeWar != null && _warIsHumanVsHuman(state)
+        ? Duration(seconds: match.settings.warRoundTimeoutSeconds)
+        : turnTimeout;
+    match.turnDeadline =
+        awaited == null || timeout == null ? null : _clock().add(timeout);
 
     if (!notify || awaited == null) return;
     if (state.activeWar != null && !hadWar) {

@@ -109,16 +109,8 @@ abstract final class World {
 /// can be shocked but never revolt purely because of it.
 const int religionChangePopularityCost = 25;
 
-/// Militarism popularity costs (levies, conversions) never push a realm
-/// below this floor — it sits above the §19.1 strife line (20) plus the
-/// ±3 harvest nudge, so routine deliberate actions alone can never tip a
-/// realm into collapse. War declarations use the lower
-/// [warPopularityFloor] instead.
+/// Militarism popularity costs (levies, wars, conversions) never push a
+/// realm below this floor — it sits above the §19.1 strife line (20) plus
+/// the ±3 harvest nudge, so deliberate actions alone can never tip a realm
+/// into collapse.
 const int militarismPopularityFloor = 25;
-
-/// `[DESIGNED 2026-07-06, user feedback]` War declarations bypass the
-/// militarism floor down to this bound, BELOW the §19.1 strife line (20):
-/// repeated aggression can now realistically drag a warmonger into revolt
-/// (the declaration penalty also escalates per war, see `applyDeclareWar`).
-/// The floor only guards against a single declaration zeroing the stat.
-const int warPopularityFloor = 10;

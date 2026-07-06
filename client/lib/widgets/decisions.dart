@@ -56,12 +56,6 @@ Future<void> showRecapAndDecisions(
 /// turn start — and right after a war resolution, so a victor's coercion
 /// options (forced abdication, Kurfürst seat strip, …) appear immediately
 /// instead of waiting for the next turn.
-///
-/// A player can control several slots (cross-dynasty inheritance, §15.4);
-/// their turns come in slot order. Decisions raised for ANY of their slots
-/// surface at the player's FIRST handoff — otherwise a death at the home
-/// slot would let them rule the inherited realms for whole turns before
-/// hearing of it or choosing the heir.
 Future<void> promptDecisionsFor(
   BuildContext context,
   GameController controller,
@@ -70,24 +64,11 @@ Future<void> promptDecisionsFor(
   while (true) {
     if (!context.mounted) return;
     final decisions = controller.state.pendingDecisions
-        .where(
-          (d) =>
-              d.decidingSlot == slot ||
-              _sameHumanPlayer(controller.state, d.decidingSlot, slot),
-        )
+        .where((d) => d.decidingSlot == slot)
         .toList();
     if (decisions.isEmpty) return;
     await _promptDecision(context, controller, decisions.first);
   }
-}
-
-bool _sameHumanPlayer(gc.GameState state, int a, int b) {
-  final da = state.dynasty(a);
-  final db = state.dynasty(b);
-  return da.status == gc.DynastyStatus.human &&
-      db.status == gc.DynastyStatus.human &&
-      da.humanPlayer != null &&
-      da.humanPlayer == db.humanPlayer;
 }
 
 Future<void> _promptDecision(
@@ -102,17 +83,10 @@ Future<void> _promptDecision(
     case 'marriageConsent':
       final proposer = state.persons[p['proposerId'] as int];
       final target = state.persons[p['targetId'] as int];
-      // Name the proposer's land and age: a marriage is the main peaceful
-      // path to inheriting realms (§14), so the target must know which
-      // realm they are tying their line to before accepting.
-      final proposerLine = proposer == null
-          ? '?'
-          : '${proposer.name} von ${gc.countryNames[proposer.dynasty]} '
-                '(${proposer.age})';
       final accept = await _yesNo(
         context,
         'Heiratsantrag',
-        '$proposerLine hält um die Hand von '
+        '${proposer?.name ?? '?'} hält um die Hand von '
             '${target?.name ?? '?'} an. Einverstanden?',
       );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
@@ -136,10 +110,7 @@ Future<void> _promptDecision(
         context: context,
         barrierDismissible: false,
         builder: (context) => SimpleDialog(
-          // Doubles as the death notice: this dialog is the first thing the
-          // player sees after the loss, possibly while seated at another of
-          // their slots.
-          title: Text('${p['deceasedName']} ist gestorben ! Wähle den Erben:'),
+          title: Text('Erbe von ${p['deceasedName']}'),
           children: [
             for (final id in candidates)
               SimpleDialogOption(
@@ -155,88 +126,6 @@ Future<void> _promptDecision(
         'heirId': heir ?? p['provisionalHeirId'],
       });
 
-    case 'warPlan':
-      final war = state.activeWar;
-      if (war == null ||
-          war.phase != gc.WarPhase.preparation ||
-          !war.isParticipant(decision.decidingSlot)) {
-        // The war is gone (or already running) — clear the stale choice.
-        await controller.resolveDecision(
-          decision.id,
-          decision.decidingSlot,
-          const {},
-        );
-        return;
-      }
-      final attackerRole = p['role'] == 'attacker';
-      final opponent =
-          gc.countryNames[(attackerRole ? p['defenderSlot'] : p['attackerSlot'])
-                  as int? ??
-              0];
-      final live = await _yesNo(
-        context,
-        attackerRole ? 'Krieg erklärt !' : 'Kriegserklärung !',
-        '${attackerRole ? 'Du hast $opponent den Krieg erklärt.' : '$opponent hat dir den Krieg erklärt !'} '
-        'Willst du deine Truppen selbst befehligen?\n\n'
-        'Bei „Nein" übernimmt der Computer diesen Krieg: deine Truppen '
-        'folgen ihrer Haltung. Der Krieg beginnt, sobald beide Seiten '
-        'gewählt haben — wollen beide selbst steuern, online erst nach '
-        'Ablauf der Vorbereitungsfrist.',
-      );
-      String? stance;
-      if (context.mounted) {
-        stance = await showDialog<String>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => SimpleDialog(
-            title: const Text('Truppenhaltung für diesen Krieg'),
-            children: [
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, 'hold'),
-                child: const Text('Stellung halten — Basis verteidigen'),
-              ),
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, 'attack'),
-                child: const Text('Angreifen — auf den feindlichen Sitz'),
-              ),
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, 'keep'),
-                child: const Text('Wie eingestellt lassen'),
-              ),
-            ],
-          ),
-        );
-      }
-      await controller.resolveDecision(decision.id, decision.decidingSlot, {
-        'auto': !live,
-        if (stance == 'hold' || stance == 'attack') 'stance': stance,
-      });
-
-    case 'warDefense':
-      final war = state.activeWar;
-      if (war == null || war.defenderSlot != decision.decidingSlot) {
-        // The war ended before the choice was made — clear it silently.
-        await controller.resolveDecision(
-          decision.id,
-          decision.decidingSlot,
-          const {},
-        );
-        return;
-      }
-      final attacker = gc.countryNames[p['attackerSlot'] as int? ?? 0];
-      final defend = await _yesNo(
-        context,
-        'Kriegserklärung !',
-        '$attacker hat dir den Krieg erklärt ! Willst du deine Truppen '
-            'selbst befehligen?\n\nBei „Nein" übernimmt der Computer '
-            'diesen Krieg: deine Truppen folgen ihrer eingestellten '
-            'Haltung (halten / greifen an), und du spielst erst nach '
-            'Kriegsende wieder selbst.',
-      );
-      await controller.resolveDecision(decision.id, decision.decidingSlot, {
-        'defend': defend,
-      });
-
     case 'childName':
       final child = state.persons[p['childId'] as int];
       final isBoy = child == null || child.isMale;
@@ -244,8 +133,7 @@ Future<void> _promptDecision(
         context,
         'Ein ${isBoy ? 'Junge' : 'Mädchen'} ist geboren ! '
         'Wie soll ${isBoy ? 'er' : 'sie'} heißen?',
-        // Per-game setup option: an empty field instead of the suggestion.
-        state.suggestChildNames ? p['suggestedName'] as String? ?? '' : '',
+        p['suggestedName'] as String? ?? '',
       );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'name': name,

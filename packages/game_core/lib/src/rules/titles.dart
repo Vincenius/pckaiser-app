@@ -47,18 +47,6 @@ void switchTitleLadder(Realm realm, int religion) {
   }
 }
 
-/// Aligns the stored form of a realm's title with its ruler's gender
-/// (female forms are `class + 12`, §16.1); the rank itself stays the
-/// realm's. Must run wherever the ruler pointer changes hands (succession,
-/// inheritance, strife) — otherwise an inherited realm keeps the
-/// predecessor's gendered form.
-void regenderTitle(GameState state, Realm realm) {
-  final ruler = state.person(realm.rulerId);
-  if (ruler == null) return;
-  final base = realm.titleClass > 12 ? realm.titleClass - 12 : realm.titleClass;
-  realm.titleClass = base + (ruler.isMale ? 0 : 12);
-}
-
 /// §16.2 promotion check ("checked every turn, every player"): promotes
 /// the realm's title when the prestige score reaches a higher class.
 void checkTitlePromotion(GameState state, Realm realm, List<GameEvent> events) {

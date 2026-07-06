@@ -167,15 +167,6 @@ void resolveAssassinations(
         visibility: EventVisibility.public,
         payload: {'victim': victim.name},
       ));
-      // The sponsor's private confirmation (drama popup): the public
-      // announcement above stays anonymous, so this one is owner-only.
-      events.add(GameEvent(
-        year: state.year,
-        slot: order.sponsorSlot,
-        type: 'assassinationSucceeded',
-        visibility: EventVisibility.owner,
-        payload: {'victim': victim.name, 'targetSlot': targetSlot},
-      ));
       dyn.handleDeath(state, victim, rng, events);
     } else {
       // "Einer von ihnen gesteht unter Folter, aus <Sponsor> geschickt
