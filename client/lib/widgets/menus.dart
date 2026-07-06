@@ -7,11 +7,15 @@ import 'package:game_core/game_core.dart' as gc;
 import '../app_version.dart';
 import '../l10n/strings.dart';
 import '../state/game_controller.dart';
+import 'decisions.dart' show promptDecisionsFor;
 import 'event_feed.dart';
 
 void _toast(BuildContext context, String message) {
   if (!context.mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  // Replace instead of queue, so repeated errors don't stack snackbars.
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
 }
 
 Future<void> _tryAction(
@@ -972,11 +976,20 @@ void _declareWarSheet(BuildContext context, GameController controller) {
                     ),
                   );
                   if (sure == true && context.mounted) {
-                    _tryAction(
+                    await _tryAction(
                       context,
                       controller,
                       gc.DeclareWar(slot: slot, targetSlot: realm.slot),
                     );
+                    // A human-vs-human war opens the preparation phase:
+                    // the attacker answers their own warPlan right away
+                    // (live vs autopilot + stance) instead of waiting for
+                    // the next handoff.
+                    if (context.mounted &&
+                        controller.state.activeWar?.phase ==
+                            gc.WarPhase.preparation) {
+                      await promptDecisionsFor(context, controller, slot);
+                    }
                   }
                 },
               ),
@@ -1196,8 +1209,12 @@ void showMiscMenu(BuildContext context, GameController controller) {
   final state = controller.state;
   final realm = controller.currentRealm;
   final capitalLost = state.map.ownerAt(realm.capitalX, realm.capitalY) != slot;
+  // After a cross-dynasty inheritance the ruling house differs from the
+  // slot: the "Dynastie" sheet and the marriage pickers follow the ruler's
+  // home dynasty, so the ruler themself stays listed and marriageable.
+  final houseSlot = state.persons[realm.rulerId]?.dynasty ?? slot;
   final hasProposer = state.persons.values.any(
-    (p) => p.dynasty == slot && _marriageable(p),
+    (p) => gc.memberOfRulingHouse(state, realm, p) && _marriageable(state, p),
   );
   final String? marriageBlocked = realm.proposedMarriageThisTurn
       ? 'Nur ein Heiratsantrag pro Zug !'
@@ -1221,12 +1238,12 @@ void showMiscMenu(BuildContext context, GameController controller) {
             leading: const Icon(Icons.people),
             title: const Text('Dynastie'),
             subtitle: Text(
-              '${state.dynasty(slot).memberIds.length} Mitglieder — '
+              '${state.dynasty(houseSlot).memberIds.length} Mitglieder — '
               'fremde Dynastien über Info → Dynastien',
             ),
             onTap: () {
               Navigator.pop(sheetContext);
-              _showDynastyOf(context, controller, slot);
+              _showDynastyOf(context, controller, houseSlot);
             },
           ),
           ListTile(
@@ -1251,6 +1268,33 @@ void showMiscMenu(BuildContext context, GameController controller) {
               _showCommonerMarriage(context, controller);
             },
           ),
+          // §17.5: the office holder plunders the crown pot manually — the
+          // gottgegebene Recht of every Kaiser/Sultan.
+          if ((state.kaiserId != null && realm.rulerId == state.kaiserId) ||
+              (state.sultanId != null && realm.rulerId == state.sultanId))
+            ListTile(
+              leading: const Icon(Icons.account_balance_wallet),
+              title: const Text('Staatskasse plündern'),
+              subtitle: Text(
+                realm.rulerId == state.kaiserId
+                    ? '${state.kaiserPot} T im Kronschatz'
+                    : '${state.sultanPot} T im Sultansschatz',
+              ),
+              enabled:
+                  (realm.rulerId == state.kaiserId
+                      ? state.kaiserPot
+                      : state.sultanPot) >
+                  0,
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _tryAction(
+                  context,
+                  controller,
+                  gc.CollectTribute(slot: slot),
+                  undoable: true,
+                );
+              },
+            ),
           ListTile(
             leading: const Icon(Icons.location_city),
             title: const Text('Sitz verlegen'),
@@ -1453,15 +1497,20 @@ String _spouseLine(gc.GameState state, gc.Person p) {
 
 // --- Marriage -----------------------------------------------------------
 
-bool _marriageable(gc.Person p) => p.spouseId == null && p.age >= 14;
+/// Unmarried, of age, and not sitting on an unanswered proposal (either
+/// side of a pending `marriageConsent` — mirrors the engine's guard).
+bool _marriageable(gc.GameState state, gc.Person p) =>
+    p.spouseId == null &&
+    p.age >= 14 &&
+    !gc.awaitingMarriageConsent(state, p.id);
 
 /// Step 1 of "Heirat vorschlagen" (§14.1): pick the own dynasty member.
 void _showMarriageProposers(BuildContext context, GameController controller) {
-  final slot = controller.currentSlot;
   final state = controller.state;
+  final realm = controller.currentRealm;
   final proposers = [
     for (final p in state.persons.values)
-      if (p.dynasty == slot && _marriageable(p)) p,
+      if (gc.memberOfRulingHouse(state, realm, p) && _marriageable(state, p)) p,
   ];
   if (proposers.isEmpty) {
     _toast(context, 'Es gibt zur Zeit keinen passenden Partner !');
@@ -1505,11 +1554,13 @@ void _showMarriageCandidates(
 ) {
   final slot = controller.currentSlot;
   final state = controller.state;
-  final religion = state.dynasty(slot).religion;
+  // Keyed to the proposer's own dynasty (not the slot): mirrors the engine's
+  // §14.1 check, which matters when the ruling house differs from the slot.
+  final religion = state.dynasty(proposer.dynasty).religion;
   final candidates = [
     for (final p in state.persons.values)
-      if (p.dynasty != slot &&
-          _marriageable(p) &&
+      if (p.dynasty != proposer.dynasty &&
+          _marriageable(state, p) &&
           p.gender != proposer.gender &&
           (p.age - proposer.age).abs() < 10 &&
           state.dynasty(p.dynasty).religion == religion)
@@ -1563,7 +1614,9 @@ void _showCommonerMarriage(BuildContext context, GameController controller) {
   final state = controller.state;
   final proposers = [
     for (final p in state.persons.values)
-      if (p.dynasty == slot && _marriageable(p)) p,
+      if (gc.memberOfRulingHouse(state, controller.currentRealm, p) &&
+          _marriageable(state, p))
+        p,
   ];
   if (proposers.isEmpty) {
     _toast(context, 'Es gibt zur Zeit keinen passenden Partner !');

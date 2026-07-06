@@ -125,7 +125,11 @@ class _GameScreenState extends State<GameScreen> {
     if (controller.handoffPending || controller.gameOver) return;
     // An active tile pick (e.g. stationing a new troop) consumes the tap.
     if (await controller.resolveTilePick(x, y)) return;
-    if (controller.state.activeWar != null) {
+    // During the war PREPARATION window the map behaves normally — the
+    // attacker's turn continues until both sides chose (war taps only
+    // exist in the rounds/settlement phases).
+    if (controller.state.activeWar != null &&
+        controller.state.activeWar!.phase != gc.WarPhase.preparation) {
       await _onWarTileTap(controller, x, y);
       return;
     }
@@ -136,9 +140,11 @@ class _GameScreenState extends State<GameScreen> {
     // Callers await war submissions first — online the listener may have
     // popped this screen in the meantime.
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    // Replace instead of queue: repeated taps (e.g. picking loot the claim
+    // can't pay for) would otherwise stack 4s snackbars for minutes.
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Mirrors the war state into the map overlay: pulsing ring on the

@@ -1,6 +1,22 @@
 import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
+/// Completes the 0.1.13 war-start preparation window with both sides
+/// playing LIVE (in place), so the round-based expectations below run on
+/// the rounds phase as before.
+void completePreparation(GameState state) {
+  for (final d in [
+    ...state.pendingDecisions.where((d) => d.type == 'warPlan')
+  ]) {
+    applyActionInPlace(
+        state,
+        ResolveDecision(
+            slot: d.decidingSlot, decisionId: d.id, choice: {'auto': false}),
+        Rng(1));
+  }
+  resolveWarPreparation(state, Rng(1), <GameEvent>[]);
+}
+
 void main() {
   late GameState state;
 
@@ -835,6 +851,11 @@ void main() {
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
       expect(s.activeWar, isNotNull);
+      expect(s.activeWar!.phase, WarPhase.preparation,
+          reason: 'a human-vs-human war opens the preparation window first');
+      expect(warActingSlot(s), 1,
+          reason: 'the attacker owes the first warPlan answer');
+      completePreparation(s);
       expect(s.activeWar!.actingSlot, 1,
           reason: 'attacker before defender, as in the original');
     });
@@ -1040,6 +1061,8 @@ void main() {
       war = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
+      // Both sides play live — the rounds start right away (hot-seat rule).
+      completePreparation(war);
     });
 
     test('round input alternates: attacker hands over, defender ends', () {

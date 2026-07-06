@@ -6,8 +6,10 @@ import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/pending_decision.dart';
 import '../state/person.dart';
+import '../state/realm.dart';
 import 'offices.dart';
 import 'protection.dart';
+import 'titles.dart' show regenderTitle;
 
 /// End-of-turn dynasty events for the active slot (§6.1 step 3, §14, §15):
 /// aging & death rolls (with succession), the annual marriage/birth loop.
@@ -52,8 +54,13 @@ void runDynastyPhase(
     }
 
     // §14.3: the ANNUAL loop fires for age > 14 (the §14.1 candidate gate
-    // is the one that is ≥ 14).
-    if (person.age > 14 && rng.nextInt(4) == 0) {
+    // is the one that is ≥ 14). A member on either side of a pending
+    // `marriageConsent` sits the loop out — an interim auto-match would
+    // invalidate the pending answer (online bug "accepted but rejected",
+    // 2026-07-06).
+    if (person.age > 14 &&
+        rng.nextInt(4) == 0 &&
+        !awaitingMarriageConsent(state, person.id)) {
       final candidate = findMarriageCandidate(state, person, rng);
       if (candidate != null) {
         proposeMarriage(state, person, candidate, rng, events);
@@ -77,9 +84,30 @@ void runDynastyPhase(
   }
 }
 
+/// Whether [person] belongs to a house the player of [realm]'s turn may
+/// marry off: the slot's own dynasty, or the ruler's home dynasty. After a
+/// cross-dynasty inheritance (the §15.4 spouse path — e.g. widow inherits
+/// via assassination) the ruling house differs from the slot; its members
+/// (including the ruler) must still be able to marry from this slot's turn.
+bool memberOfRulingHouse(GameState state, Realm realm, Person person) {
+  if (person.dynasty == realm.slot) return true;
+  final ruler = state.person(realm.rulerId);
+  return ruler != null && person.dynasty == ruler.dynasty;
+}
+
+/// Whether [personId] sits on either side of a pending `marriageConsent`.
+/// Such a person is off the market until the answer lands: an interim
+/// marriage (annual loop, commoner, second proposal) would silently
+/// invalidate the pending consent and surface as a bogus rejection.
+bool awaitingMarriageConsent(GameState state, int personId) =>
+    state.pendingDecisions.any((d) =>
+        d.type == 'marriageConsent' &&
+        (d.payload['proposerId'] == personId ||
+            d.payload['targetId'] == personId));
+
 /// §14.1 eligibility: unmarried, opposite gender, age ≥ 14, age gap < 10,
-/// different dynasty, same religion. Scans the master list in id order and
-/// picks uniformly among the eligible.
+/// different dynasty, same religion, not awaiting a consent answer. Scans
+/// the master list in id order and picks uniformly among the eligible.
 Person? findMarriageCandidate(GameState state, Person seeker, Rng rng) {
   final religion = state.dynasty(seeker.dynasty).religion;
   final candidates = <Person>[];
@@ -89,7 +117,8 @@ Person? findMarriageCandidate(GameState state, Person seeker, Rng rng) {
         other.age < 14 ||
         (other.age - seeker.age).abs() >= 10 ||
         other.dynasty == seeker.dynasty ||
-        state.dynasty(other.dynasty).religion != religion) {
+        state.dynasty(other.dynasty).religion != religion ||
+        awaitingMarriageConsent(state, other.id)) {
       continue;
     }
     candidates.add(other);
@@ -357,6 +386,7 @@ void handleDeath(
     for (final slot in ruledSlots) {
       state.realm(slot).rulerId = heir.id;
       alignSlotControl(state, slot, heir.id);
+      regenderTitle(state, state.realm(slot));
     }
     events.add(GameEvent(
       year: state.year,
@@ -422,6 +452,7 @@ void handleDeath(
   for (final slot in ruledSlots) {
     state.realm(slot).rulerId = inheritor;
     alignSlotControl(state, slot, inheritor);
+    regenderTitle(state, state.realm(slot));
   }
   events.add(GameEvent(
     year: state.year,

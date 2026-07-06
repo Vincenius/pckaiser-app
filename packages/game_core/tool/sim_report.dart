@@ -40,11 +40,29 @@ void main() {
   print('final year: ${state.year}, events: $total '
       '(retained in state: ${state.events.length}, '
       'pruned: ${state.prunedEventCount})');
-  final interesting = ['warDeclared', 'battle', 'rulerCaptured', 'warWon',
-    'tileConquered', 'plunder', 'assassination', 'disease', 'earthquake',
-    'reformation', 'ottomanInvasion', 'crowned', 'bankruptcy',
-    'internalStrife', 'merchantFounder', 'wedding', 'birth', 'succession',
-    'gameWon', 'townPromoted', 'realmsMerged'];
+  final interesting = [
+    'warDeclared',
+    'battle',
+    'rulerCaptured',
+    'warWon',
+    'tileConquered',
+    'plunder',
+    'assassination',
+    'disease',
+    'earthquake',
+    'reformation',
+    'ottomanInvasion',
+    'crowned',
+    'bankruptcy',
+    'internalStrife',
+    'merchantFounder',
+    'wedding',
+    'birth',
+    'succession',
+    'gameWon',
+    'townPromoted',
+    'realmsMerged'
+  ];
   for (final k in interesting) {
     print('  $k: ${counts[k] ?? 0}');
   }

@@ -31,6 +31,13 @@ class OnlineGameSession implements GameSession {
   GameState _state;
   bool _yourTurn;
 
+  /// Settlement taps applied optimistically to the local state (the pure
+  /// engine validates them with the SAME rules the server runs) and
+  /// flushed as ONE `SettlementAnnexMany` with the next real submission —
+  /// picking loot tile by tile used to round-trip (and visibly load) per
+  /// tap.
+  final List<({int x, int y})> _pendingAnnexes = [];
+
   @override
   GameState get state => _state;
 
@@ -45,8 +52,34 @@ class OnlineGameSession implements GameSession {
 
   @override
   Future<ActionResult> apply(PlayerAction action) async {
+    if (action is SettlementAnnex) {
+      // Validate + apply locally (throws the same ActionException the
+      // server would); the server sees the batch at settlement finish.
+      final events = applyActionInPlace(_state, action, Rng(0));
+      _state.events.addAll(events);
+      _pendingAnnexes.add((x: action.x, y: action.y));
+      return ActionResult(_state, events);
+    }
+    await _flushAnnexes(action.slot);
     final view = await _submit(action: action.toJson());
     return ActionResult(_state, _eventsOf(view));
+  }
+
+  /// Sends the buffered settlement taps as one atomic batch. On rejection
+  /// (desync) the local optimistic state is stale — resync before
+  /// rethrowing so the UI never keeps tiles the server refused.
+  Future<void> _flushAnnexes(int slot) async {
+    if (_pendingAnnexes.isEmpty) return;
+    final tiles = List.of(_pendingAnnexes);
+    _pendingAnnexes.clear();
+    try {
+      await _submit(
+        action: SettlementAnnexMany(slot: slot, tiles: tiles).toJson(),
+      );
+    } on ActionException {
+      await refresh();
+      rethrow;
+    }
   }
 
   @override
@@ -56,12 +89,14 @@ class OnlineGameSession implements GameSession {
 
   @override
   Future<List<GameEvent>> endWarRound(int slot) async {
+    await _flushAnnexes(slot);
     final view = await _submit(action: WarEndRound(slot: slot).toJson());
     return _eventsOf(view);
   }
 
   @override
   Future<List<GameEvent>> endTurnAndAdvance() async {
+    await _flushAnnexes(yourSlot);
     final view = await _submit(endTurn: true);
     return _eventsOf(view);
   }
@@ -75,8 +110,11 @@ class OnlineGameSession implements GameSession {
   @override
   Future<void> save() async {}
 
-  /// Re-fetches the match (poll path while waiting).
+  /// Re-fetches the match (poll path while waiting). Skipped while
+  /// unflushed settlement taps exist — ingesting the server state would
+  /// visually revert the optimistic picks (the flush resyncs anyway).
   Future<void> refresh() async {
+    if (_pendingAnnexes.isNotEmpty) return;
     _ingest(await api.match(matchId, playerId));
   }
 

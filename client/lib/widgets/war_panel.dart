@@ -27,12 +27,49 @@ class _WarPanelState extends State<WarPanel> {
 
   GameController get controller => widget.controller;
 
+  /// The war-start preparation window: [slot] still owes their warPlan
+  /// answer (live control vs autopilot + stance) — everything else waits.
+  Widget _preparation(BuildContext context, gc.ActiveWar war, int slot) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Card(
+        margin: const EdgeInsets.all(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Kriegsvorbereitung', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                '${gc.countryNames[war.attackerSlot]} gegen '
+                '${gc.countryNames[war.defenderSlot]} — beide Seiten wählen, '
+                'ob sie ihre Truppen selbst befehligen. Der Krieg beginnt, '
+                'sobald die Wahl steht.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: () => promptDecisionsFor(context, controller, slot),
+                child: const Text('Wählen'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final war = controller.state.activeWar;
     final slot = controller.warHumanSlot;
     if (war == null || slot == null) return const SizedBox.shrink();
 
+    if (war.phase == gc.WarPhase.preparation) {
+      return _preparation(context, war, slot);
+    }
     if (war.phase == gc.WarPhase.settlement) {
       return _settlement(context, war, slot);
     }
@@ -247,9 +284,9 @@ class _WarPanelState extends State<WarPanel> {
                   );
                 } on gc.ActionException catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text(e.message)));
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(SnackBar(content: Text(e.message)));
                   }
                 }
               },
@@ -405,9 +442,9 @@ class _WarPanelState extends State<WarPanel> {
                       )).events;
                     } on gc.ActionException catch (e) {
                       if (context.mounted) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text(e.message)));
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(SnackBar(content: Text(e.message)));
                       }
                       return;
                     }
@@ -432,9 +469,9 @@ class _WarPanelState extends State<WarPanel> {
               );
             } on gc.ActionException catch (e) {
               if (context.mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(e.message)));
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(content: Text(e.message)));
               }
             }
           },
@@ -452,9 +489,9 @@ class _WarPanelState extends State<WarPanel> {
               // advanced, or the build is out of date) — show the message
               // instead of crashing, like the plunder/peace buttons.
               if (context.mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(e.message)));
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(content: Text(e.message)));
               }
               return;
             }
@@ -605,9 +642,9 @@ class _WarPanelState extends State<WarPanel> {
       );
     } on gc.ActionException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
       }
       return;
     }
@@ -617,9 +654,9 @@ class _WarPanelState extends State<WarPanel> {
       // Online the server can reject the round end (turn already advanced,
       // or the build is out of date) — mirror the header button's handling.
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
       }
       return;
     }
@@ -645,9 +682,9 @@ class _WarPanelState extends State<WarPanel> {
       // that already left the settlement phase — show the message instead
       // of crashing (mirrors _takeAllLand).
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
       }
       return;
     }
@@ -655,9 +692,9 @@ class _WarPanelState extends State<WarPanel> {
       await controller.endWarRound(); // resumes AI advance
     } on gc.ActionException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
       }
       return;
     }

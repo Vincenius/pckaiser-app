@@ -6,6 +6,137 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-06 — User feedback round 3: manual crown pot, marriage-consent fix, settlement batching — appVersion 0.1.13 (still unreleased)
+
+Third batch, folded into the SAME unreleased 0.1.13 (version bumps only on
+Vincent's call). Regression tests in `bugfix_v28_test.dart` /
+`turn_pipeline_test.dart`:
+
+1. **Manual "Staatskasse plündern" (overrides round 2's decision)**: per
+   Vincent's request the crown pot is no longer auto-collected in the
+   economy upkeep — new `CollectTribute` action (free, office holder
+   only), a "Staatskasse plündern" entry in the Dynastie sheet, a
+   turn-report reminder line while the pot waits, and a public
+   `tributeCollected` event. AI office holders collect at turn start
+   (§20.3 step 3), so pots never rot on an AI throne.
+2. **Online marriage consent "accepted but rejected"**: the §14.3 annual
+   loop also auto-proposed/married HUMAN dynasty members, so between a
+   proposal and the target's answer either side could marry elsewhere —
+   the acceptance then failed the re-check and read as a rejection. New
+   `awaitingMarriageConsent` guard: persons on either side of a pending
+   consent are off the market (annual loop, candidate pool, new
+   proposals, commoner marriage — engine + menu filters). An accepted
+   consent that still decayed (e.g. religion change) now reports
+   `reason: invalid` ("nicht mehr möglich") instead of "abgelehnt".
+3. **Settlement without per-tile loading (online)**: new atomic
+   `SettlementAnnexMany` engine action; `OnlineGameSession` applies each
+   settlement tap optimistically to the local state (same pure-engine
+   validation the server runs), buffers the picks and flushes them as ONE
+   batch with the settlement finish / next submission. Poll refreshes are
+   skipped while taps are unflushed; a rejected batch resyncs before
+   rethrowing.
+4. **Sponsor popup for successful assassinations**: new owner-visible
+   `assassinationSucceeded` event (the public `assassination` stays
+   anonymous) with a drama popup "Attentat erfolgreich !".
+5. **"(Beta)" dropped** from the online menu entry (DE + EN).
+6. **War-start PREPARATION window (supersedes round 2's defender-only
+   reaction window — Vincent's design)**: human-vs-human wars begin in
+   `WarPhase.preparation`; BOTH sides answer a `warPlan` decision (live
+   control vs stance autopilot, optional bulk stance). Start rules in
+   `resolveWarPreparation`: both auto → immediate fast-forward
+   (`_fastForwardAiWar`, now `warSideIsHuman`-aware); exactly one live →
+   start once both answered; both live → hot-seat starts immediately,
+   online waits for the deadline (HALF the turn timer, armed in `_commit`
+   even when nobody is awaited, forced by `_sweepMatch`) so nobody misses
+   the duel start. Unanswered sides default to the autopilot. Client: the
+   attacker answers right after declaring (menus), a "Kriegsvorbereitung"
+   card replaces the war panel, map taps stay normal during preparation.
+   The old `warDefense` handlers remain as no-op legacy for dev saves.
+
+## 2026-07-06 — User feedback round 2: war weariness, war reports, war-start reaction window, options — appVersion 0.1.13
+
+Second batch of player feedback, regression-tested in `bugfix_v28_test.dart`:
+
+1. **Escalating war-declaration penalty** (`[DESIGNED]`, deviations table):
+   the traced original has NO direct war popularity cost (§8.4 — wars hurt
+   only via food), and our flat −5 with the 25 floor meant war could never
+   cause revolt (floor above the §19.1 line) and cost LESS at low
+   popularity. Now: −5 × (recentWars + 1) per declaration, new
+   `Realm.recentWars` counter (additive JSON) decaying one step per
+   war-free year, floored at the new `warPopularityFloor` (10, below the
+   strife line). Levies/conversions keep the 25 floor
+   (`militarismPopularityCost` gained a `floor` param). The AI war guard
+   scales with the same weariness (`popularity >= 50 + 5·recentWars`) so
+   serial-warring AIs don't talk themselves into strife; the 200-year
+   30-AI smoke test stays green.
+2. **War loss overview**: `ActiveWar` carries a cumulative tally (men lost
+   / battles / plunder loot / tiles taken per side, additive JSON) fed by
+   `resolveCombat`/`transferTile`/`plunderTile`; war-ending events
+   (`warWon`, `warDraw`, `peaceAgreed`) embed it as `summary` before the
+   war state is cleared, rendered as a "Kriegsbilanz" block in the war
+   report. Reports with >1 battle additionally lead with a "Verluste
+   gesamt" line (own vs enemy men, client-side sum).
+3. **War-start reaction window (online) + delegation**: a human attacked
+   by a HUMAN gets a `warDefense` decision — fight themself or hand this
+   one war to the stance autopilot (`ActiveWar.autoSlots`, new
+   `warSideIsHuman` used by all war-input plumbing). While the choice is
+   open the server keeps the FULL turn clock; the 10-min war clock starts
+   only after they opt in. Defaults (timeout/empty) keep human control.
+   Hot-seat: delegating hands the seat back to the attacker (handoff
+   blocker raised in `GameController.resolveDecision`).
+4. **Setup option "Namensvorschläge für Kinder"**: new
+   `GameState.suggestChildNames` (additive, default true) threaded like
+   `genderEqualSuccession` (setup screen, online host settings
+   `suggest_child_names`, backend `MatchSettings`); consumed only by the
+   naming dialog's prefill.
+5. **Discord link** on the About screen (button next to GitHub).
+
+Checked against the original and initially NOT changed: the Kaiser/Sultan
+tribute pot auto-collect (§7.2/§17.5). SUPERSEDED in round 3 (same day):
+Vincent remembers a manual plunder button in the original and wants the
+strategic choice — see the round-3 entry above (`CollectTribute`).
+
+320 core + 32 client + 37 backend tests green.
+
+## 2026-07-06 — User bug reports: inheritance/marriage, decision routing, UI — appVersion 0.1.13
+
+Five fixes from player reports, regression-tested in `bugfix_v27_test.dart`:
+
+1. **Marriage after cross-dynasty inheritance (§14.1/§15.4)**: the marriage
+   validations (`_proposeMarriage`, `_marryCommoner`) required
+   `proposer.dynasty == realm.slot`, so a ruler who inherited a realm via
+   the spouse path (e.g. a widow after a successful assassination) could
+   never marry from that slot — "Diese Person gehört nicht zu deiner
+   Dynastie !". New `memberOfRulingHouse` (rules/dynasty.dart) accepts the
+   slot's own dynasty AND the ruler's home dynasty; the client marriage
+   pickers and the misc-menu "Dynastie" sheet follow the ruler's house too.
+2. **Title re-gendering on ruler change (§16.1)**: `titleClass` was never
+   recalculated when a realm changed hands, so an inherited realm kept the
+   predecessor's gendered form. New `regenderTitle` (rules/titles.dart)
+   keeps the realm's rank but aligns the ±12 female form with the new
+   ruler's gender; called on succession, windfall/replacement inheritance,
+   the heir-choice re-crown and internal strife.
+3. **Pending decisions follow the player across slots**: decisions
+   (heir choice, baby naming, marriage consent, …) surfaced only when the
+   deciding slot's own turn came around; a player controlling several
+   slots (turns run in slot order) ruled inherited realms for whole turns
+   before hearing their ruler died — or met the newborn in the dynasty
+   sheet before any notice. `promptDecisionsFor` now also prompts
+   decisions of other slots with the same `humanPlayer`, and
+   `visibleStateFor` retains them (the server already accepted
+   out-of-turn `ResolveDecision` for any controlled slot). The heir-choice
+   dialog title now doubles as the death notice ("X ist gestorben !").
+4. **Marriage-consent dialog names the proposer's land + age** (deviations
+   table): marriage is the main peaceful inheritance path, so the target
+   must know which realm they are tying their line to before accepting.
+5. **Stuck "So viel steht dir nicht zu !" snackbar**: every error snackbar
+   (game screen `_toast`, menus, tile sheet, war panel) queued with the
+   4s default, so repeated taps in the war-settlement phase stacked
+   minutes of snackbars that read as a stuck banner. All sites now
+   `hideCurrentSnackBar()` first (replace, not queue).
+
+313 core + 32 client + 37 backend tests green.
+
 ## 2026-07-02 — Full-codebase review: engine/online/UI fixes — appVersion 0.1.11
 
 Four-subsystem code review (rules engine, client UI incl. small screens,

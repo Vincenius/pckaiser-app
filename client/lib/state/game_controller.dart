@@ -433,6 +433,10 @@ class GameController extends ChangeNotifier {
       // Decision outcomes are randomized/irreversible — snapshots from
       // before the resolution must not stay undoable.
       _undoStack.clear();
+      // A resolution can move the seat (a defender delegating a war hands
+      // the round back to the attacker) — hot-seat then needs the blocker
+      // before the successor's view appears.
+      _maybeRequestSeatHandoff();
       await _session.save();
     } finally {
       _busy = false;

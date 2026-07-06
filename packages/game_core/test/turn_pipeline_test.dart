@@ -156,13 +156,26 @@ void main() {
       expect(payer.tribute, greaterThan(0));
       expect(state.kaiserPot, payer.tribute);
 
-      // …and the Kaiser collects the whole pot on their own upkeep, paying
-      // none of their own.
+      // …the Kaiser pays none of their own, and the pot is NOT paid out by
+      // the upkeep anymore (0.1.13: manual "Staatskasse plündern")…
       final collected = state.kaiserPot;
       final kaiser = runEconomy(state, state.realm(2), Rng(1));
       expect(kaiser.tribute, 0, reason: 'the office holder never pays the pot');
-      expect(kaiser.potCollected, collected);
-      expect(state.kaiserPot, 0);
+      expect(state.kaiserPot, collected,
+          reason: 'the pot waits for the explicit CollectTribute action');
+
+      // …until the Kaiser plunders it explicitly.
+      final treasuryBefore = state.realm(2).treasury;
+      final result =
+          applyAction(state, CollectTribute(slot: 2), Rng(state.rngSeed));
+      expect(result.state.realm(2).treasury, treasuryBefore + collected);
+      expect(result.state.kaiserPot, 0);
+      expect(result.events.single.type, 'tributeCollected');
+      expect(result.events.single.payload['amount'], collected);
+
+      // Nobody else may touch it.
+      expect(() => applyAction(state, CollectTribute(slot: 3), Rng(1)),
+          throwsA(isA<ActionException>()));
     });
 
     test('wages cost 0.5 T per man', () {
