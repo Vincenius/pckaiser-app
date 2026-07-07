@@ -304,9 +304,10 @@ void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
   final ruler = state.person(realm.rulerId);
 
   dynasty.religion = Religion.moslemisch;
-  state.kurfuerstenIds.remove(realm.rulerId);
   // Every dynasty member's Kurfürst seat is forfeit, like the menu and
-  // coerced conversions to Islam (§12.1, §17.2).
+  // coerced conversions to Islam (§12.1, §17.2) — but ONLY members of the
+  // converting house: a cross-dynasty ruler (§15.4) whose own house stays
+  // Christian keeps his seat.
   state.kurfuerstenIds.removeWhere((id) => state.persons[id]?.dynasty == slot);
   // Switch to the Muslim title ladder, like every other conversion
   // (§16.1; mirrors `_changeReligion` and `foundReplacementDynasty`).

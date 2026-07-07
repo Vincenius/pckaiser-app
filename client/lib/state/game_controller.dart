@@ -17,8 +17,36 @@ class GameController extends ChangeNotifier {
     _lastSeat = currentSlot;
   }
 
+  /// Read-only viewer over a state while another player's turn runs
+  /// (online off-turn "Reich ansehen"): the whole UI is keyed to the fixed
+  /// [viewSlot] instead of the engine's active player, no handoff blocker,
+  /// and every action dispatch is a silent no-op — the server would 403 an
+  /// off-turn submission anyway, this just keeps the UI honest.
+  GameController.readOnly(this._session, {required int viewSlot})
+      : _viewSlotOverride = viewSlot {
+    _handoffToSlot = viewSlot;
+    _lastSeat = viewSlot;
+  }
+
   final GameSession _session;
   final List<GameState> _undoStack = [];
+
+  int? _viewSlotOverride;
+
+  /// True for the off-turn viewer: no actions, fixed view slot.
+  bool get readOnly => _viewSlotOverride != null;
+
+  /// Switches the viewed realm (read-only mode only) — a player can hold
+  /// several realms (control follows the ruler, §15.4).
+  void setViewSlot(int slot) {
+    if (_viewSlotOverride == null || _viewSlotOverride == slot) return;
+    _viewSlotOverride = slot;
+    notifyListeners();
+  }
+
+  /// All realm slots the seated player currently controls, including
+  /// [currentSlot] — one per realm they hold.
+  Set<int> get ownedSlots => humanControlledSlots(state, currentSlot);
 
   bool _handoffPending = false;
   int _handoffToSlot = 0;
@@ -90,6 +118,8 @@ class GameController extends ChangeNotifier {
   /// UI (map filter, status row, menus) off the seat keeps the seated
   /// player from seeing or controlling the paused realm.
   int get currentSlot {
+    final override = _viewSlotOverride;
+    if (override != null) return override;
     if (state.activeWar != null) {
       final acting = warActingSlot(state);
       if (acting != null) return acting;
@@ -118,11 +148,22 @@ class GameController extends ChangeNotifier {
   /// False online: the server never takes an action back.
   bool get supportsUndo => _session.canUndo;
 
-  bool get gameOver =>
-      state.events.isNotEmpty &&
-      (state.events.last.type == 'gameWon' ||
-          state.events.last.type == 'gameDraw' ||
-          state.events.last.type == 'humansDefeated');
+  /// The game-ending event, when the game is over. The scan skips the
+  /// `redacted` placeholders an online (filtered) state keeps in place of
+  /// events hidden from this seat — the game end itself is always public.
+  GameEvent? get gameEndEvent {
+    for (var i = state.events.length - 1; i >= 0; i--) {
+      final event = state.events[i];
+      if (event.type == 'redacted') continue;
+      return switch (event.type) {
+        'gameWon' || 'gameDraw' || 'humansDefeated' => event,
+        _ => null,
+      };
+    }
+    return null;
+  }
+
+  bool get gameOver => gameEndEvent != null;
 
   /// The human slot that must act in the current war (the acting side —
   /// in a human-vs-human war the input alternates within each round).
@@ -177,7 +218,7 @@ class GameController extends ChangeNotifier {
   /// Deterministic in-turn action — undoable locally
   /// (PROJECT_REQUIREMENTS); online there is no undo, the action is final.
   Future<ActionResult> applyUndoable(PlayerAction action) async {
-    if (_busy) return ActionResult(state, const []);
+    if (_busy || readOnly) return ActionResult(state, const []);
     final snapshot = state;
     _busy = true;
     notifyListeners();
@@ -193,7 +234,7 @@ class GameController extends ChangeNotifier {
 
   /// Randomized or irreversible action — clears the undo stack.
   Future<ActionResult> applyIrreversible(PlayerAction action) async {
-    if (_busy) return ActionResult(state, const []);
+    if (_busy || readOnly) return ActionResult(state, const []);
     _busy = true;
     notifyListeners();
     try {
@@ -221,7 +262,7 @@ class GameController extends ChangeNotifier {
   /// server advances; when another player is awaited afterwards,
   /// [awaitingRemote] turns true and the play screen hands back.
   Future<void> endTurn() async {
-    if (_busy) return;
+    if (_busy || readOnly) return;
     _busy = true;
     _tilePick = null;
     tilePickHint = null;
@@ -260,7 +301,7 @@ class GameController extends ChangeNotifier {
   /// (battles, plunders, war end) so the UI can show them as a report
   /// popup.
   Future<List<GameEvent>> endWarRound() async {
-    if (_busy) return const [];
+    if (_busy || readOnly) return const [];
     final actingSlot = warHumanSlot;
     _busy = true;
     selectedWarUnit = null;
@@ -402,7 +443,7 @@ class GameController extends ChangeNotifier {
   /// the seat to the paused turn's player — hot-seat then needs a
   /// handoff before the successor's view appears.
   Future<ActionResult> applyWarAction(PlayerAction action) async {
-    if (_busy) return ActionResult(state, const []);
+    if (_busy || readOnly) return ActionResult(state, const []);
     _busy = true;
     notifyListeners();
     try {
@@ -423,7 +464,7 @@ class GameController extends ChangeNotifier {
     int slot,
     Map<String, dynamic> choice,
   ) async {
-    if (_busy) return;
+    if (_busy || readOnly) return;
     _busy = true;
     notifyListeners();
     try {

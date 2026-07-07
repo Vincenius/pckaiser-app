@@ -147,6 +147,18 @@ class _GameScreenState extends State<GameScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// Ends the turn with feedback on failure: online the submission can be
+  /// rejected (turn already advanced, outdated build) or fail on transport
+  /// — without a toast the button looks like a no-op while the turn
+  /// silently stays open.
+  Future<void> _endTurn(GameController controller) async {
+    try {
+      await controller.endTurn();
+    } on gc.ActionException catch (e) {
+      _toast(e.message);
+    }
+  }
+
   /// Mirrors the war state into the map overlay: pulsing ring on the
   /// selected unit.
   void _syncWarOverlay(GameController controller, MapGame game) {
@@ -223,6 +235,12 @@ class _GameScreenState extends State<GameScreen> {
   ) async {
     final report = <gc.GameEvent>[];
     final unitName = controller.state.realm(slot).troops[unitIndex].name;
+    // Names repeat ("Rekruten", "Söldner") and the engine compacts the
+    // troop list on destruction — track the expected position too, or a
+    // same-named unit sliding into this index would silently inherit the
+    // march (and the selection ring).
+    var expectedX = controller.state.realm(slot).troops[unitIndex].x;
+    var expectedY = controller.state.realm(slot).troops[unitIndex].y;
     // The tile we currently walk toward. It starts as the tapped target and
     // is re-pointed at an own harbor's coast when the only way across is by
     // sea — then the unit ships from there to the tapped target.
@@ -232,7 +250,10 @@ class _GameScreenState extends State<GameScreen> {
       final war = controller.state.activeWar;
       if (war == null || war.phase != gc.WarPhase.rounds) break;
       final troops = controller.state.realm(slot).troops;
-      if (unitIndex >= troops.length || troops[unitIndex].name != unitName) {
+      if (unitIndex >= troops.length ||
+          troops[unitIndex].name != unitName ||
+          troops[unitIndex].x != expectedX ||
+          troops[unitIndex].y != expectedY) {
         controller.selectWarUnit(null);
         break; // the unit was destroyed
       }
@@ -269,8 +290,10 @@ class _GameScreenState extends State<GameScreen> {
           : (remainingX.sign, 0);
       final beforeX = troop.x;
       final beforeY = troop.y;
+      var step = primary;
       var error = await _warStep(controller, slot, unitIndex, primary, report);
       if (error != null && secondary != (0, 0)) {
+        step = secondary;
         error = await _warStep(controller, slot, unitIndex, secondary, report);
       }
       if (error != null) {
@@ -312,6 +335,10 @@ class _GameScreenState extends State<GameScreen> {
           after[unitIndex].y == beforeY) {
         break; // combat: the defender held the tile
       }
+      // The step went through: the unit now stands one tile further along
+      // [step] — the next iteration's identity check expects it there.
+      expectedX = beforeX + step.$1;
+      expectedY = beforeY + step.$2;
     }
     if (!mounted) return;
     await showWarReport(context, report, viewerSlot: slot);
@@ -644,7 +671,7 @@ class _GameScreenState extends State<GameScreen> {
             const Spacer(),
             FilledButton.icon(
               onPressed: controller.state.activeWar == null
-                  ? () => controller.endTurn()
+                  ? () => _endTurn(controller)
                   : null,
               icon: const Icon(Icons.skip_next),
               label: Text(tr('endTurn')),
@@ -843,7 +870,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _victory(GameController controller) {
-    final event = controller.state.events.last;
+    final event = controller.gameEndEvent!;
     final slot = event.slot;
     final draw = event.type == 'gameDraw';
     final defeat = event.type == 'humansDefeated';

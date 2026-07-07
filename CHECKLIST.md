@@ -57,4 +57,5 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Leave/delete matches (`POST /matches/:id/leave`): creator deletes a waiting match, leaving a running one hands the realm(s) to the AI (`playerLeft` event); lobby + match-screen UI; `--dart-define=PCKAISER_INSTANCE` for two clients on one desktop
 - [x] Client push (firebase_messaging): permission prompt on online setup/launch, token upload via `PATCH /players/:id`, notification tap opens the match; optional — app builds/runs without Firebase config (README "Push notifications")
 - [x] Home screen lists running online matches ("Du bist am Zug !" first, 20 s poll)
+- [x] Off-turn read-only view ("Reich & Karte ansehen"): map + Info menu (Dynastien, Kaiserchronik, …) over ALL owned realms with realm switcher, actions disabled; `visibleStateFor` filters per player instead of per slot (2026-07-07)
 - [ ] Real-device/system test of an online match (two devices against a deployed server, incl. push)

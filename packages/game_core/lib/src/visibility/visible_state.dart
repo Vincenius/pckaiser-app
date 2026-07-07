@@ -1,6 +1,25 @@
 import '../state/dynasty.dart';
+import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
+
+/// All realm slots the human player seated at [viewerSlot] currently
+/// controls, [viewerSlot] included — control follows the ruler (§15.4), so
+/// a conquest or inheritance can leave one player holding several realms.
+/// For an AI or vacant viewer slot this is just `{viewerSlot}`.
+Set<int> humanControlledSlots(GameState state, int viewerSlot) {
+  final viewer = state.dynasty(viewerSlot);
+  if (viewer.status != DynastyStatus.human || viewer.humanPlayer == null) {
+    return {viewerSlot};
+  }
+  return {
+    viewerSlot,
+    for (final dynasty in state.dynasties)
+      if (dynasty.status == DynastyStatus.human &&
+          dynasty.humanPlayer == viewer.humanPlayer)
+        dynasty.index,
+  };
+}
 
 /// Hidden-information filter (ARCHITECTURE.md "State Visibility",
 /// PROJECT_REQUIREMENTS.md "Hidden information & espionage").
@@ -8,6 +27,12 @@ import '../state/realm.dart';
 /// Returns a copy of [state] containing only what the player in
 /// [viewerSlot] may know. Used identically by local hot-seat views and the
 /// online server (the authoritative full state never leaves the server).
+///
+/// Hidden information is per PLAYER, not per realm slot: every realm of
+/// the same human player ([humanControlledSlots]) counts as the viewer's
+/// own and stays unredacted — a player holding several realms may study
+/// all of them (e.g. in the online read-only view while another seat's
+/// turn runs).
 ///
 /// Public: map ownership, dynasty names/titles/religion, persons, town
 /// names and tiers, Kurfürsten, Kaiser/Sultan, chronicles, market prices,
@@ -25,19 +50,24 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
   // Never ship the RNG seed — it would make every future roll predictable.
   filtered.rngSeed = 0;
 
-  // Slots whose troops the viewer may see: their own, plus BOTH sides of an
-  // active war they fight in — combatants see each other's units (the war
-  // panel and the map render the enemy army).
-  final visibleTroopSlots = <int>{viewerSlot};
+  // Every realm of the same human player is the viewer's own (control
+  // follows the ruler, §15.4).
+  final ownSlots = humanControlledSlots(state, viewerSlot);
+
+  // Slots whose troops the viewer may see: their own realms, plus BOTH
+  // sides of an active war they fight in — combatants see each other's
+  // units (the war panel and the map render the enemy army).
+  final visibleTroopSlots = <int>{...ownSlots};
   final war = state.activeWar;
   if (war != null &&
-      (war.attackerSlot == viewerSlot || war.defenderSlot == viewerSlot)) {
+      (ownSlots.contains(war.attackerSlot) ||
+          ownSlots.contains(war.defenderSlot))) {
     visibleTroopSlots.addAll([war.attackerSlot, war.defenderSlot]);
   }
 
   for (var i = 0; i < filtered.realms.length; i++) {
     final slot = filtered.realms[i].slot;
-    if (slot != viewerSlot) {
+    if (!ownSlots.contains(slot)) {
       // The opponent in a war the viewer fights keeps its troop list and
       // army size (visible to combatants); every other foreign realm is
       // fully redacted. Without this the online client received an empty
@@ -47,24 +77,33 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
     }
   }
 
-  // One player can control several slots (cross-dynasty inheritance,
-  // §15.4): decisions raised for ANY of their slots are their own hidden
+  // Decisions raised for ANY of the player's slots are their own hidden
   // information and must surface at their next handoff — not only when the
   // deciding slot's own turn comes around.
-  final viewerDynasty = state.dynasty(viewerSlot);
-  bool sameHumanPlayer(int slot) {
-    final dynasty = state.dynasty(slot);
-    return viewerDynasty.status == DynastyStatus.human &&
-        dynasty.status == DynastyStatus.human &&
-        dynasty.humanPlayer != null &&
-        dynasty.humanPlayer == viewerDynasty.humanPlayer;
+  filtered.pendingDecisions
+      .retainWhere((d) => ownSlots.contains(d.decidingSlot));
+  filtered.assassinationOrders
+      .retainWhere((o) => ownSlots.contains(o.sponsorSlot));
+  // Hidden events are REDACTED in place, never removed: the recap
+  // baselines (server-set at end_turn) and the client's "already shown"
+  // drama tracking address events by absolute position
+  // (`prunedEventCount + index`), so the filtered list must keep the
+  // master state's indices. A removed middle would shift every later
+  // event and silently empty the online recap. The placeholder (slot 0,
+  // owner-visibility) is invisible to every realm slot and carries no
+  // payload; all event consumers filter on `visibleTo` anyway.
+  for (var i = 0; i < filtered.events.length; i++) {
+    final event = filtered.events[i];
+    if (!ownSlots.any(event.visibleTo)) {
+      filtered.events[i] = GameEvent(
+        year: event.year,
+        slot: 0,
+        type: 'redacted',
+        visibility: EventVisibility.owner,
+      );
+    }
   }
-
-  filtered.pendingDecisions.retainWhere(
-      (d) => d.decidingSlot == viewerSlot || sameHumanPlayer(d.decidingSlot));
-  filtered.assassinationOrders.retainWhere((o) => o.sponsorSlot == viewerSlot);
-  filtered.events.retainWhere((e) => e.visibleTo(viewerSlot));
-  filtered.recapBaselines.removeWhere((slot, _) => slot != viewerSlot);
+  filtered.recapBaselines.removeWhere((slot, _) => !ownSlots.contains(slot));
 
   // Election internals are hidden information: bribes and cast votes stay
   // on the server/master state only. Each participant's pending decision
@@ -80,8 +119,8 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
   // counts and positions — visible to the two combatants only.
   final filteredWar = filtered.activeWar;
   if (filteredWar != null &&
-      viewerSlot != filteredWar.attackerSlot &&
-      viewerSlot != filteredWar.defenderSlot) {
+      !ownSlots.contains(filteredWar.attackerSlot) &&
+      !ownSlots.contains(filteredWar.defenderSlot)) {
     filteredWar.snapshots.clear();
     filteredWar.movesLeft.clear();
   }

@@ -187,12 +187,61 @@ void main() {
       final view1 = visibleStateFor(state, 1);
       expect(view1.pendingDecisions, isEmpty);
       expect(view1.assassinationOrders, isEmpty);
-      expect(view1.events.map((e) => e.type), ['warDeclared']);
+      // Hidden events are redacted IN PLACE (not removed): the recap
+      // baselines address events by absolute position, so the filtered
+      // list must keep the master log's indices.
+      expect(view1.events.map((e) => e.type), ['redacted', 'warDeclared']);
+      expect(view1.events.first.visibleTo(1), isFalse);
+      expect(view1.events.first.payload, isEmpty);
 
       final view2 = visibleStateFor(state, 2);
       expect(view2.pendingDecisions.single.id, 'd1');
       expect(view2.assassinationOrders, hasLength(1));
       expect(view2.events.map((e) => e.type), ['intelGathered', 'warDeclared']);
+    });
+
+    test('keeps every realm of the same human player unredacted', () {
+      // Slot 3 falls to Anna's player (control follows the ruler, §15.4).
+      state.dynasty(3)
+        ..status = DynastyStatus.human
+        ..humanPlayer = state.dynasty(1).humanPlayer;
+      state.realm(3).treasury = 777;
+
+      expect(humanControlledSlots(state, 1), {1, 3});
+      expect(humanControlledSlots(state, 2), {2});
+
+      final view = visibleStateFor(state, 1);
+      final second = view.realm(3);
+      expect(second.treasury, 777,
+          reason: 'the own second realm is the viewer\'s hidden information');
+      expect(second.popularity, state.realm(3).popularity);
+      expect(second.population, state.realm(3).population);
+      expect(view.realm(2).treasury, 0,
+          reason: 'another human player stays redacted');
+
+      // The other human player does not see Anna's second realm.
+      expect(visibleStateFor(state, 2).realm(3).treasury, 0);
+    });
+
+    test('keeps events and decisions of the same player\'s other realm', () {
+      state.dynasty(3)
+        ..status = DynastyStatus.human
+        ..humanPlayer = state.dynasty(1).humanPlayer;
+      state.events.add(GameEvent(
+          year: 1001,
+          slot: 3,
+          type: 'intelGathered',
+          visibility: EventVisibility.owner));
+      state.pendingDecisions.add(
+          PendingDecision(id: 'd2', type: 'marriageConsent', decidingSlot: 3));
+
+      final view = visibleStateFor(state, 1);
+      expect(view.events.last.type, 'intelGathered',
+          reason: 'owner events of the own second realm stay readable');
+      expect(view.pendingDecisions.map((d) => d.id), ['d2']);
+
+      final other = visibleStateFor(state, 2);
+      expect(other.events.last.type, 'redacted');
     });
 
     test('does not mutate the source state', () {

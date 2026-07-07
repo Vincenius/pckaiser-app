@@ -277,7 +277,13 @@ List<GameEvent> applyMergeTroops(
   }
   final from = unitAt(realm, action.fromIndex);
   final to = unitAt(realm, action.toIndex);
-  if (from.troopClass != to.troopClass || from.quality != to.quality) {
+  // garrisonCounted must match too: quality alone cannot tell a twice-
+  // drilled regular (quartered, wage via armySize) from a Söldner
+  // (quality 3, unquartered, wage via soeldnerMen) — absorbing one into
+  // the other corrupts the garrison and wage bookkeeping for good.
+  if (from.troopClass != to.troopClass ||
+      from.quality != to.quality ||
+      from.garrisonCounted != to.garrisonCounted) {
     throw ActionException('Nur gleichartige Truppen können vereinigt werden !');
   }
   to.men += from.men;

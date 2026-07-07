@@ -86,7 +86,9 @@ Online additionally: API changes stay additive within `/api/v1`.
 ## State Visibility (hidden information)
 
 - `visibleStateFor(GameState, slot)` strips other realms' treasury, food stocks, troops, colony ships, guard level etc.; keeps public data (map ownership, dynasty names/titles/religion, town tiers, offices, chronicle) and the viewer's own realm.
+- Hidden information is per **player**, not per realm slot: every realm of the same human player (`humanControlledSlots` — control follows the ruler, §15.4) stays unredacted, incl. its owner-events, pending decisions, assassination orders and recap baselines. Basis of the online off-turn viewer ("Reich & Karte ansehen" → `MapViewerScreen`): read-only map + Info menu with a realm switcher; actions are no-ops (`GameController.readOnly`), the server would 403 them anyway.
 - Also redacts election bribes/votes and war snapshots/movement budgets for non-participants; rebuilds troop markers from what the viewer may see; zeroes `rngSeed`.
+- Hidden events are redacted **in place** (opaque `redacted` placeholder, slot 0, no payload), never removed: recap baselines and the client's drama-popup tracking address events by absolute position (`prunedEventCount + index`), so the filtered list must keep the master log's indices (0.1.13 fix — removing them silently emptied the online recap).
 - Espionage writes fuzzed `IntelReport`s into the spying realm's private state.
 - Online: applied to every state response — the authoritative state never leaves the server. Local: the same filter drives each seat's view; the handoff screen blocks the predecessor's intel.
 

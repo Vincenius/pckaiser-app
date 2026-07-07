@@ -128,11 +128,20 @@ class FileStore implements GameStore {
     if (file.existsSync()) file.deleteSync();
   }
 
-  Future<List<MatchRecord>> _allMatches() async => [
-        for (final f in Directory('$directory/matches').listSync())
-          if (f is File && f.path.endsWith('.json'))
-            MatchRecord.fromJson(_readJson(f)),
-      ];
+  Future<List<MatchRecord>> _allMatches() async {
+    final records = <MatchRecord>[];
+    for (final f in Directory('$directory/matches').listSync()) {
+      if (f is! File || !f.path.endsWith('.json')) continue;
+      try {
+        records.add(MatchRecord.fromJson(_readJson(f)));
+      } catch (e) {
+        // One corrupt/legacy document must not 500 every lobby list and
+        // halt the timeout sweep for the whole deployment — skip it.
+        print('[store] skipping unreadable match ${f.path}: $e');
+      }
+    }
+    return records;
+  }
 
   @override
   Future<List<MatchRecord>> matchesForPlayer(String playerId) async => [

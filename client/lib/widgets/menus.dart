@@ -542,7 +542,11 @@ void showTroopActions(
           for (var i = 0; i < realm.troops.length; i++)
             if (i != index &&
                 realm.troops[i].troopClass == troop.troopClass &&
-                realm.troops[i].quality == troop.quality)
+                realm.troops[i].quality == troop.quality &&
+                // Mirrors the engine: a drilled regular (quartered) never
+                // merges with a Söldner (unquartered), even at equal
+                // quality — the bookkeeping differs.
+                realm.troops[i].garrisonCounted == troop.garrisonCounted)
               i,
         ];
         return SafeArea(
@@ -1269,22 +1273,31 @@ void showMiscMenu(BuildContext context, GameController controller) {
             },
           ),
           // §17.5: the office holder plunders the crown pot manually — the
-          // gottgegebene Recht of every Kaiser/Sultan.
+          // gottgegebene Recht of every Kaiser/Sultan. A ruler can hold
+          // BOTH offices (a Kaiser whose dynasty converted to Islam may
+          // win the Sultan election) — then both pots are theirs.
           if ((state.kaiserId != null && realm.rulerId == state.kaiserId) ||
               (state.sultanId != null && realm.rulerId == state.sultanId))
             ListTile(
               leading: const Icon(Icons.account_balance_wallet),
               title: const Text('Staatskasse plündern'),
               subtitle: Text(
-                realm.rulerId == state.kaiserId
-                    ? '${state.kaiserPot} T im Kronschatz'
-                    : '${state.sultanPot} T im Sultansschatz',
+                [
+                  if (state.kaiserId != null &&
+                      realm.rulerId == state.kaiserId)
+                    '${state.kaiserPot} T im Kronschatz',
+                  if (state.sultanId != null &&
+                      realm.rulerId == state.sultanId)
+                    '${state.sultanPot} T im Sultansschatz',
+                ].join(' — '),
               ),
               enabled:
-                  (realm.rulerId == state.kaiserId
-                      ? state.kaiserPot
-                      : state.sultanPot) >
-                  0,
+                  (state.kaiserId != null &&
+                          realm.rulerId == state.kaiserId &&
+                          state.kaiserPot > 0) ||
+                  (state.sultanId != null &&
+                      realm.rulerId == state.sultanId &&
+                      state.sultanPot > 0),
               onTap: () {
                 Navigator.pop(sheetContext);
                 _tryAction(
@@ -1412,7 +1425,11 @@ void _showRelocateCapital(BuildContext context, GameController controller) {
   }
   showModalBottomSheet<void>(
     context: context,
-    builder: (context) => SafeArea(
+    // The error toast must outlive the sheet: pop with the SHEET context,
+    // act (and toast) through the stable screen context — an engine
+    // rejection (e.g. treasury below 5000 T online) arrives after the
+    // sheet is unmounted and would otherwise vanish silently.
+    builder: (sheetContext) => SafeArea(
       child: ListView(
         shrinkWrap: true,
         children: [
@@ -1422,7 +1439,7 @@ void _showRelocateCapital(BuildContext context, GameController controller) {
               title: Text('${buildingNames[building]} (${x + 1}, ${y + 1})'),
               trailing: Text(costLabel),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(sheetContext);
                 _tryAction(
                   context,
                   controller,
@@ -1993,7 +2010,7 @@ void _showDynasties(BuildContext context, GameController controller) {
                 ),
                 title: Text(
                   '${gc.countryNames[rows[i].$1.slot]}'
-                  '${rows[i].$1.slot == controller.currentSlot ? ' (du)' : ''}'
+                  '${controller.ownedSlots.contains(rows[i].$1.slot) ? ' (du)' : ''}'
                   ' — ${state.person(rows[i].$1.rulerId)?.name ?? '?'}',
                 ),
                 subtitle: Text(
@@ -2014,11 +2031,12 @@ void _showDynasties(BuildContext context, GameController controller) {
   );
 }
 
-/// Own realm: full numbers. Foreign realms: only public data plus the
-/// newest economy and military intel reports, if any (hidden
-/// information), written out as readable text.
+/// Own realms (a player can hold several — control follows the ruler):
+/// full numbers. Foreign realms: only public data plus the newest economy
+/// and military intel reports, if any (hidden information), written out
+/// as readable text.
 String _realmInfoLine(GameController controller, gc.Realm realm) {
-  final own = realm.slot == controller.currentSlot;
+  final own = controller.ownedSlots.contains(realm.slot);
   final title = gc.titleName(realm.titleClass);
   if (own) {
     return '$title — ${realm.population} Einwohner, ${realm.treasury} T, '

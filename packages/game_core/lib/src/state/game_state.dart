@@ -80,7 +80,9 @@ class GameState {
         sultanId: json['sultanId'] as int?,
         kaiserPot: json['kaiserPot'] as int? ?? 0,
         sultanPot: json['sultanPot'] as int? ?? 0,
-        kurfuerstenIds: (json['kurfuerstenIds'] as List?)?.cast<int>(),
+        // toList(): `cast` alone aliases the source list (toJson emits the
+        // live list) — a fromJson(toJson()) clone would share the electors.
+        kurfuerstenIds: (json['kurfuerstenIds'] as List?)?.cast<int>().toList(),
         kaiserChronicle: _recordList(json['kaiserChronicle']),
         sultanChronicle: _recordList(json['sultanChronicle']),
         persons: {

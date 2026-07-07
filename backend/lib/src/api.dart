@@ -78,9 +78,17 @@ class Api {
         final settingsJson =
             (body['settings'] as Map?)?.cast<String, dynamic>() ?? {};
         settingsJson.remove('seed');
+        // A wrong field TYPE inside a well-formed body is a client error —
+        // report 400, not the catch-all 500.
+        final MatchSettings settings;
+        try {
+          settings = MatchSettings.fromJson(settingsJson);
+        } on TypeError {
+          throw ApiException(400, 'invalid field type in settings');
+        }
         final match = await _service.createMatch(
           playerId: _requireString(body, 'player_id'),
-          settings: MatchSettings.fromJson(settingsJson),
+          settings: settings,
           setup: (body['setup'] as Map?)?.cast<String, dynamic>() ?? {},
         );
         return _service.view(match.id, _requireString(body, 'player_id'));

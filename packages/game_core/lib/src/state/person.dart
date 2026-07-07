@@ -18,7 +18,10 @@ class Person {
         dynasty: json['dynasty'] as int,
         gender: json['gender'] as int,
         spouseId: json['spouseId'] as int?,
-        childrenIds: (json['childrenIds'] as List?)?.cast<int>(),
+        // toList(): `cast` alone is a write-through view of (or even the
+        // same object as) the source list — toJson emits the live list, so
+        // a fromJson(toJson()) clone would mutate the original's children.
+        childrenIds: (json['childrenIds'] as List?)?.cast<int>().toList(),
       );
 
   final int id;

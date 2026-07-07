@@ -448,7 +448,10 @@ bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
   // The sponsor's own confirmation (owner-visible only anyway).
   'assassinationSucceeded' => e.slot == slot,
   'assassinationFailed' => e.slot == slot || e.payload['sponsorSlot'] == slot,
-  'crowned' => e.slot == slot,
+  // A coronation is table-wide news: EVERY player gets the popup (the
+  // reported gap: observers learned a Kaiserwahl's outcome only from the
+  // dynasty screen), the winner a personal one.
+  'crowned' => true,
   // Your house inherited whole realms — easy to miss as a feed line.
   'realmInherited' => e.slot == slot,
   // A human player losing their whole realm (or their ruler captured) is a
@@ -592,11 +595,19 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
       'Deine Attentäter haben ${p['victim']} nicht erwischt'
           '${(p['caught'] as int? ?? 0) > 0 ? ' — und wurden gefasst ! Dein Auftrag ist nun bekannt !' : '.'}',
     ),
-    'crowned' => (
+    'crowned' when e.slot == slot => (
       Icons.emoji_events,
       Colors.amber,
       p['office'] == 'kaiser' ? 'Du bist Kaiser !' : 'Du bist Sultan !',
       '${p['name']} wird '
+          '${p['acclaimed'] == true ? 'ohne Gegenstimme ' : ''}'
+          'zum ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'} gekrönt !',
+    ),
+    'crowned' => (
+      Icons.emoji_events,
+      Colors.amber,
+      p['office'] == 'kaiser' ? 'Ein neuer Kaiser !' : 'Ein neuer Sultan !',
+      '${p['name']} von ${gc.countryNames[e.slot]} wird '
           '${p['acclaimed'] == true ? 'ohne Gegenstimme ' : ''}'
           'zum ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'} gekrönt !',
     ),

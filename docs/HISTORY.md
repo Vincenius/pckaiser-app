@@ -6,6 +6,123 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-07 — Review of the 0.1.13 changes + codebase sweep (pre-release fixes)
+
+Full review of everything since 0.1.12 plus a whole-codebase bug sweep;
+all fixes ship with the still-unreleased 0.1.13. Engine:
+
+1. **Dual office (Kaiser + Sultan)**: converting to Islam keeps the
+   Kaiser crown, so one ruler can also win the Sultanswahl and hold both
+   offices. `CollectTribute` collected only the Kaiser pot (the Sultan
+   pot was stranded forever, and the AI's turn-start collection threw
+   when the Kaiser pot happened to be empty while the Sultan pot was
+   filled — crash of the turn pipeline). Now every entitled pot is
+   emptied (one event per office); `closeChronicleIfOfficeHolder`
+   likewise vacates/chronicles BOTH offices on death (a dead `sultanId`
+   would have blocked every future Sultanswahl). Dynastie menu shows
+   both pots. Tests in `bugfix_v29_test.dart`.
+2. **MergeTroops bookkeeping corruption**: eligibility compared only
+   class + quality — a twice-drilled regular (quality 3, quartered)
+   could merge with a Söldner (quality 3, unquartered), permanently
+   corrupting `armySize`/garrison quarters/wages. `garrisonCounted`
+   must match now (engine + menu filter).
+3. **fromJson list aliasing**: `cast<int>()` without `toList()` returns
+   a write-through view — and `toJson` emits the live lists, so the
+   `GameState.fromJson(state.toJson())` clone pattern shared
+   `kurfuerstenIds`, `memberIds`, `childrenIds` and the war's
+   `movesLeft` with the source state (mutations leaked back). All four
+   sites copy now (same fix `WorldMap.fromJson` already had).
+4. **Kurfürst strip on conversion**: `_changeReligion` and the Ottoman
+   invasion removed `realm.rulerId`'s seat unconditionally — wrong for a
+   cross-dynasty ruler (§15.4) whose own house did not convert; seat
+   eligibility keys on the HOME dynasty. Only the converting house's
+   members lose seats now (matches `applyConvertOrDie`).
+
+Backend: (1) the war-preparation deadline was re-armed (half turn timer
+from *now*) on EVERY commit during the preparation — each warPlan answer
+pushed a both-live duel's "fair start" further out; the window is armed
+once, at the declaration. (2) `registerPlayer` re-registration (the
+client's rename upsert) overwrote the stored record and silently wiped
+the FCM push token + createdAt; it now merges with the existing record.
+(3) One corrupt/legacy match file made `_allMatches` throw — 500ing every
+lobby list AND halting the minute-sweep (no timeouts processed anywhere);
+unreadable files are skipped with a log line. (4) Wrong field TYPES in
+request bodies (settings/setup) returned 500 instead of 400.
+
+Client: (1) `OnlineGameSession._submit` now converts ALL `ApiError`s
+(incl. transport / status 0) to `ActionException`, so every in-game handler
+shows the message — an offline "Zug beenden" used to be a silent no-op
+(button additionally wrapped with a toast; previously the Future was
+discarded uncaught). (2) Out-of-turn decision prompts on the match
+screen: a server rejection was uncaught → the answer vanished and the
+identical dialog re-popped every 10 s poll; now toasted + re-fetched, and
+no prompting while `update_required`. (3) "Sitz verlegen" error toast
+used the dead sheet context (rejections after the sheet closed vanished).
+(4) War march identity: destruction was detected by index + name, but
+names repeat — a same-named unit sliding into the index inherited the
+march; the expected position is tracked per step now.
+
+331 core + 38 backend + 33 client tests green, analyzers clean.
+
+## 2026-07-07 — Off-turn read-only realm view (online) — ships with the unreleased 0.1.13
+
+Feature request: while another seat's turn runs in an online match, the
+player wants to study their own realm(s) and use the game menu (Dynastien,
+Kaiserchronik, …) — without being able to act. A player can hold several
+realms (control follows the ruler, §15.4), so all of them must be viewable.
+
+1. **Engine**: hidden information is now per PLAYER, not per realm slot.
+   New public `humanControlledSlots(state, viewerSlot)`;
+   `visibleStateFor` keeps every realm of the same human player
+   unredacted (realm data, troops/markers, owner events, pending
+   decisions, assassination orders, recap baselines, war
+   snapshots/participation). Previously the player's OTHER realms were
+   redacted like foreign ones — even on their own turn. No schema change,
+   no version bump (0.1.13 is still unreleased; server and client filter
+   must ship together — an old server would ship the second realm
+   redacted).
+2. **Client**: `GameController.readOnly(session, viewSlot:)` — fixed view
+   slot, no handoff, every dispatch a silent no-op (the server 403s
+   off-turn actions anyway). `MapViewerScreen` grew from a bare map into
+   the read-only viewer: status row ("Nur ansehen" + who is at the turn),
+   realm switcher for multi-realm seats, and the familiar 5-tab menu bar
+   with only Info enabled (Handel/Militär/Spionage/Dynastie locked at
+   0.4 opacity, same pattern as the war-pause lock). Lobby button renamed
+   "Karte ansehen" → "Reich & Karte ansehen".
+3. **Menus**: "(du)" in the Dynastien ranking and the full-numbers branch
+   of `_realmInfoLine` now apply to ALL owned realms
+   (`controller.ownedSlots`), not just the current seat slot.
+
+Tutorial untouched (no menu renames). Tests: multi-realm visibility cases
+in `visibility_test.dart`; game_core 329, backend 38, client 33 green.
+
+## 2026-07-07 — Online recap was silently empty (Kaiserwahl report) — appVersion 0.1.13 (still unreleased)
+
+User report (online game): no info after the Kaiserwahl — the outcome was
+only discoverable via the dynasty screen. Root cause was general, not
+election-specific: the server sets the recap baseline as an absolute
+position in the MASTER event log (`prunedEventCount + index`), but
+`visibleStateFor` REMOVED hidden events (foreign `turnUpkeep` etc.) from
+the middle of the list. In the client's filtered copy every later index
+shifted down, so `recapFor` skipped too many events — after a few game
+years the online turn-start recap (and the war round report, and the
+defender's "Krieg !" briefing trigger) was permanently empty. Hot-seat was
+unaffected (recap runs on the master log).
+
+Fix (`bugfix_v29_test.dart`, visibility/backend/client tests):
+
+1. **Engine**: `visibleStateFor` now redacts hidden events IN PLACE — an
+   opaque `redacted` placeholder (slot 0, owner-visibility, no payload)
+   keeps the master indices, so baselines and the online drama-popup
+   position tracking stay valid. Idempotent; no schema change.
+2. **Client**: `gameOver`/`gameEndEvent` scan past trailing placeholders
+   instead of testing only `events.last`.
+3. **Coronation popup for everyone**: `crowned` is now popup-worthy for
+   all players ("Ein neuer Kaiser !" naming winner + realm; the winner
+   keeps "Du bist Kaiser !") — at turn start and, online, out-of-turn in
+   the waiting lobby. Previously observers only got a recap headline
+   (which the position bug then swallowed).
+
 ## 2026-07-06 — User feedback round 3: manual crown pot, marriage-consent fix, settlement batching — appVersion 0.1.13 (still unreleased)
 
 Third batch, folded into the SAME unreleased 0.1.13 (version bumps only on
