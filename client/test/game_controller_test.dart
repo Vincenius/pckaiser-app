@@ -207,9 +207,24 @@ void main() {
     await controller.applyIrreversible(DeclareWar(slot: 1, targetSlot: 5));
     expect(controller.state.activeWar, isNotNull);
     expect(
+      controller.state.activeWar!.phase,
+      WarPhase.preparation,
+      reason: '0.1.13: a human-vs-human war opens the preparation window',
+    );
+    // Both sides choose live control; in hot-seat the rounds then start
+    // immediately (both players are at the device).
+    for (final slot in [1, 5]) {
+      final plan = controller.state.pendingDecisions.singleWhere(
+        (d) => d.type == 'warPlan' && d.decidingSlot == slot,
+      );
+      await controller.resolveDecision(plan.id, slot, {'auto': false});
+      if (controller.handoffPending) controller.confirmHandoff();
+    }
+    expect(controller.state.activeWar!.phase, WarPhase.rounds);
+    expect(
       controller.currentSlot,
       1,
-      reason: 'attacker before defender — no handoff for the declarer',
+      reason: 'attacker before defender — the rounds await the declarer',
     );
     expect(controller.handoffPending, isFalse);
 

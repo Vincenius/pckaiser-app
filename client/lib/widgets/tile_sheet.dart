@@ -48,9 +48,10 @@ Future<void> showTileActionSheet(
 
   void toastError(gc.ActionException e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // Replace instead of queue, so repeated errors don't stack snackbars.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -410,9 +411,10 @@ Future<bool> _steerShip(
 ) async {
   void toast(String message) {
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      // Replace instead of queue, so repeated errors don't stack snackbars.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

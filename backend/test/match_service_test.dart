@@ -381,9 +381,39 @@ void main() {
         actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
       );
       expect(declared['awaited_player_id'], a.id,
-          reason: 'attacker before defender');
-      expect(declared['turn_deadline'], isNotNull,
+          reason: 'the attacker owes the first warPlan answer');
+      // 0.1.13 preparation window: no turn timer configured ⇒ no deadline;
+      // the war waits for both warPlan answers.
+      expect(declared['turn_deadline'], isNull,
+          reason: 'the war clock waits for the preparation to finish');
+
+      // Both sides choose live control. Without a turn timer the both-live
+      // duel starts as soon as the second answer lands — the war clock arms.
+      var prep = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      final planA = prep.pendingDecisions
+          .singleWhere((d) => d.type == 'warPlan' && d.decidingSlot == 1);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: ResolveDecision(
+            slot: 1, decisionId: planA.id, choice: {'auto': false}).toJson(),
+      );
+      prep = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      final planB = prep.pendingDecisions
+          .singleWhere((d) => d.type == 'warPlan' && d.decidingSlot == 2);
+      final resolved = await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: ResolveDecision(
+            slot: 2, decisionId: planB.id, choice: {'auto': false}).toJson(),
+      );
+      expect(resolved['turn_deadline'], isNotNull,
           reason: 'the short war clock replaces the turn timer');
+      expect(
+          GameState.fromJson((resolved['state'] as Map).cast<String, dynamic>())
+              .activeWar!
+              .phase,
+          WarPhase.rounds);
 
       // Berta may not act during Anna's half of the round.
       await expectLater(
@@ -463,9 +493,44 @@ void main() {
         playerId: a.id,
         actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
       );
+      // 0.1.13 preparation window: HALF the turn timer (user design).
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(hours: 12)),
+          reason: 'the preparation window is half the turn timer');
+
+      // Both choose live control — with a timer, the both-live duel WAITS
+      // for the deadline (fair start), even though everyone has answered.
+      for (final (playerId, slot) in [(a.id, 1), (b.id, 2)]) {
+        final st =
+            GameState.fromJson((await store.match(match.id))!.stateJson!);
+        final plan = st.pendingDecisions
+            .singleWhere((d) => d.type == 'warPlan' && d.decidingSlot == slot);
+        await service.submit(
+          matchId: match.id,
+          playerId: playerId,
+          actionJson: ResolveDecision(
+              slot: slot,
+              decisionId: plan.id,
+              choice: {'auto': false}).toJson(),
+        );
+      }
+      final waiting =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(waiting.activeWar!.phase, WarPhase.preparation,
+          reason: 'both live → wait for the fair deadline start');
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(hours: 12)));
+
+      // The deadline sweep starts the duel; the short war clock takes over.
+      now = now.add(const Duration(hours: 12, minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      final started =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(started.activeWar!.phase, WarPhase.rounds);
+      expect(started.activeWar!.autoSlots, isEmpty);
       expect((await store.match(match.id))!.turnDeadline,
           now.add(const Duration(seconds: 600)),
-          reason: 'a live human-vs-human duel stays on the short war clock');
+          reason: 'a live human-vs-human duel runs on the short war clock');
     });
   });
 
@@ -956,13 +1021,17 @@ void main() {
       final match = await createStarted(
         a.id,
         MatchSettings(
-            seed: 42, warStartYear: 1015, genderEqualSuccession: false),
+            seed: 42,
+            warStartYear: 1015,
+            genderEqualSuccession: false,
+            suggestChildNames: false),
         setupFor('Solo', 1),
       );
       final state =
           GameState.fromJson((await store.match(match.id))!.stateJson!);
       expect(state.warStartYear, 1015);
       expect(state.genderEqualSuccession, isFalse);
+      expect(state.suggestChildNames, isFalse);
     });
   });
 }

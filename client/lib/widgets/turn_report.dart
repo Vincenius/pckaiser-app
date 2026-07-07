@@ -93,9 +93,28 @@ Future<void> showTurnReport(
             row(
               Icons.toll,
               'Steuern: +${n('tax')} T'
-              '${n('harborIncome') > 0 ? ' — Häfen: +${n('harborIncome')} T' : ''}'
-              '${n('potCollected') > 0 ? ' — Kronschatz: +${n('potCollected')} T' : ''}',
+              '${n('harborIncome') > 0 ? ' — Häfen: +${n('harborIncome')} T' : ''}',
             ),
+            // The office holder's pot waits for the explicit "Staatskasse
+            // plündern" action (Dynastie-Menü) — remind them here.
+            if (state.kaiserId != null &&
+                realm.rulerId == state.kaiserId &&
+                state.kaiserPot > 0)
+              row(
+                Icons.account_balance_wallet,
+                'Kronschatz: ${state.kaiserPot} T warten — '
+                '„Staatskasse plündern" im Dynastie-Menü !',
+                color: Colors.amber.shade800,
+              ),
+            if (state.sultanId != null &&
+                realm.rulerId == state.sultanId &&
+                state.sultanPot > 0)
+              row(
+                Icons.account_balance_wallet,
+                'Sultansschatz: ${state.sultanPot} T warten — '
+                '„Staatskasse plündern" im Dynastie-Menü !',
+                color: Colors.amber.shade800,
+              ),
             if (n('tribute') > 0 || n('wages') > 0)
               row(
                 Icons.money_off,

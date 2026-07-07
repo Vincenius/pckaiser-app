@@ -21,6 +21,7 @@ class GameState {
     required this.ottomanYear,
     this.warStartYear = 1010,
     this.genderEqualSuccession = false,
+    this.suggestChildNames = true,
     this.grainPrice = 0,
     this.cattlePrice = 0,
     this.kaiserId,
@@ -71,6 +72,8 @@ class GameState {
         // Per-game option (additive — old saves default to the original
         // male-priority + Islamic-succession-crisis behaviour).
         genderEqualSuccession: json['genderEqualSuccession'] as bool? ?? false,
+        // Additive — old saves keep the prefilled name suggestion.
+        suggestChildNames: json['suggestChildNames'] as bool? ?? true,
         grainPrice: (json['grainPrice'] as num? ?? 0).toDouble(),
         cattlePrice: (json['cattlePrice'] as num? ?? 0).toDouble(),
         kaiserId: json['kaiserId'] as int?,
@@ -155,6 +158,13 @@ class GameState {
   /// default to false (see [GameState.fromJson]); new games default it on
   /// in the setup UI.
   final bool genderEqualSuccession;
+
+  /// Per-game option (chosen at setup): whether the newborn-naming dialog
+  /// is prefilled with a suggested name. Presentation only — the engine
+  /// always assigns a provisional name and emits `suggestedName` in the
+  /// `childName` decision; the client ignores it when this is false. Old
+  /// saves default to true (see [GameState.fromJson]).
+  final bool suggestChildNames;
 
   /// Global market prices, rolled once per year (§9.1).
   double grainPrice;
@@ -281,6 +291,7 @@ class GameState {
         ottomanYear: ottomanYear,
         warStartYear: warStartYear,
         genderEqualSuccession: genderEqualSuccession,
+        suggestChildNames: suggestChildNames,
         grainPrice: grainPrice,
         cattlePrice: cattlePrice,
         kaiserId: kaiserId,
@@ -315,6 +326,7 @@ class GameState {
         'ottomanYear': ottomanYear,
         'warStartYear': warStartYear,
         'genderEqualSuccession': genderEqualSuccession,
+        'suggestChildNames': suggestChildNames,
         'grainPrice': grainPrice,
         'cattlePrice': cattlePrice,
         'kaiserId': kaiserId,

@@ -121,6 +121,7 @@ class MatchSettings {
     this.ottomanYear = 1040,
     this.warStartYear = 1010,
     this.genderEqualSuccession = true,
+    this.suggestChildNames = true,
     this.isPublic = false,
     int? seed,
   }) : seed = seed ?? Random.secure().nextInt(1 << 31);
@@ -132,6 +133,7 @@ class MatchSettings {
         ottomanYear: json['ottoman_year'] as int? ?? 1040,
         warStartYear: json['war_start_year'] as int? ?? 1010,
         genderEqualSuccession: json['gender_equal_succession'] as bool? ?? true,
+        suggestChildNames: json['suggest_child_names'] as bool? ?? true,
         isPublic: json['is_public'] as bool? ?? false,
         seed: json['seed'] as int?,
       );
@@ -152,6 +154,10 @@ class MatchSettings {
   /// the game world at start as `GameState.genderEqualSuccession`.
   final bool genderEqualSuccession;
 
+  /// Prefill the newborn-naming dialog with a suggested name — passed into
+  /// the game world at start as `GameState.suggestChildNames`.
+  final bool suggestChildNames;
+
   /// Public match: listed in the lobby's open-games list so anyone can
   /// join, not only those who know the room code. Default private.
   final bool isPublic;
@@ -169,6 +175,7 @@ class MatchSettings {
         'ottoman_year': ottomanYear,
         'war_start_year': warStartYear,
         'gender_equal_succession': genderEqualSuccession,
+        'suggest_child_names': suggestChildNames,
         'is_public': isPublic,
         if (includeSeed) 'seed': seed,
       };

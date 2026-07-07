@@ -185,6 +185,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
           'war_start_year': setup.warStartYear,
           'is_public': setup.isPublic,
           'gender_equal_succession': setup.genderEqualSuccession,
+          'suggest_child_names': setup.suggestChildNames,
         },
         setup: setup.toJson(),
       );
@@ -292,6 +293,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
     var warRoundMinutes = 10;
     var isPublic = false;
     var genderEqualSuccession = true;
+    var suggestChildNames = true;
     return showDialog<_MatchSetup>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -440,6 +442,16 @@ class _OnlineScreenState extends State<OnlineScreen> {
                             'auch islamische Reiche, ohne auszuscheiden.',
                           ),
                         ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: suggestChildNames,
+                          onChanged: (v) =>
+                              setState(() => suggestChildNames = v),
+                          title: const Text('Namensvorschläge für Kinder'),
+                          subtitle: const Text(
+                            'Bei Geburten einen zufälligen Namen vorschlagen.',
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -517,6 +529,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
                     warStartYear: int.tryParse(warStartController.text) ?? 1010,
                     isPublic: isPublic,
                     genderEqualSuccession: genderEqualSuccession,
+                    suggestChildNames: suggestChildNames,
                   ),
                 );
               },
@@ -789,6 +802,7 @@ class _MatchSetup {
     this.warStartYear = 1010,
     this.isPublic = false,
     this.genderEqualSuccession = true,
+    this.suggestChildNames = true,
   });
 
   final String founderName;
@@ -803,6 +817,7 @@ class _MatchSetup {
   final int warStartYear;
   final bool isPublic;
   final bool genderEqualSuccession;
+  final bool suggestChildNames;
 
   Map<String, dynamic> toJson() => {
     'founder_name': founderName,

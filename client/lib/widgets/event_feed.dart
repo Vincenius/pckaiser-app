@@ -31,6 +31,7 @@ const _dynastyTypes = {
   'marriageRejected',
   'titlePromoted',
   'assassination',
+  'assassinationSucceeded',
   'assassinationFailed',
   'islamicSuccessionCrisis',
   'dynastyExtinct',
@@ -52,6 +53,7 @@ const _worldTypes = {
   'newKurfuerst',
   'kurfuerstStripped',
   'officeHolderDied',
+  'tributeCollected',
   'gameWon',
   'gameDraw',
   'totalExtinction',
@@ -94,7 +96,11 @@ String describeEvent(gc.GameEvent e) {
     'capitalLost' =>
       '$realm hat seinen Sitz verloren — ein neuer muss bestimmt werden !',
     'wedding' => '${p['a']} von $realm heiratet ${p['b']}',
-    'marriageRejected' => '$realm: der Heiratsantrag wurde abgelehnt !',
+    'marriageRejected' =>
+      p['reason'] == 'invalid'
+          ? '$realm: die Heirat ist nicht mehr möglich '
+                '(einer der Partner ist inzwischen gebunden) !'
+          : '$realm: der Heiratsantrag wurde abgelehnt !',
     'divorce' =>
       'Die Ehe von ${p['a']} und ${p['b']} wird geschieden (Religion)',
     'birth' => '${p['parent']} von $realm feiert die Geburt von ${p['child']}',
@@ -151,11 +157,18 @@ String describeEvent(gc.GameEvent e) {
       '${p['office'] == 'kaiser' ? 'Kaiserwahl' : 'Sultanswahl'} — die Wahl beginnt',
     'electionTie' => 'Die Wahl endet unentschieden — Stichwahl !',
     'interregnum' => 'Interregnum — der Thron bleibt unbesetzt',
+    'tributeCollected' =>
+      '$realm plündert den '
+          '${p['office'] == 'sultan' ? 'Sultansschatz' : 'Kronschatz'}: '
+          '+${p['amount']} T',
     'newKurfuerst' => '${p['name']} wird Kurfürst',
     'kurfuerstStripped' => '${p['name']} verliert die Kurfürstenwürde',
     'officeHolderDied' => 'Der Amtsinhaber ist verstorben',
     'assassination' =>
       '${p['victim']} von $realm wird hinterhältig ermordet !!!',
+    'assassinationSucceeded' =>
+      'Deine Attentäter haben ${p['victim']} in '
+          '${gc.countryNames[p['targetSlot'] as int? ?? 0]} ermordet',
     'assassinationFailed' =>
       'Anschlag auf ${p['victim']} vereitelt — '
           'Auftraggeber: ${gc.countryNames[p['sponsorSlot'] as int]}',
@@ -432,6 +445,8 @@ const _warDetailTypes = {
 /// of assassins YOU sent, your coronation.
 bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
   'assassination' => e.slot == slot,
+  // The sponsor's own confirmation (owner-visible only anyway).
+  'assassinationSucceeded' => e.slot == slot,
   'assassinationFailed' => e.slot == slot || e.payload['sponsorSlot'] == slot,
   'crowned' => e.slot == slot,
   // Your house inherited whole realms — easy to miss as a feed line.
@@ -504,6 +519,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'dynastyConverted' => (Icons.church, Colors.purple),
   'ottomanInvasion' => (Icons.warning, Colors.red),
   'assassination' => (Icons.dangerous, Colors.red),
+  'assassinationSucceeded' => (Icons.dangerous, Colors.green),
   'assassinationFailed' => (Icons.report, Colors.orange),
   'assassinsDispatched' => (Icons.visibility_off, null),
   'intelGathered' || 'missionFailed' => (Icons.visibility, Colors.indigo),
@@ -553,6 +569,14 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
       Colors.red,
       'Attentat !!!',
       '${p['victim']} wurde von gedungenen Mördern ermordet !',
+    ),
+    'assassinationSucceeded' => (
+      Icons.dangerous,
+      Colors.green,
+      'Attentat erfolgreich !',
+      'Deine Attentäter haben ${p['victim']} in '
+          '${gc.countryNames[p['targetSlot'] as int? ?? 0]} ermordet — '
+          'niemand ahnt, wer den Auftrag gab.',
     ),
     'assassinationFailed' when e.slot == slot => (
       Icons.report,

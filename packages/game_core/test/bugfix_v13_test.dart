@@ -80,7 +80,7 @@ void main() {
           reason: 'the defender is the victim — no popularity hit');
     });
 
-    test('the hits floor at 25 — strife stays food-driven', () {
+    test('levies floor at 25, war declarations at 10 (0.1.13)', () {
       // Already below the floor (food crisis): untouched, never raised.
       state.realm(1).popularity = 12;
       var s = applyAction(
@@ -94,11 +94,22 @@ void main() {
           .state;
       expect(s.realm(1).popularity, 12);
 
+      // War declarations bypass the militarism floor down to 10 — repeated
+      // aggression may cross the §19.1 strife line (user feedback 0.1.13).
       s.realm(1).popularity = 27;
       s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
           .state;
-      expect(s.realm(1).popularity, 25,
-          reason: 'militarism alone never pushes near the strife line');
+      expect(s.realm(1).popularity, 22,
+          reason: 'the war floor (10) sits below the strife line');
+
+      // A single declaration never zeroes the stat: floored at 10.
+      s.realm(1).popularity = 12;
+      s.realm(1).warThisYear = false;
+      s.activeWar = null;
+      s.year++; // a new year, but recentWars persists via warThisYear reset
+      s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
+          .state;
+      expect(s.realm(1).popularity, 10);
     });
 
     test('recruiting costs 1 + men/200 popularity', () {
