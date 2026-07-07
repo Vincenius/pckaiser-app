@@ -295,6 +295,60 @@ void main() {
       expect(stateA['rngSeed'], 0, reason: 'the seed never leaves the server');
     });
 
+    test(
+        'between-turns public events reach the next recap — the filtered '
+        'view keeps absolute event positions', () async {
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b);
+
+      // Simulate an older game: the master log already holds plenty of
+      // foreign upkeep Anna may not see. Removing (instead of redacting)
+      // these used to shift every later filtered index past her baseline
+      // and silently empty the online recap.
+      var record = (await store.match(match.id))!;
+      var state = GameState.fromJson(record.stateJson!);
+      for (var i = 0; i < 200; i++) {
+        state.events.add(GameEvent(
+            year: state.year,
+            slot: 2 + i % 5,
+            type: 'turnUpkeep',
+            visibility: EventVisibility.owner));
+      }
+      record.stateJson = state.toJson();
+      await store.saveMatch(record);
+
+      // Anna ends her turn — the server moves her recap baseline.
+      await service.submit(matchId: match.id, playerId: a.id, endTurn: true);
+
+      // Between her turns the Kaiserwahl concludes (world phase surgery).
+      record = (await store.match(match.id))!;
+      state = GameState.fromJson(record.stateJson!);
+      state.events.add(GameEvent(
+          year: state.year,
+          slot: 3,
+          type: 'crowned',
+          visibility: EventVisibility.public,
+          payload: {'office': 'kaiser', 'name': 'Otto'}));
+      record.stateJson = state.toJson();
+      await store.saveMatch(record);
+
+      // Anna's next view: the client's recap computation must surface the
+      // coronation (this is the reported bug — "keine Info nach der
+      // Kaiserwahl" in an online game).
+      final view = await service.view(match.id, a.id);
+      final filtered =
+          GameState.fromJson((view['state'] as Map).cast<String, dynamic>());
+      final baseline = filtered.recapBaselines[1] ?? 0;
+      final from = (baseline - filtered.prunedEventCount)
+          .clamp(0, filtered.events.length);
+      final recap = [
+        for (var i = from; i < filtered.events.length; i++)
+          if (filtered.events[i].visibleTo(1)) filtered.events[i],
+      ];
+      expect(recap.map((e) => e.type), contains('crowned'));
+      expect(recap.map((e) => e.type), isNot(contains('redacted')));
+    });
+
     test('a full AI-decided match finishes with a winner or defeat', () async {
       final a = await service.registerPlayer(displayName: 'Solo');
       final match = await createStarted(

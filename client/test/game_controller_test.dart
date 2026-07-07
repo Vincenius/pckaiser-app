@@ -268,6 +268,36 @@ void main() {
     expect(controller.handoffToSlot, 1);
   });
 
+  test(
+    'gameOver sees the game-end event behind redacted placeholders',
+    () async {
+      // An online (filtered) state redacts hidden events IN PLACE, so the
+      // log's last entry may be a placeholder — the game-end check must
+      // look past it.
+      final controller = await twoPlayerGame();
+      controller.confirmHandoff();
+      expect(controller.gameOver, isFalse);
+      controller.state.events.add(
+        GameEvent(
+          year: 1000,
+          slot: 1,
+          type: 'gameWon',
+          visibility: EventVisibility.public,
+        ),
+      );
+      controller.state.events.add(
+        GameEvent(
+          year: 1000,
+          slot: 0,
+          type: 'redacted',
+          visibility: EventVisibility.owner,
+        ),
+      );
+      expect(controller.gameOver, isTrue);
+      expect(controller.gameEndEvent!.type, 'gameWon');
+    },
+  );
+
   test('a full round returns to player 1 and the year advances', () async {
     final controller = await twoPlayerGame();
     controller.confirmHandoff();

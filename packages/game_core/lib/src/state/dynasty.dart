@@ -17,7 +17,9 @@ class Dynasty {
         status: DynastyStatus.values.byName(json['status'] as String),
         humanPlayer: json['humanPlayer'] as int?,
         religion: json['religion'] as int,
-        memberIds: (json['memberIds'] as List?)?.cast<int>(),
+        // toList(): `cast` alone aliases the source list (toJson emits the
+        // live list) — a fromJson(toJson()) clone would share the members.
+        memberIds: (json['memberIds'] as List?)?.cast<int>().toList(),
       );
 
   /// Slot index 1–30.

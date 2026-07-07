@@ -152,6 +152,9 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
   Future<void> _maybePromptDecisions(Map<String, dynamic> view) async {
     if (_playing || _promptingDecisions) return;
     if (view['status'] != 'active' || view['your_turn'] == true) return;
+    // An outdated build may not submit anything (the server would 426 the
+    // answer) — the update banner explains the situation instead.
+    if (view['update_required'] == true) return;
     final stateJson = view['state'];
     if (stateJson == null) return;
     final session = OnlineGameSession(
@@ -169,6 +172,16 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     try {
       final controller = GameController(session);
       if (mounted) await promptDecisionsFor(context, controller, mySlot);
+    } on gc.ActionException catch (e) {
+      // The server rejected the answer (decision already resolved, turn
+      // advanced, transport failure). Without feedback the identical
+      // dialog re-pops on every 10 s poll and the answer silently
+      // vanishes; the re-fetch below drops a stale decision for good.
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       _promptingDecisions = false;
     }
@@ -465,25 +478,26 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               child: Text('Zug spielen'),
             ),
           ),
-        // Off-turn: let the seat study the board (read-only) while waiting
-        // for the others. The server already ships this seat's filtered
-        // state, so no extra request is needed.
+        // Off-turn: let the seat study the board and their own realm(s)
+        // (read-only, Info menu included) while waiting for the others. The
+        // server already ships this seat's filtered state, so no extra
+        // request is needed.
         if (status == 'active' && !yourTurn && view['state'] != null)
           OutlinedButton.icon(
             onPressed: () => _viewMap(view),
             icon: const Icon(Icons.map_outlined),
             label: const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Karte ansehen'),
+              child: Text('Reich & Karte ansehen'),
             ),
           ),
       ],
     );
   }
 
-  /// Opens the read-only map for this seat while another player is at the
-  /// turn. Pauses polling like [_play] so a background refresh can't pop a
-  /// drama dialog over the viewer; refreshes again on return.
+  /// Opens the read-only realm/map view for this seat while another player
+  /// is at the turn. Pauses polling like [_play] so a background refresh
+  /// can't pop a drama dialog over the viewer; refreshes again on return.
   Future<void> _viewMap(Map<String, dynamic> view) async {
     final session = OnlineGameSession(
       api: widget.service.api,
@@ -491,11 +505,25 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       playerId: widget.service.playerId!,
       view: view,
     );
+    // Who the match is waiting for, mirrored from the status card above.
+    String? waitingFor;
+    final awaitedSlot = view['awaited_slot'] as int?;
+    for (final p in (view['players'] as List).cast<Map>()) {
+      if (p['player_id'] == view['awaited_player_id']) {
+        final name = p['display_name'] as String?;
+        if (name != null && awaitedSlot != null) {
+          waitingFor = '$name (${gc.countryNames[awaitedSlot]}) ist am Zug …';
+        }
+      }
+    }
     _playing = true;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            MapViewerScreen(state: session.state, focusSlot: session.yourSlot),
+        builder: (_) => MapViewerScreen(
+          session: session,
+          viewerSlot: session.yourSlot,
+          waitingFor: waitingFor,
+        ),
       ),
     );
     _playing = false;

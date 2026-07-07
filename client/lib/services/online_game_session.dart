@@ -77,7 +77,12 @@ class OnlineGameSession implements GameSession {
         action: SettlementAnnexMany(slot: slot, tiles: tiles).toJson(),
       );
     } on ActionException {
-      await refresh();
+      try {
+        await refresh();
+      } on ApiError {
+        // Offline: the resync itself failed too. The rethrow below already
+        // tells the player; the next successful poll resyncs the board.
+      }
       rethrow;
     }
   }
@@ -134,13 +139,13 @@ class OnlineGameSession implements GameSession {
       return view;
     } on ApiError catch (e) {
       // 400/403: engine validation / wrong turn. 426: this build is out of
-      // date for the match (a newer app version changed the rules). All
-      // carry a player-facing German message — surface it like any other
-      // rejected action so the existing UI shows it.
-      if (e.statusCode == 400 || e.statusCode == 403 || e.statusCode == 426) {
-        throw ActionException(e.message);
-      }
-      rethrow;
+      // date for the match (a newer app version changed the rules). And
+      // statusCode 0 / 5xx: transport failure — the action did NOT happen.
+      // ALL carry a player-facing German message; converting them here
+      // lets every in-game handler (menus, war panel, tile sheet) show it
+      // like any rejected action instead of dropping an uncaught ApiError
+      // (an offline "Zug beenden" used to silently look like a no-op).
+      throw ActionException(e.message);
     }
   }
 

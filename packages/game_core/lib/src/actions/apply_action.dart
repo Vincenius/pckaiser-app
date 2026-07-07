@@ -628,27 +628,33 @@ List<GameEvent> _collectTribute(
   if (!isKaiser && !isSultan) {
     throw ActionException('Nur der Kaiser oder Sultan darf das !');
   }
-  final amount = isKaiser ? state.kaiserPot : state.sultanPot;
-  if (amount <= 0) {
-    throw ActionException('Die Staatskasse ist leer !');
-  }
-  realm.treasury += amount;
-  if (isKaiser) {
-    state.kaiserPot = 0;
-  } else {
-    state.sultanPot = 0;
-  }
-  return [
-    GameEvent(
+  // Every pot the ruler is entitled to: a Kaiser whose dynasty converted
+  // to Islam keeps the crown and may win the Sultan election too — a
+  // dual-office holder must be able to empty both (picking only the
+  // Kaiser pot stranded the Sultan pot forever and crashed the AI's
+  // turn-start collection when the Kaiser pot happened to be empty).
+  final events = <GameEvent>[];
+  void collect(String office, int amount, void Function() clear) {
+    if (amount <= 0) return;
+    realm.treasury += amount;
+    clear();
+    events.add(GameEvent(
       year: state.year,
       slot: realm.slot,
       type: 'tributeCollected',
       // The pot totals are public information (visibleStateFor keeps
       // them), so the collection is too.
       visibility: EventVisibility.public,
-      payload: {'amount': amount, 'office': isKaiser ? 'kaiser' : 'sultan'},
-    ),
-  ];
+      payload: {'amount': amount, 'office': office},
+    ));
+  }
+
+  if (isKaiser) collect('kaiser', state.kaiserPot, () => state.kaiserPot = 0);
+  if (isSultan) collect('sultan', state.sultanPot, () => state.sultanPot = 0);
+  if (events.isEmpty) {
+    throw ActionException('Die Staatskasse ist leer !');
+  }
+  return events;
 }
 
 /// "H(e)irat vorschlagen" (§14.1): validates eligibility, then either the
@@ -1026,11 +1032,11 @@ List<GameEvent> _changeReligion(
   }
 
   if (religion == Religion.moslemisch) {
-    state.kurfuerstenIds.remove(realm.rulerId);
     // The whole dynasty converts (religion is a dynasty property), so
     // every member's Kurfürst seat is forfeit — exactly as in the
     // coerced conversion (§12.1); seat eligibility (§17.2) keys on the
-    // member's home-dynasty religion.
+    // member's HOME-dynasty religion. A cross-dynasty ruler (§15.4) whose
+    // own house did not convert keeps his seat — no blanket rulerId strip.
     state.kurfuerstenIds
         .removeWhere((id) => state.persons[id]?.dynasty == realm.slot);
   }

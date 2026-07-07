@@ -359,20 +359,24 @@ void _crown(
 /// Must run while the deceased's realms still point at them.
 void closeChronicleIfOfficeHolder(
     GameState state, Person deceased, Rng rng, List<GameEvent> events) {
-  final List<ChronicleRecord> chronicle;
-  final Office office;
+  // A conversion in office keeps the crown, so one person can hold BOTH
+  // offices (Kaiser converts to Islam, wins the Sultan election) — clear
+  // and chronicle each, or the second office would point at a dead ruler
+  // forever and its election could never re-trigger.
   if (state.kaiserId == deceased.id) {
-    chronicle = state.kaiserChronicle;
-    office = Office.kaiser;
     state.kaiserId = null;
-  } else if (state.sultanId == deceased.id) {
-    chronicle = state.sultanChronicle;
-    office = Office.sultan;
-    state.sultanId = null;
-  } else {
-    return;
+    _closeChronicle(
+        state, deceased, Office.kaiser, state.kaiserChronicle, rng, events);
   }
+  if (state.sultanId == deceased.id) {
+    state.sultanId = null;
+    _closeChronicle(
+        state, deceased, Office.sultan, state.sultanChronicle, rng, events);
+  }
+}
 
+void _closeChronicle(GameState state, Person deceased, Office office,
+    List<ChronicleRecord> chronicle, Rng rng, List<GameEvent> events) {
   // Match the open record by person id (names from the tables repeat);
   // fall back to name matching only for pre-personId saves.
   var record = chronicle.lastWhere(

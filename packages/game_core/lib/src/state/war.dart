@@ -71,8 +71,11 @@ class ActiveWar {
             ],
         },
         movesLeft: {
+          // toList(): `cast` alone aliases the source lists (toJson emits
+          // the live lists) — a clone's war round would drain the
+          // original's move budgets.
           for (final e in ((json['movesLeft'] as Map?) ?? {}).entries)
-            int.parse(e.key as String): (e.value as List).cast<int>(),
+            int.parse(e.key as String): (e.value as List).cast<int>().toList(),
         },
         winnerSlot: json['winnerSlot'] as int?,
         remainingClaim: json['remainingClaim'] as int? ?? 0,

@@ -14,7 +14,7 @@ Always **30 realms**, up to **16** human players, rest AI. Goal: last dynasty st
 **Local (V1, primary):** 1–16 humans hot-seat on one device, AI plays the rest.
 Multiple named game slots, each auto-saved after every completed turn (no manual save). State stored locally as JSON.
 
-**Online (V2, designed now, built later):** async multiplayer; the server simulates AI realms and world events between human turns. Push on your turn. Host-configurable turn timer (off/12h/24h/48h/7d) — expired turns/decisions auto-resolve (turn → end with no actions; decision → its AI/default fallback), reminder push at ~80%. State in server JSONB; client read-only outside its turn. Same domain model + logic as local. Identity: device UUID, no auth.
+**Online (V2, designed now, built later):** async multiplayer; the server simulates AI realms and world events between human turns. Push on your turn. Host-configurable turn timer (off/12h/24h/48h/7d) — expired turns/decisions auto-resolve (turn → end with no actions; decision → its AI/default fallback), reminder push at ~80%. State in server JSONB; client read-only outside its turn — the waiting view offers "Reich & Karte ansehen": map plus Info menu (Mein Reich, Ereignisse, Siedlungen, Dynastien, Kaiserchronik) over all realms the player holds (realm switcher), actions disabled. Same domain model + logic as local. Identity: device UUID, no auth.
 
 ## Input & UX
 

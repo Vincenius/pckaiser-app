@@ -74,10 +74,15 @@ class MatchService {
     // All players share one document; serialize writes so concurrent
     // registrations / token refreshes don't clobber each other.
     return _locked(_playersKey, () async {
+      // Re-registration is the client's rename upsert and passes no
+      // token — keep the stored record's token (and original createdAt)
+      // or the player silently stops receiving turn pushes.
+      final existing = id == null ? null : await _store.player(id);
       final player = PlayerRecord(
         id: id ?? uuidV4(),
         displayName: displayName.trim(),
-        fcmToken: fcmToken,
+        fcmToken: fcmToken ?? existing?.fcmToken,
+        createdAt: existing?.createdAt,
       );
       await _store.savePlayer(player);
       return player;
@@ -333,9 +338,20 @@ class MatchService {
   }
 
   void _seat(MatchRecord match, String playerId, Map<String, dynamic> setup) {
-    final founderName = (setup['founder_name'] as String?)?.trim() ?? '';
-    final dorfName = (setup['dorf_name'] as String?)?.trim() ?? '';
-    final gender = setup['gender'] as int? ?? 0;
+    // The setup map comes straight from the request body — a wrong field
+    // TYPE is a client error (400), not a server 500.
+    final String founderName;
+    final String dorfName;
+    final int gender;
+    final int? requestedSlot;
+    try {
+      founderName = (setup['founder_name'] as String?)?.trim() ?? '';
+      dorfName = (setup['dorf_name'] as String?)?.trim() ?? '';
+      gender = setup['gender'] as int? ?? 0;
+      requestedSlot = setup['country_slot'] as int?;
+    } on TypeError {
+      throw ApiException(400, 'invalid field type in setup');
+    }
     if (founderName.isEmpty || dorfName.isEmpty) {
       throw ApiException(400, 'founder_name and dorf_name are required');
     }
@@ -343,7 +359,7 @@ class MatchService {
       throw ApiException(400, 'gender must be 0 or 1');
     }
     final taken = {for (final p in match.players) p.slot};
-    var slot = setup['country_slot'] as int?;
+    var slot = requestedSlot;
     if (slot != null) {
       if (slot < 1 || slot > World.realmCount) {
         throw ApiException(400, 'country_slot must be 1–30');
@@ -951,19 +967,27 @@ class MatchService {
     // turn". null turnTimeoutHours ⇒ no deadline (match waits; the
     // preparation then starts via the early-start rules alone).
     final prep = state.activeWar?.phase == WarPhase.preparation;
-    final Duration? timeout;
-    if (prep) {
-      timeout = turnTimeout == null
+    // The preparation window is ONE fixed deadline, armed when the war is
+    // declared. Later commits during the same preparation (the warPlan
+    // answers themselves, out-of-turn decisions) must NOT re-arm it —
+    // every answer would otherwise push the "fair start" of a both-live
+    // duel another half turn timer into the future.
+    final wasPrep = previous?.activeWar?.phase == WarPhase.preparation;
+    if (!(prep && wasPrep)) {
+      final Duration? timeout;
+      if (prep) {
+        timeout = turnTimeout == null
+            ? null
+            : Duration(seconds: turnTimeout.inSeconds ~/ 2);
+      } else if (state.activeWar != null && _warIsHumanVsHuman(state)) {
+        timeout = Duration(seconds: match.settings.warRoundTimeoutSeconds);
+      } else {
+        timeout = turnTimeout;
+      }
+      match.turnDeadline = timeout == null || (awaited == null && !prep)
           ? null
-          : Duration(seconds: turnTimeout.inSeconds ~/ 2);
-    } else if (state.activeWar != null && _warIsHumanVsHuman(state)) {
-      timeout = Duration(seconds: match.settings.warRoundTimeoutSeconds);
-    } else {
-      timeout = turnTimeout;
+          : _clock().add(timeout);
     }
-    match.turnDeadline = timeout == null || (awaited == null && !prep)
-        ? null
-        : _clock().add(timeout);
 
     if (!notify || awaited == null) return;
     if (state.activeWar != null && !hadWar) {
