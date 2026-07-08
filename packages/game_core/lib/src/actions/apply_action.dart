@@ -828,6 +828,14 @@ List<GameEvent> _resolveDecision(
       }
       if (choice['auto'] != false) {
         war.autoSlots.add(decision.decidingSlot);
+      } else {
+        // `[DESIGNED 2026-07-08]` Online duel scheduling: a LIVE side may
+        // propose start times ('slots': epoch ms UTC on full hours; the
+        // sentinel 0 = "as soon as both have answered").
+        final slots = (choice['slots'] as List?)?.cast<int>();
+        if (slots != null && slots.isNotEmpty) {
+          war.planSlots[decision.decidingSlot] = List.of(slots)..sort();
+        }
       }
       final stance = choice['stance'];
       if (stance == 'hold' || stance == 'attack') {
@@ -835,6 +843,22 @@ List<GameEvent> _resolveDecision(
           troop.stance =
               stance == 'hold' ? TroopStance.holdPosition : TroopStance.attack;
         }
+      }
+      // Once every side has answered and BOTH play live, the earliest
+      // common proposal becomes the agreed start. No overlap (or no
+      // proposals) leaves it null — the caller's fallback deadline (half
+      // the turn timer online) governs, exactly as without scheduling. An
+      // agreed time may lie LATER than that fallback: both sides chose it.
+      if (!state.pendingDecisions.any((d) => d.type == 'warPlan') &&
+          war_rules.warSideIsHuman(state, war, war.attackerSlot) &&
+          war_rules.warSideIsHuman(state, war, war.defenderSlot)) {
+        final common = (war.planSlots[war.attackerSlot] ?? const <int>[])
+            .toSet()
+            .intersection(
+                (war.planSlots[war.defenderSlot] ?? const <int>[]).toSet())
+            .toList()
+          ..sort();
+        war.scheduledStartMs = common.isEmpty ? null : common.first;
       }
 
     case 'warDefense':

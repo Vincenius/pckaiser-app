@@ -532,6 +532,14 @@ class MatchService {
         // One corrupt/legacy match document must not 500 the whole list —
         // the match still shows up, just without the "whose turn" line.
       }
+      // War-start info for the lobby line: while a both-live duel waits for
+      // its start, NOBODY is awaited — without these fields the list could
+      // only say a generic "waiting". Read straight off the state JSON (no
+      // full GameState load for a list line).
+      final warJson = m.stateJson?['activeWar'] as Map?;
+      final warPreparing =
+          m.status == MatchStatus.active && warJson?['phase'] == 'preparation';
+      final scheduledMs = warJson?['scheduledStartMs'] as int?;
       result.add({
         'id': m.id,
         'status': m.status.name,
@@ -549,6 +557,14 @@ class MatchService {
             ? null
             : (await _store.player(awaited))?.displayName ??
                 m.playerById(awaited)?.founderName,
+        // A war preparation is running (the duel start may be what the
+        // match is waiting for) — and the agreed start, if the sides
+        // found a common warPlan slot.
+        'war_preparing': warPreparing,
+        'war_scheduled_at': warPreparing && scheduledMs != null && scheduledMs > 0
+            ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
+                .toIso8601String()
+            : null,
         'updated_at': m.updatedAt.toIso8601String(),
       });
     }
@@ -678,6 +694,12 @@ class MatchService {
         }
       } else {
         if (awaited != playerId) throw ApiException(403, 'not your turn');
+        // No-show bookkeeping (online duel scheduling): ANY interactive
+        // input during the war rounds marks this side as present
+        // (`war.actedSlots`). A side that never acted before its round
+        // clock expires is handed to the autopilot by the sweep.
+        final actsInWarRound = state.activeWar?.phase == WarPhase.rounds &&
+            state.activeWar!.isParticipant(action.slot);
         // Beyond controlling the realm, the action must act for the realm
         // whose input is actually awaited (the running turn, or the war's
         // acting side). A seat holding several realms may otherwise act for
@@ -712,6 +734,7 @@ class MatchService {
         } else {
           state = _apply(state, action, emitted);
         }
+        if (actsInWarRound) state.activeWar?.actedSlots.add(action.slot);
         state = _resumeAfterWarIfOver(state, emitted);
       }
     } else {
@@ -768,7 +791,53 @@ class MatchService {
       });
       if (didSweep) swept++;
     }
+    await _sendWarStartReminders(now);
     return swept;
+  }
+
+  /// ~15 minutes before an AGREED duel start, nudge both live combatants
+  /// once ("dein Krieg beginnt in Kürze"). Only for a start time both
+  /// sides explicitly chose (warPlan slot matching) — the half-turn
+  /// fallback gets no reminder, exactly as before scheduling.
+  /// `match.warReminderFor` dedups per start time across sweep runs.
+  Future<void> _sendWarStartReminders(DateTime now) async {
+    const lead = Duration(minutes: 15);
+    // Reuses the expiry scan with a 15-min lookahead: "deadline before
+    // now+15min but not yet expired" is exactly the reminder window.
+    for (final candidate in await _store.expiredMatches(now.add(lead))) {
+      if (candidate.turnDeadline == null ||
+          candidate.turnDeadline!.isBefore(now)) {
+        continue; // actually expired — sweepExpired handles it
+      }
+      await _locked(candidate.id, () async {
+        final match = await _store.match(candidate.id);
+        if (match == null ||
+            match.status != MatchStatus.active ||
+            match.turnDeadline == null ||
+            match.turnDeadline!.isBefore(now) ||
+            match.warReminderFor == match.turnDeadline) {
+          return;
+        }
+        final state = _load(match);
+        final war = state.activeWar;
+        final scheduled = war?.scheduledStartMs;
+        if (war == null ||
+            war.phase != WarPhase.preparation ||
+            scheduled == null ||
+            scheduled <= 0) {
+          return;
+        }
+        match.warReminderFor = match.turnDeadline;
+        await _store.saveMatch(match);
+        for (final slot in [war.attackerSlot, war.defenderSlot]) {
+          if (war.autoSlots.contains(slot)) continue;
+          final id = _playerForSlot(match, state, slot);
+          if (id == null) continue;
+          final p = await _store.player(id);
+          if (p != null) await _push.warStartSoon(p, match);
+        }
+      });
+    }
   }
 
   Future<void> _sweepMatch(MatchRecord match) async {
@@ -791,6 +860,18 @@ class MatchService {
       // war an idle attacker thereby hands over to the defender. An
       // idle winner's open claim settlement settles like the AI's.
       final idleSlot = warActingSlot(state);
+      // No-show rule (online duel scheduling): a duelist who NEVER acted
+      // in this war and lets their round clock expire is handed to the
+      // stance autopilot for the REST of the war — an absent player would
+      // otherwise drag every remaining round out by one short clock each.
+      // Applied AFTER this round's classic fallback so the handover
+      // semantics of the current round stay intact; only in a live
+      // human-vs-human duel (a human fighting an AI keeps the full turn
+      // clock per round, as before).
+      final noShow = idleSlot != null &&
+          _warIsHumanVsHuman(state) &&
+          state.activeWar!.phase == WarPhase.rounds &&
+          !state.activeWar!.actedSlots.contains(idleSlot);
       state = _mutate(state, (s, rng, ev) {
         final war = s.activeWar;
         if (war == null) return;
@@ -802,6 +883,7 @@ class MatchService {
         if (s.activeWar != null) {
           endWarRoundFor(s, idleSlot ?? war.attackerSlot, rng, ev);
         }
+        if (noShow) s.activeWar?.autoSlots.add(idleSlot);
       }, ignored);
       state = _resumeAfterWarIfOver(state, ignored);
     } else {
@@ -967,13 +1049,22 @@ class MatchService {
     // turn". null turnTimeoutHours ⇒ no deadline (match waits; the
     // preparation then starts via the early-start rules alone).
     final prep = state.activeWar?.phase == WarPhase.preparation;
+    final scheduledMs = state.activeWar?.scheduledStartMs;
     // The preparation window is ONE fixed deadline, armed when the war is
     // declared. Later commits during the same preparation (the warPlan
     // answers themselves, out-of-turn decisions) must NOT re-arm it —
     // every answer would otherwise push the "fair start" of a both-live
     // duel another half turn timer into the future.
     final wasPrep = previous?.activeWar?.phase == WarPhase.preparation;
-    if (!(prep && wasPrep)) {
+    if (prep && scheduledMs != null && scheduledMs > 0) {
+      // The sides AGREED on a duel start (warPlan slot matching): the
+      // deadline IS the appointment. It may lie later than the half-turn
+      // fallback (both sides chose it) and also works in a match without
+      // a turn timer. Idempotent across commits — re-arming to the same
+      // instant never moves the start.
+      match.turnDeadline =
+          DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true);
+    } else if (!(prep && wasPrep)) {
       final Duration? timeout;
       if (prep) {
         timeout = turnTimeout == null
@@ -987,6 +1078,29 @@ class MatchService {
       match.turnDeadline = timeout == null || (awaited == null && !prep)
           ? null
           : _clock().add(timeout);
+    }
+
+    // Duel scheduling: the moment BOTH warPlan answers are in while the
+    // preparation still waits (both live), tell both sides when the duel
+    // starts — their agreed slot, or the fallback deadline when no
+    // proposals overlapped. Sent before the awaited-null return below:
+    // during this wait nobody is awaited.
+    if (notify &&
+        prep &&
+        previous != null &&
+        previous.pendingDecisions.any((d) => d.type == 'warPlan') &&
+        !state.pendingDecisions.any((d) => d.type == 'warPlan') &&
+        match.turnDeadline != null) {
+      final war = state.activeWar!;
+      for (final slot in [war.attackerSlot, war.defenderSlot]) {
+        final id = _playerForSlot(match, state, slot);
+        if (id == null) continue;
+        final p = await _store.player(id);
+        if (p != null) {
+          await _push.warStartFixed(p, match, match.turnDeadline!,
+              agreed: scheduledMs != null && scheduledMs > 0);
+        }
+      }
     }
 
     if (!notify || awaited == null) return;

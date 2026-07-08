@@ -75,6 +75,9 @@ class LocalGameSession implements GameSession {
   bool get isOnline => false;
 
   @override
+  int? get turnTimeoutHours => null;
+
+  @override
   bool get canUndo => true;
 
   @override

@@ -19,7 +19,9 @@ class OnlineGameSession implements GameSession {
          (view['state'] as Map).cast<String, dynamic>(),
        ),
        _yourTurn = view['your_turn'] == true,
-       yourSlot = view['your_slot'] as int;
+       yourSlot = view['your_slot'] as int,
+       turnTimeoutHours =
+           (view['settings'] as Map?)?['turn_timeout_hours'] as int?;
 
   final ApiClient api;
   final String matchId;
@@ -27,6 +29,11 @@ class OnlineGameSession implements GameSession {
 
   /// The seat's realm slot (1–30).
   final int yourSlot;
+
+  /// Host setting `turn_timeout_hours` (null = no turn timer) — fixed at
+  /// match start, so reading it once from the join view suffices.
+  @override
+  final int? turnTimeoutHours;
 
   GameState _state;
   bool _yourTurn;

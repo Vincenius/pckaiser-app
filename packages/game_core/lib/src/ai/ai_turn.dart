@@ -783,9 +783,11 @@ void _fastForwardAiWar(GameState state, Rng rng, List<GameEvent> events) {
 ///  - all answered, NOBODY plays live → begin and fast-forward the whole
 ///    war like an AI-vs-AI war (both sides on the stance autopilot),
 ///  - all answered, BOTH play live → start only when [waitWhenAllManual]
-///    is false (hot-seat / no online timer: both are present) or on
-///    [force] (the online deadline keeps the duel start fair — nobody
-///    misses it by seconds).
+///    is false (hot-seat / no online timer: both are present), when both
+///    agreed on the "immediately" slot (`war.scheduledStartMs == 0`, the
+///    online duel scheduling), or on [force] (the online deadline — the
+///    agreed start time if the sides found a common slot, otherwise half
+///    the turn timer — keeps the duel start fair).
 /// [force] (deadline expiry) also defaults every unanswered side to the
 /// autopilot — an absent player is protected, never steamrolled.
 void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
@@ -804,7 +806,12 @@ void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
     return;
   }
   final liveSides = sides.where((s) => warSideIsHuman(state, war, s)).length;
-  if (!force && waitWhenAllManual && liveSides == 2) return;
+  if (!force &&
+      waitWhenAllManual &&
+      liveSides == 2 &&
+      war.scheduledStartMs != 0) {
+    return;
+  }
   beginWarRounds(state, rng);
   if (liveSides == 0) _fastForwardAiWar(state, rng, events);
 }

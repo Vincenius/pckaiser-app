@@ -214,6 +214,10 @@ void main() {
     }
     war.movesLeft[2] = [3, 3];
     final guard = state.realm(2).troops.first;
+    // Clear the march path of defenders: this test pins the guard/march
+    // split, not combat outcomes — a marcher charging a fortified equal
+    // defender twice can (realistically) be annihilated en route.
+    state.realm(1).troops.clear();
 
     runAiWarMovement(state, 2, Rng(state.rngSeed), <GameEvent>[]);
 

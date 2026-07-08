@@ -180,8 +180,8 @@ Future<void> _promptDecision(
         'Willst du deine Truppen selbst befehligen?\n\n'
         'Bei „Nein" übernimmt der Computer diesen Krieg: deine Truppen '
         'folgen ihrer Haltung. Der Krieg beginnt, sobald beide Seiten '
-        'gewählt haben — wollen beide selbst steuern, online erst nach '
-        'Ablauf der Vorbereitungsfrist.',
+        'gewählt haben — wollen beide selbst steuern, online zum '
+        'vereinbarten Zeitpunkt oder nach Ablauf der Vorbereitungsfrist.',
       );
       String? stance;
       if (context.mounted) {
@@ -207,9 +207,17 @@ Future<void> _promptDecision(
           ),
         );
       }
+      // Online duel scheduling: a live commander proposes start times.
+      // Local hot-seat skips this — both players sit at the device, the
+      // war starts as soon as both have chosen.
+      List<int>? slots;
+      if (live && controller.isOnline && context.mounted) {
+        slots = await _askWarStartSlots(context, controller.turnTimeoutHours);
+      }
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'auto': !live,
         if (stance == 'hold' || stance == 'attack') 'stance': stance,
+        if (slots != null && slots.isNotEmpty) 'slots': slots,
       });
 
     case 'warDefense':
@@ -379,6 +387,96 @@ Future<void> _promptDecision(
         const {},
       );
   }
+}
+
+const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+/// A duel start instant (epoch ms UTC) in the device's local time —
+/// "Heute 18:00", "Morgen 03:00", else "Mi 14:00".
+String formatWarStartTime(int epochMs) {
+  final local = DateTime.fromMillisecondsSinceEpoch(epochMs, isUtc: true)
+      .toLocal();
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(local.year, local.month, local.day);
+  final dayLabel = day == today
+      ? 'Heute'
+      : day == today.add(const Duration(days: 1))
+          ? 'Morgen'
+          : _weekdays[local.weekday - 1];
+  final hh = local.hour.toString().padLeft(2, '0');
+  final mm = local.minute.toString().padLeft(2, '0');
+  return '$dayLabel $hh:$mm Uhr';
+}
+
+/// Online duel scheduling: the live commander ticks the times that suit
+/// them — "sofort" (the 0 sentinel) plus the next full hours, hourly over
+/// the turn timer window (capped at 24 entries; no timer offers 24 h).
+/// Full UTC hours, so both players' proposals land on identical instants
+/// and can match; shown in local time. Returns epoch ms (0 = sofort);
+/// an empty selection proposes nothing — the fallback deadline governs.
+Future<List<int>> _askWarStartSlots(
+  BuildContext context,
+  int? turnTimeoutHours,
+) async {
+  final now = DateTime.now().toUtc();
+  final firstHour = DateTime.utc(now.year, now.month, now.day, now.hour)
+      .add(const Duration(hours: 1));
+  final count =
+      turnTimeoutHours == null ? 24 : turnTimeoutHours.clamp(1, 24);
+  final offered = [
+    0,
+    for (var i = 0; i < count; i++)
+      firstHour.add(Duration(hours: i)).millisecondsSinceEpoch,
+  ];
+  final picked = <int>{};
+  final result = await showDialog<List<int>>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Wann soll der Krieg beginnen?'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Text(
+                  'Wähle die Zeitpunkte, die dir passen. Passt einer auch '
+                  'deinem Gegner, beginnt der Krieg zum frühesten '
+                  'gemeinsamen Zeitpunkt — sonst nach Ablauf der '
+                  'Vorbereitungsfrist. Ohne Auswahl gilt die Frist.',
+                ),
+              ),
+              for (final ms in offered)
+                CheckboxListTile(
+                  dense: true,
+                  value: picked.contains(ms),
+                  title: Text(
+                    ms == 0
+                        ? 'Sofort — sobald beide gewählt haben'
+                        : formatWarStartTime(ms),
+                  ),
+                  onChanged: (v) => setState(
+                    () => v == true ? picked.add(ms) : picked.remove(ms),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(context, picked.toList()..sort()),
+            child: Text(picked.isEmpty ? 'Ohne Terminvorschlag' : 'Bestätigen'),
+          ),
+        ],
+      ),
+    ),
+  );
+  return result ?? const [];
 }
 
 Future<bool> _yesNo(BuildContext context, String title, String message) async {

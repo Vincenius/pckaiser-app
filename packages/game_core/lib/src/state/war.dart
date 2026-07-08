@@ -48,9 +48,14 @@ class ActiveWar {
     this.attackerTilesTaken = 0,
     this.defenderTilesTaken = 0,
     Set<int>? autoSlots,
+    Map<int, List<int>>? planSlots,
+    this.scheduledStartMs,
+    Set<int>? actedSlots,
   })  : snapshots = snapshots ?? {},
         movesLeft = movesLeft ?? {},
-        autoSlots = autoSlots ?? {};
+        autoSlots = autoSlots ?? {},
+        planSlots = planSlots ?? {},
+        actedSlots = actedSlots ?? {};
 
   factory ActiveWar.fromJson(Map<String, dynamic> json) => ActiveWar(
         attackerSlot: json['attackerSlot'] as int,
@@ -94,6 +99,13 @@ class ActiveWar {
         defenderTilesTaken: json['defenderTilesTaken'] as int? ?? 0,
         // Additive field — older saves have no delegated war sides.
         autoSlots: (json['autoSlots'] as List?)?.cast<int>().toSet(),
+        // Additive fields — pre-scheduling saves have no start proposals.
+        planSlots: {
+          for (final e in ((json['planSlots'] as Map?) ?? {}).entries)
+            int.parse(e.key as String): (e.value as List).cast<int>().toList(),
+        },
+        scheduledStartMs: json['scheduledStartMs'] as int?,
+        actedSlots: (json['actedSlots'] as List?)?.cast<int>().toSet(),
       );
 
   final int attackerSlot;
@@ -149,6 +161,25 @@ class ActiveWar {
   /// decision): their rounds are played by the stance autopilot like an
   /// AI side's, and their input is never awaited. Cleared with the war.
   final Set<int> autoSlots;
+
+  /// Proposed duel start times per LIVE side (`warPlan` answer, online
+  /// scheduling): epoch milliseconds UTC on full hours; the sentinel 0
+  /// means "as soon as both have answered". Used only during the
+  /// preparation phase of a both-live war.
+  final Map<int, List<int>> planSlots;
+
+  /// The agreed duel start (earliest common `planSlots` entry) once every
+  /// side has answered: epoch milliseconds UTC, 0 = immediately. Null =
+  /// no overlap (or no proposals) — the online fallback deadline (half
+  /// the turn timer) governs the start, exactly as before scheduling.
+  int? scheduledStartMs;
+
+  /// War sides that have given at least one interactive input during the
+  /// ROUNDS phase (set by the server). A side whose round clock expires
+  /// while it never acted at all is handed to the stance autopilot for
+  /// the rest of the war (online no-show rule) instead of idling through
+  /// every round one short clock at a time.
+  final Set<int> actedSlots;
 
   /// The tally as a war-ending event payload fragment.
   Map<String, dynamic> summary() => {
@@ -219,6 +250,11 @@ class ActiveWar {
         attackerTilesTaken: attackerTilesTaken,
         defenderTilesTaken: defenderTilesTaken,
         autoSlots: Set.of(autoSlots),
+        planSlots: {
+          for (final e in planSlots.entries) e.key: List.of(e.value),
+        },
+        scheduledStartMs: scheduledStartMs,
+        actedSlots: Set.of(actedSlots),
       );
 
   Map<String, dynamic> toJson() => {
@@ -249,5 +285,10 @@ class ActiveWar {
         'attackerTilesTaken': attackerTilesTaken,
         'defenderTilesTaken': defenderTilesTaken,
         'autoSlots': autoSlots.toList(),
+        'planSlots': {
+          for (final e in planSlots.entries) '${e.key}': e.value,
+        },
+        'scheduledStartMs': scheduledStartMs,
+        'actedSlots': actedSlots.toList(),
       };
 }

@@ -9,7 +9,7 @@ import '../services/api_client.dart';
 import '../services/online_game_session.dart';
 import '../services/online_service.dart';
 import '../state/game_controller.dart';
-import '../widgets/decisions.dart' show promptDecisionsFor;
+import '../widgets/decisions.dart' show formatWarStartTime, promptDecisionsFor;
 import '../widgets/event_feed.dart' show showDramaPopupsFor;
 import '../widgets/update_banner.dart';
 import 'game_screen.dart';
@@ -251,6 +251,39 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     );
   }
 
+  /// The status-card line of an ACTIVE match. War-aware: during the rounds
+  /// the awaited player "fights" rather than "takes a turn"; while a
+  /// both-live duel waits for its start NOBODY is awaited — that wait says
+  /// when the war begins instead of a misleading "Warten auf Mitspieler".
+  String _activeTitle({
+    required bool yourTurn,
+    required String? awaitedName,
+    required int? awaitedSlot,
+    required Map? warJson,
+  }) {
+    if (yourTurn) return 'Du bist am Zug !';
+    final phase = warJson?['phase'];
+    if (awaitedName != null) {
+      if (awaitedSlot == null) return '$awaitedName ist am Zug …';
+      final attacker = warJson?['attackerSlot'] as int?;
+      final defender = warJson?['defenderSlot'] as int?;
+      if (phase == 'rounds' &&
+          (awaitedSlot == attacker || awaitedSlot == defender)) {
+        final enemy = awaitedSlot == attacker ? defender : attacker;
+        return '$awaitedName (${gc.countryNames[awaitedSlot]}) kämpft '
+            'gegen ${gc.countryNames[enemy!]} …';
+      }
+      return '$awaitedName (${gc.countryNames[awaitedSlot]}) ist am Zug …';
+    }
+    if (phase == 'preparation') {
+      final scheduledMs = warJson?['scheduledStartMs'] as int?;
+      return scheduledMs != null && scheduledMs > 0
+          ? '⚔️ Krieg vereinbart — Beginn: ${formatWarStartTime(scheduledMs)}'
+          : '⚔️ Krieg steht bevor — Beginn nach Ablauf der Frist';
+    }
+    return 'Die Partie läuft …';
+  }
+
   Widget _body(ThemeData theme, Map<String, dynamic> view) {
     final status = view['status'] as String;
     final yourTurn = view['your_turn'] == true;
@@ -273,6 +306,10 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final myId = widget.service.playerId;
     final started = status != 'waiting';
     final awaitedPid = view['awaited_player_id'];
+    // War context for the status card (see [_activeTitle]); the deadline
+    // label below also flips to "Kriegsbeginn" during the preparation.
+    final warJson = (view['state'] as Map?)?['activeWar'] as Map?;
+    final warPreparing = warJson?['phase'] == 'preparation';
 
     // One row PER controlled realm, so a seat holding several realms (control
     // follows the ruler after a conquest/inheritance) appears at each realm's
@@ -337,14 +374,12 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
             }),
             title: Text(switch (status) {
               'waiting' => 'Wartet auf Spieler (${players.length} beigetreten)',
-              'active' =>
-                yourTurn
-                    ? 'Du bist am Zug !'
-                    : awaitedName != null
-                    ? '$awaitedName '
-                          '(${gc.countryNames[awaitedSlot!]}) '
-                          'ist am Zug …'
-                    : 'Warten auf Mitspieler …',
+              'active' => _activeTitle(
+                  yourTurn: yourTurn,
+                  awaitedName: awaitedName,
+                  awaitedSlot: awaitedSlot,
+                  warJson: warJson,
+                ),
               _ =>
                 view['winner'] == widget.service.playerId
                     ? 'Sieg ! Die Partie ist beendet.'
@@ -353,7 +388,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
             subtitle: view['turn_deadline'] == null
                 ? null
                 : Text(
-                    'Zugfrist: '
+                    '${warPreparing ? 'Kriegsbeginn' : 'Zugfrist'}: '
                     '${formatTimestamp(view['turn_deadline'] as String)}',
                   ),
           ),

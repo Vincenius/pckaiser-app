@@ -15,6 +15,11 @@ abstract class GameSession {
 
   bool get isOnline;
 
+  /// The match's turn timer in hours (online, from the host settings);
+  /// null = no timer, or a local game. The warPlan dialog derives the
+  /// offered duel start slots from it.
+  int? get turnTimeoutHours;
+
   /// False online: the server is authoritative, actions are final.
   bool get canUndo;
 

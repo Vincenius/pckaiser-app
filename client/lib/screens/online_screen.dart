@@ -7,6 +7,7 @@ import 'package:game_core/game_core.dart' as gc;
 import '../l10n/strings.dart' show formatTimestamp;
 import '../services/api_client.dart';
 import '../services/online_service.dart';
+import '../widgets/decisions.dart' show formatWarStartTime;
 import 'online_match_screen.dart';
 
 /// Online lobby (V2): configure the server + name once (a build-time
@@ -712,12 +713,20 @@ class _OnlineScreenState extends State<OnlineScreen> {
                       ? 'Du bist am Zug !'
                       : m['awaited_name'] != null
                       ? '${m['awaited_name']} ist am Zug …'
-                      : 'Warten auf Mitspieler …',
+                      // Nobody is awaited: with a running war preparation
+                      // that is the duel waiting for its start — say WHEN
+                      // instead of a misleading "Warten auf Mitspieler".
+                      : m['war_scheduled_at'] != null
+                      ? '⚔️ Krieg vereinbart — Beginn: '
+                            '${formatWarStartTime(DateTime.parse(m['war_scheduled_at'] as String).millisecondsSinceEpoch)}'
+                      : m['war_preparing'] == true
+                      ? '⚔️ Krieg steht bevor — Beginn nach Ablauf der Frist'
+                      : 'Die Partie läuft …',
                 _ => 'Beendet',
               }),
               subtitle: Text(
                 'Raum ${m['id']}'
-                '${m['turn_deadline'] != null ? ' — Frist ${formatTimestamp(m['turn_deadline'] as String)}' : ''}',
+                '${m['turn_deadline'] != null ? ' — ${m['war_preparing'] == true ? 'Kriegsbeginn' : 'Frist'} ${formatTimestamp(m['turn_deadline'] as String)}' : ''}',
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,

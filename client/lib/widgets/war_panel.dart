@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
 import '../state/game_controller.dart';
-import 'decisions.dart' show promptDecisionsFor;
+import 'decisions.dart' show formatWarStartTime, promptDecisionsFor;
 import 'war_report.dart';
 
 /// In-war controls (§11.2): unit selection (tap a unit on the map or its
@@ -31,6 +31,9 @@ class _WarPanelState extends State<WarPanel> {
   /// answer (live control vs autopilot + stance) — everything else waits.
   Widget _preparation(BuildContext context, gc.ActiveWar war, int slot) {
     final theme = Theme.of(context);
+    // Online duel scheduling: once both sides answered, the agreed start
+    // (earliest common warPlan slot) is shown here — in local time.
+    final scheduled = war.scheduledStartMs;
     return SafeArea(
       child: Card(
         margin: const EdgeInsets.all(8),
@@ -49,6 +52,14 @@ class _WarPanelState extends State<WarPanel> {
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium,
               ),
+              if (scheduled != null && scheduled > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Vereinbarter Beginn: ${formatWarStartTime(scheduled)}',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ],
               const SizedBox(height: 8),
               FilledButton(
                 onPressed: () => promptDecisionsFor(context, controller, slot),

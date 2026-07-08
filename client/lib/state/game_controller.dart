@@ -100,6 +100,10 @@ class GameController extends ChangeNotifier {
   /// True for online seats — the server is authoritative.
   bool get isOnline => _session.isOnline;
 
+  /// The online match's turn timer in hours (null = no timer / local) —
+  /// bounds the duel start slots the warPlan dialog offers.
+  int? get turnTimeoutHours => _session.turnTimeoutHours;
+
   /// Online: another player is awaited — the play screen should hand
   /// back to the waiting lobby.
   bool get awaitingRemote => _session.awaitingRemote;

@@ -194,6 +194,7 @@ class MatchRecord {
     this.status = MatchStatus.waiting,
     this.stateJson,
     this.turnDeadline,
+    this.warReminderFor,
     this.winnerPlayerId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -214,6 +215,10 @@ class MatchRecord {
         turnDeadline: json['turn_deadline'] == null
             ? null
             : DateTime.parse(json['turn_deadline'] as String),
+        // Additive field — pre-scheduling records sent no war reminder.
+        warReminderFor: json['war_reminder_for'] == null
+            ? null
+            : DateTime.parse(json['war_reminder_for'] as String),
         winnerPlayerId: json['winner'] as String?,
         createdAt: DateTime.parse(json['created_at'] as String),
         updatedAt: DateTime.parse(json['updated_at'] as String),
@@ -231,6 +236,11 @@ class MatchRecord {
   MatchStatus status;
   Map<String, dynamic>? stateJson;
   DateTime? turnDeadline;
+
+  /// The agreed war start this match was already REMINDED of (the ~15 min
+  /// "duel starts soon" push) — sent at most once per agreed start time.
+  DateTime? warReminderFor;
+
   String? winnerPlayerId;
   final DateTime createdAt;
   DateTime updatedAt;
@@ -266,6 +276,7 @@ class MatchRecord {
         'status': status.name,
         'state': stateJson,
         'turn_deadline': turnDeadline?.toIso8601String(),
+        'war_reminder_for': warReminderFor?.toIso8601String(),
         'winner': winnerPlayerId,
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),

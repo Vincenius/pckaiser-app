@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
 import '../services/online_service.dart';
+import '../widgets/decisions.dart' show formatWarStartTime;
 import '../services/push_service.dart';
 import '../services/save_service.dart';
 import 'about_screen.dart';
@@ -385,7 +386,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ? tr('onlineYourTurn')
               : m['awaited_name'] != null
               ? '${m['awaited_name']} ${tr('onlineIsPlaying')}'
-              : tr('onlineWaitingForOthers'),
+              // Nobody awaited: with a running war preparation that is the
+              // duel waiting for its (agreed) start — not "other players".
+              : m['war_scheduled_at'] != null
+              ? '${tr('onlineWarScheduledPrefix')}'
+                    '${formatWarStartTime(DateTime.parse(m['war_scheduled_at'] as String).millisecondsSinceEpoch)}'
+              : m['war_preparing'] == true
+              ? tr('onlineWarPending')
+              : tr('onlineInProgress'),
         ),
         subtitle: Text('Raum ${m['id']}'),
         onTap: () => _openOnlineMatch(m['id'] as String),

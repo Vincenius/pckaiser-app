@@ -15,7 +15,12 @@ const Map<String, Map<String, String>> _table = {
     'onlineGames': 'Online games',
     'onlineYourTurn': 'Your turn!',
     'onlineWaitingForPlayers': 'Waiting for players',
-    'onlineWaitingForOthers': 'Waiting for the other players …',
+    // Active match, nobody awaited and no war pending (rare) — a neutral
+    // line instead of the old, misleading "waiting for the other players".
+    'onlineInProgress': 'Game in progress …',
+    // Duel scheduling: the agreed start time is appended.
+    'onlineWarScheduledPrefix': '⚔️ War agreed — begins: ',
+    'onlineWarPending': '⚔️ War ahead — begins when the time runs out',
     // Suffixed to the awaited player's name: "Anna is taking her turn …"
     'onlineIsPlaying': 'is taking their turn …',
     'onlineLoading': 'Loading online games …',
@@ -75,7 +80,9 @@ const Map<String, Map<String, String>> _table = {
     'onlineGames': 'Online-Partien',
     'onlineYourTurn': 'Du bist am Zug !',
     'onlineWaitingForPlayers': 'Wartet auf Spieler',
-    'onlineWaitingForOthers': 'Warten auf Mitspieler …',
+    'onlineInProgress': 'Die Partie läuft …',
+    'onlineWarScheduledPrefix': '⚔️ Krieg vereinbart — Beginn: ',
+    'onlineWarPending': '⚔️ Krieg steht bevor — Beginn nach Ablauf der Frist',
     'onlineIsPlaying': 'ist am Zug …',
     'onlineLoading': 'Online-Partien werden geladen …',
     'savedGames': 'Spielstände',

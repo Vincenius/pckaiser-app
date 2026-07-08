@@ -43,10 +43,12 @@ ActiveWar startWar(
   // `[DESIGNED 2026-07-06, user-designed mechanic]` A war between two
   // HUMANS starts in a PREPARATION phase: both combatants choose (as a
   // `warPlan` decision) whether they command their side live or hand it to
-  // the stance autopilot, and may re-set their units' stance. The rounds
-  // begin per `resolveWarPreparation`'s start rules (early start unless
-  // both play live; online deadline = half the turn timer). Any other
-  // constellation starts the rounds immediately, as before.
+  // the stance autopilot, and may re-set their units' stance. Live sides
+  // may also propose duel start times (`war.planSlots`, 2026-07-08): the
+  // earliest common proposal becomes the agreed start. The rounds begin
+  // per `resolveWarPreparation`'s start rules (early start unless both
+  // play live; online deadline = the agreed start, else half the turn
+  // timer). Any other constellation starts the rounds immediately.
   if (state.dynasty(attackerSlot).status == DynastyStatus.human &&
       state.dynasty(defenderSlot).status == DynastyStatus.human) {
     war.phase = WarPhase.preparation;
@@ -171,14 +173,26 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 /// the side with the higher effective strength
 ///
 ///   eff = P × (1 + def / 2) × fortune     (one shared fortune roll,
-///                                          [0.5, 1.5) vs its mirror)
+///                                          [0.75, 1.25) vs its mirror)
 ///
-/// wins the clash — the loser takes 35–65% casualties (a remnant under 5
-/// men is wiped), the winner 10–25% (and always survives). Equal forces
-/// on open ground trade ~50/50 wins, so a unit typically falls after
-/// 2–5 engagements; a fortified or clearly stronger side wins most
-/// clashes and grinds the enemy down fast while bleeding slowly. Spec'd
-/// in PROJECT_REQUIREMENTS.md "Rule deviations".
+/// wins the clash. `[BALANCE 2026-07-08]` Casualties scale with how
+/// lopsided the clash is (superiority = winner eff / loser eff) — before,
+/// both sides' losses were flat shares of their OWN size, so a tiny unit
+/// stripped 10–25% off any giant it touched and splitting an army into
+/// chaff multiplied its damage:
+///  - the loser takes 35–65% casualties, rising toward a total rout as
+///    superiority grows (≥ ~4.3× always annihilates; a remnant under 5
+///    men is wiped) — but never more men than the winner's effective
+///    strength can plausibly cut down, so an upset winner can't shred a
+///    huge army in one clash;
+///  - the winner takes 10–25% of what the LOSER's effective strength is
+///    worth in winner-quality men (and always survives) — crushing a far
+///    weaker unit is near-bloodless, and a loser can never out-kill the
+///    force beating it.
+/// The narrowed fortune band means a ≥ 5/3× effective advantage wins
+/// EVERY clash (the old [0.5, 1.5) band let a 3× weaker side win on
+/// luck). Equal forces on open ground still trade ~50/50 wins and fall
+/// after 2–5 engagements.
 List<GameEvent> resolveCombat(
     GameState state, int slotA, Troop a, int slotB, Troop b, Rng rng) {
   int defense(Troop t) {
@@ -201,26 +215,61 @@ List<GameEvent> resolveCombat(
   int lossesA;
   int lossesB;
 
-  final effA = powerA * (1 + defenseA / 2) * (0.5 + r);
-  final effB = powerB * (1 + defenseB / 2) * (1.5 - r);
+  final fortuneA = 0.75 + r / 2;
+  final fortuneB = 1.25 - r / 2;
+  final effA = powerA * (1 + defenseA / 2) * fortuneA;
+  final effB = powerB * (1 + defenseB / 2) * fortuneB;
+  final aWins = effA >= effB;
+  // Casualty math runs on UNfloored per-man power (small units would be
+  // quantized into fake 4× superiorities: 19 men floor to power 1, 48 men
+  // to 4). `raw` is the defense-free fighting strength, `rawEff` includes
+  // the tile defense (a fortified side's reach — its blades kill more).
+  final rawA = a.men * powerPerMan(a) * fortuneA;
+  final rawB = b.men * powerPerMan(b) * fortuneB;
+  final rawEffA = rawA * (1 + defenseA / 2);
+  final rawEffB = rawB * (1 + defenseB / 2);
+  final winnerRawEff = aWins ? rawEffA : rawEffB;
+  final loserRawEff = aWins ? rawEffB : rawEffA;
+  // How lopsided the clash is, on the DEFENSE-FREE strength ratio (floored
+  // at 1 — a fortified winner with fewer men is no "superior"): walls decide
+  // who WINS, but a rout takes superior MEN — an equal attacker repelled
+  // from a Burg is bloodied, not annihilated.
+  final winnerRaw = aWins ? rawA : rawB;
+  final loserRaw = aWins ? rawB : rawA;
+  final superiority =
+      loserRaw > 0 ? math.max(1.0, winnerRaw / loserRaw) : double.infinity;
   final loserShare = 0.35 + 0.3 * rng.nextReal();
   final winnerShare = 0.10 + 0.15 * rng.nextReal();
-  int loserLosses(int men) {
-    final losses = math.max(1, (men * loserShare).round());
+  int loserLosses(Troop loser) {
+    // The base 35–65% share grows with the winner's superiority: a ≥ ~4.3×
+    // superior force always annihilates the unit outright (a rout, not a
+    // skirmish). Below 1.5× the share stays at its base value.
+    final share = math.min(1.0, loserShare * math.max(1.0, superiority / 1.5));
+    var losses = math.max(1, (loser.men * share).round());
+    // The winner can't cut down more men than its own effective strength
+    // reaches (≈ its fighting headcount measured in loser-quality men) — an
+    // upset winner bloodies a bigger army, it doesn't shred a third of it.
+    losses = math.min(
+        losses, math.max(1, (winnerRawEff / powerPerMan(loser)).round()));
     // A remnant under 5 men is wiped — no endless 1-man tail fights.
-    return men - losses < 5 ? men : losses;
+    return loser.men - losses < 5 ? loser.men : losses;
   }
 
-  int winnerLosses(int men) => math.min(men - 1, (men * winnerShare).round());
+  // Lanchester-flavored: what the LOSER kills scales with the loser's own
+  // effective strength measured in winner-quality men — never with the
+  // winner's size (that let 100 men out-kill the 200-man force beating
+  // them, and chaff strip a fixed share off any giant it touched).
+  int winnerLosses(int men) => math.min(
+      men - 1, (winnerShare * loserRawEff / powerPerMan(aWins ? a : b)).round());
 
   // The winner is decided by `eff`, and `winnerLosses` always keeps it at
   // ≥ 1 man — so exactly one side can ever be wiped, never both. (There is
   // therefore no "simultaneous annihilation" case to break.)
-  if (effA >= effB) {
+  if (aWins) {
     lossesA = winnerLosses(a.men);
-    lossesB = loserLosses(b.men);
+    lossesB = loserLosses(b);
   } else {
-    lossesA = loserLosses(a.men);
+    lossesA = loserLosses(a);
     lossesB = winnerLosses(b.men);
   }
 

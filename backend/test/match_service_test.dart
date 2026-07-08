@@ -586,6 +586,240 @@ void main() {
           now.add(const Duration(seconds: 600)),
           reason: 'a live human-vs-human duel runs on the short war clock');
     });
+
+    // Answers slot X's open warPlan decision for [playerId].
+    Future<Map<String, dynamic>> answerPlan(MatchRecord match, String playerId,
+        int slot, Map<String, dynamic> choice) async {
+      final st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      final plan = st.pendingDecisions
+          .singleWhere((d) => d.type == 'warPlan' && d.decidingSlot == slot);
+      return service.submit(
+        matchId: match.id,
+        playerId: playerId,
+        actionJson:
+            ResolveDecision(slot: slot, decisionId: plan.id, choice: choice)
+                .toJson(),
+      );
+    }
+
+    test('an agreed warPlan slot arms the deadline at the appointment',
+        () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      expect((await store.match(match.id))!.turnDeadline,
+          start.add(const Duration(hours: 12)),
+          reason: 'fallback until a common slot is agreed');
+
+      // Anna offers 18:00/20:00, Berta 18:00/22:00 — agreement at 18:00,
+      // deliberately LATER than the 12 h fallback: both sides chose it.
+      final slot18 =
+          start.add(const Duration(hours: 18)).millisecondsSinceEpoch;
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [
+          slot18,
+          start.add(const Duration(hours: 20)).millisecondsSinceEpoch,
+        ],
+      });
+      await answerPlan(match, b.id, 2, {
+        'auto': false,
+        'slots': [
+          slot18,
+          start.add(const Duration(hours: 22)).millisecondsSinceEpoch,
+        ],
+      });
+
+      final waiting =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(waiting.activeWar!.phase, WarPhase.preparation);
+      expect(waiting.activeWar!.scheduledStartMs, slot18);
+      expect((await store.match(match.id))!.turnDeadline,
+          start.add(const Duration(hours: 18)),
+          reason: 'the deadline IS the appointment');
+
+      // The lobby list carries the war-start info: nobody is awaited while
+      // the duel waits, so the client needs these fields for its line.
+      final listed = (await service.matchesForPlayer(a.id))
+          .singleWhere((m) => m['id'] == match.id);
+      expect(listed['war_preparing'], isTrue);
+      expect(listed['war_scheduled_at'],
+          start.add(const Duration(hours: 18)).toIso8601String());
+      expect(listed['awaited_name'], isNull);
+
+      // The old fallback instant passes without starting anything.
+      now = start.add(const Duration(hours: 12, minutes: 5));
+      expect(await service.sweepExpired(), 0);
+
+      // At the appointment the duel starts, both sides live.
+      now = start.add(const Duration(hours: 18, minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      final started =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(started.activeWar!.phase, WarPhase.rounds);
+      expect(started.activeWar!.autoSlots, isEmpty);
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(seconds: 600)));
+    });
+
+    test('both pick "sofort" (0): the duel starts with the second answer',
+        () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [0],
+      });
+      final resolved = await answerPlan(match, b.id, 2, {
+        'auto': false,
+        'slots': [0],
+      });
+      final state = GameState.fromJson(
+          (resolved['state'] as Map).cast<String, dynamic>());
+      expect(state.activeWar!.phase, WarPhase.rounds,
+          reason: 'both ready right now — no waiting for the deadline');
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(seconds: 600)));
+    });
+
+    test('no common slot keeps the half-turn fallback', () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [start.add(const Duration(hours: 16)).millisecondsSinceEpoch],
+      });
+      await answerPlan(match, b.id, 2, {
+        'auto': false,
+        'slots': [start.add(const Duration(hours: 17)).millisecondsSinceEpoch],
+      });
+      final waiting =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(waiting.activeWar!.phase, WarPhase.preparation);
+      expect(waiting.activeWar!.scheduledStartMs, isNull);
+      expect((await store.match(match.id))!.turnDeadline,
+          start.add(const Duration(hours: 12)),
+          reason: 'no overlap → the fallback stands, exactly as before');
+    });
+
+    test(
+        'a duelist who never acted is handed to the autopilot when their '
+        'first round clock expires', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      for (final (playerId, slot) in [(a.id, 1), (b.id, 2)]) {
+        await answerPlan(match, playerId, slot, {
+          'auto': false,
+          'slots': [0],
+        });
+      }
+
+      // Anna acted (round end hands over to Berta) — she is "present".
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: WarEndRound(slot: 1).toJson(),
+      );
+      final handed =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(handed.activeWar!.actedSlots, contains(1));
+
+      // Berta never shows up: her first round clock expires.
+      now = now.add(const Duration(seconds: 601));
+      expect(await service.sweepExpired(), 1);
+      final swept =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(swept.activeWar, isNotNull);
+      expect(swept.activeWar!.autoSlots, contains(2),
+          reason: 'a total no-show is delegated for the rest of the war');
+      expect(swept.activeWar!.autoSlots, isNot(contains(1)),
+          reason: 'Anna acted — she stays live');
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(hours: 24)),
+          reason: 'no longer a live duel: Anna gets the full turn clock');
+    });
+
+    test('an agreed start pushes "fixed" once and one reminder ~15 min ahead',
+        () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      final pushes = _RecordingPushService();
+      service = MatchService(store, pushes, clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      final slot18 =
+          start.add(const Duration(hours: 18)).millisecondsSinceEpoch;
+      for (final (playerId, slot) in [(a.id, 1), (b.id, 2)]) {
+        await answerPlan(match, playerId, slot, {
+          'auto': false,
+          'slots': [slot18],
+        });
+      }
+      expect(pushes.kinds.where((k) => k == 'warStartFixed').length, 2,
+          reason: 'both sides learn the fixed start once');
+
+      // Outside the reminder window: nothing.
+      now = start.add(const Duration(hours: 17));
+      await service.sweepExpired();
+      expect(pushes.kinds.where((k) => k == 'warStartSoon'), isEmpty);
+
+      // ~15 min ahead: one reminder per live side — and never a second.
+      now = start.add(const Duration(hours: 17, minutes: 50));
+      await service.sweepExpired();
+      expect(pushes.kinds.where((k) => k == 'warStartSoon').length, 2);
+      await service.sweepExpired();
+      expect(pushes.kinds.where((k) => k == 'warStartSoon').length, 2,
+          reason: 'the reminder is deduplicated per start time');
+    });
   });
 
   group('timeouts', () {
@@ -1117,4 +1351,31 @@ class RacyPlayerStore extends InMemoryStore {
         ? null
         : PlayerRecord.fromJson((json as Map).cast<String, dynamic>());
   }
+}
+
+/// Records which push kinds were sent — for the duel-scheduling tests.
+class _RecordingPushService implements PushService {
+  final List<String> kinds = [];
+
+  @override
+  Future<void> yourTurn(PlayerRecord player, MatchRecord match) async =>
+      kinds.add('yourTurn');
+
+  @override
+  Future<void> yourDecision(PlayerRecord player, MatchRecord match) async =>
+      kinds.add('yourDecision');
+
+  @override
+  Future<void> warStarted(PlayerRecord player, MatchRecord match) async =>
+      kinds.add('warStarted');
+
+  @override
+  Future<void> warStartFixed(
+          PlayerRecord player, MatchRecord match, DateTime start,
+          {required bool agreed}) async =>
+      kinds.add('warStartFixed');
+
+  @override
+  Future<void> warStartSoon(PlayerRecord player, MatchRecord match) async =>
+      kinds.add('warStartSoon');
 }

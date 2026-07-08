@@ -6,6 +6,82 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-08 — Combat balancing: mass matters, casualties scale with the opponent (user feedback)
+
+Small units regularly beat and out-damaged big ones: both sides' combat
+losses were flat shares of their OWN size (loser 35–65%, winner 10–25%),
+so a 10-man unit stripped 10–25% off ANY army it touched (splitting into
+chaff multiplied damage output), and the [0.5, 1.5) fortune band meant
+only a ≥ 3× effective advantage guaranteed the win. Reworked
+`resolveCombat` (`rules/war.dart`), keeping the §10.1 power values, tile
+defense and decided-encounter shape:
+
+1. **Fortune band narrowed** to [0.75, 1.25): a ≥ 5/3× effective
+   advantage now wins EVERY clash.
+2. **Loser casualties** stay 35–65% of own men but grow with the winner's
+   defense-free superiority (≥ ~4.3× = total rout) — capped at what the
+   winner's effective strength can cut down, so an upset winner bloodies
+   a bigger army instead of shredding a third of it.
+3. **Winner casualties** are Lanchester-flavored: 10–25% of the LOSER's
+   effective strength measured in winner-quality men — crushing chaff is
+   near-bloodless, a loser can never out-kill the force beating it, and
+   quality (Janitscharen) keeps its full per-man weight.
+4. Casualty math runs on unfloored per-man power (the floored §10.1
+   `power` still decides the winner) — 19 vs 48 men is 2.5× superiority,
+   not the quantized 4×. Superiority for the rout scaling is
+   DEFENSE-FREE: walls decide who wins and extend the winner's reach,
+   but an equal attacker repelled from a Burg is bloodied, not
+   annihilated.
+
+Equal forces on open ground still trade ~50/50 wins and fall after 2–5
+engagements. Regression tests in `combat_balance_test.dart` (chaff,
+guaranteed wins, upset caps, elite quality, equal-fight bleed); the
+bugfix_v21 home-guard test now clears the march path (it pins guard
+behavior, not combat survival). 341 core + 43 backend + 33 client tests
+green. Ships as appVersion 0.1.15 (client build +11).
+
+## 2026-07-08 — Online duel scheduling (user-designed)
+
+The both-live war start online was a fixed "half the turn timer" — with a
+24 h timer the duel always began after 12 h, whether or not both players
+could attend. Now (see ARCHITECTURE.md "Duel scheduling" for mechanics):
+
+1. **Slot proposals in `warPlan`**: a live side ticks start times that
+   suit them — "sofort" (sentinel 0) plus the next full hours (UTC-hour
+   aligned so proposals can match; local-time display), hourly over the
+   turn-timer window, capped at 24. Engine stores them in
+   `ActiveWar.planSlots`; the earliest common proposal becomes
+   `scheduledStartMs` once all sides answered.
+2. **Start rules**: both "sofort" → rounds start with the second answer;
+   agreed hour → `_commit` arms `turn_deadline` at exactly that instant
+   (deliberately allowed to lie LATER than the fallback — consensual; also
+   works in matches without a turn timer); no overlap / no answer → the
+   old half-turn fallback, unchanged (the feature is strictly additive).
+3. **Pushes**: `WAR_START_FIXED` to both sides when the second answer
+   lands (agreed vs fallback wording); one `WAR_START_SOON` reminder
+   ~15 min before an AGREED start (`match.warReminderFor` dedups).
+4. **No-show rule**: interactive war-round input marks `war.actedSlots`
+   (server); a duelist whose round clock expires while they never acted
+   in the war at all is autopiloted (`autoSlots`) for the rest of the war
+   — after the current round's classic fallback, so handover semantics
+   stay intact; only in live human-vs-human duels.
+5. State fields are additive JSON (`planSlots`/`scheduledStartMs`/
+   `actedSlots`, `war_reminder_for` on the match record) — no schema
+   bump. Tests: `game_core/test/war_scheduling_test.dart` + five
+   scheduling/no-show/reminder tests in `match_service_test.dart`.
+6. **War-aware waiting texts** (follow-up, same day): the generic
+   "Warten auf Mitspieler …" (shown whenever an active match awaited
+   nobody — i.e. exactly while a both-live duel waits for its start) is
+   replaced everywhere: match screen & lists say "⚔️ Krieg vereinbart —
+   Beginn: <Zeit>" / "⚔️ Krieg steht bevor — Beginn nach Ablauf der
+   Frist" (deadline label flips to "Kriegsbeginn"), spectators of a
+   running duel see "X kämpft gegen Y …" instead of "ist am Zug", and
+   the true no-war fallback reads "Die Partie läuft …". The list
+   endpoint (`matchesForPlayer`) now carries `war_preparing` +
+   `war_scheduled_at`; the `onlineWaitingForOthers` l10n key was
+   replaced by `onlineInProgress`/`onlineWarScheduledPrefix`/
+   `onlineWarPending`.
+
 ## 2026-07-07 — Review of the 0.1.13 changes + codebase sweep (pre-release fixes)
 
 Full review of everything since 0.1.12 plus a whole-codebase bug sweep;

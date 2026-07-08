@@ -99,4 +99,31 @@ class FcmPushService implements PushService {
         'PCKaiser',
         'Krieg ! Dein Reich wird angegriffen.',
       );
+
+  @override
+  Future<void> warStartFixed(
+          PlayerRecord player, MatchRecord match, DateTime start,
+          {required bool agreed}) =>
+      _send(
+        player,
+        match,
+        'WAR_START_FIXED',
+        'PCKaiser',
+        // The exact time is shown in-app in the player's local timezone —
+        // a push body can't know it, so it only announces THAT it is fixed.
+        agreed
+            ? 'Kriegstermin steht ! Ihr habt euch auf eine Zeit geeinigt — '
+                'die Uhrzeit siehst du im Spiel.'
+            : 'Kein gemeinsamer Kriegstermin — der Krieg beginnt nach '
+                'Ablauf der Vorbereitungsfrist.',
+      );
+
+  @override
+  Future<void> warStartSoon(PlayerRecord player, MatchRecord match) => _send(
+        player,
+        match,
+        'WAR_START_SOON',
+        'PCKaiser',
+        'Dein Krieg beginnt in Kürze — mach dich bereit !',
+      );
 }
