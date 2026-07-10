@@ -1,3 +1,4 @@
+import 'ai_difficulty.dart';
 import 'chronicle.dart';
 import 'constants.dart';
 import 'dynasty.dart';
@@ -22,6 +23,7 @@ class GameState {
     this.warStartYear = 1010,
     this.genderEqualSuccession = false,
     this.suggestChildNames = true,
+    this.aiDifficulty = AiDifficulty.mittel,
     this.grainPrice = 0,
     this.cattlePrice = 0,
     this.kaiserId,
@@ -74,6 +76,9 @@ class GameState {
         genderEqualSuccession: json['genderEqualSuccession'] as bool? ?? false,
         // Additive — old saves keep the prefilled name suggestion.
         suggestChildNames: json['suggestChildNames'] as bool? ?? true,
+        // Additive — old saves play the pre-difficulty AI (= mittel).
+        aiDifficulty:
+            AiDifficulty.fromName(json['aiDifficulty'] as String?),
         grainPrice: (json['grainPrice'] as num? ?? 0).toDouble(),
         cattlePrice: (json['cattlePrice'] as num? ?? 0).toDouble(),
         kaiserId: json['kaiserId'] as int?,
@@ -167,6 +172,12 @@ class GameState {
   /// `childName` decision; the client ignores it when this is false. Old
   /// saves default to true (see [GameState.fromJson]).
   final bool suggestChildNames;
+
+  /// Per-game option (chosen at setup, local and online): how strongly the
+  /// AI opponents play. Only changes the AI script's behaviour (see
+  /// `ai/ai_tuning.dart`), never the rules. Old saves default to
+  /// [AiDifficulty.mittel] — exactly the pre-difficulty behaviour.
+  final AiDifficulty aiDifficulty;
 
   /// Global market prices, rolled once per year (§9.1).
   double grainPrice;
@@ -294,6 +305,7 @@ class GameState {
         warStartYear: warStartYear,
         genderEqualSuccession: genderEqualSuccession,
         suggestChildNames: suggestChildNames,
+        aiDifficulty: aiDifficulty,
         grainPrice: grainPrice,
         cattlePrice: cattlePrice,
         kaiserId: kaiserId,
@@ -329,6 +341,7 @@ class GameState {
         'warStartYear': warStartYear,
         'genderEqualSuccession': genderEqualSuccession,
         'suggestChildNames': suggestChildNames,
+        'aiDifficulty': aiDifficulty.name,
         'grainPrice': grainPrice,
         'cattlePrice': cattlePrice,
         'kaiserId': kaiserId,

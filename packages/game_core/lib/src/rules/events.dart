@@ -102,62 +102,88 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
 ///    picking at random among ties.
 ///  - Human realms get a `relocateCapital` decision so the player chooses
 ///    manually; the seat stays put until they resolve it.
-/// A realm with no seat-eligible tile left is skipped — it is effectively
-/// finished (the land-loss / elimination paths handle it).
+///  - A realm with NO seat-eligible tile left re-seats automatically (even
+///    a human — there is no Stadt/Burg/Palast to choose) onto its
+///    highest-value own tile of any kind: a realm that still owns land must
+///    always have a seat on that land, or a war against it becomes
+///    unwinnable (the capital-occupation victory and the map's seat flag
+///    both require an OWNED capital tile). Only a landless realm keeps its
+///    stale seat — the elimination paths handle it.
 void reseatLostCapitals(GameState state, Rng rng, List<GameEvent> events) {
-  final map = state.map;
   for (final realm in state.realms) {
-    if (realm.isVacant) continue;
-    if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
-      // Seat is valid again — drop any stale re-seat prompt.
-      state.pendingDecisions.removeWhere(
-          (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
-      continue;
-    }
-    if (state.dynasty(realm.slot).status == DynastyStatus.human) {
-      final already = state.pendingDecisions.any(
-          (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
-      if (!already && _bestSeatTile(state, realm.slot, rng) != null) {
-        state.pendingDecisions.add(PendingDecision(
-          id: 'relocate-${realm.slot}-${state.year}',
-          type: 'relocateCapital',
-          decidingSlot: realm.slot,
-          payload: const {},
-        ));
-        events.add(GameEvent(
-          year: state.year,
-          slot: realm.slot,
-          type: 'capitalLost',
-          visibility: EventVisibility.owner,
-        ));
-      }
-      continue;
-    }
-    // AI: pick the highest-value eligible own tile, random among ties.
-    final best = _bestSeatTile(state, realm.slot, rng);
-    if (best == null) continue;
-    realm.capitalX = best.$1;
-    realm.capitalY = best.$2;
-    events.add(GameEvent(
-      year: state.year,
-      slot: realm.slot,
-      type: 'capitalReseated',
-      visibility: EventVisibility.public,
-      payload: {'x': best.$1, 'y': best.$2},
-    ));
+    ensureRealmSeat(state, realm.slot, rng, events);
   }
 }
 
+/// Repairs [slot]'s seat when its capital tile is no longer owned (see
+/// [reseatLostCapitals] for the rules). With [allowDecision] a human realm
+/// that owns a seat-eligible tile is PROMPTED instead of moved; without it
+/// (war context: war start, every war-round end, the claim settlement) the
+/// seat is re-seated immediately — mid-war there is no decision loop, and
+/// an unresolved seat would make the war unwinnable and flag-less.
+void ensureRealmSeat(
+    GameState state, int slot, Rng rng, List<GameEvent> events,
+    {bool allowDecision = true}) {
+  final realm = state.realm(slot);
+  if (realm.isVacant) return;
+  final map = state.map;
+  if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
+    // Seat is valid (again) — drop any stale re-seat prompt.
+    state.pendingDecisions.removeWhere(
+        (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
+    return;
+  }
+  final best = _bestSeatTile(state, realm.slot, rng);
+  if (allowDecision &&
+      best != null &&
+      state.dynasty(realm.slot).status == DynastyStatus.human) {
+    final already = state.pendingDecisions.any(
+        (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
+    if (!already) {
+      state.pendingDecisions.add(PendingDecision(
+        id: 'relocate-${realm.slot}-${state.year}',
+        type: 'relocateCapital',
+        decidingSlot: realm.slot,
+        payload: const {},
+      ));
+      events.add(GameEvent(
+        year: state.year,
+        slot: realm.slot,
+        type: 'capitalLost',
+        visibility: EventVisibility.owner,
+      ));
+    }
+    return;
+  }
+  final seat = best ?? _bestSeatTile(state, realm.slot, rng, anyTile: true);
+  if (seat == null) return; // landless — elimination handles the realm
+  realm.capitalX = seat.$1;
+  realm.capitalY = seat.$2;
+  // A forced re-seat supersedes any open manual prompt.
+  state.pendingDecisions.removeWhere(
+      (d) => d.type == 'relocateCapital' && d.decidingSlot == realm.slot);
+  events.add(GameEvent(
+    year: state.year,
+    slot: realm.slot,
+    type: 'capitalReseated',
+    visibility: EventVisibility.public,
+    payload: {'x': seat.$1, 'y': seat.$2},
+  ));
+}
+
 /// Highest-VALUE own Stadt/Burg/Palast tile for [slot], chosen at random
-/// among ties; null when the realm holds no seat-eligible tile.
-(int, int)? _bestSeatTile(GameState state, int slot, Rng rng) {
+/// among ties; null when the realm holds no seat-eligible tile. With
+/// [anyTile] every owned tile qualifies (the no-Burg fallback seat).
+(int, int)? _bestSeatTile(GameState state, int slot, Rng rng,
+    {bool anyTile = false}) {
   final map = state.map;
   var bestValue = -1;
   final best = <(int, int)>[];
   for (var i = 0; i < map.terrain.length; i++) {
     if (map.owner[i] != slot) continue;
     final building = map.building[i];
-    if (building != Building.stadt &&
+    if (!anyTile &&
+        building != Building.stadt &&
         building != Building.burg &&
         building != Building.palast) {
       continue;
@@ -425,11 +451,13 @@ Person foundReplacementDynasty(
     }
   }
 
-  // §15.2 religion availability for new dynasties.
+  // §15.2 religion availability for new dynasties — inclusive of the event
+  // year itself, matching the ChangeReligion gate: the faith exists the
+  // moment its event is announced.
   final int religion;
-  if (state.year <= state.reformationYear) {
+  if (state.year < state.reformationYear) {
     religion = Religion.katholisch;
-  } else if (state.year <= state.ottomanYear) {
+  } else if (state.year < state.ottomanYear) {
     religion = rng.nextInt(2);
   } else {
     religion = rng.nextInt(3);

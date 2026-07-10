@@ -353,7 +353,8 @@ List<GameEvent> applyDeclareWar(
   if (!state.map.realmNeighbors(realm.slot).contains(action.targetSlot)) {
     throw ActionException('Du hast keine gemeinsame Grenze !');
   }
-  startWar(state, realm.slot, action.targetSlot, rng);
+  final events = <GameEvent>[];
+  startWar(state, realm.slot, action.targetSlot, rng, events: events);
   // The people resent war, and repeated aggression compounds: the penalty
   // escalates with every war this realm started without a peace year in
   // between (−5, −10, −15, …; recentWars decays at year start) and may
@@ -364,16 +365,15 @@ List<GameEvent> applyDeclareWar(
   militarismPopularityCost(realm, 5 * (realm.recentWars + 1),
       floor: warPopularityFloor);
   realm.recentWars++;
-  return [
-    GameEvent(
-      year: state.year,
-      slot: realm.slot,
-      type: 'warDeclared',
-      visibility: EventVisibility.public,
-      participants: [realm.slot, action.targetSlot],
-      payload: {'targetSlot': action.targetSlot},
-    ),
-  ];
+  events.add(GameEvent(
+    year: state.year,
+    slot: realm.slot,
+    type: 'warDeclared',
+    visibility: EventVisibility.public,
+    participants: [realm.slot, action.targetSlot],
+    payload: {'targetSlot': action.targetSlot},
+  ));
+  return events;
 }
 
 ActiveWar _warFor(GameState state, int slot, {WarPhase? phase}) {
@@ -545,9 +545,6 @@ List<GameEvent> applyWarPlunder(
       map.buildingAt(action.x, action.y) == Building.none) {
     throw ActionException('Hier steht doch gar nichts !');
   }
-  if (war.plunderedThisRound(realm.slot)) {
-    throw ActionException('Du hast diese Runde schon geplündert !');
-  }
   if (map.ownerAt(action.x, action.y) == realm.slot) {
     throw ActionException('Wollen sie wirklich ihr eigenes Land plündern !');
   }
@@ -556,12 +553,25 @@ List<GameEvent> applyWarPlunder(
   if (map.ownerAt(action.x, action.y) != war.opponentOf(realm.slot)) {
     throw ActionException('Das gehört nicht deinem Kriegsgegner !');
   }
-  // Your troops must have reached the tile.
-  final present = realm.troops.any((t) => t.x == action.x && t.y == action.y);
-  if (!present) {
+  // Your troops must have reached the tile. §11.5: every ARMY plunders
+  // once per war round — one of the tile's not-yet-spent units carries
+  // this plunder.
+  final unitsHere =
+      realm.troops.where((t) => t.x == action.x && t.y == action.y).toList();
+  if (unitsHere.isEmpty) {
     throw ActionException('Keine Truppen auf diesem Feld !');
   }
-  war.setPlunderedThisRound(realm.slot, true);
+  Troop? unit;
+  for (final t in unitsHere) {
+    if (!t.plunderedThisRound) {
+      unit = t;
+      break;
+    }
+  }
+  if (unit == null) {
+    throw ActionException('Diese Armee hat diese Runde schon geplündert !');
+  }
+  unit.plunderedThisRound = true;
   return plunderTile(state, realm.slot, action.x, action.y, rng);
 }
 
@@ -648,25 +658,25 @@ List<GameEvent> applySettlementAnnexMany(
 /// "Ganzes Land übernehmen": greedy annex of every affordable bordering
 /// loser tile, then the settlement finishes (rest in Taler).
 List<GameEvent> applySettlementTakeAll(
-    GameState state, Realm realm, SettlementTakeAll action) {
+    GameState state, Realm realm, SettlementTakeAll action, Rng rng) {
   final war = _warFor(state, realm.slot, phase: WarPhase.settlement);
   if (war.winnerSlot != realm.slot) {
     throw ActionException('Nur der Sieger stellt Ansprüche !');
   }
   final events = <GameEvent>[];
   annexAffordableTiles(state, events);
-  finishSettlement(state, events);
+  finishSettlement(state, rng, events);
   return events;
 }
 
 List<GameEvent> applySettlementFinish(
-    GameState state, Realm realm, SettlementFinish action) {
+    GameState state, Realm realm, SettlementFinish action, Rng rng) {
   final war = _warFor(state, realm.slot, phase: WarPhase.settlement);
   if (war.winnerSlot != realm.slot) {
     throw ActionException('Nur der Sieger stellt Ansprüche !');
   }
   final events = <GameEvent>[];
-  finishSettlement(state, events);
+  finishSettlement(state, rng, events);
   return events;
 }
 

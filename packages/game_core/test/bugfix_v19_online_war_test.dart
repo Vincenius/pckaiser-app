@@ -41,7 +41,7 @@ void main() {
       state.realm(1).treasury = 0;
 
       final events = <GameEvent>[];
-      finishSettlement(state, events);
+      finishSettlement(state, Rng(state.rngSeed), events);
 
       expect(state.realm(2).treasury, 0,
           reason: 'the loser pays everything it has, never more');
@@ -61,7 +61,7 @@ void main() {
       state.realm(2).treasury = -500; // already in the red
       state.realm(1).treasury = 100;
 
-      finishSettlement(state, <GameEvent>[]);
+      finishSettlement(state, Rng(state.rngSeed), <GameEvent>[]);
 
       expect(state.realm(2).treasury, -500, reason: 'no money to take');
       expect(state.realm(1).treasury, 100, reason: 'winner gains nothing');

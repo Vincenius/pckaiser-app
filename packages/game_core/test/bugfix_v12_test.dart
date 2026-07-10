@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
@@ -81,49 +79,23 @@ void main() {
     return total;
   }
 
-  /// Declares war (slot 1 → slot 2) and parks slot 1's unit on slot 2's
-  /// capital; the defender's unit is moved aside first.
-  GameState marchOntoCapital(GameState from) {
+  /// Declares war (slot 1 → slot 2) and reaches the claim settlement via
+  /// the WINTER score victory: slot 1's unit occupies slot 2's town when
+  /// the forced end arrives. (Capital capture no longer opens a
+  /// settlement — since 2026-07-10 it takes over the whole realm, §11.2.)
+  GameState winterSettlement(GameState from) {
     var s =
         applyAction(from, DeclareWar(slot: 1, targetSlot: 2), Rng(from.rngSeed))
             .state;
-    final enemy = s.realm(2);
-    enemy.troops.single.x = enemy.towns.single.x;
-    enemy.troops.single.y = enemy.towns.single.y;
+    final enemyTown = s.realm(2).towns.single;
     final troop = s.realm(1).troops.single;
-    troop.x = enemy.capitalX - 1;
-    troop.y = enemy.capitalY;
-    s.activeWar!.movesLeft[1]![0] = 5;
-    return applyAction(
-            s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
-        .state;
+    troop.x = enemyTown.x;
+    troop.y = enemyTown.y;
+    s.activeWar!.round = 21;
+    return applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
   }
 
   group('settlement claim cap (rules v12; share rolled 50–80% since v3)', () {
-    test(
-        'a capital capture claim is capped at a share of the loser '
-        'territory value (the capital-tile floor permitting)', () {
-      var s = marchOntoCapital(state);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      final loserValueBefore = territoryValue(s, 2);
-      final capitalValue = settlementTileValue(
-          s, s.map.buildingAt(s.realm(2).capitalX, s.realm(2).capitalY));
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-
-      expect(s.activeWar!.phase, WarPhase.settlement);
-      expect(s.activeWar!.winnerSlot, 1);
-      // The cap share is rolled, at most 80% of the loser's territory
-      // value; a capture claim is floored at the capital tile (the
-      // captor held that very tile).
-      expect(
-          s.activeWar!.remainingClaim,
-          lessThanOrEqualTo(
-              math.max(loserValueBefore * 80 ~/ 100, capitalValue)),
-          reason: 'one lost war may cost at most 80% of the realm '
-              '(or the capital tile, whichever is more)');
-      expect(s.activeWar!.remainingClaim, greaterThan(0));
-    });
-
     test('a winter score victory is capped the same way', () {
       var s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
@@ -149,9 +121,7 @@ void main() {
     test(
         'finishing a settlement against a landless loser reports the '
         'total loss', () {
-      var s = marchOntoCapital(state);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      var s = winterSettlement(state);
       expect(s.activeWar!.phase, WarPhase.settlement);
 
       // The loser loses its remaining land out-of-band (plunder razes
@@ -170,9 +140,7 @@ void main() {
     });
 
     test('a loser with land left does not trigger the event', () {
-      var s = marchOntoCapital(state);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      final s = winterSettlement(state);
       final result = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed));
       expect(result.events.any((e) => e.type == 'realmOverrun'), isFalse);
     });
@@ -183,9 +151,7 @@ void main() {
         'a total-conquest settlement vacates the loser so it leaves the '
         'turn order and cannot inherit the human slot', () {
       // Win the war (enter settlement phase).
-      var s = marchOntoCapital(state);
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      var s = winterSettlement(state);
       expect(s.activeWar!.phase, WarPhase.settlement);
 
       // Strip all loser tiles out-of-band (simulates a large-claim total

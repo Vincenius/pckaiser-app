@@ -30,7 +30,7 @@ class Realm {
     this.soldGrainThisTurn = false,
     this.soldCattleThisTurn = false,
     this.investedThisTurn = false,
-    this.proposedMarriageThisTurn = false,
+    List<int>? proposedThisTurnIds,
     this.warThisYear = false,
     this.recentWars = 0,
     this.rulerId,
@@ -40,6 +40,7 @@ class Realm {
     List<PendingShipReturn>? pendingShipReturns,
     List<IntelReport>? intelReports,
   })  : tileCount = tileCount ?? List.filled(9, 0),
+        proposedThisTurnIds = proposedThisTurnIds ?? [],
         troops = troops ?? [],
         towns = towns ?? [],
         ships = ships ?? [],
@@ -73,8 +74,12 @@ class Realm {
         soldGrainThisTurn: json['soldGrainThisTurn'] as bool? ?? false,
         soldCattleThisTurn: json['soldCattleThisTurn'] as bool? ?? false,
         investedThisTurn: json['investedThisTurn'] as bool? ?? false,
-        proposedMarriageThisTurn:
-            json['proposedMarriageThisTurn'] as bool? ?? false,
+        // Replaces the pre-2026-07-10 realm-wide bool
+        // `proposedMarriageThisTurn` (the limit is per PERSON now); the
+        // legacy key is simply ignored — worst case an old mid-turn save
+        // allows one extra proposal once.
+        proposedThisTurnIds:
+            (json['proposedThisTurnIds'] as List?)?.cast<int>().toList(),
         warThisYear: json['warThisYear'] as bool? ?? false,
         // Additive field — older saves carry no war-weariness yet.
         recentWars: json['recentWars'] as int? ?? 0,
@@ -150,13 +155,16 @@ class Realm {
   int lastTax;
   int lastTribute;
 
-  // Per-turn action flags (§2). One sell per good per turn (§9.1); one
-  // marriage proposal per turn (modern UX rule).
+  // Per-turn action flags (§2). One sell per good per turn (§9.1).
   bool soldGrainThisTurn;
   bool soldCattleThisTurn;
   bool investedThisTurn;
-  bool proposedMarriageThisTurn;
   bool warThisYear;
+
+  /// Dynasty members who already made a royal marriage proposal this turn
+  /// (modern UX rule: one proposal per PERSON per turn — the original had
+  /// no cap at all, §14.1). Cleared with the other per-turn flags.
+  final List<int> proposedThisTurnIds;
 
   /// War weariness: wars this realm STARTED without a peace year in
   /// between. Escalates the declaration's popularity penalty
@@ -208,7 +216,7 @@ class Realm {
         soldGrainThisTurn: soldGrainThisTurn,
         soldCattleThisTurn: soldCattleThisTurn,
         investedThisTurn: investedThisTurn,
-        proposedMarriageThisTurn: proposedMarriageThisTurn,
+        proposedThisTurnIds: List.of(proposedThisTurnIds),
         warThisYear: warThisYear,
         recentWars: recentWars,
         rulerId: rulerId,
@@ -242,7 +250,7 @@ class Realm {
         'soldGrainThisTurn': soldGrainThisTurn,
         'soldCattleThisTurn': soldCattleThisTurn,
         'investedThisTurn': investedThisTurn,
-        'proposedMarriageThisTurn': proposedMarriageThisTurn,
+        'proposedThisTurnIds': proposedThisTurnIds,
         'warThisYear': warThisYear,
         'recentWars': recentWars,
         'rulerId': rulerId,

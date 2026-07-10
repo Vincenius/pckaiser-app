@@ -513,9 +513,12 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  /// Always-visible vitals floating over the map (top right): treasury,
-  /// remaining moves and popularity stacked as compact icon rows.
-  /// Tapping opens "Mein Reich", like the status row below.
+  /// Always-visible vitals floating over the map (top right): year,
+  /// treasury, remaining moves and popularity stacked as compact icon
+  /// rows. Tapping opens "Mein Reich", like the status row below. The
+  /// year also lives in the bottom status row, but that line ellipsizes
+  /// on narrow screens — here it stays readable mid-turn (user report
+  /// 2026-07-10).
   Widget _resourceChip(GameController controller) {
     final realm = controller.currentRealm;
     final theme = Theme.of(context);
@@ -541,6 +544,7 @@ class _GameScreenState extends State<GameScreen> {
           child: Semantics(
             container: true,
             label:
+                'Anno ${controller.state.year}, '
                 '${tr('treasury')}: ${realm.treasury} Taler, '
                 '${tr('moves')}: ${realm.movementPoints}, '
                 '${tr('popularity')}: ${realm.popularity}'
@@ -549,6 +553,8 @@ class _GameScreenState extends State<GameScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  line(Icons.calendar_today, '${controller.state.year}'),
+                  const SizedBox(height: 2),
                   line(Icons.toll, '${realm.treasury}'),
                   const SizedBox(height: 2),
                   line(Icons.construction, '${realm.movementPoints}'),

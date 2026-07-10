@@ -32,8 +32,6 @@ class ActiveWar {
     this.phase = WarPhase.rounds,
     this.attackerWantsPeace = false,
     this.defenderWantsPeace = false,
-    this.attackerPlunderedThisRound = false,
-    this.defenderPlunderedThisRound = false,
     Map<int, List<UnitSnapshot>>? snapshots,
     Map<int, List<int>>? movesLeft,
     this.winnerSlot,
@@ -64,10 +62,9 @@ class ActiveWar {
         phase: WarPhase.values.byName(json['phase'] as String? ?? 'rounds'),
         attackerWantsPeace: json['attackerWantsPeace'] as bool? ?? false,
         defenderWantsPeace: json['defenderWantsPeace'] as bool? ?? false,
-        attackerPlunderedThisRound:
-            json['attackerPlunderedThisRound'] as bool? ?? false,
-        defenderPlunderedThisRound:
-            json['defenderPlunderedThisRound'] as bool? ?? false,
+        // The pre-2026-07-10 per-SIDE plunder flags
+        // (attacker/defenderPlunderedThisRound) are ignored: plunder is
+        // per ARMY now (Troop.plunderedThisRound).
         snapshots: {
           for (final e in ((json['snapshots'] as Map?) ?? {}).entries)
             int.parse(e.key as String): [
@@ -118,8 +115,6 @@ class ActiveWar {
 
   bool attackerWantsPeace;
   bool defenderWantsPeace;
-  bool attackerPlunderedThisRound;
-  bool defenderPlunderedThisRound;
 
   /// Pre-war unit positions per slot, parallel to the troop list at
   /// declaration (units are pruned to non-empty first).
@@ -211,18 +206,6 @@ class ActiveWar {
     }
   }
 
-  bool plunderedThisRound(int slot) => slot == attackerSlot
-      ? attackerPlunderedThisRound
-      : defenderPlunderedThisRound;
-
-  void setPlunderedThisRound(int slot, bool value) {
-    if (slot == attackerSlot) {
-      attackerPlunderedThisRound = value;
-    } else {
-      defenderPlunderedThisRound = value;
-    }
-  }
-
   ActiveWar copy() => ActiveWar(
         attackerSlot: attackerSlot,
         defenderSlot: defenderSlot,
@@ -230,8 +213,6 @@ class ActiveWar {
         phase: phase,
         attackerWantsPeace: attackerWantsPeace,
         defenderWantsPeace: defenderWantsPeace,
-        attackerPlunderedThisRound: attackerPlunderedThisRound,
-        defenderPlunderedThisRound: defenderPlunderedThisRound,
         snapshots: {
           for (final e in snapshots.entries) e.key: List.of(e.value),
         },
@@ -264,8 +245,6 @@ class ActiveWar {
         'phase': phase.name,
         'attackerWantsPeace': attackerWantsPeace,
         'defenderWantsPeace': defenderWantsPeace,
-        'attackerPlunderedThisRound': attackerPlunderedThisRound,
-        'defenderPlunderedThisRound': defenderPlunderedThisRound,
         'snapshots': {
           for (final e in snapshots.entries)
             '${e.key}': [for (final s in e.value) s.toJson()],

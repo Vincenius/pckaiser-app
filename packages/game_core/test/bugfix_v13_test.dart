@@ -147,7 +147,7 @@ void main() {
     });
   });
 
-  group('capture claim floor (rules v13)', () {
+  group('ruler capture (superseded v13 claim floor)', () {
     /// Declares war (slot 1 → slot 2) and parks slot 1's unit on slot 2's
     /// capital; the defender's unit is moved aside first.
     GameState marchOntoCapital(GameState from) {
@@ -167,35 +167,17 @@ void main() {
     }
 
     test(
-        'a capture claim always covers the loser capital tile, even when '
-        'the v12 cap is smaller', () {
+        'capturing the ruler takes the whole realm — the v13 "claim covers '
+        'the capital tile" floor is obsolete (§11.2 restored 2026-07-10)',
+        () {
       var s = marchOntoCapital(state);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      // Strip slot 2 down to capital + one bare tile before the capture
-      // resolves: the v12 cap would be (5000 + 100) / 2 = 2550 < 5000.
-      final map = s.map;
-      final loser = s.realm(2);
-      var kept = false;
-      for (var i = 0; i < map.terrain.length; i++) {
-        if (map.owner[i] != 2) continue;
-        final isCapital = i == map.index(loser.capitalX, loser.capitalY);
-        if (!kept && !isCapital && map.building[i] == Building.none) {
-          kept = true;
-          continue;
-        }
-        if (isCapital) continue; // capital stays for the capture check
-        loser.tileCount[map.building[i]]--;
-        map.owner[i] = World.niemand;
-      }
-      expect(kept, isTrue);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
 
-      expect(s.activeWar!.phase, WarPhase.settlement);
-      expect(s.activeWar!.winnerSlot, 1);
-      final capitalValue = settlementTileValue(
-          s, s.map.buildingAt(loser.capitalX, loser.capitalY));
-      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(capitalValue),
-          reason: 'the captor held the seat — taking it must be possible');
+      expect(s.activeWar, isNull, reason: 'no settlement after a capture');
+      expect(s.realm(2).rulerId, s.realm(1).rulerId,
+          reason: 'the captor rules the loser slot (§19 aliasing) — the '
+              'conquered seat, and everything else, is theirs');
     });
   });
 }

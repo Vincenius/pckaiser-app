@@ -123,7 +123,11 @@ String describeEvent(gc.GameEvent e) {
       '$realm besetzt den Königssitz von '
           '${gc.countryNames[p['loserSlot'] as int]} !',
     'warWon' =>
-      '$realm gewinnt den Krieg gegen ${gc.countryNames[p['loserSlot'] as int]}',
+      p['conquered'] == true
+          ? '$realm gewinnt den Krieg und übernimmt das gesamte Reich von '
+                '${gc.countryNames[p['loserSlot'] as int]} !'
+          : '$realm gewinnt den Krieg gegen '
+                '${gc.countryNames[p['loserSlot'] as int]}',
     'warDraw' => 'Der Krieg endet unentschieden',
     'peaceAgreed' => 'Friedensschluss — der Krieg endet ohne Gebietsänderungen',
     'winterEndsWar' =>

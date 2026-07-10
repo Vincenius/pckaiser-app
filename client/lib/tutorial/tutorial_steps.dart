@@ -19,6 +19,9 @@ gc.GameSetup tutorialSetup() => gc.GameSetup(
   ],
   reformationYear: 1020,
   ottomanYear: 1040,
+  // Pinned so the scripted overlay stays reproducible even if the setup
+  // default ever changes (the tutorial ends within the first turn anyway).
+  aiDifficulty: gc.AiDifficulty.mittel,
   seed: 1099, // fixed: reproducible tutorial map
 );
 
@@ -73,8 +76,9 @@ final List<TutorialStep> tutorialSteps = [
   TutorialStep(
     title: 'Deine Werte',
     body:
-        'Oben rechts siehst du deine Taler (Münze), deine '
-        'verbleibenden Züge (Hammer) und deine Beliebtheit (Herz) — '
+        'Oben rechts siehst du das aktuelle Jahr (Kalender), deine '
+        'Taler (Münze), deine verbleibenden Züge (Hammer) und deine '
+        'Beliebtheit (Herz) — '
         'Bauen und Erweitern auf der Karte kostet einen Zug, Truppen '
         'verlegen ist kostenlos. Die Züge werden jede Runde neu '
         'gewürfelt: je höher der Titel deines Herrschers, desto mehr. '

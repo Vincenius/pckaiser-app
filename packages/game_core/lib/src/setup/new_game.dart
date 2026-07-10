@@ -1,6 +1,7 @@
 import '../data/tables.dart';
 import '../map/map_generator.dart';
 import '../rng/rng.dart';
+import '../state/ai_difficulty.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_state.dart';
@@ -43,6 +44,7 @@ class GameSetup {
     this.warStartYear = 1010,
     this.genderEqualSuccession = true,
     this.suggestChildNames = true,
+    this.aiDifficulty = AiDifficulty.mittel,
   }) {
     // 1–16 humans for real games; 0 is allowed for headless simulations
     // (e.g. the full-AI smoke test).
@@ -76,6 +78,9 @@ class GameSetup {
   /// (presentation only — the engine always carries a provisional name).
   /// See [GameState.suggestChildNames].
   final bool suggestChildNames;
+
+  /// How strongly the AI opponents play. See [GameState.aiDifficulty].
+  final AiDifficulty aiDifficulty;
 }
 
 /// Creates a fresh game world (ORIGINAL_GAME.md §5): random map, 30
@@ -160,6 +165,7 @@ GameState newGame(GameSetup setup) {
     warStartYear: setup.warStartYear,
     genderEqualSuccession: setup.genderEqualSuccession,
     suggestChildNames: setup.suggestChildNames,
+    aiDifficulty: setup.aiDifficulty,
     persons: persons,
     nextPersonId: nextPersonId,
     currentPlayer: 1,

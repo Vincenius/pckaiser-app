@@ -7,6 +7,7 @@ library;
 
 export 'src/actions/apply_action.dart';
 export 'src/actions/player_action.dart';
+export 'src/ai/ai_tuning.dart';
 export 'src/ai/ai_turn.dart';
 export 'src/data/tables.dart';
 export 'src/map/map_generator.dart';
@@ -28,6 +29,7 @@ export 'src/rules/war.dart';
 export 'src/setup/new_game.dart';
 export 'src/state/war.dart';
 export 'src/turn/turn_pipeline.dart';
+export 'src/state/ai_difficulty.dart';
 export 'src/state/chronicle.dart';
 export 'src/state/constants.dart';
 export 'src/state/dynasty.dart';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' hide World;
 
 import '../services/save_service.dart';
+import '../widgets/ai_difficulty_picker.dart';
 import 'game_screen.dart';
 
 class _PlayerDraft {
@@ -41,6 +42,7 @@ class _SetupScreenState extends State<SetupScreen> {
   // Deviation from the original — on by default for new games.
   bool _genderEqualSuccession = true;
   bool _suggestChildNames = true;
+  AiDifficulty _aiDifficulty = AiDifficulty.mittel;
 
   int _nextFreeSlot() {
     for (var slot = 1; slot <= 30; slot++) {
@@ -144,6 +146,7 @@ class _SetupScreenState extends State<SetupScreen> {
       warStartYear: int.parse(_warStart.text),
       genderEqualSuccession: _genderEqualSuccession,
       suggestChildNames: _suggestChildNames,
+      aiDifficulty: _aiDifficulty,
       seed: DateTime.now().microsecondsSinceEpoch & 0xFFFFFFFF,
     );
     if (!mounted) return;
@@ -216,6 +219,12 @@ class _SetupScreenState extends State<SetupScreen> {
                     labelText: 'Krieg möglich ab Jahr',
                     helperText: 'Original: 1010',
                   ),
+                ),
+                const SizedBox(height: 12),
+                AiDifficultyPicker(
+                  label: 'Stärke der KI-Gegner',
+                  value: _aiDifficulty,
+                  onChanged: (v) => setState(() => _aiDifficulty = v),
                 ),
                 const SizedBox(height: 8),
                 SwitchListTile(

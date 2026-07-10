@@ -122,6 +122,7 @@ class MatchSettings {
     this.warStartYear = 1010,
     this.genderEqualSuccession = true,
     this.suggestChildNames = true,
+    this.aiDifficulty = 'mittel',
     this.isPublic = false,
     int? seed,
   }) : seed = seed ?? Random.secure().nextInt(1 << 31);
@@ -134,6 +135,14 @@ class MatchSettings {
         warStartYear: json['war_start_year'] as int? ?? 1010,
         genderEqualSuccession: json['gender_equal_succession'] as bool? ?? true,
         suggestChildNames: json['suggest_child_names'] as bool? ?? true,
+        // Normalized at the boundary: an unknown client value would
+        // otherwise be stored and echoed to every seat while the game
+        // silently plays mittel — the views must never lie about the
+        // difficulty actually in effect.
+        aiDifficulty: switch (json['ai_difficulty']) {
+          'leicht' || 'mittel' || 'schwer' => json['ai_difficulty'] as String,
+          _ => 'mittel',
+        },
         isPublic: json['is_public'] as bool? ?? false,
         seed: json['seed'] as int?,
       );
@@ -158,6 +167,12 @@ class MatchSettings {
   /// the game world at start as `GameState.suggestChildNames`.
   final bool suggestChildNames;
 
+  /// AI opponent strength ('leicht' | 'mittel' | 'schwer') — kept as the
+  /// raw string here (this file stays free of `game_core`); parsed via
+  /// `AiDifficulty.fromName` when the world is built, so an unknown value
+  /// safely falls back to 'mittel'.
+  final String aiDifficulty;
+
   /// Public match: listed in the lobby's open-games list so anyone can
   /// join, not only those who know the room code. Default private.
   final bool isPublic;
@@ -176,6 +191,7 @@ class MatchSettings {
         'war_start_year': warStartYear,
         'gender_equal_succession': genderEqualSuccession,
         'suggest_child_names': suggestChildNames,
+        'ai_difficulty': aiDifficulty,
         'is_public': isPublic,
         if (includeSeed) 'seed': seed,
       };

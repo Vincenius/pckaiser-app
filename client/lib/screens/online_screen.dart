@@ -7,6 +7,7 @@ import 'package:game_core/game_core.dart' as gc;
 import '../l10n/strings.dart' show formatTimestamp;
 import '../services/api_client.dart';
 import '../services/online_service.dart';
+import '../widgets/ai_difficulty_picker.dart';
 import '../widgets/decisions.dart' show formatWarStartTime;
 import 'online_match_screen.dart';
 
@@ -187,6 +188,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
           'is_public': setup.isPublic,
           'gender_equal_succession': setup.genderEqualSuccession,
           'suggest_child_names': setup.suggestChildNames,
+          'ai_difficulty': setup.aiDifficulty.name,
         },
         setup: setup.toJson(),
       );
@@ -295,6 +297,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
     var isPublic = false;
     var genderEqualSuccession = true;
     var suggestChildNames = true;
+    var aiDifficulty = gc.AiDifficulty.mittel;
     return showDialog<_MatchSetup>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -432,6 +435,11 @@ class _OnlineScreenState extends State<OnlineScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
+                        AiDifficultyPicker(
+                          label: 'Stärke der KI-Gegner',
+                          value: aiDifficulty,
+                          onChanged: (v) => setState(() => aiDifficulty = v),
+                        ),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           value: genderEqualSuccession,
@@ -531,6 +539,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
                     isPublic: isPublic,
                     genderEqualSuccession: genderEqualSuccession,
                     suggestChildNames: suggestChildNames,
+                    aiDifficulty: aiDifficulty,
                   ),
                 );
               },
@@ -812,6 +821,7 @@ class _MatchSetup {
     this.isPublic = false,
     this.genderEqualSuccession = true,
     this.suggestChildNames = true,
+    this.aiDifficulty = gc.AiDifficulty.mittel,
   });
 
   final String founderName;
@@ -827,6 +837,7 @@ class _MatchSetup {
   final bool isPublic;
   final bool genderEqualSuccession;
   final bool suggestChildNames;
+  final gc.AiDifficulty aiDifficulty;
 
   Map<String, dynamic> toJson() => {
     'founder_name': founderName,

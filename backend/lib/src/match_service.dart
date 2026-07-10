@@ -407,6 +407,7 @@ class MatchService {
       warStartYear: match.settings.warStartYear,
       genderEqualSuccession: match.settings.genderEqualSuccession,
       suggestChildNames: match.settings.suggestChildNames,
+      aiDifficulty: AiDifficulty.fromName(match.settings.aiDifficulty),
       seed: match.settings.seed,
     );
     var state = newGame(setup);

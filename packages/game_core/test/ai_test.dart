@@ -208,6 +208,7 @@ void main() {
       var state = aiOnlyGame(seed: 777);
       var year = state.year;
       var safety = 0;
+      var won = false;
       while (state.year < 1200 && safety++ < 200 * 40) {
         final slot = state.currentPlayer;
         if (!state.realm(slot).isVacant &&
@@ -220,6 +221,7 @@ void main() {
         }
         state = completeTurn(state, Rng(state.rngSeed)).state;
         if (state.events.isNotEmpty && state.events.last.type == 'gameWon') {
+          won = true;
           break;
         }
         if (state.year > year) {
@@ -229,7 +231,9 @@ void main() {
         // No human decisions may ever be queued in an all-AI game.
         expect(state.pendingDecisions, isEmpty);
       }
-      expect(state.year, greaterThanOrEqualTo(1050),
+      // Since ruler capture takes whole realms (§11.2, 2026-07-10), an
+      // all-AI world can legitimately consolidate to a sole ruler early.
+      expect(won || state.year >= 1050, isTrue,
           reason: 'simulation must run deep (or end by victory)');
       expectInvariants(state);
 

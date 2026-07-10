@@ -6,6 +6,119 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-10 — AI difficulty levels (Leicht/Mittel/Schwer)
+
+Per-game setup option `AiDifficulty` (local setup screen and online host
+dialog → `MatchSettings.aiDifficulty` → `GameSetup` →
+`GameState.aiDifficulty`, additive JSON field, old saves → `mittel`).
+The levels only tune the §20 AI script via a declarative table
+(`ai/ai_tuning.dart`) — no resource cheats, and `mittel` reproduces the
+pre-difficulty behaviour exactly. Leicht: sells at any price, food check
+only on acute shortage, halved random levies, Burg/Palast at 1/40, no
+assassinations, war impulse 1/40. Schwer: food buffer (×1.2), sells near
+top prices, Burg/Palast checked at 1/5, planned recruiting toward 80 %
+troop capacity spending at most half the treasury (war chest), Kavallerie
+from 3,000 T, drills regulars to quality 5 (a quarter of the treasury per
+turn, cheapest unit first, AFTER reinforcing so dilution is already in),
+assassinates at 1/15 targeting the strongest bordering rival with up to
+30 agents — budgeted BEFORE the turn's spending, because after the
+planned economy runs the 12×250 T reserve gate almost never held — and
+declares war only on the weakest neighbour with a ≥ 1.3× army-strength
+edge. Tests: `ai_difficulty_test.dart` (plumbing, leicht-never/schwer-do
+probes over 80 seeds, planned-army/kavallerie/drill, no war without the
+edge), `match_service_test.dart` (settings flow, unknown value → mittel).
+
+Review round (same day, 8-angle pass): planned recruiting now SPLITS the
+army over up to three units capped near a third of the target (one lump
+unit could never leave a war home guard) with UNIQUE names via
+`_newTroopName` (war snapshots pair units by name — a refounded duplicate
+name would swap units after a war); the Kavallerie surcharge is only paid
+for units ≥ 10 men; the leicht first-unit levy is floored at 1 man
+(`(rng(1)+1) ~/ 2 == 0` had left a troopless realm at free capacity 1
+permanently unarmed); a boxed-in schwer realm wars to break out even
+without the 1.3× edge (§20.4 escape valve, `desperate` pick — still the
+weakest neighbour); `warChance`/`assassinMaxAgents` are guarded so a bad
+tuning row can't throw (`nextInt(0)`, `clamp` min > max); the backend
+normalizes `ai_difficulty` at the boundary (views must not echo a string
+the game doesn't play); AiTuning defaults = mittel with the two derivable
+bools dropped (`capacityTarget`/`warStrengthAdvantage` > 0 gate their
+strategies, 0 = off convention); the mittel test also pins
+`assassinateEarly` (turn/RNG order); `sim_report` takes the difficulty as
+an argument; shared `AiDifficultyPicker` widget replaces the duplicated
+setup/online pickers. Docs clarified: "no cheats" means no resource boni —
+the AI script plays on the unfiltered state, as its war movement always
+did.
+
+## 2026-07-10 — User-report round: Reformation faith choice, widower inheritance, per-person proposals, whole-realm ruler capture, per-army plunder, year in the HUD
+
+Six tester reports, five fixes plus one verification
+(tests: `user_reports_2026_07_10_test.dart`, `actions_test.dart`,
+`war_test.dart`; deviations table updated):
+
+1. **Faith choice at the Reformation** (off-by-one): the Reformation/
+   Ottoman events fire in the round where `year == eventYear`, but the
+   `ChangeReligion` gates (and the menu) required `year > eventYear` — in
+   the announcement round no faith option existed at all. Gates are now
+   inclusive of the event year (`apply_action.dart`, `menus.dart`; the
+   §15.2 new-dynasty roll in `events.dart` matches).
+2. **Widower inheritance** (§14.2/§15.4): `_birth` double-links children
+   on BOTH parents' lists, so a married woman's death crowned her son
+   (rank 1) over her widower (rank 3). Per §14.2 the couple's children
+   hang on the HUSBAND — `_chooseHeirByPriority` now ignores a married
+   woman's children links (filtering at heir choice, not at birth, also
+   fixes running games whose saves carry the double links; the links stay
+   for the family UI).
+3. **Marriage proposals per person** (modern UX rule refined): the
+   one-royal-proposal-per-turn cap was one bool per REALM; now
+   `Realm.proposedThisTurnIds` tracks proposers, so every marriageable
+   member may propose once per turn. The legacy JSON bool is ignored on
+   load. Client pickers filter spent proposers.
+4. **Ruler capture takes the whole realm again** (original §11.2
+   restored): capital occupation through a full round now overwrites the
+   loser slot's ruler pointer (§19 aliasing — land, towns, treasury,
+   troops change hands at once; control follows the captor, defeat
+   reason `rulerCaptured`) instead of the capped claim settlement. The
+   50–80% anti-swallow cap and the v13 capital-tile floor now apply only
+   to SCORE-based endings (winter arbitration); settlement tests reach
+   that phase via the winter route.
+5. **Plunder per army** (§11.5): the per-SIDE war flags became
+   `Troop.plunderedThisRound` (additive field; old flags ignored on
+   load) — each army plunders once per war round, reset at war start and
+   every round advance. War-panel gating follows the selected unit.
+6. **Year visibility** (verified, then improved): the year was already in
+   the bottom status row, but that line ellipsizes on narrow screens —
+   the top-right resource chip now leads with "Jahr (Kalender)"; tutorial
+   step "Deine Werte" updated.
+
+## 2026-07-09 — Seat invariant: a realm with land always has a valid seat, wars always winnable (user bug report)
+
+An enemy realm without a remaining Stadt/Burg/Palast could carry a STALE
+seat (`capitalX/Y` on a tile it no longer owned): `reseatLostCapitals`
+skipped realms with no seat-eligible tile, ran only at year start, and a
+human's `relocateCapital` prompt could stay unresolved. Both the
+capital-occupation victory (`capitalOccupier`) and the map's seat flag
+require an OWNED capital tile — so the flag vanished and the war became
+unwinnable. Fixes (`rules/events.dart`, `rules/war.dart`):
+
+1. **Fallback seat**: a realm whose last Stadt/Burg/Palast is gone
+   re-seats automatically (even a human — there is nothing to choose)
+   onto its highest-value owned tile of ANY kind. Only a landless realm
+   keeps a stale seat (elimination handles it). Per-realm logic extracted
+   into `ensureRealmSeat`. A later move from such a makeshift seat onto a
+   proper Stadt/Burg/Palast is free (like a lost-seat re-seat).
+2. **War repair**: `startWar` and every `endWarRound` force-repair both
+   sides' seats (superseding any open relocate prompt), so a war always
+   has two flagged, capturable seats.
+3. **Settlement repair**: `finishSettlement` re-seats the loser
+   immediately (AI auto, human prompted) instead of at the next year
+   start — the annexed-capital case no longer leaves a stale flag or a
+   stale seat for a follow-up war the same year. `finishSettlement` /
+   `applySettlementTakeAll` / `applySettlementFinish` now take `rng`.
+
+Enemy capitals are public in `visibleStateFor`, so the client flag
+(`map_game.dart` `paintCapital`) renders correctly with no client change.
+Tests in `seat_invariant_test.dart` (fallback, war/settlement repair).
+
 ## 2026-07-08 — Combat balancing: mass matters, casualties scale with the opponent (user feedback)
 
 Small units regularly beat and out-damaged big ones: both sides' combat

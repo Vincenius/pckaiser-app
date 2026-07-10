@@ -424,7 +424,7 @@ void main() {
   });
 
   group('ProposeMarriage', () {
-    test('only one proposal per turn', () {
+    test('one proposal per PERSON per turn', () {
       // An eligible pair: opposite gender, both 20, different dynasties,
       // both Catholic at game start.
       state.persons[9001] =
@@ -433,12 +433,30 @@ void main() {
           Person(id: 9002, name: 'Ute', age: 20, dynasty: 2, gender: 1);
       final result = applyAction(state,
           ProposeMarriage(slot: 1, proposerId: 9001, targetId: 9002), rng);
-      expect(result.state.realm(1).proposedMarriageThisTurn, isTrue);
+      expect(result.state.realm(1).proposedThisTurnIds, contains(9001));
       expect(
         () => applyAction(result.state,
             ProposeMarriage(slot: 1, proposerId: 9001, targetId: 9002), rng),
         throwsA(isA<ActionException>()),
       );
+    });
+
+    test('a second dynasty member may still propose the same turn', () {
+      state.persons[9001] =
+          Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
+      state.persons[9002] =
+          Person(id: 9002, name: 'Ute', age: 20, dynasty: 2, gender: 1);
+      state.persons[9003] =
+          Person(id: 9003, name: 'Karl', age: 22, dynasty: 1, gender: 0);
+      state.persons[9004] =
+          Person(id: 9004, name: 'Greta', age: 21, dynasty: 3, gender: 1);
+      var result = applyAction(state,
+          ProposeMarriage(slot: 1, proposerId: 9001, targetId: 9002), rng);
+      // The first member's proposal must not block the second member's.
+      result = applyAction(result.state,
+          ProposeMarriage(slot: 1, proposerId: 9003, targetId: 9004), rng);
+      expect(result.state.realm(1).proposedThisTurnIds,
+          containsAll([9001, 9003]));
     });
   });
 
@@ -495,7 +513,7 @@ void main() {
       for (var seed = 0; seed < 40; seed++) {
         final result = applyAction(
             state, MarryCommoner(slot: 1, personId: 9001), Rng(seed));
-        expect(result.state.realm(1).proposedMarriageThisTurn, isFalse,
+        expect(result.state.realm(1).proposedThisTurnIds, isEmpty,
             reason: 'v5+: does not consume the royal proposal');
         final hans = result.state.persons[9001]!;
         expect(hans.spouseId, isNotNull, reason: 'a commoner never declines');
@@ -513,7 +531,7 @@ void main() {
       state.persons[9001] =
           Person(id: 9001, name: 'Hans', age: 20, dynasty: 1, gender: 0);
       state.dynasty(1).memberIds.add(9001);
-      state.realm(1).proposedMarriageThisTurn = true;
+      state.realm(1).proposedThisTurnIds.add(9001);
       final result =
           applyAction(state, MarryCommoner(slot: 1, personId: 9001), Rng(1));
       expect(result.state.persons[9001]!.spouseId, isNotNull);

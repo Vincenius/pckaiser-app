@@ -37,6 +37,7 @@ class Troop {
     required this.x,
     required this.y,
     this.stance = TroopStance.holdPosition,
+    this.plunderedThisRound = false,
   });
 
   factory Troop.fromJson(Map<String, dynamic> json) => Troop(
@@ -50,6 +51,8 @@ class Troop {
         // Additive field — units from older saves default to holding their
         // position (defending the base).
         stance: json['stance'] as int? ?? TroopStance.holdPosition,
+        // Additive field — units from older saves have not plundered yet.
+        plunderedThisRound: json['plunderedThisRound'] as bool? ?? false,
       );
 
   String name;
@@ -77,6 +80,10 @@ class Troop {
   /// Mutable: set per unit via the "Verhalten im Krieg" toggle.
   int stance;
 
+  /// §11.5: each army plunders once per war round. Cleared at war start
+  /// and on every round advance.
+  bool plunderedThisRound;
+
   Troop copy() => Troop(
         name: name,
         men: men,
@@ -86,6 +93,7 @@ class Troop {
         x: x,
         y: y,
         stance: stance,
+        plunderedThisRound: plunderedThisRound,
       );
 
   Map<String, dynamic> toJson() => {
@@ -97,5 +105,6 @@ class Troop {
         'x': x,
         'y': y,
         'stance': stance,
+        'plunderedThisRound': plunderedThisRound,
       };
 }

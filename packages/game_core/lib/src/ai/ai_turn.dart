@@ -6,8 +6,9 @@ import '../data/tables.dart';
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
 import '../rules/realm_merge.dart';
-import '../rules/troops.dart' show troopStrength;
+import '../rules/troops.dart' show classSurcharge, troopStrength;
 import '../rules/war.dart';
+import 'ai_tuning.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
@@ -46,6 +47,10 @@ void _runAiTurnInPlace(
   final realm = state.realm(slot);
   if (realm.isVacant) return;
 
+  // How strongly this AI plays — per-game setup choice, see ai_tuning.dart.
+  // Mittel is the faithful pre-difficulty script.
+  final tuning = aiTuningFor(state.aiDifficulty);
+
   // §20.3 Collect the crown pot when this realm's ruler holds the office —
   // a deliberate action since 0.1.13 ("Staatskasse plündern"), no longer
   // part of the upkeep, so the AI presses the button itself.
@@ -56,9 +61,9 @@ void _runAiTurnInPlace(
     _act(state, CollectTribute(slot: slot), rng, events);
   }
 
-  // §20.2 Sell harvests at the upper ~40% of each price range; never
-  // stockpiles.
-  if (state.grainPrice > 1.6 && realm.grainHarvest > 0) {
+  // §20.2 Sell harvests once the price clears the tuning threshold
+  // (mittel: the upper ~40% of each range); never stockpiles.
+  if (state.grainPrice > tuning.grainSellMin && realm.grainHarvest > 0) {
     _act(
         state,
         SellGood(
@@ -66,7 +71,7 @@ void _runAiTurnInPlace(
         rng,
         events);
   }
-  if (state.cattlePrice > 2.2 && realm.livestockHarvest > 0) {
+  if (state.cattlePrice > tuning.cattleSellMin && realm.livestockHarvest > 0) {
     _act(
         state,
         SellGood(
@@ -77,10 +82,18 @@ void _runAiTurnInPlace(
         events);
   }
 
+  // Schwer budgets the daggers BEFORE the builders: after the turn's
+  // spending (build loop, planned levies, drill, ships) the §13.3 reserve
+  // gate would almost never hold for an AI that plans its economy
+  // aggressively. Mittel keeps the original late check below.
+  if (tuning.assassinateEarly) {
+    _maybeAssassinate(state, realm, rng, events, tuning);
+  }
+
   // §20.4 Build loop.
   var warFlag = false;
   while (realm.movementPoints > 0) {
-    final action = _pickBuildAction(state, realm, rng);
+    final action = _pickBuildAction(state, realm, rng, tuning);
     if (action == null) {
       warFlag = true; // boxed in (§20.4)
       break;
@@ -92,8 +105,9 @@ void _runAiTurnInPlace(
     }
   }
 
-  // §20.5 Reinforce, guards, ships.
-  _reinforce(state, realm, rng, events);
+  // §20.5 Reinforce, drill (schwer only), guards, ships.
+  _reinforce(state, realm, rng, events, tuning);
+  _drillTroops(state, realm, rng, events, tuning);
   _adjustGuardsTowardTarget(state, realm, rng, events);
   _investInShips(state, realm, rng, events);
 
@@ -119,8 +133,11 @@ void _runAiTurnInPlace(
   // §13.3 `[DESIGNED]` cloak-and-dagger: a content, solvent AI occasionally
   // sends assassins at a bordering rival's ruler. The original AI never used
   // its spies offensively, so rulers were immune to the dagger unless a
-  // human paid for it.
-  _maybeAssassinate(state, realm, rng, events);
+  // human paid for it. (Schwer already ran this before the spending —
+  // see assassinateEarly above.)
+  if (!tuning.assassinateEarly) {
+    _maybeAssassinate(state, realm, rng, events, tuning);
+  }
 
   // §20.8 War. Declaring war costs the aggressor popularity, so a
   // sensible AI ruler only wars while the people are content — without
@@ -132,14 +149,19 @@ void _runAiTurnInPlace(
   // + 1), floored below the strife line) — demand a matching mood cushion
   // so a serial-warring AI never talks itself into a §19.1 revolt.
   final warMoodOk = realm.popularity >= 50 + 5 * realm.recentWars;
-  if ((warFlag || rng.nextInt(20) == 0) &&
+  if ((warFlag ||
+          tuning.warChance > 0 && rng.nextInt(tuning.warChance) == 0) &&
       rng.nextInt(3) == 0 &&
       warMoodOk &&
       state.year >= state.warStartYear &&
       !realm.warThisYear &&
       state.activeWar == null &&
       realm.troops.any((t) => t.men > 0)) {
-    final target = _pickWarTarget(state, slot, rng);
+    // A boxed-in AI (warFlag) wars to break out even without a clear
+    // strength edge — otherwise a schwer realm with only strong
+    // neighbours would idle forever (§20.4's escape valve).
+    final target =
+        _pickWarTarget(state, slot, rng, tuning, desperate: warFlag);
     if (target != null) {
       try {
         _act(state, DeclareWar(slot: slot, targetSlot: target), rng, events);
@@ -156,7 +178,8 @@ void _runAiTurnInPlace(
 /// first hit, so AI realms always built and expanded toward the top-left
 /// corner — visibly predictable. Picking uniformly among all candidates
 /// keeps the same build priorities but spreads growth in every direction.
-PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
+PlayerAction? _pickBuildAction(
+    GameState state, Realm realm, Rng rng, AiTuning tuning) {
   final map = state.map;
   final slot = realm.slot;
 
@@ -193,8 +216,10 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
     return pickRandom(candidates);
   }
 
-  // Keep food up: tileCount[Kornfeld] × 9 ≳ population.
-  if (realm.tileCount[Building.kornfeld] * 9 < realm.population) {
+  // Keep food up: tileCount[Kornfeld] × 9 ≳ population × foodFactor
+  // (schwer keeps a buffer, leicht reacts only to acute shortage).
+  if (realm.tileCount[Building.kornfeld] * 9 <
+      realm.population * tuning.foodFactor) {
     final field = findOwned((x, y, b) =>
         b == Building.none &&
         (map.terrainAt(x, y) == Terrain.ebene && realm.treasury >= 100 ||
@@ -257,14 +282,15 @@ PlayerAction? _pickBuildAction(GameState state, Realm realm, Rng rng) {
     }
   }
 
-  // Burg / Palast at ≈ 1/20 per turn.
-  if (realm.treasury >= 5000 && rng.nextInt(20) == 0) {
+  // Burg / Palast at ≈ 1/burgChance per loop pass (mittel: the original
+  // 1/20; schwer checks far more often, leicht barely ever).
+  if (realm.treasury >= 5000 && rng.nextInt(tuning.burgChance) == 0) {
     final spot = findOwned((x, y, b) => b == Building.none);
     if (spot != null) {
       return Build(slot: slot, x: spot.$1, y: spot.$2, building: Building.burg);
     }
   }
-  if (realm.treasury >= 10000 && rng.nextInt(20) == 0) {
+  if (realm.treasury >= 10000 && rng.nextInt(tuning.burgChance) == 0) {
     final spot = findOwned((x, y, b) => b == Building.none);
     if (spot != null) {
       return Build(
@@ -294,15 +320,46 @@ const aiTroopNames = [
   'Reiterei',
 ];
 
+/// A troop name no unit of [realm] carries yet. Uniqueness matters: the
+/// war snapshots pair units BY NAME (`matchedSnapshots`), so two units
+/// sharing a name would swap positions after a war. Starts at the classic
+/// `(slot + count) % n` pick (identical to the old behaviour while names
+/// are free), then walks the pool, then numbers the fallback.
+String _newTroopName(Realm realm) {
+  final used = {for (final troop in realm.troops) troop.name};
+  for (var i = 0; i < aiTroopNames.length; i++) {
+    final name = aiTroopNames[
+        (realm.slot + realm.troops.length + i) % aiTroopNames.length];
+    if (!used.contains(name)) return name;
+  }
+  final base = aiTroopNames[realm.slot % aiTroopNames.length];
+  var n = 2;
+  while (used.contains('$base $n')) {
+    n++;
+  }
+  return '$base $n';
+}
+
 /// §20.5: each unit gets `random(freeCapacity) + 1` recruits; a realm
 /// without units raises one first [INTERPRETATION — the original AI must
-/// create units to be able to declare war].
-void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events) {
+/// create units to be able to declare war]. Leicht halves every levy
+/// (reinforceDivisor); schwer skips the random levy entirely and recruits
+/// planfully ([_reinforcePlanned]).
+void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events,
+    AiTuning tuning) {
+  if (tuning.capacityTarget > 0) {
+    _reinforcePlanned(state, realm, rng, events, tuning);
+    return;
+  }
   final free = realm.troopCapacity - realm.armySize;
   if (realm.troops.isEmpty) {
     if (free > 0 && realm.treasury >= 5 * 10) {
-      final men =
-          math.min(rng.nextInt(free) + 1, math.min(free, realm.treasury ~/ 5));
+      // Floored at 1 man: the first unit must always be raisable — with a
+      // halving divisor and free capacity 1 the levy would otherwise be
+      // deterministically 0 and the realm could never arm at all.
+      final men = math.min(
+          math.max(1, (rng.nextInt(free) + 1) ~/ tuning.reinforceDivisor),
+          math.min(free, realm.treasury ~/ 5));
       if (men > 0) {
         _act(
             state,
@@ -310,8 +367,7 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events) {
                 slot: realm.slot,
                 men: men,
                 troopClass: TroopClass.infanterie,
-                name: aiTroopNames[
-                    (realm.slot + realm.troops.length) % aiTroopNames.length]),
+                name: _newTroopName(realm)),
             rng,
             events);
       }
@@ -322,11 +378,121 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events) {
     final freeNow = realm.troopCapacity - realm.armySize;
     if (freeNow <= 0) break;
     if (!realm.troops[i].garrisonCounted) continue;
-    final wanted = rng.nextInt(freeNow) + 1;
+    final wanted = (rng.nextInt(freeNow) + 1) ~/ tuning.reinforceDivisor;
     final men = math.min(wanted, math.min(freeNow, realm.treasury ~/ 5));
     if (men <= 0) continue;
     _act(state, ReinforceTroop(slot: realm.slot, unitIndex: i, men: men), rng,
         events);
+  }
+}
+
+/// `[DESIGNED]` Schwer recruiting: instead of the original's random levy
+/// the AI fills its army toward `capacityTarget × troopCapacity`, spending
+/// at most half the treasury per turn (the rest stays as a war chest). Up
+/// to three regular units are founded, each capped near a third of the
+/// target so the army really is SPLIT (one lump unit could never leave a
+/// home guard behind, see [runAiWarMovement]) — Kavallerie once the
+/// treasury clears [AiTuning.kavallerieTreasury] and the unit is worth the
+/// surcharge — then existing units are reinforced, smallest first.
+void _reinforcePlanned(GameState state, Realm realm, Rng rng,
+    List<GameEvent> events, AiTuning tuning) {
+  var budget = realm.treasury ~/ 2;
+  // Clamped to the capacity so a tuning target > 1.0 can never oversize
+  // the deficit past the free quarters.
+  final target = math.min(
+      (realm.troopCapacity * tuning.capacityTarget).floor(),
+      realm.troopCapacity);
+  // Founding cap per new unit: ~a third of the target, at least 10 men.
+  final unitCap = math.max(10, (target / 3).ceil());
+  var guard = 0;
+  while (guard++ < 10) {
+    final deficit = target - realm.armySize;
+    if (deficit <= 0 || budget < 5) return;
+    final regulars = [
+      for (var i = 0; i < realm.troops.length; i++)
+        if (realm.troops[i].garrisonCounted) i,
+    ];
+    if (regulars.length < 3) {
+      // Found a new unit. The Kavallerie surcharge only pays off for a
+      // real unit — never buy it for a token squad.
+      final kavSurcharge = classSurcharge(TroopClass.kavallerie);
+      final kavMen = math.min(
+          math.min(deficit, unitCap), (budget - kavSurcharge) ~/ 5);
+      final kav = tuning.kavallerieTreasury > 0 &&
+          realm.treasury >= tuning.kavallerieTreasury &&
+          kavMen >= 10;
+      final surcharge = kav ? kavSurcharge : 0;
+      final men =
+          kav ? kavMen : math.min(math.min(deficit, unitCap), budget ~/ 5);
+      if (men <= 0) return;
+      try {
+        _act(
+            state,
+            RecruitTroops(
+                slot: realm.slot,
+                men: men,
+                troopClass: kav ? TroopClass.kavallerie : TroopClass.infanterie,
+                name: _newTroopName(realm)),
+            rng,
+            events);
+      } on ActionException {
+        return; // defensive: never kill the AI turn over a levy
+      }
+      budget -= surcharge + 5 * men;
+    } else {
+      // Reinforce the smallest regular unit toward the target.
+      var index = regulars.first;
+      for (final i in regulars) {
+        if (realm.troops[i].men < realm.troops[index].men) index = i;
+      }
+      final men = math.min(deficit, budget ~/ 5);
+      if (men <= 0) return;
+      try {
+        _act(state, ReinforceTroop(slot: realm.slot, unitIndex: index, men: men),
+            rng, events);
+      } on ActionException {
+        return;
+      }
+      budget -= 5 * men;
+    }
+  }
+}
+
+/// `[DESIGNED]` Schwer drills its regulars toward
+/// [AiTuning.drillMaxQuality] (the original AI never drilled), spending at
+/// most a quarter of the treasury per turn — cheapest drill first, so
+/// quality rises evenly across the army. Runs AFTER reinforcing: new
+/// recruits dilute quality, so the drill works on the final roster.
+void _drillTroops(GameState state, Realm realm, Rng rng,
+    List<GameEvent> events, AiTuning tuning) {
+  if (tuning.drillMaxQuality <= TroopQuality.regular) return;
+  var budget = realm.treasury ~/ 4;
+  var guard = 0;
+  while (guard++ < 30) {
+    var index = -1;
+    var bestCost = 1 << 30;
+    for (var i = 0; i < realm.troops.length; i++) {
+      final troop = realm.troops[i];
+      if (!troop.garrisonCounted) continue;
+      if (troop.quality >= tuning.drillMaxQuality ||
+          troop.quality >= Troop.drillCap) {
+        continue;
+      }
+      final cost = 5 * troop.men * troop.quality;
+      if (cost < bestCost) {
+        bestCost = cost;
+        index = i;
+      }
+    }
+    // budget ≤ treasury holds throughout: both start with budget =
+    // treasury/4 and each drill decrements both by the same cost.
+    if (index < 0 || bestCost > budget) return;
+    try {
+      _act(state, DrillTroop(slot: realm.slot, unitIndex: index), rng, events);
+    } on ActionException {
+      return; // defensive: never kill the AI turn over a drill
+    }
+    budget -= bestCost;
   }
 }
 
@@ -355,8 +521,13 @@ void _investInShips(
 
 /// §20.8: a random adjacent realm of a different religion, falling back
 /// to any adjacent realm. Adjacency = any tile of A orthogonally touching
-/// a tile of B.
-int? _pickWarTarget(GameState state, int slot, Rng rng) {
+/// a tile of B. With [AiTuning.warStrengthAdvantage] > 0 (schwer) the pick
+/// is the WEAKEST adjacent realm instead — and only when the own army
+/// holds that strength edge over it, so a schwer AI never CHOOSES a war it
+/// is likely to lose; [desperate] (boxed in, §20.4) drops the edge
+/// requirement but keeps the weakest-target pick.
+int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
+    {bool desperate = false}) {
   final map = state.map;
   final adjacent = <int>{};
   for (var y = 0; y < map.height; y++) {
@@ -377,6 +548,23 @@ int? _pickWarTarget(GameState state, int slot, Rng rng) {
     }
   }
   if (adjacent.isEmpty) return null;
+  if (tuning.warStrengthAdvantage > 0) {
+    final own = _armyStrength(state.realm(slot));
+    int? weakest;
+    var weakestStrength = double.infinity;
+    for (final s in adjacent) {
+      final strength = _armyStrength(state.realm(s));
+      if (strength < weakestStrength) {
+        weakestStrength = strength;
+        weakest = s;
+      }
+    }
+    if (weakest == null) return null;
+    if (!desperate && own < tuning.warStrengthAdvantage * weakestStrength) {
+      return null; // no beatable neighbour — keep the peace
+    }
+    return weakest;
+  }
   final religion = state.dynasty(slot).religion;
   final infidels = [
     for (final s in adjacent)
@@ -461,6 +649,11 @@ void _repositionTroops(
   }
 }
 
+/// Total army strength of a realm — the yardstick for smart war and
+/// assassination target picks.
+double _armyStrength(Realm realm) =>
+    realm.troops.fold(0.0, (a, t) => a + troopStrength(t));
+
 /// The unit nearest the realm's capital (Manhattan distance), or null when
 /// the realm has no troops. Used to pick the home guard.
 Troop? _nearestToCapital(Realm realm) {
@@ -481,11 +674,17 @@ Troop? _nearestToCapital(Realm realm) {
 /// dispatches a squad of agents at a bordering rival ruler. Rare by design
 /// (the map should not drown in daggers), gated to the war years so the
 /// protected first decade stays safe, and never spends the whole treasury.
-void _maybeAssassinate(
-    GameState state, Realm realm, Rng rng, List<GameEvent> events) {
-  if (state.year < 1010) return; // share the war gate / protection window
+/// The frequency, squad size and target pick scale with the difficulty
+/// (leicht never assassinates; schwer strikes the strongest rival).
+void _maybeAssassinate(GameState state, Realm realm, Rng rng,
+    List<GameEvent> events, AiTuning tuning) {
+  // Deliberately the FIXED protect-new-players decade (years 1000–1009),
+  // NOT the configurable warStartYear — daggers stay gated even when the
+  // host defers wars far beyond 1010 (and vice versa).
+  if (state.year < 1010) return;
   if (state.activeWar != null) return;
-  if (rng.nextInt(40) != 0) return; // rare
+  if (tuning.assassinChance <= 0) return; // leicht: never
+  if (rng.nextInt(tuning.assassinChance) != 0) return; // rare
   // Keep a war chest — only act with comfortable reserves.
   if (realm.treasury < 12 * assassinCost) return;
 
@@ -498,10 +697,30 @@ void _maybeAssassinate(
         other,
   ];
   if (targets.isEmpty) return;
-  final target = targets[rng.nextInt(targets.length)];
+  int target;
+  if (tuning.smartAssassinTarget) {
+    // The strongest bordering rival — the biggest long-term threat.
+    target = targets.first;
+    var best = -1.0;
+    for (final s in targets) {
+      final strength = _armyStrength(state.realm(s));
+      if (strength > best) {
+        best = strength;
+        target = s;
+      }
+    }
+  } else {
+    target = targets[rng.nextInt(targets.length)];
+  }
 
-  // A squad scaled to a quarter of the war chest, 3–20 agents.
-  final agents = ((realm.treasury ~/ 4) ~/ assassinCost).clamp(3, 20);
+  // A squad scaled to a share of the war chest (mittel: a quarter, 3–20
+  // agents; schwer sends a third). The bound is pinned into [3, 30]: below
+  // 3 `clamp` would throw (min > max), above 30 the action rejects the
+  // order — either way a bad tuning row must not kill the AI turn.
+  final maxAgents = math.min(math.max(tuning.assassinMaxAgents, 3), 30);
+  final agents = ((realm.treasury ~/ tuning.assassinTreasuryDivisor) ~/
+          assassinCost)
+      .clamp(3, maxAgents);
   if (realm.treasury < agents * assassinCost) return;
   try {
     _act(
@@ -624,8 +843,8 @@ void runAiWarMovement(
   if (nearest != null) return nearest;
 
   // Counter-offensive once the enemy army is gone or clearly weaker.
-  final own = realm.troops.fold(0.0, (a, t) => a + troopStrength(t));
-  final theirs = enemy.troops.fold(0.0, (a, t) => a + troopStrength(t));
+  final own = _armyStrength(realm);
+  final theirs = _armyStrength(enemy);
   if (enemy.troops.isEmpty || own > 1.5 * theirs) {
     return (enemy.capitalX, enemy.capitalY);
   }

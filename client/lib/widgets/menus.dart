@@ -1220,13 +1220,21 @@ void showMiscMenu(BuildContext context, GameController controller) {
   final hasProposer = state.persons.values.any(
     (p) => gc.memberOfRulingHouse(state, realm, p) && _marriageable(state, p),
   );
-  final String? marriageBlocked = realm.proposedMarriageThisTurn
-      ? 'Nur ein Heiratsantrag pro Zug !'
-      : !hasProposer
+  // The royal proposal is limited to one per PERSON per turn — blocked only
+  // once every marriageable member has already proposed this turn.
+  final hasRoyalProposer = state.persons.values.any(
+    (p) =>
+        gc.memberOfRulingHouse(state, realm, p) &&
+        _marriageable(state, p) &&
+        !realm.proposedThisTurnIds.contains(p.id),
+  );
+  final String? marriageBlocked = !hasProposer
       ? 'Niemand in deiner Dynastie kann heiraten !'
+      : !hasRoyalProposer
+      ? 'Alle haben diesen Zug schon einen Antrag gestellt !'
       : null;
-  // Commoner marriage is always available — only the royal proposal is
-  // limited to one per turn.
+  // Commoner marriage is always available — it does not count against the
+  // per-person proposal limit.
   final String? commonerBlocked = hasProposer
       ? null
       : 'Niemand in deiner Dynastie kann heiraten !';
@@ -1321,22 +1329,23 @@ void showMiscMenu(BuildContext context, GameController controller) {
               _showRelocateCapital(context, controller);
             },
           ),
-          // §15.2 religion availability: evangelisch only after the
-          // Reformation, moslemisch only after the Ottoman invasion —
-          // hidden entirely until then (mirrors the core gates).
+          // §15.2 religion availability: evangelisch from the Reformation
+          // year on, moslemisch from the Ottoman invasion on — hidden
+          // entirely until then (mirrors the core gates, which include the
+          // event year itself).
           for (final (religion, name, cost, available) in [
             (gc.Religion.katholisch, 'katholisch', 0, true),
             (
               gc.Religion.evangelisch,
               'evangelisch',
               500,
-              state.year > state.reformationYear,
+              state.year >= state.reformationYear,
             ),
             (
               gc.Religion.moslemisch,
               'moslemisch',
               1000,
-              state.year > state.ottomanYear,
+              state.year >= state.ottomanYear,
             ),
           ])
             if (available && state.dynasty(slot).religion != religion)
@@ -1522,12 +1531,17 @@ bool _marriageable(gc.GameState state, gc.Person p) =>
     !gc.awaitingMarriageConsent(state, p.id);
 
 /// Step 1 of "Heirat vorschlagen" (§14.1): pick the own dynasty member.
+/// Members who already proposed this turn are filtered out (one royal
+/// proposal per person per turn — mirrors the engine's guard).
 void _showMarriageProposers(BuildContext context, GameController controller) {
   final state = controller.state;
   final realm = controller.currentRealm;
   final proposers = [
     for (final p in state.persons.values)
-      if (gc.memberOfRulingHouse(state, realm, p) && _marriageable(state, p)) p,
+      if (gc.memberOfRulingHouse(state, realm, p) &&
+          _marriageable(state, p) &&
+          !realm.proposedThisTurnIds.contains(p.id))
+        p,
   ];
   if (proposers.isEmpty) {
     _toast(context, 'Es gibt zur Zeit keinen passenden Partner !');

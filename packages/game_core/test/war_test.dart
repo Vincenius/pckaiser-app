@@ -536,7 +536,7 @@ void main() {
     });
   });
 
-  group('ruler capture opens the claim settlement', () {
+  group('ruler capture takes over the whole realm (§11.2)', () {
     /// Declares war and parks slot 1's unit on slot 2's capital (the
     /// defender's unit is moved aside first).
     GameState marchOntoCapital() {
@@ -566,9 +566,9 @@ void main() {
 
     test(
         'holding the capital through a full round captures the ruler and '
-        'opens the claim settlement — no silent realm takeover', () {
+        'hands the WHOLE realm to the captor (§19 pointer overwrite)', () {
       var s = marchOntoCapital();
-      final loserRulerId = s.realm(2).rulerId;
+      final captorRulerId = s.realm(1).rulerId;
       // First round end ARMS the capture; the second resolves it (the
       // defender gets one full round to retake the seat).
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
@@ -576,49 +576,18 @@ void main() {
       s = result.state;
 
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
-      expect(result.events.any((e) => e.type == 'warWon'), isTrue);
-      expect(s.activeWar, isNotNull);
-      expect(s.activeWar!.phase, WarPhase.settlement);
-      expect(s.activeWar!.winnerSlot, 1);
-      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(3000),
-          reason: 'the claim includes the +3,000 capital bonus');
-      expect(s.realm(2).rulerId, loserRulerId,
-          reason: 'the loser keeps the realm — the winner SELECTS tiles');
-
-      // The winner annexes a chosen loser tile against the claim: the
-      // bare border tile handed to slot 2 in setUp costs 100.
-      final map = s.map;
-      int? bx, by;
-      outer:
-      for (var y = 0; y < map.height; y++) {
-        for (var x = 0; x < map.width; x++) {
-          if (map.ownerAt(x, y) != 2 || map.buildingAt(x, y) != Building.none) {
-            continue;
-          }
-          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-            if (map.inBounds(x + dx, y + dy) &&
-                map.ownerAt(x + dx, y + dy) == 1) {
-              bx = x;
-              by = y;
-              break outer;
-            }
-          }
-        }
-      }
-      expect(bx, isNotNull);
-      final claimBefore = s.activeWar!.remainingClaim;
-      s = applyAction(
-              s, SettlementAnnex(slot: 1, x: bx!, y: by!), Rng(s.rngSeed))
-          .state;
-      expect(s.map.ownerAt(bx, by), 1);
-      expect(s.activeWar!.remainingClaim, claimBefore - 100);
-
-      // Finishing pays the unspent claim in Taler and ends the war.
-      final rest = s.activeWar!.remainingClaim;
-      final winnerTreasury = s.realm(1).treasury;
-      s = applyAction(s, SettlementFinish(slot: 1), Rng(s.rngSeed)).state;
-      expect(s.activeWar, isNull);
-      expect(s.realm(1).treasury, winnerTreasury + rest);
+      final warWon =
+          result.events.firstWhere((e) => e.type == 'warWon');
+      expect(warWon.payload['conquered'], isTrue);
+      expect(s.activeWar, isNull,
+          reason: 'no claim settlement — the realm changes hands whole');
+      expect(s.realm(2).rulerId, captorRulerId,
+          reason: 'the loser slot is now ruled by the captor (§19 aliasing)');
+      expect(s.dynasty(2).status, s.dynasty(1).status,
+          reason: 'control follows the new ruler');
+      // The land itself stays on slot 2 — the slot is an additional realm
+      // of the captor now, not annexed tile by tile.
+      expect(s.realm(2).tileCount.fold(0, (a, b) => a + b), greaterThan(0));
     });
 
     test('a capital tile no longer owned by the enemy does not count', () {
@@ -671,9 +640,9 @@ void main() {
 
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
       expect(result.events.any((e) => e.type == 'warWon'), isTrue);
-      expect(s.activeWar!.phase, WarPhase.settlement);
-      expect(s.activeWar!.winnerSlot, 1);
-      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(3000));
+      expect(s.activeWar, isNull,
+          reason: 'the war ends with the whole-realm takeover (§11.2)');
+      expect(s.realm(2).rulerId, s.realm(1).rulerId);
     });
 
     test('a dislodged occupier disarms the capture', () {
@@ -697,7 +666,9 @@ void main() {
       s = result.state;
 
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
-      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar, isNull,
+          reason: 'the war ends with the whole-realm takeover (§11.2)');
+      expect(s.realm(2).rulerId, s.realm(1).rulerId);
     });
 
     test(
@@ -1110,17 +1081,19 @@ void main() {
     });
 
     test('the settlement awaits the human winner', () {
-      // March the attacker onto the defender's capital and hold it
-      // through the defender's full response round.
+      // Score victory at the winter end: the attacker occupies a defender
+      // town when the forced end arrives (capital capture would take the
+      // whole realm instead of opening a settlement, §11.2).
       final attacker = war.realm(1).troops.first;
       final defender = war.realm(2);
       // Clear the defending army: a defenceless side cannot respond, so its
-      // round is auto-skipped and the capture resolves the moment the
-      // attacker ends their round — no waiting on the troopless defender.
+      // round is auto-skipped — no waiting on the troopless defender.
       defender.troops.clear();
       war.activeWar!.movesLeft[2] = [];
-      attacker.x = defender.capitalX;
-      attacker.y = defender.capitalY;
+      final town = defender.towns.single;
+      attacker.x = town.x;
+      attacker.y = town.y;
+      war.activeWar!.round = 21;
       final events = <GameEvent>[];
       endWarRoundFor(war, 1, Rng(war.rngSeed), events);
       final active = war.activeWar!;
@@ -1128,6 +1101,24 @@ void main() {
       expect(active.winnerSlot, 1);
       expect(warActingSlot(war), 1,
           reason: 'the human winner picks the claim tiles');
+    });
+
+    test('capturing the capital in a human-vs-human war takes the realm', () {
+      final attacker = war.realm(1).troops.first;
+      final defender = war.realm(2);
+      defender.troops.clear();
+      war.activeWar!.movesLeft[2] = [];
+      attacker.x = defender.capitalX;
+      attacker.y = defender.capitalY;
+      final events = <GameEvent>[];
+      endWarRoundFor(war, 1, Rng(war.rngSeed), events);
+      expect(war.activeWar, isNull,
+          reason: 'ruler capture ends the war with the takeover (§11.2)');
+      expect(war.realm(2).rulerId, war.realm(1).rulerId);
+      expect(war.dynasty(2).status, DynastyStatus.human,
+          reason: 'control follows the captor, who is human');
+      expect(war.dynasty(2).humanPlayer, war.dynasty(1).humanPlayer,
+          reason: 'the captor player now plays the conquered slot');
     });
 
     test('a defenceless human side is auto-skipped so the war advances', () {
@@ -1198,18 +1189,15 @@ void main() {
       state.realm(2).troops.single.x = borderX;
       state.realm(2).troops.single.y = borderY;
 
-      // Declare war and reach settlement via capital capture.
+      // Declare war and reach the settlement via the winter score victory
+      // (capital capture would take the whole realm instead, §11.2).
       var s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
-      // March slot 1's unit onto slot 2's capital.
-      s.realm(1).troops.single.x = s.realm(2).capitalX - 1;
-      s.realm(1).troops.single.y = s.realm(2).capitalY;
-      s.activeWar!.movesLeft[1]![0] = 5;
-      s = applyAction(
-              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
-          .state;
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      final enemyTown = s.realm(2).towns.single;
+      s.realm(1).troops.single.x = enemyTown.x;
+      s.realm(1).troops.single.y = enemyTown.y;
+      s.activeWar!.round = 21;
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
       expect(s.activeWar!.phase, WarPhase.settlement);
 

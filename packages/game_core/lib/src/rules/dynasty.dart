@@ -502,14 +502,24 @@ Person? _chooseHeirByPriority(
   }
 
   final spouse = state.person(deceased.spouseId);
+  // §14.2: the couple's shared children list hangs on the HUSBAND (the
+  // original clears the wife's pointer at the wedding). The clone keeps
+  // the mother-child links for the family display, but succession must
+  // not read them: a married woman's death would otherwise crown a son
+  // ahead of her widower, who per §15.4 is the rightful heir (rank 3)
+  // once her own house holds no male. Filtering here (not at birth)
+  // also fixes running games whose saves carry the double links.
+  final children = !deceased.isMale && spouse != null
+      ? const <int>[]
+      : deceased.childrenIds;
   final heir = state.genderEqualSuccession
-      ? firstAlive(deceased.childrenIds) ??
+      ? firstAlive(children) ??
           firstAlive(dynasty.memberIds) ??
           spouse
-      : firstAlive(deceased.childrenIds, male: true) ??
+      : firstAlive(children, male: true) ??
           firstAlive(dynasty.memberIds, male: true) ??
           spouse ??
-          firstAlive(deceased.childrenIds) ??
+          firstAlive(children) ??
           firstAlive(dynasty.memberIds);
   if (heir != null) return heir;
   if (dynasty.memberIds.isEmpty) return null;

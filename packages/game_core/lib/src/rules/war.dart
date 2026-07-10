@@ -12,19 +12,35 @@ import '../state/realm.dart';
 import '../state/troop.dart';
 import '../state/war.dart';
 import 'dynasty.dart' as dyn;
+import 'events.dart' show ensureRealmSeat;
 import 'movement.dart';
 import 'population.dart' show cutGarrisonTroops;
-import 'titles.dart' show switchTitleLadder;
+import 'titles.dart' show regenderTitle, switchTitleLadder;
 import 'troops.dart';
 import 'victory.dart';
 
 /// §11.1: starts a war. Prunes empty units, snapshots positions, rolls the
 /// first round's movement allowance.
 ActiveWar startWar(
-    GameState state, int attackerSlot, int defenderSlot, Rng rng) {
+    GameState state, int attackerSlot, int defenderSlot, Rng rng,
+    {List<GameEvent>? events}) {
+  // A war must be winnable: both seats are repaired up front. A capital
+  // lost earlier the same year (settlement, earthquake, bankruptcy) is
+  // normally only re-seated at the next year start — and a human may still
+  // owe their relocate decision. The capital-occupation victory and the
+  // map's seat flag both require the seat on OWN land, so a stale seat
+  // means no flag and no way to win the war.
+  for (final slot in [attackerSlot, defenderSlot]) {
+    ensureRealmSeat(state, slot, rng, events ?? <GameEvent>[],
+        allowDecision: false);
+  }
   for (final slot in [attackerSlot, defenderSlot]) {
     final realm = state.realm(slot);
     realm.troops.removeWhere((t) => t.men <= 0);
+    // Fresh war, fresh §11.5 plunder budget for every army.
+    for (final troop in realm.troops) {
+      troop.plunderedThisRound = false;
+    }
   }
   final war = ActiveWar(
     attackerSlot: attackerSlot,
@@ -672,27 +688,21 @@ int? _cheapestBorderingLoserTile(
   return cheapest;
 }
 
-/// Ruler capture, resolved at ROUND END: the captor holds the enemy
-/// capital when the round ends. The loser's ruler is captured and
-/// coerced (§12), but the realm is not swallowed whole — the captor
-/// wins the war and SELECTS loser tiles in the claim settlement,
-/// against a claim of their war score (which includes the +3,000
-/// capital bonus; capped — see [_cappedClaim]).
+/// Ruler capture, resolved at ROUND END (§11.2): the captor holds the
+/// enemy capital when the round ends. The captured ruler is coerced (§12)
+/// and the captor takes over the loser's ENTIRE realm: the slot's ruler
+/// pointer is overwritten with the captor's ruler (§19 aliasing), so all
+/// land, towns, treasury and troops change hands at once — no claim
+/// settlement. (Original rule restored 2026-07-10 after user feedback;
+/// it had been downgraded to a capped claim settlement. The [_cappedClaim]
+/// anti-swallow cap still governs every SCORE-based war end.)
 void _endWarByCapitalOccupation(
     GameState state, int captorSlot, Rng rng, List<GameEvent> events) {
   final war = state.activeWar!;
   final loserSlot = war.opponentOf(captorSlot);
   final loser = state.realm(loserSlot);
+  final captor = state.realm(captorSlot);
   final capturedRuler = state.person(loser.rulerId);
-  // The claim covers at least the loser's capital tile (overriding the
-  // half-territory cap if needed): the captor held that very tile to
-  // win — a quick war against a depleted enemy yields a tiny war score,
-  // and the winner could otherwise never take the seat they conquered.
-  final claim = math.max(
-      _cappedClaim(
-          state, captorSlot, loserSlot, warScore(state, captorSlot), rng),
-      settlementTileValue(
-          state, state.map.buildingAt(loser.capitalX, loser.capitalY)));
 
   events.add(GameEvent(
     year: state.year,
@@ -711,22 +721,30 @@ void _endWarByCapitalOccupation(
     type: 'warWon',
     visibility: EventVisibility.public,
     payload: {
-      'claim': claim,
+      'conquered': true,
       'loserSlot': loserSlot,
       'summary': war.summary(),
     },
   ));
 
-  war.phase = WarPhase.settlement;
-  war.winnerSlot = captorSlot;
-  war.remainingClaim = claim;
-  war.actingSlot = captorSlot; // the settlement awaits the winner
+  // §19: overwrite the loser slot's ruler pointer — control follows the
+  // new ruler ([alignSlotControl]). A human loser's defeat reason is set
+  // AFTER the control flip: alignSlotControl's cross-dynasty path would
+  // otherwise overwrite it with 'realmInherited'. The war state is gone
+  // before the coercion decisions land so their prompts resolve outside
+  // any war screen.
+  final loserWasHuman =
+      state.dynasty(loserSlot).status == DynastyStatus.human;
+  loser.rulerId = captor.rulerId;
+  dyn.alignSlotControl(state, loserSlot, captor.rulerId);
+  regenderTitle(state, loser);
+  if (loserWasHuman) state.humanLossReason = 'rulerCaptured';
+
+  _returnTroops(state, war, events);
+  state.activeWar = null;
 
   if (capturedRuler != null) {
     runCoercion(state, captorSlot, capturedRuler, rng, events);
-  }
-  if (!warSideIsHuman(state, war, captorSlot)) {
-    autoSettleClaim(state, rng, events);
   }
 }
 
@@ -745,6 +763,13 @@ void _endWarByCapitalOccupation(
 void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
+
+  // Belt and braces for saves whose war began with a stale seat (before
+  // the startWar repair existed): keep both seats valid on every round
+  // end so the occupation check below can actually fire.
+  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+    ensureRealmSeat(state, slot, rng, events, allowDecision: false);
+  }
 
   final captor = capitalOccupier(state, war);
   if (captor != null &&
@@ -806,8 +831,12 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   war.round++;
   war.attackerWantsPeace = false;
   war.defenderWantsPeace = false;
-  war.attackerPlunderedThisRound = false;
-  war.defenderPlunderedThisRound = false;
+  // §11.5: every army may plunder once per round — new round, new budget.
+  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+    for (final troop in state.realm(slot).troops) {
+      troop.plunderedThisRound = false;
+    }
+  }
   // Attacker before defender, as in the original: every new round starts
   // with the first human side's input.
   war.actingSlot = _firstHumanSide(state, war);
@@ -998,7 +1027,7 @@ void annexAffordableTiles(GameState state, List<GameEvent> events) {
 /// loser tiles adjacent to own land, then take the remainder in cash.
 void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {
   annexAffordableTiles(state, events);
-  finishSettlement(state, events);
+  finishSettlement(state, rng, events);
 }
 
 bool _bordersTerritory(GameState state, int slot, int x, int y) {
@@ -1016,7 +1045,7 @@ bool _bordersTerritory(GameState state, int slot, int x, int y) {
 /// owns. War must never drive a treasury negative: a bankrupt loser would
 /// otherwise be soft-locked out of paying for anything afterwards (e.g. an
 /// election bribe prompt) and could lose far more than they ever had.
-void finishSettlement(GameState state, List<GameEvent> events) {
+void finishSettlement(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar!;
   final winnerSlot = war.winnerSlot!;
   final loserSlot = war.opponentOf(winnerSlot);
@@ -1033,6 +1062,13 @@ void finishSettlement(GameState state, List<GameEvent> events) {
       payload: {'amount': paid, 'from': loserSlot},
     ));
   }
+  // The settlement routinely annexes the loser's capital tile (a capital
+  // occupation even forces it into the claim). Repair the seat NOW, not at
+  // the next year start: the map flag stays correct and a follow-up war
+  // the same year finds a valid seat. A human loser with an eligible tile
+  // keeps the manual choice (relocateCapital decision); the stranded-troop
+  // re-homing below then still falls back to the nearest owned tile.
+  ensureRealmSeat(state, loserSlot, rng, events);
   _returnTroops(state, war, events);
   // Settlement annexation can transfer tiles that were snapshot positions for
   // the loser's troops. Re-home any stranded unit to the loser's capital (or
@@ -1170,7 +1206,8 @@ void vacateLandlessRealms(GameState state, List<GameEvent> events) {
   }
 }
 
-/// §11.5 plunder during war rounds, once per side per round.
+/// §11.5 plunder during war rounds, once per ARMY per round (the per-unit
+/// flag lives on [Troop.plunderedThisRound], checked in `applyWarPlunder`).
 List<GameEvent> plunderTile(
     GameState state, int plundererSlot, int x, int y, Rng rng) {
   final map = state.map;

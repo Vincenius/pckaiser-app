@@ -305,8 +305,11 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
         Icons.emoji_events,
         event.slot == viewerSlot ? Colors.green : Colors.red,
         'Kriegsende',
-        '$realm gewinnt den Krieg gegen $loser '
-            '(Anspruch: ${p['claim']} Punkte).',
+        p['conquered'] == true
+            ? '$realm gewinnt den Krieg und übernimmt das gesamte '
+                  'Reich von $loser !'
+            : '$realm gewinnt den Krieg gegen $loser '
+                  '(Anspruch: ${p['claim']} Punkte).',
       );
 
     case 'warDraw':

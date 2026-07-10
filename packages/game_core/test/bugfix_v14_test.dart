@@ -107,28 +107,23 @@ void main() {
   });
 
   group('SettlementTakeAll (rules v14)', () {
-    /// Declares war (slot 1 → slot 2) and parks slot 1's unit on slot 2's
-    /// capital until the capture resolves into the settlement phase.
-    GameState captureCapital(GameState from) {
+    /// Declares war (slot 1 → slot 2) and reaches the claim settlement via
+    /// the WINTER score victory (capital capture no longer opens a
+    /// settlement — since 2026-07-10 it takes the whole realm, §11.2).
+    GameState winterSettlement(GameState from) {
       var s = applyAction(
               from, DeclareWar(slot: 1, targetSlot: 2), Rng(from.rngSeed))
           .state;
-      final enemy = s.realm(2);
-      enemy.troops.single.x = enemy.towns.single.x;
-      enemy.troops.single.y = enemy.towns.single.y;
+      final enemyTown = s.realm(2).towns.single;
       final troop = s.realm(1).troops.single;
-      troop.x = enemy.capitalX - 1;
-      troop.y = enemy.capitalY;
-      s.activeWar!.movesLeft[1]![0] = 5;
-      s = applyAction(
-              s, WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(s.rngSeed))
-          .state;
-      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      s.activeWar!.round = 21;
       return applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
     }
 
     test('annexes every affordable bordering tile and ends the war', () {
-      var s = captureCapital(state);
+      var s = winterSettlement(state);
       expect(s.activeWar!.phase, WarPhase.settlement);
       final (bx, by) = bridgeTile(s);
       // Grow a small annexable cluster around the bridge tile.
@@ -169,7 +164,7 @@ void main() {
     });
 
     test('only the settlement winner may take all', () {
-      final s = captureCapital(state);
+      final s = winterSettlement(state);
       expect(s.activeWar!.phase, WarPhase.settlement);
       expect(() => applyAction(s, SettlementTakeAll(slot: 2), Rng(s.rngSeed)),
           throwsA(isA<ActionException>()));

@@ -1321,6 +1321,30 @@ void main() {
       expect(state.genderEqualSuccession, isFalse);
       expect(state.suggestChildNames, isFalse);
     });
+
+    test('ai difficulty reaches the game state (unknown values → mittel)',
+        () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await createStarted(
+        a.id,
+        MatchSettings(seed: 42, aiDifficulty: 'schwer'),
+        setupFor('Solo', 1),
+      );
+      final state =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(state.aiDifficulty, AiDifficulty.schwer);
+
+      final b = await service.registerPlayer(displayName: 'Solo2');
+      final match2 = await createStarted(
+        b.id,
+        MatchSettings(seed: 43, aiDifficulty: 'nightmare'),
+        setupFor('Solo2', 1),
+      );
+      final state2 =
+          GameState.fromJson((await store.match(match2.id))!.stateJson!);
+      expect(state2.aiDifficulty, AiDifficulty.mittel,
+          reason: 'an unvalidated online settings payload must not crash');
+    });
   });
 }
 

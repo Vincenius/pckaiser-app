@@ -75,7 +75,7 @@ void main() {
           state,
           ProposeMarriage(slot: 2, proposerId: anna.id, targetId: groom.id),
           Rng(1));
-      expect(result.state.realm(2).proposedMarriageThisTurn, isTrue);
+      expect(result.state.realm(2).proposedThisTurnIds, contains(anna.id));
     });
 
     test('she may marry a commoner from the inherited slot', () {

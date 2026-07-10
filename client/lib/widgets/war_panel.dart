@@ -408,20 +408,21 @@ class _WarPanelState extends State<WarPanel> {
     int enemySlot,
   ) {
     final state = controller.state;
-    // Only the war opponent may be plundered (engine gate).
+    // Only the war opponent may be plundered (engine gate). §11.5: each
+    // ARMY plunders once per round — the gate follows the selected unit.
     final plunderVictimOk =
         selectedTroop != null &&
         state.map.ownerAt(selectedTroop.x, selectedTroop.y) == enemySlot;
     final canPlunder =
         selectedTroop != null &&
-        !war.plunderedThisRound(slot) &&
+        !selectedTroop.plunderedThisRound &&
         plunderVictimOk &&
         state.map.buildingAt(selectedTroop.x, selectedTroop.y) !=
             gc.Building.none;
     final plunderHint = selectedTroop == null
         ? 'Erst eine Truppe wählen'
-        : war.plunderedThisRound(slot)
-        ? 'In dieser Runde schon geplündert'
+        : selectedTroop.plunderedThisRound
+        ? 'Diese Armee hat diese Runde schon geplündert'
         : !plunderVictimOk
         ? 'Die Truppe muss auf feindlichem Gebiet stehen'
         : state.map.buildingAt(selectedTroop.x, selectedTroop.y) ==

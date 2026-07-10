@@ -1,6 +1,12 @@
 import 'package:game_core/game_core.dart';
 
-void main() {
+/// Usage: `dart tool/sim_report.dart [leicht|mittel|schwer]` — the AI
+/// difficulty the 200-year world runs on (default mittel), so balance
+/// changes to the leicht/schwer scripts get long-run coverage too.
+void main(List<String> args) {
+  final difficulty = AiDifficulty.fromName(args.isEmpty ? null : args.first);
+  print('ai difficulty: ${difficulty.name}');
+
   // `state.events` is capped (maxRetainedEvents), so tally incrementally
   // from the TurnResults instead of the final state.
   final counts = <String, int>{};
@@ -15,6 +21,7 @@ void main() {
         humans: const [],
         reformationYear: 1020,
         ottomanYear: 1040,
+        aiDifficulty: difficulty,
         seed: 777,
       )),
       Rng(777));

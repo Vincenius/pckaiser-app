@@ -88,8 +88,8 @@ List<GameEvent> applyActionInPlace(
     WarEndRound() => applyWarEndRound(state, realm, action, rng),
     SettlementAnnex() => applySettlementAnnex(state, realm, action),
     SettlementAnnexMany() => applySettlementAnnexMany(state, realm, action),
-    SettlementTakeAll() => applySettlementTakeAll(state, realm, action),
-    SettlementFinish() => applySettlementFinish(state, realm, action),
+    SettlementTakeAll() => applySettlementTakeAll(state, realm, action, rng),
+    SettlementFinish() => applySettlementFinish(state, realm, action, rng),
     SpyMission() => applySpyMission(state, realm, action, rng),
     OrderAssassination() => applyOrderAssassination(state, realm, action),
     AdjustGuards() => applyAdjustGuards(state, realm, action),
@@ -576,7 +576,10 @@ List<GameEvent> _sendMoney(GameState state, Realm realm, SendMoney action) {
 /// `[DESIGNED]` Allowed at ANY time, not only when the seat is lost. A
 /// voluntary move costs 5,000 T; re-seating a LOST capital (its tile is no
 /// longer owned, e.g. after a war or earthquake) is free — the realm is
-/// forced to pick a new seat anyway (see [reseatLostCapitals]).
+/// forced to pick a new seat anyway (see [reseatLostCapitals]). Also free
+/// when the current seat sits on a makeshift tile without Stadt/Burg/
+/// Palast (the forced no-eligible-tile fallback seat): moving onto a
+/// proper seat building is the completion of that forced move.
 List<GameEvent> _relocateCapital(
     GameState state, Realm realm, RelocateCapital action) {
   final map = state.map;
@@ -594,7 +597,11 @@ List<GameEvent> _relocateCapital(
     throw ActionException(
         'Der neue Sitz braucht eine Stadt, Burg oder einen Palast !');
   }
-  final lost = map.ownerAt(realm.capitalX, realm.capitalY) != realm.slot;
+  final currentBuilding = map.buildingAt(realm.capitalX, realm.capitalY);
+  final lost = map.ownerAt(realm.capitalX, realm.capitalY) != realm.slot ||
+      (currentBuilding != Building.stadt &&
+          currentBuilding != Building.burg &&
+          currentBuilding != Building.palast);
   if (!lost) {
     _requireFunds(realm, 5000);
     realm.treasury -= 5000;
@@ -658,11 +665,14 @@ List<GameEvent> _collectTribute(
 }
 
 /// "H(e)irat vorschlagen" (§14.1): validates eligibility, then either the
-/// AI 25% roll or a pending decision for a human target.
+/// AI 25% roll or a pending decision for a human target. The modern UX cap
+/// is one proposal per PERSON per turn (the original had none at all) —
+/// every marriageable member may propose each round.
 List<GameEvent> _proposeMarriage(
     GameState state, Realm realm, ProposeMarriage action, Rng rng) {
-  if (realm.proposedMarriageThisTurn) {
-    throw ActionException('Nur ein Heiratsantrag pro Zug !');
+  if (realm.proposedThisTurnIds.contains(action.proposerId)) {
+    throw ActionException(
+        'Diese Person hat diesen Zug schon einen Antrag gestellt !');
   }
   final proposer = state.persons[action.proposerId];
   final target = state.persons[action.targetId];
@@ -695,7 +705,7 @@ List<GameEvent> _proposeMarriage(
   }
   final events = <GameEvent>[];
   proposeMarriage(state, proposer, target, rng, events);
-  realm.proposedMarriageThisTurn = true;
+  realm.proposedThisTurnIds.add(proposer.id);
   return events;
 }
 
@@ -1025,10 +1035,14 @@ List<GameEvent> _changeReligion(
   if (religion == dynasty.religion) {
     throw ActionException('Das ist bereits deine Religion !');
   }
-  if (religion == Religion.evangelisch && state.year <= state.reformationYear) {
+  // Inclusive of the event year itself: the Reformation/Ottoman event fires
+  // in the round where year == eventYear, and its announcement invites the
+  // conversion — blocking it for one more year read as a bug (user report
+  // 2026-07-10).
+  if (religion == Religion.evangelisch && state.year < state.reformationYear) {
     throw ActionException('Die Reformation hat noch nicht stattgefunden !');
   }
-  if (religion == Religion.moslemisch && state.year <= state.ottomanYear) {
+  if (religion == Religion.moslemisch && state.year < state.ottomanYear) {
     throw ActionException('Der Islam ist noch nicht verfügbar !');
   }
 
