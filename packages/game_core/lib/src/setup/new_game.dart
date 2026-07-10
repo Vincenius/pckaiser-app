@@ -13,6 +13,12 @@ import '../state/world_map.dart';
 /// Setup years below this are rejected ("Das ist zu früh !!!", §5).
 const int minEventYear = 1011;
 
+/// Default event years pre-filled for new games (original values, §5) —
+/// ONE home for local setup, online setup and wire defaults.
+const int defaultReformationYear = 1020;
+const int defaultOttomanYear = 1040;
+const int defaultWarStartYear = 1010;
+
 /// One human player's setup choices (§5).
 class HumanPlayerSetup {
   HumanPlayerSetup({
@@ -27,10 +33,13 @@ class HumanPlayerSetup {
   /// 0 = male ("Männlich"), 1 = female ("Weiblich").
   final int gender;
 
-  /// Realm slot 1–30 = country index in [countryNames].
-  final int countrySlot;
+  /// Realm slot 1–30 = country index in [countryNames], or null =
+  /// "Zufällig": [newGame] draws a free slot from the injected RNG, so the
+  /// same seed + setup always reproduces the same draw.
+  final int? countrySlot;
 
-  /// Name of the first Dorf.
+  /// Name of the first Dorf. Empty = the (chosen or drawn) realm's
+  /// historical first village ([cityNames]).
   final String dorfName;
 }
 
@@ -41,7 +50,7 @@ class GameSetup {
     required this.reformationYear,
     required this.ottomanYear,
     required this.seed,
-    this.warStartYear = 1010,
+    this.warStartYear = defaultWarStartYear,
     this.genderEqualSuccession = true,
     this.suggestChildNames = true,
     this.aiDifficulty = AiDifficulty.mittel,
@@ -97,6 +106,7 @@ GameState newGame(GameSetup setup) {
   final humanBySlot = <int, int>{};
   for (var i = 0; i < setup.humans.length; i++) {
     final slot = setup.humans[i].countrySlot;
+    if (slot == null) continue; // "Zufällig" — drawn below.
     if (slot < 1 || slot > World.realmCount) {
       throw ArgumentError('country slot $slot out of range 1–30');
     }
@@ -104,6 +114,17 @@ GameState newGame(GameSetup setup) {
       throw ArgumentError('country slot $slot picked twice');
     }
     humanBySlot[slot] = i;
+  }
+  // Draw the "Zufällig" countries from the slots nobody picked — from the
+  // injected RNG, so a seed reproduces the draw (never underflows: at most
+  // 16 humans for 30 slots).
+  final freeSlots = [
+    for (var slot = 1; slot <= World.realmCount; slot++)
+      if (!humanBySlot.containsKey(slot)) slot,
+  ];
+  for (var i = 0; i < setup.humans.length; i++) {
+    if (setup.humans[i].countrySlot != null) continue;
+    humanBySlot[freeSlots.removeAt(rng.nextInt(freeSlots.length))] = i;
   }
 
   final realms = <Realm>[];
@@ -124,7 +145,10 @@ GameState newGame(GameSetup setup) {
             ? europeanMaleNames[rng.nextInt(europeanMaleNames.length)]
             : europeanFemaleNames[rng.nextInt(europeanFemaleNames.length)]);
     final founderName = clampName(founderRaw);
-    final dorfName = clampName(human?.dorfName ?? cityNames[slot - 1]);
+    // Empty = the realm's historical first village — the fallback for a
+    // "Zufällig" country whose realm was unknown at setup time.
+    final dorfRaw = human?.dorfName.trim() ?? '';
+    final dorfName = clampName(dorfRaw.isEmpty ? cityNames[slot - 1] : dorfRaw);
 
     final founder = Person(
       id: nextPersonId++,

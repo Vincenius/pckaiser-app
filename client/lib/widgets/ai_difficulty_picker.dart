@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' show AiDifficulty;
 
-/// Shared "Stärke der KI-Gegner" picker for the local setup screen and the
-/// online host dialog — ONE place for the level labels and descriptions
+/// Shared "Stärke der KI-Gegner" picker for the local and online setup
+/// screens — ONE place for the level labels and descriptions
 /// (and the only spot to touch when a level is added: the segments iterate
 /// the enum). Scales down on narrow layouts instead of overflowing (same
 /// pattern as the other pickers).

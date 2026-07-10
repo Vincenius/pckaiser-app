@@ -13,10 +13,10 @@ import 'online_match_screen.dart';
 import 'online_screen.dart';
 import 'setup_screen.dart';
 
-/// Landing screen: hero header, the two primary actions (new game and
-/// interactive tutorial), the player's running online matches and the
-/// named game slots — resume or delete (PROJECT_REQUIREMENTS "Multiple
-/// named game slots").
+/// Landing screen: hero header, the primary actions (new local game,
+/// online lobby, interactive tutorial), the player's running online
+/// matches and the named game slots — resume or delete
+/// (PROJECT_REQUIREMENTS "Multiple named game slots").
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -179,37 +179,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // The home route is built once and cached by the Navigator, so the
-    // ValueListenableBuilder around MaterialApp (main.dart) cannot refresh
-    // this already-visible screen. Listen here too so toggling the language
-    // updates the home screen immediately, not only after a route change.
-    return ValueListenableBuilder<String>(
-      valueListenable: appLocale,
-      builder: (context, _, _) => _buildHome(context),
-    );
-  }
-
-  Widget _buildHome(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                // Language toggle (German default, English optional).
-                onPressed: () =>
-                    appLocale.value = appLocale.value == 'en' ? 'de' : 'en',
-                child: Text(
-                  appLocale.value.toUpperCase(),
-                  semanticsLabel: 'Sprache',
-                ),
-              ),
-            ),
+            const SizedBox(height: 24),
             _header(theme),
             const SizedBox(height: 28),
+            // The two ways to PLAY first (local, online), learning last —
+            // the empty state below points newcomers at the tutorial.
             FilledButton.icon(
               onPressed: _newGame,
               icon: const Icon(Icons.add),
@@ -220,15 +200,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 10),
             FilledButton.tonalIcon(
-              onPressed: _tutorial,
-              icon: const Icon(Icons.school),
-              label: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(tr('tutorial')),
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const OnlineScreen())),
@@ -236,6 +207,15 @@ class _HomeScreenState extends State<HomeScreen> {
               label: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(tr('online')),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _tutorial,
+              icon: const Icon(Icons.school),
+              label: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(tr('tutorial')),
               ),
             ),
             if (_onlineMatches.isNotEmpty) ...[
@@ -286,13 +266,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         const SizedBox(height: 16),
-        CircleAvatar(
-          radius: 40,
-          backgroundColor: theme.colorScheme.primaryContainer,
-          child: Icon(
-            Icons.castle,
-            size: 44,
-            color: theme.colorScheme.onPrimaryContainer,
+        // The round app icon (same asset as the launcher icon), decoded at
+        // display size instead of the full 512 px (image-cache footprint).
+        ClipOval(
+          child: Image.asset(
+            'assets/icon/icon_small.png',
+            width: 88,
+            height: 88,
+            fit: BoxFit.cover,
+            cacheWidth: (88 * MediaQuery.devicePixelRatioOf(context)).round(),
           ),
         ),
         const SizedBox(height: 14),

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' hide World;
 
 import '../services/save_service.dart';
-import '../widgets/ai_difficulty_picker.dart';
+import '../widgets/advanced_options.dart';
+import '../widgets/empire_card.dart';
 import 'game_screen.dart';
 
 class _PlayerDraft {
@@ -13,7 +14,9 @@ class _PlayerDraft {
 
   final TextEditingController name;
   final TextEditingController dorf;
-  int countrySlot;
+
+  /// Realm slot 1–30, or null = drawn at random when the game starts.
+  int? countrySlot;
   int gender = 0;
 }
 
@@ -31,9 +34,9 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   final _slotName = TextEditingController(text: 'Partie 1');
-  final _reformation = TextEditingController(text: '1020');
-  final _ottoman = TextEditingController(text: '1040');
-  final _warStart = TextEditingController(text: '1010');
+  final _reformation = TextEditingController(text: '$defaultReformationYear');
+  final _ottoman = TextEditingController(text: '$defaultOttomanYear');
+  final _warStart = TextEditingController(text: '$defaultWarStartYear');
   final List<_PlayerDraft> _players = [_PlayerDraft(1)];
   // Removed drafts are disposed with the screen, not immediately — their
   // TextFields may still be attached during the removal frame.
@@ -52,18 +55,12 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   String? _validate() {
-    final reformation = int.tryParse(_reformation.text);
-    final ottoman = int.tryParse(_ottoman.text);
-    if (reformation == null || reformation < minEventYear) {
-      return 'Das ist zu früh !!! (Reformation ≥ $minEventYear)';
-    }
-    if (ottoman == null || ottoman < minEventYear) {
-      return 'Das ist zu früh !!! (Osmanen ≥ $minEventYear)';
-    }
-    final warStart = int.tryParse(_warStart.text);
-    if (warStart == null || warStart < 1000) {
-      return 'Das ist zu früh !!! (Krieg ab ≥ 1000)';
-    }
+    final yearError = validateEventYears(
+      reformation: _reformation.text,
+      ottoman: _ottoman.text,
+      warStart: _warStart.text,
+    );
+    if (yearError != null) return yearError;
     if (_slotName.text.trim().isEmpty) {
       return 'Bitte dem Spielstand einen Namen geben';
     }
@@ -71,12 +68,14 @@ class _SetupScreenState extends State<SetupScreen> {
       if (p.name.text.trim().isEmpty) {
         return 'Jeder Gründer braucht einen Namen';
       }
-      if (p.dorf.text.trim().isEmpty) {
+      // With a random country the Dorf may stay empty — it falls back to
+      // the drawn realm's historical first village.
+      if (p.countrySlot != null && p.dorf.text.trim().isEmpty) {
         return 'Jedes erste Dorf braucht einen Namen';
       }
     }
-    final slots = _players.map((p) => p.countrySlot).toSet();
-    if (slots.length != _players.length) {
+    final chosen = _players.map((p) => p.countrySlot).whereType<int>();
+    if (chosen.length != chosen.toSet().length) {
       return 'Zwei Spieler haben dasselbe Land gewählt';
     }
     return null;
@@ -132,6 +131,9 @@ class _SetupScreenState extends State<SetupScreen> {
     if (!mounted) return;
     setState(() => _starting = true);
     final setup = GameSetup(
+      // "Zufällig" countries (null slot) and their empty Dorf names are
+      // resolved inside newGame from the game seed, so the draw is part
+      // of the reproducible setup.
       humans: [
         for (final p in _players)
           HumanPlayerSetup(
@@ -167,6 +169,7 @@ class _SetupScreenState extends State<SetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Neues Spiel')),
       body: ListView(
@@ -180,78 +183,14 @@ class _SetupScreenState extends State<SetupScreen> {
               counterText: '',
             ),
           ),
-          const SizedBox(height: 8),
-          Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: EdgeInsets.zero,
-              title: const Text('Erweiterte Optionen'),
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _reformation,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Jahr der Reformation',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _ottoman,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Jahr der Osmanen-Invasion',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _warStart,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Krieg möglich ab Jahr',
-                    helperText: 'Original: 1010',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                AiDifficultyPicker(
-                  label: 'Stärke der KI-Gegner',
-                  value: _aiDifficulty,
-                  onChanged: (v) => setState(() => _aiDifficulty = v),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _genderEqualSuccession,
-                  onChanged: (v) => setState(() => _genderEqualSuccession = v),
-                  title: const Text('Frauen können überall herrschen'),
-                  subtitle: const Text(
-                    'Abweichend vom Original: das älteste Kind erbt '
-                    'unabhängig vom Geschlecht und Frauen können auch '
-                    'islamische Reiche erben, ohne auszuscheiden.',
-                  ),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _suggestChildNames,
-                  onChanged: (v) => setState(() => _suggestChildNames = v),
-                  title: const Text('Namensvorschläge für Kinder'),
-                  subtitle: const Text(
-                    'Bei Geburten einen zufälligen Namen vorschlagen — '
-                    'ausgeschaltet bleibt das Namensfeld leer.',
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 24),
+          Text(
+            _players.length == 1
+                ? 'Spieler'
+                : 'Spieler (${_players.length}/16)',
+            style: theme.textTheme.titleMedium,
           ),
-          const Divider(height: 32),
+          const SizedBox(height: 8),
           for (var i = 0; i < _players.length; i++) _playerCard(i),
           const SizedBox(height: 8),
           if (_players.length < 16)
@@ -262,104 +201,70 @@ class _SetupScreenState extends State<SetupScreen> {
               label: const Text('Spieler hinzufügen'),
             ),
           const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _starting ? null : _start,
-            icon: _starting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.play_arrow),
-            label: const Text('Spiel starten'),
+          AdvancedOptionsCard(
+            reformation: _reformation,
+            ottoman: _ottoman,
+            warStart: _warStart,
+            aiDifficulty: _aiDifficulty,
+            onAiDifficultyChanged: (v) => setState(() => _aiDifficulty = v),
+            genderEqualSuccession: _genderEqualSuccession,
+            onGenderEqualSuccessionChanged: (v) =>
+                setState(() => _genderEqualSuccession = v),
+            suggestChildNames: _suggestChildNames,
+            onSuggestChildNamesChanged: (v) =>
+                setState(() => _suggestChildNames = v),
           ),
         ],
+      ),
+      // Pinned start button: reachable without scrolling past 16 players.
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: FilledButton.icon(
+          onPressed: _starting ? null : _start,
+          icon: _starting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.play_arrow),
+          label: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text('Spiel starten'),
+          ),
+        ),
       ),
     );
   }
 
   Widget _playerCard(int i) {
     final p = _players[i];
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: EmpireCard(
+        name: p.name,
+        nameLabel: 'Name des Gründers',
+        nameMaxLength: maxNameLength,
+        dorf: p.dorf,
+        gender: p.gender,
+        onGenderChanged: (v) => setState(() => p.gender = v),
+        countrySlot: p.countrySlot,
+        onCountryChanged: (v) => setState(() => p.countrySlot = v),
+        randomDorfHint: 'Leer = Dorf des zugelosten Landes',
+        header: Row(
           children: [
-            Row(
-              children: [
-                Text(
-                  'Spieler ${i + 1}',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const Spacer(),
-                if (_players.length > 1)
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    tooltip: 'Spieler entfernen',
-                    onPressed: () => setState(
-                      () => _removedPlayers.add(_players.removeAt(i)),
-                    ),
-                  ),
-              ],
+            Text(
+              'Spieler ${i + 1}',
+              style: Theme.of(context).textTheme.titleSmall,
             ),
-            TextField(
-              controller: p.name,
-              maxLength: maxNameLength,
-              decoration: const InputDecoration(
-                labelText: 'Name des Gründers',
-                counterText: '',
+            const Spacer(),
+            if (_players.length > 1)
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Spieler entfernen',
+                onPressed: () =>
+                    setState(() => _removedPlayers.add(_players.removeAt(i))),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text('Männlich')),
-                      ButtonSegment(value: 1, label: Text('Weiblich')),
-                    ],
-                    selected: {p.gender},
-                    onSelectionChanged: (s) =>
-                        setState(() => p.gender = s.first),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: p.countrySlot,
-                    decoration: const InputDecoration(labelText: 'Land'),
-                    items: [
-                      for (var slot = 1; slot <= 30; slot++)
-                        DropdownMenuItem(
-                          value: slot,
-                          child: Text(countryNames[slot]),
-                        ),
-                    ],
-                    onChanged: (v) => setState(() {
-                      p.countrySlot = v ?? p.countrySlot;
-                      p.dorf.text = cityNames[p.countrySlot - 1];
-                    }),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: p.dorf,
-                    maxLength: maxNameLength,
-                    decoration: const InputDecoration(
-                      labelText: 'Erstes Dorf',
-                      counterText: '',
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),

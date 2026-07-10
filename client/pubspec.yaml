@@ -41,3 +41,5 @@ flutter:
     # large/ = 32×32 map tiles, small/ = 8×8 minimap/UI tiles.
     - assets/tiles/large/
     - assets/tiles/small/
+    # Round app icon shown on the home screen header.
+    - assets/icon/icon_small.png

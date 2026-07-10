@@ -6,6 +6,57 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-10 — Menu & game-setup restructure (user feedback)
+
+(1) Home screen action order is now play-first: Neues Spiel (filled),
+Online (tonal), Tutorial (outlined) — both ways to play sit together,
+learning last; the empty state still points newcomers at the tutorial.
+(2) "Erweiterte Optionen" extracted into a shared
+`widgets/advanced_options.dart` card (collapsed ExpansionTile with icon +
+subtitle) used by BOTH the local and the online setup, so labels,
+helper texts ("Original: …") and switch explanations stay identical.
+On the local setup it moved below the player list; the start button is
+pinned in a bottom bar so 16-player setups don't scroll past it.
+(3) Online match creation/joining no longer happens in an AlertDialog:
+new full-screen `online_setup_screen.dart` mirroring the local setup
+design (sections "Partie" / "Dein Reich" / Erweiterte Optionen, pinned
+primary button). Modes: host, join-by-code (room-code field on the same
+screen — the separate code dialog is gone), join-public. `_MatchSetup`
+moved there as public `MatchSetup`; the lobby keeps all API calls. The
+online screen now also validates event years (≥ `minEventYear`) like the
+local setup, and picking a Land pre-fills its historical first village.
+Follow-up round: (4) a "Weiterspielen" resume button on the home screen
+was tried and reverted on user feedback — do not reintroduce.
+(5) Language toggle removed for now
+(German-only; the `en` string table stays for later). (6) Home header
+shows the round app icon (`assets/icon/icon_small.png`, newly declared
+in pubspec assets) instead of the generic castle glyph. (7) Lobby:
+"Neue Partie" (filled) and "Beitreten per Code" (tonal) are stacked
+full-width buttons at the top — the FAB and the text button in the
+"Angemeldet als" row are gone. (8) Local setup gained the online
+screen's "Zufällig" Land option: `_PlayerDraft.countrySlot` is nullable,
+random slots are drawn from the unpicked ones at start, and an empty
+Dorf falls back to the drawn realm's historical first village (the only
+place an empty Dorf is allowed — the backend still requires one).
+Review round (multi-agent, all findings fixed): (a) the random-country
+draw moved INTO game_core — `HumanPlayerSetup.countrySlot` is nullable
+and `newGame` draws free slots from the injected RNG (empty `dorfName`
+→ `cityNames[slot-1]`), so a seed reproduces the draw; covered in
+`new_game_test.dart`. (b) New shared `widgets/empire_card.dart` replaces
+the duplicated player/empire cards; its Dorf pre-fill is conservative —
+only text that is empty or a historical village name (a previous
+auto-fill) is overwritten or cleared, so a typed Dorf survives switching
+Land in either direction (was: online kept a stale auto-fill on
+"Zufällig", local wiped typed names); widget-tested. (c) Year validation
+(`validateEventYears`) shared in `advanced_options.dart`; the default
+years live in game_core (`defaultReformationYear` etc.). (d) `MatchSetup`
+moved to `services/match_setup.dart` with `setupJson()`+`settingsJson()`
+so every wire key has one home. (e) Lobby create/join buttons pinned in a
+bottom bar (the scroll-away regression from replacing the FAB). (f) Home
+icon decoded at display size (`cacheWidth`), ExpansionTile borders
+removed via `shape` instead of a Theme dividerColor override, smoke-test
+temp dir cleaned up via addTearDown.
+
 ## 2026-07-10 — AI difficulty levels (Leicht/Mittel/Schwer)
 
 Per-game setup option `AiDifficulty` (local setup screen and online host

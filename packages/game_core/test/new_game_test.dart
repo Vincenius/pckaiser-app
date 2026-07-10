@@ -155,6 +155,55 @@ void main() {
       expect(a.toJson(), b.toJson());
     });
 
+    test('draws "Zufällig" countries from the seed, empty Dorf falls back',
+        () {
+      GameSetup randomSetup(int seed) => GameSetup(
+            humans: [
+              HumanPlayerSetup(
+                  founderName: 'Anna',
+                  gender: 1,
+                  countrySlot: null, // Zufällig
+                  dorfName: ''),
+              HumanPlayerSetup(
+                  founderName: 'Berta',
+                  gender: 1,
+                  countrySlot: 3,
+                  dorfName: 'München'),
+              HumanPlayerSetup(
+                  founderName: 'Carla',
+                  gender: 1,
+                  countrySlot: null, // Zufällig
+                  dorfName: 'Eigenhausen'),
+            ],
+            reformationYear: 1020,
+            ottomanYear: 1040,
+            seed: seed,
+          );
+
+      final state = newGame(randomSetup(2026));
+      final humanSlots = <int, int>{
+        for (final d in state.dynasties)
+          if (d.humanPlayer != null) d.humanPlayer!: d.index,
+      };
+      // All three seated, on three distinct valid slots; the fixed pick
+      // is honored and never handed to a random player.
+      expect(humanSlots, hasLength(3));
+      expect(humanSlots[1], 3);
+      expect(humanSlots.values.toSet(), hasLength(3));
+      for (final slot in humanSlots.values) {
+        expect(slot, inInclusiveRange(1, 30));
+      }
+      // Empty Dorf → the drawn realm's historical village; a typed name
+      // survives the draw.
+      expect(state.realm(humanSlots[0]!).towns.single.name,
+          cityNames[humanSlots[0]! - 1]);
+      expect(state.realm(humanSlots[2]!).towns.single.name, 'Eigenhausen');
+
+      // The draw is part of the seed: same seed → same slots.
+      final again = newGame(randomSetup(2026));
+      expect(again.toJson(), state.toJson());
+    });
+
     test('rejects setup years before 1011 (§5) and bad slots', () {
       expect(
         () => GameSetup(

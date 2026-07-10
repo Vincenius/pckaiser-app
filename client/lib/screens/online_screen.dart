@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:game_core/game_core.dart' as gc;
 
 import '../l10n/strings.dart' show formatTimestamp;
 import '../services/api_client.dart';
+import '../services/match_setup.dart';
 import '../services/online_service.dart';
-import '../widgets/ai_difficulty_picker.dart';
 import '../widgets/decisions.dart' show formatWarStartTime;
 import 'online_match_screen.dart';
+import 'online_setup_screen.dart';
 
 /// Online lobby (V2): configure the server + name once (a build-time
 /// `--dart-define=PCKAISER_SERVER_URL` skips the address step), then
@@ -172,25 +172,29 @@ class _OnlineScreenState extends State<OnlineScreen> {
     }
   }
 
+  /// Opens the full-screen setup (same design as the local new-game
+  /// screen) and pops back with the player's choices — no dialog.
+  Future<OnlineSetupResult?> _askSetup(OnlineSetupMode mode) {
+    return Navigator.of(context).push<OnlineSetupResult>(
+      MaterialPageRoute(
+        builder: (_) => OnlineSetupScreen(
+          mode: mode,
+          displayName: _service?.displayName,
+        ),
+      ),
+    );
+  }
+
   Future<void> _createMatch() async {
-    final setup = await _askSetup(hostChoices: true);
-    if (setup == null) return;
+    final result = await _askSetup(OnlineSetupMode.host);
+    if (result == null) return;
+    final setup = result.setup;
     final service = _service!;
     try {
       final view = await service.api.createMatch(
         playerId: service.playerId!,
-        settings: {
-          'turn_timeout_hours': setup.turnTimeoutHours,
-          'war_round_timeout': setup.warRoundTimeoutSeconds,
-          'reformation_year': setup.reformationYear,
-          'ottoman_year': setup.ottomanYear,
-          'war_start_year': setup.warStartYear,
-          'is_public': setup.isPublic,
-          'gender_equal_succession': setup.genderEqualSuccession,
-          'suggest_child_names': setup.suggestChildNames,
-          'ai_difficulty': setup.aiDifficulty.name,
-        },
-        setup: setup.toJson(),
+        settings: setup.settingsJson(),
+        setup: setup.setupJson(),
       );
       await _reload();
       if (!mounted) return;
@@ -211,344 +215,33 @@ class _OnlineScreenState extends State<OnlineScreen> {
     await _reload();
   }
 
+  /// Join via room code — the setup screen asks for code and empire in one.
   Future<void> _joinMatch() async {
-    final idController = TextEditingController();
-    final id = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Partie beitreten'),
-        content: TextField(
-          controller: idController,
-          maxLength: 5,
-          textCapitalization: TextCapitalization.characters,
-          inputFormatters: [
-            // Room codes are 5 capital letters — uppercase as you type.
-            TextInputFormatter.withFunction(
-              (oldValue, newValue) =>
-                  newValue.copyWith(text: newValue.text.toUpperCase()),
-            ),
-          ],
-          decoration: const InputDecoration(
-            labelText: 'Raum-Code',
-            hintText: 'z. B. KQXBE',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, idController.text.trim()),
-            child: const Text('Weiter'),
-          ),
-        ],
-      ),
-    );
-    if (id == null || id.isEmpty) return;
-    final setup = await _askSetup(hostChoices: false);
-    if (setup == null) return;
-    final service = _service!;
-    try {
-      await service.api.joinMatch(
-        matchId: id,
-        playerId: service.playerId!,
-        setup: setup.toJson(),
-      );
-      await _reload();
-      if (mounted) await _open(id);
-    } on ApiError catch (e) {
-      _toast(e.message);
-    }
+    final result = await _askSetup(OnlineSetupMode.joinByCode);
+    if (result == null) return;
+    await _join(result.roomCode!, result.setup);
   }
 
   /// Join a public game straight from the open-games list (no code needed).
   Future<void> _joinPublic(String id) async {
-    final setup = await _askSetup(hostChoices: false);
-    if (setup == null) return;
+    final result = await _askSetup(OnlineSetupMode.joinPublic);
+    if (result == null) return;
+    await _join(id, result.setup);
+  }
+
+  Future<void> _join(String id, MatchSetup setup) async {
     final service = _service!;
     try {
       await service.api.joinMatch(
         matchId: id,
         playerId: service.playerId!,
-        setup: setup.toJson(),
+        setup: setup.setupJson(),
       );
       await _reload();
       if (mounted) await _open(id);
     } on ApiError catch (e) {
       _toast(e.message);
     }
-  }
-
-  /// Founder setup (and for the host: the turn timer — mitspieler join
-  /// via room code until the host starts the game, no fixed count).
-  Future<_MatchSetup?> _askSetup({required bool hostChoices}) async {
-    final founderController = TextEditingController(
-      text: _service?.displayName ?? '',
-    );
-    final dorfController = TextEditingController();
-    final reformationController = TextEditingController(text: '1020');
-    final ottomanController = TextEditingController(text: '1040');
-    final warStartController = TextEditingController(text: '1010');
-    var gender = 0;
-    int? slot;
-    int? timeoutHours = 24;
-    var warRoundMinutes = 10;
-    var isPublic = false;
-    var genderEqualSuccession = true;
-    var suggestChildNames = true;
-    var aiDifficulty = gc.AiDifficulty.mittel;
-    return showDialog<_MatchSetup>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(hostChoices ? 'Neue Online-Partie' : 'Dein Reich'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (hostChoices) ...[
-                  Row(
-                    children: [
-                      const Expanded(child: Text('Zug-Zeitlimit')),
-                      DropdownButton<int?>(
-                        value: timeoutHours,
-                        items: const [
-                          DropdownMenuItem(value: null, child: Text('Aus')),
-                          DropdownMenuItem(value: 12, child: Text('12 h')),
-                          DropdownMenuItem(value: 24, child: Text('24 h')),
-                          DropdownMenuItem(value: 48, child: Text('48 h')),
-                          DropdownMenuItem(value: 168, child: Text('7 Tage')),
-                        ],
-                        onChanged: (v) => setState(() => timeoutHours = v),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Expanded(child: Text('Sichtbarkeit')),
-                      // Scale down on narrow dialogs instead of overflowing
-                      // (same pattern as the recruit sheet's class picker).
-                      Flexible(
-                        flex: 2,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: SegmentedButton<bool>(
-                            segments: const [
-                              ButtonSegment(
-                                value: false,
-                                label: Text('Privat'),
-                              ),
-                              ButtonSegment(
-                                value: true,
-                                label: Text('Öffentlich'),
-                              ),
-                            ],
-                            selected: {isPublic},
-                            onSelectionChanged: (s) =>
-                                setState(() => isPublic = s.first),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      isPublic
-                          ? 'Jeder kann diese Partie in der Liste sehen und '
-                                'beitreten.'
-                          : 'Nur Spieler mit dem Raum-Code können beitreten.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                  Theme(
-                    data: Theme.of(
-                      context,
-                    ).copyWith(dividerColor: Colors.transparent),
-                    child: ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      childrenPadding: EdgeInsets.zero,
-                      title: const Text('Erweiterte Optionen'),
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(child: Text('Zugzeit im Krieg')),
-                            DropdownButton<int>(
-                              value: warRoundMinutes,
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 5,
-                                  child: Text('5 min'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 10,
-                                  child: Text('10 min'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 15,
-                                  child: Text('15 min'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 30,
-                                  child: Text('30 min'),
-                                ),
-                              ],
-                              onChanged: (v) => setState(
-                                () => warRoundMinutes = v ?? warRoundMinutes,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: reformationController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: 'Reformation',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextField(
-                                controller: ottomanController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: 'Osmanen',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: warStartController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Krieg möglich ab Jahr',
-                            helperText: 'Original: 1010',
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        AiDifficultyPicker(
-                          label: 'Stärke der KI-Gegner',
-                          value: aiDifficulty,
-                          onChanged: (v) => setState(() => aiDifficulty = v),
-                        ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: genderEqualSuccession,
-                          onChanged: (v) =>
-                              setState(() => genderEqualSuccession = v),
-                          title: const Text('Frauen können überall herrschen'),
-                          subtitle: const Text(
-                            'Geschlechtsneutrale Erbfolge — Frauen erben '
-                            'auch islamische Reiche, ohne auszuscheiden.',
-                          ),
-                        ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: suggestChildNames,
-                          onChanged: (v) =>
-                              setState(() => suggestChildNames = v),
-                          title: const Text('Namensvorschläge für Kinder'),
-                          subtitle: const Text(
-                            'Bei Geburten einen zufälligen Namen vorschlagen.',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(),
-                ],
-                TextField(
-                  controller: founderController,
-                  maxLength: 20,
-                  decoration: const InputDecoration(
-                    labelText: 'Name des Herrschers',
-                  ),
-                ),
-                Row(
-                  children: [
-                    const Expanded(child: Text('Geschlecht')),
-                    SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment(value: 0, label: Text('M')),
-                        ButtonSegment(value: 1, label: Text('W')),
-                      ],
-                      selected: {gender},
-                      onSelectionChanged: (s) =>
-                          setState(() => gender = s.first),
-                    ),
-                  ],
-                ),
-                DropdownButtonFormField<int?>(
-                  initialValue: slot,
-                  decoration: const InputDecoration(labelText: 'Land'),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('Zufällig'),
-                    ),
-                    for (var s = 1; s <= gc.World.realmCount; s++)
-                      DropdownMenuItem(
-                        value: s,
-                        child: Text(gc.countryNames[s]),
-                      ),
-                  ],
-                  onChanged: (v) => setState(() => slot = v),
-                ),
-                TextField(
-                  controller: dorfController,
-                  maxLength: 20,
-                  decoration: const InputDecoration(
-                    labelText: 'Name deines Dorfes',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Abbrechen'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final founder = founderController.text.trim();
-                final dorf = dorfController.text.trim();
-                if (founder.isEmpty || dorf.isEmpty) return;
-                Navigator.pop(
-                  context,
-                  _MatchSetup(
-                    founderName: founder,
-                    gender: gender,
-                    countrySlot: slot,
-                    dorfName: dorf,
-                    turnTimeoutHours: timeoutHours,
-                    warRoundTimeoutSeconds: warRoundMinutes * 60,
-                    reformationYear:
-                        int.tryParse(reformationController.text) ?? 1020,
-                    ottomanYear: int.tryParse(ottomanController.text) ?? 1040,
-                    warStartYear: int.tryParse(warStartController.text) ?? 1010,
-                    isPublic: isPublic,
-                    genderEqualSuccession: genderEqualSuccession,
-                    suggestChildNames: suggestChildNames,
-                    aiDifficulty: aiDifficulty,
-                  ),
-                );
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   /// Leave/delete with a status-appropriate confirmation: a waiting
@@ -634,11 +327,28 @@ class _OnlineScreenState extends State<OnlineScreen> {
           : !service.isConfigured
           ? _setupPrompt(theme)
           : _lobby(theme, service),
-      floatingActionButton: service != null && service.isConfigured
-          ? FloatingActionButton.extended(
-              onPressed: _createMatch,
-              icon: const Icon(Icons.add),
-              label: const Text('Neue Partie'),
+      // Pinned (like the setup screens' start button): create/join stay
+      // reachable however long the match list grows.
+      bottomNavigationBar: service != null && service.isConfigured
+          ? SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _createMatch,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Neue Partie'),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _joinMatch,
+                    icon: const Icon(Icons.login),
+                    label: const Text('Beitreten per Code'),
+                  ),
+                ],
+              ),
             )
           : null,
     );
@@ -692,10 +402,6 @@ class _OnlineScreenState extends State<OnlineScreen> {
             title: Text(
               'Angemeldet als ${service.displayName}',
               style: theme.textTheme.labelLarge,
-            ),
-            trailing: TextButton(
-              onPressed: _joinMatch,
-              child: const Text('Beitreten per Code'),
             ),
           ),
           const Divider(height: 1),
@@ -807,42 +513,3 @@ class _OnlineScreenState extends State<OnlineScreen> {
   }
 }
 
-class _MatchSetup {
-  _MatchSetup({
-    required this.founderName,
-    required this.gender,
-    required this.countrySlot,
-    required this.dorfName,
-    required this.turnTimeoutHours,
-    this.warRoundTimeoutSeconds = 600,
-    this.reformationYear = 1020,
-    this.ottomanYear = 1040,
-    this.warStartYear = 1010,
-    this.isPublic = false,
-    this.genderEqualSuccession = true,
-    this.suggestChildNames = true,
-    this.aiDifficulty = gc.AiDifficulty.mittel,
-  });
-
-  final String founderName;
-  final int gender;
-  final int? countrySlot;
-  final String dorfName;
-  final int? turnTimeoutHours;
-  // Host-only choices (ignored when joining an existing match).
-  final int warRoundTimeoutSeconds;
-  final int reformationYear;
-  final int ottomanYear;
-  final int warStartYear;
-  final bool isPublic;
-  final bool genderEqualSuccession;
-  final bool suggestChildNames;
-  final gc.AiDifficulty aiDifficulty;
-
-  Map<String, dynamic> toJson() => {
-    'founder_name': founderName,
-    'gender': gender,
-    if (countrySlot != null) 'country_slot': countrySlot,
-    'dorf_name': dorfName,
-  };
-}
