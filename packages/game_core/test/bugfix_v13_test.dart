@@ -147,7 +147,7 @@ void main() {
     });
   });
 
-  group('ruler capture (superseded v13 claim floor)', () {
+  group('capture claim floor (rules v13)', () {
     /// Declares war (slot 1 → slot 2) and parks slot 1's unit on slot 2's
     /// capital; the defender's unit is moved aside first.
     GameState marchOntoCapital(GameState from) {
@@ -167,17 +167,38 @@ void main() {
     }
 
     test(
-        'capturing the ruler takes the whole realm — the v13 "claim covers '
-        'the capital tile" floor is obsolete (§11.2 restored 2026-07-10)',
-        () {
+        'a capture claim always covers the loser capital tile, even when '
+        'the v12 cap is smaller', () {
       var s = marchOntoCapital(state);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      // Strip slot 2 down to capital + Dorf + one bare tile before the
+      // capture resolves: the rolled cap of that small rest stays below
+      // the capital's 5,000. (The Dorf must SURVIVE — with the seat as
+      // the loser's only key point, occupying it would take the whole
+      // realm instead of opening this settlement, §11.2 2026-07-10.)
+      final map = s.map;
+      final loser = s.realm(2);
+      var kept = false;
+      for (var i = 0; i < map.terrain.length; i++) {
+        if (map.owner[i] != 2) continue;
+        final isCapital = i == map.index(loser.capitalX, loser.capitalY);
+        if (!kept && !isCapital && map.building[i] == Building.none) {
+          kept = true;
+          continue;
+        }
+        if (isCapital || map.building[i] == Building.dorf) continue;
+        loser.tileCount[map.building[i]]--;
+        map.owner[i] = World.niemand;
+      }
+      expect(kept, isTrue);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
 
-      expect(s.activeWar, isNull, reason: 'no settlement after a capture');
-      expect(s.realm(2).rulerId, s.realm(1).rulerId,
-          reason: 'the captor rules the loser slot (§19 aliasing) — the '
-              'conquered seat, and everything else, is theirs');
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.winnerSlot, 1);
+      final capitalValue = settlementTileValue(
+          s, s.map.buildingAt(loser.capitalX, loser.capitalY));
+      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(capitalValue),
+          reason: 'the captor held the seat — taking it must be possible');
     });
   });
 }

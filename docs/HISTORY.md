@@ -124,14 +124,18 @@ Six tester reports, five fixes plus one verification
    `Realm.proposedThisTurnIds` tracks proposers, so every marriageable
    member may propose once per turn. The legacy JSON bool is ignored on
    load. Client pickers filter spent proposers.
-4. **Ruler capture takes the whole realm again** (original §11.2
-   restored): capital occupation through a full round now overwrites the
-   loser slot's ruler pointer (§19 aliasing — land, towns, treasury,
-   troops change hands at once; control follows the captor, defeat
-   reason `rulerCaptured`) instead of the capped claim settlement. The
-   50–80% anti-swallow cap and the v13 capital-tile floor now apply only
-   to SCORE-based endings (winter arbitration); settlement tests reach
-   that phase via the winter route.
+4. **Total occupation takes the whole realm** (user rule, refined after
+   a first cut that keyed on the capital alone): when the ruler capture
+   resolves (capital held through a full round) AND the captor occupies
+   EVERY key point of the loser at that moment — all tiles with a
+   Dorf/Markt/Stadt/Burg/Palast/Hafen, seat included, i.e. several
+   armies at work (`occupiesAllKeyPoints`) — the loser slot's ruler
+   pointer is overwritten (§19 aliasing: land, towns, treasury, troops
+   change hands at once; control follows the captor, defeat reason
+   `rulerCaptured`). A capture holding ONLY the capital keeps the
+   pre-existing capped claim settlement (incl. the v13 capital-tile
+   floor). A rump state whose only key point is its seat falls whole
+   with that one tile.
 5. **Plunder per army** (§11.5): the per-SIDE war flags became
    `Troop.plunderedThisRound` (additive field; old flags ignored on
    load) — each army plunders once per war round, reset at war start and

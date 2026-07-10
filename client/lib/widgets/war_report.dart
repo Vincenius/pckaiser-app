@@ -294,9 +294,15 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
         mine ? 'Königssitz besetzt !' : 'Dein Königssitz ist besetzt !',
         mine
             ? 'Deine Armee hält den Königssitz von $besieged — übersteht '
-                  'sie dort die nächste Runde, ist der Krieg gewonnen.'
+                  'sie dort die nächste Runde, ist der Krieg gewonnen. '
+                  'Besetzen deine Armeen dabei ALLE Orte des Feindes '
+                  '(jedes Dorf, jeden Markt, jede Stadt, Burg, jeden '
+                  'Palast und Hafen), fällt das ganze Land an dich — '
+                  'sonst stellst du Ansprüche nach Punkten.'
             : '$realm hält deinen Königssitz ! Erobere das Feld in der '
-                  'nächsten Runde zurück — sonst ist der Krieg verloren.',
+                  'nächsten Runde zurück — sonst ist der Krieg verloren. '
+                  'Sind dabei ALLE deine Orte besetzt, fällt dein ganzes '
+                  'Land an den Feind !',
       );
 
     case 'warWon':

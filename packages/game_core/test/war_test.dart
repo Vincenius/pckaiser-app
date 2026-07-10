@@ -536,7 +536,8 @@ void main() {
     });
   });
 
-  group('ruler capture takes over the whole realm (§11.2)', () {
+  group('ruler capture: claim settlement, or full takeover with all key '
+      'points occupied (§11.2)', () {
     /// Declares war and parks slot 1's unit on slot 2's capital (the
     /// defender's unit is moved aside first).
     GameState marchOntoCapital() {
@@ -565,10 +566,10 @@ void main() {
     });
 
     test(
-        'holding the capital through a full round captures the ruler and '
-        'hands the WHOLE realm to the captor (§19 pointer overwrite)', () {
+        'holding ONLY the capital captures the ruler and opens the claim '
+        'settlement — the Dorf is unoccupied, no realm takeover', () {
       var s = marchOntoCapital();
-      final captorRulerId = s.realm(1).rulerId;
+      final loserRulerId = s.realm(2).rulerId;
       // First round end ARMS the capture; the second resolves it (the
       // defender gets one full round to retake the seat).
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
@@ -576,8 +577,39 @@ void main() {
       s = result.state;
 
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
-      final warWon =
-          result.events.firstWhere((e) => e.type == 'warWon');
+      expect(result.events.any((e) => e.type == 'warWon'), isTrue);
+      expect(s.activeWar, isNotNull);
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.winnerSlot, 1);
+      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(3000),
+          reason: 'the claim includes the +3,000 capital bonus');
+      expect(s.realm(2).rulerId, loserRulerId,
+          reason: 'the loser keeps the realm — the winner SELECTS tiles');
+    });
+
+    test(
+        'occupying ALL key points (seat AND Dorf) hands the WHOLE realm '
+        'to the captor (§19 pointer overwrite)', () {
+      var s = marchOntoCapital();
+      final captorRulerId = s.realm(1).rulerId;
+      // A second army onto the loser's remaining key point (its Dorf):
+      // total occupation needs several armies, one tile each.
+      final town = s.realm(2).towns.single;
+      s.realm(1).troops.add(Troop(
+          name: 'Zweite',
+          men: 20,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: true,
+          x: town.x,
+          y: town.y));
+      s.rebuildTroopMarkers();
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
+      final warWon = result.events.firstWhere((e) => e.type == 'warWon');
       expect(warWon.payload['conquered'], isTrue);
       expect(s.activeWar, isNull,
           reason: 'no claim settlement — the realm changes hands whole');
@@ -640,9 +672,10 @@ void main() {
 
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
       expect(result.events.any((e) => e.type == 'warWon'), isTrue);
-      expect(s.activeWar, isNull,
-          reason: 'the war ends with the whole-realm takeover (§11.2)');
-      expect(s.realm(2).rulerId, s.realm(1).rulerId);
+      expect(s.activeWar!.phase, WarPhase.settlement,
+          reason: 'capital only — the loser\'s Dorf is unoccupied');
+      expect(s.activeWar!.winnerSlot, 1);
+      expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(3000));
     });
 
     test('a dislodged occupier disarms the capture', () {
@@ -666,9 +699,8 @@ void main() {
       s = result.state;
 
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
-      expect(s.activeWar, isNull,
-          reason: 'the war ends with the whole-realm takeover (§11.2)');
-      expect(s.realm(2).rulerId, s.realm(1).rulerId);
+      expect(s.activeWar!.phase, WarPhase.settlement,
+          reason: 'capital only — the loser\'s Dorf is unoccupied');
     });
 
     test(
@@ -1103,17 +1135,30 @@ void main() {
           reason: 'the human winner picks the claim tiles');
     });
 
-    test('capturing the capital in a human-vs-human war takes the realm', () {
+    test(
+        'occupying ALL key points in a human-vs-human war takes the realm',
+        () {
       final attacker = war.realm(1).troops.first;
       final defender = war.realm(2);
       defender.troops.clear();
       war.activeWar!.movesLeft[2] = [];
       attacker.x = defender.capitalX;
       attacker.y = defender.capitalY;
+      // The second army occupies the defender's remaining key point.
+      final town = defender.towns.single;
+      war.realm(1).troops.add(Troop(
+          name: 'Zweite',
+          men: 20,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: true,
+          x: town.x,
+          y: town.y));
+      war.rebuildTroopMarkers();
       final events = <GameEvent>[];
       endWarRoundFor(war, 1, Rng(war.rngSeed), events);
       expect(war.activeWar, isNull,
-          reason: 'ruler capture ends the war with the takeover (§11.2)');
+          reason: 'total occupation ends the war with the takeover (§11.2)');
       expect(war.realm(2).rulerId, war.realm(1).rulerId);
       expect(war.dynasty(2).status, DynastyStatus.human,
           reason: 'control follows the captor, who is human');

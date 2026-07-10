@@ -616,6 +616,40 @@ int? capitalOccupier(GameState state, ActiveWar war) {
   return null;
 }
 
+/// Whether [slot] occupies EVERY key point of [enemySlot]: each enemy
+/// tile carrying a settlement or stronghold (Dorf, Markt, Stadt, Burg,
+/// Palast, Hafen) — and the enemy seat, whatever stands there — holds at
+/// least one of [slot]'s units. Fields (Kornfeld/Weide) and bare land
+/// don't count. User rule 2026-07-10 (§11.2): only this total occupation
+/// lets a ruler capture take the WHOLE realm; a lone capital capture
+/// wins on points (claim settlement). A rump state whose only key point
+/// is its seat falls with that one tile.
+bool occupiesAllKeyPoints(GameState state, int slot, int enemySlot) {
+  final map = state.map;
+  final troops = state.realm(slot).troops;
+  bool occupied(int x, int y) => troops.any((t) => t.x == x && t.y == y);
+
+  final enemy = state.realm(enemySlot);
+  if (map.ownerAt(enemy.capitalX, enemy.capitalY) == enemySlot &&
+      !occupied(enemy.capitalX, enemy.capitalY)) {
+    return false;
+  }
+  for (var i = 0; i < map.terrain.length; i++) {
+    if (map.owner[i] != enemySlot) continue;
+    final building = map.building[i];
+    if (building != Building.dorf &&
+        building != Building.markt &&
+        building != Building.stadt &&
+        building != Building.burg &&
+        building != Building.palast &&
+        building != Building.hafen) {
+      continue;
+    }
+    if (!occupied(i % map.width, i ~/ map.width)) return false;
+  }
+  return true;
+}
+
 /// The settlement claim is capped at a share of the loser's total
 /// territory settlement value. War scores grow with army strength
 /// squared, so any sizeable army's claim used to dwarf the loser's whole
@@ -689,13 +723,18 @@ int? _cheapestBorderingLoserTile(
 }
 
 /// Ruler capture, resolved at ROUND END (§11.2): the captor holds the
-/// enemy capital when the round ends. The captured ruler is coerced (§12)
-/// and the captor takes over the loser's ENTIRE realm: the slot's ruler
-/// pointer is overwritten with the captor's ruler (§19 aliasing), so all
-/// land, towns, treasury and troops change hands at once — no claim
-/// settlement. (Original rule restored 2026-07-10 after user feedback;
-/// it had been downgraded to a capped claim settlement. The [_cappedClaim]
-/// anti-swallow cap still governs every SCORE-based war end.)
+/// enemy capital when the round ends. The captured ruler is coerced (§12).
+/// The victory's SCOPE follows the occupation (user rule 2026-07-10):
+///  - The captor occupies EVERY key point of the loser at that moment
+///    ([occupiesAllKeyPoints]: all Dorf/Markt/Stadt/Burg/Palast/Hafen
+///    tiles, seat included — several armies at work) → the loser's
+///    ENTIRE realm falls: the slot's ruler pointer is overwritten with
+///    the captor's ruler (§19 aliasing), so all land, towns, treasury
+///    and troops change hands at once — no claim settlement.
+///  - Only the capital is held → the war is won on points: the captor
+///    SELECTS loser tiles in the claim settlement, against a claim of
+///    their war score (which includes the +3,000 capital bonus; capped —
+///    see [_cappedClaim], but always at least the capital tile).
 void _endWarByCapitalOccupation(
     GameState state, int captorSlot, Rng rng, List<GameEvent> events) {
   final war = state.activeWar!;
@@ -715,36 +754,73 @@ void _endWarByCapitalOccupation(
       'loserHuman': state.dynasty(loserSlot).status == DynastyStatus.human,
     },
   ));
+
+  if (occupiesAllKeyPoints(state, captorSlot, loserSlot)) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: captorSlot,
+      type: 'warWon',
+      visibility: EventVisibility.public,
+      payload: {
+        'conquered': true,
+        'loserSlot': loserSlot,
+        'summary': war.summary(),
+      },
+    ));
+
+    // §19: overwrite the loser slot's ruler pointer — control follows the
+    // new ruler ([alignSlotControl]). A human loser's defeat reason is set
+    // AFTER the control flip: alignSlotControl's cross-dynasty path would
+    // otherwise overwrite it with 'realmInherited'. The war state is gone
+    // before the coercion decisions land so their prompts resolve outside
+    // any war screen.
+    final loserWasHuman =
+        state.dynasty(loserSlot).status == DynastyStatus.human;
+    loser.rulerId = captor.rulerId;
+    dyn.alignSlotControl(state, loserSlot, captor.rulerId);
+    regenderTitle(state, loser);
+    if (loserWasHuman) state.humanLossReason = 'rulerCaptured';
+
+    _returnTroops(state, war, events);
+    state.activeWar = null;
+
+    if (capturedRuler != null) {
+      runCoercion(state, captorSlot, capturedRuler, rng, events);
+    }
+    return;
+  }
+
+  // The claim covers at least the loser's capital tile (overriding the
+  // anti-swallow cap if needed): the captor held that very tile to win —
+  // a quick war against a depleted enemy yields a tiny war score, and
+  // the winner could otherwise never take the seat they conquered.
+  final claim = math.max(
+      _cappedClaim(
+          state, captorSlot, loserSlot, warScore(state, captorSlot), rng),
+      settlementTileValue(
+          state, state.map.buildingAt(loser.capitalX, loser.capitalY)));
   events.add(GameEvent(
     year: state.year,
     slot: captorSlot,
     type: 'warWon',
     visibility: EventVisibility.public,
     payload: {
-      'conquered': true,
+      'claim': claim,
       'loserSlot': loserSlot,
       'summary': war.summary(),
     },
   ));
 
-  // §19: overwrite the loser slot's ruler pointer — control follows the
-  // new ruler ([alignSlotControl]). A human loser's defeat reason is set
-  // AFTER the control flip: alignSlotControl's cross-dynasty path would
-  // otherwise overwrite it with 'realmInherited'. The war state is gone
-  // before the coercion decisions land so their prompts resolve outside
-  // any war screen.
-  final loserWasHuman =
-      state.dynasty(loserSlot).status == DynastyStatus.human;
-  loser.rulerId = captor.rulerId;
-  dyn.alignSlotControl(state, loserSlot, captor.rulerId);
-  regenderTitle(state, loser);
-  if (loserWasHuman) state.humanLossReason = 'rulerCaptured';
-
-  _returnTroops(state, war, events);
-  state.activeWar = null;
+  war.phase = WarPhase.settlement;
+  war.winnerSlot = captorSlot;
+  war.remainingClaim = claim;
+  war.actingSlot = captorSlot; // the settlement awaits the winner
 
   if (capturedRuler != null) {
     runCoercion(state, captorSlot, capturedRuler, rng, events);
+  }
+  if (!warSideIsHuman(state, war, captorSlot)) {
+    autoSettleClaim(state, rng, events);
   }
 }
 
