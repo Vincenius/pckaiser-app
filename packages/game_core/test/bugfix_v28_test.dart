@@ -177,21 +177,26 @@ void main() {
       expect(war.phase, WarPhase.preparation);
       expect(warActingSlot(state), 2);
 
-      // Defender delegates (with a bulk stance): exactly one live side —
-      // the war starts at once, the delegated side is autopiloted.
+      // Defender lines up each unit INDIVIDUALLY during the preparation
+      // (user rule 2026-07-13 — the bulk 'stance' answer is gone), then
+      // delegates: exactly one live side — the war starts at once, the
+      // delegated side is autopiloted.
+      for (var i = 0; i < state.realm(2).troops.length; i++) {
+        applyActionInPlace(state,
+            SetTroopStance(slot: 2, unitIndex: i, stance: TroopStance.attack),
+            Rng(1));
+      }
       applyActionInPlace(
           state,
-          ResolveDecision(slot: 2, decisionId: planOf(state, 2).id, choice: {
-            'auto': true,
-            'stance': 'attack',
-          }),
+          ResolveDecision(
+              slot: 2, decisionId: planOf(state, 2).id, choice: {'auto': true}),
           Rng(1));
       resolveWarPreparation(state, Rng(1), <GameEvent>[]);
       expect(war.phase, WarPhase.rounds);
       expect(war.autoSlots, contains(2));
       expect(state.realm(2).troops.every((t) => t.stance == TroopStance.attack),
           isTrue,
-          reason: 'the warPlan answer re-set every unit\'s stance');
+          reason: 'per-unit stance orders set in the preparation survive');
       expect(warActingSlot(state), 1);
       expect(handWarRoundOver(state, 1), isFalse,
           reason: 'a delegated defender takes no handover');

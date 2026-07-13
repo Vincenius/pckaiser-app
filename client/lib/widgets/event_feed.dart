@@ -36,6 +36,7 @@ const _dynastyTypes = {
   'islamicSuccessionCrisis',
   'dynastyExtinct',
   'realmInherited',
+  'seatLost',
   'dynastyConverted',
   'internalStrife',
   'religionChanged',
@@ -199,10 +200,18 @@ String describeEvent(gc.GameEvent e) {
           '${((p['slots'] as List?) ?? const []).map((s) => gc.countryNames[s as int]).join(', ')} '
           'an ${p['heir']} von $realm',
     'islamicSuccessionCrisis' =>
-      '$realm: Erbfolgekrise — ${p['heir']} setzt sich durch',
+      '$realm: Erbfolgekrise — ${p['heir']} setzt sich durch'
+          '${p['human'] == true ? '; der Spieler verliert die Kontrolle über das Reich !' : ''}',
     'internalStrife' =>
-      '$realm: innere Unruhen — ${p['newRuler']} ergreift die Macht',
-    'bankruptcy' => '$realm ist bankrott (${p['debt']} T Schulden) !',
+      '$realm: Volksaufstand — ${p['newRuler']} ergreift die Macht'
+          '${p['human'] == true ? '; der Spieler verliert die Kontrolle über das Reich !' : ''}',
+    'seatLost' =>
+      'Durch Erbfolge fällt $realm an ein fremdes Herrscherhaus'
+          '${p['heir'] != null ? ' (${p['heir']})' : ''} — '
+          'der Spieler verliert die Kontrolle über das Reich !',
+    'bankruptcy' =>
+      '$realm ist bankrott (${p['debt']} T Schulden) !'
+          '${p['human'] == true ? ' Der Spieler verliert das Reich an ein neues Herrscherhaus !' : ''}',
     'debtWarning' =>
       '$realm steckt tief in Schulden (${p['debt']} T) — noch '
           '${p['turnsLeft']} ${(p['turnsLeft'] as int) == 1 ? 'Zug' : 'Züge'} '
@@ -463,6 +472,15 @@ bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
   // the victim themselves above all.
   'realmOverrun' => e.payload['human'] == true,
   'rulerCaptured' => e.payload['loserHuman'] == true,
+  // A human player losing CONTROL of a realm without losing the land —
+  // popularity coup, foreclosure, succession crisis, inheritance to a
+  // foreign house. Reported gap (2026-07-13): a player's realm silently
+  // flipped to the AI and they "never got told why" — these popups are
+  // that answer, for the victim above all.
+  'internalStrife' => e.payload['human'] == true,
+  'bankruptcy' => e.payload['human'] == true,
+  'islamicSuccessionCrisis' => e.payload['human'] == true,
+  'seatLost' => true, // only ever emitted for a human seat's loss
   // An idle player replaced by the AI — the whole table should be told.
   'playerKicked' => true,
   _ => false,
@@ -495,6 +513,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'internalStrife' ||
   'realmsMerged' ||
   'dynastyExtinct' ||
+  'seatLost' ||
   'islamicSuccessionCrisis' => e.slot == slot,
   _ => false,
 };
@@ -539,6 +558,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'dynastyExtinct' ||
   'totalExtinction' => (Icons.heart_broken, Colors.blueGrey),
   'realmInherited' => (Icons.account_balance, Colors.amber),
+  'seatLost' => (Icons.account_balance, Colors.red),
   'wedding' || 'forcedMarriage' => (Icons.favorite, Colors.pink),
   'marriageRejected' || 'divorce' => (Icons.heart_broken, null),
   'birth' => (Icons.child_care, Colors.teal),
@@ -645,6 +665,71 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
       '${gc.countryNames[e.slot]} nimmt den Herrscher von '
           '${gc.countryNames[p['loserSlot'] as int]}'
           '${p['ruler'] == null ? '' : ' (${p['ruler']})'} gefangen !',
+    ),
+    'internalStrife' when e.slot == slot => (
+      Icons.local_fire_department,
+      Colors.red,
+      'Reich verloren !',
+      'Volksaufstand in ${gc.countryNames[e.slot]}: die Zustimmung deines '
+          'Volkes ist unter 20 gefallen — ${p['newRuler']} ergreift die '
+          'Macht ! Du hast die Kontrolle über das Reich verloren; der '
+          'Computer regiert es fortan.',
+    ),
+    'internalStrife' => (
+      Icons.local_fire_department,
+      Colors.red,
+      'Volksaufstand !',
+      '${gc.countryNames[e.slot]}: die Zustimmung fiel unter 20 — '
+          '${p['newRuler']} entthront den Spieler und ergreift die Macht !',
+    ),
+    'bankruptcy' when e.slot == slot => (
+      Icons.money_off,
+      Colors.red,
+      'Reich verloren !',
+      'Dein Reich ${gc.countryNames[e.slot]} ist bankrott '
+          '(${p['debt']} T Schulden) — die Gläubiger übergeben es einem '
+          'neuen Herrscherhaus. Du hast die Kontrolle über das Reich '
+          'verloren.',
+    ),
+    'bankruptcy' => (
+      Icons.money_off,
+      Colors.red,
+      'Staatsbankrott !',
+      '${gc.countryNames[e.slot]} ist bankrott (${p['debt']} T Schulden) — '
+          'der Spieler verliert das Reich an ein neues Herrscherhaus !',
+    ),
+    'islamicSuccessionCrisis' when e.slot == slot => (
+      Icons.account_balance,
+      Colors.red,
+      'Reich verloren !',
+      'Erbfolgekrise in ${gc.countryNames[e.slot]}: ${p['heir']} kann als '
+          'Frau kein muslimisches Reich führen — das Reich fällt unter '
+          'Computer-Kontrolle. Du hast die Kontrolle verloren.',
+    ),
+    'islamicSuccessionCrisis' => (
+      Icons.account_balance,
+      Colors.red,
+      'Erbfolgekrise !',
+      '${gc.countryNames[e.slot]}: ${p['heir']} setzt sich durch — der '
+          'Spieler verliert die Kontrolle über das Reich !',
+    ),
+    'seatLost' when e.slot == slot => (
+      Icons.account_balance,
+      Colors.red,
+      'Reich verloren !',
+      'Durch Erbfolge ist ${gc.countryNames[e.slot]} an ein fremdes '
+          'Herrscherhaus gefallen'
+          '${p['heir'] == null ? '' : ' (${p['heir']})'} — du hast die '
+          'Kontrolle über das Reich verloren.',
+    ),
+    'seatLost' => (
+      Icons.account_balance,
+      Colors.red,
+      'Reich durch Erbfolge verloren !',
+      'Durch Erbfolge fällt ${gc.countryNames[e.slot]} an ein fremdes '
+          'Herrscherhaus'
+          '${p['heir'] == null ? '' : ' (${p['heir']})'} — der Spieler '
+          'verliert die Kontrolle über das Reich !',
     ),
     'playerKicked' => (
       Icons.person_off,

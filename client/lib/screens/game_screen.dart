@@ -160,11 +160,17 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// Mirrors the war state into the map overlay: pulsing ring on the
-  /// selected unit.
+  /// selected unit — during the rounds AND the preparation window (where
+  /// units are selected via their chips to set the stance per troop).
   void _syncWarOverlay(GameController controller, MapGame game) {
     final war = controller.state.activeWar;
-    final slot = controller.warHumanSlot;
-    if (war == null || slot == null || war.phase != gc.WarPhase.rounds) {
+    final slot = war?.phase == gc.WarPhase.preparation
+        ? controller.warPrepSlot
+        : controller.warHumanSlot;
+    if (war == null ||
+        slot == null ||
+        (war.phase != gc.WarPhase.rounds &&
+            war.phase != gc.WarPhase.preparation)) {
       game.selectedTile = null;
       return;
     }

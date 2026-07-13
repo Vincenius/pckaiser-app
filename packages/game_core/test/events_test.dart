@@ -116,9 +116,36 @@ void main() {
       final events = <GameEvent>[];
       runEliminationChecks(state, 1, Rng(3), events);
       expect(events.single.type, 'internalStrife');
+      expect(events.single.payload['human'], isTrue,
+          reason: 'the flag keys the client\'s "you lost your realm" '
+              'popup (2026-07-13: the loss used to pass silently)');
       expect(realm.rulerId, isNot(oldRuler));
       expect(realm.popularity, 50);
       expect(dynasty.status, DynastyStatus.ai, reason: 'player eliminated');
+    });
+
+    test('an AI realm\'s popularity crisis is not flagged as a human loss',
+        () {
+      final state = freshGame();
+      state.year = 1010;
+      final dynasty = state.dynasty(2);
+      dynasty.status = DynastyStatus.ai;
+      dynasty.humanPlayer = null;
+      state.realm(2).popularity = 10;
+      for (var i = 0; i < 4; i++) {
+        final p = Person(
+            id: state.nextPersonId++,
+            name: 'M$i',
+            age: 20,
+            dynasty: 2,
+            gender: 0);
+        state.persons[p.id] = p;
+        dynasty.memberIds.add(p.id);
+      }
+      final events = <GameEvent>[];
+      runEliminationChecks(state, 2, Rng(3), events);
+      expect(events.single.type, 'internalStrife');
+      expect(events.single.payload['human'], isFalse);
     });
 
     test('crisis is suppressed in the protection window', () {

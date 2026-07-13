@@ -6,6 +6,53 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-13 — War takeover via annexation, per-troop war prep, realm-loss popups (user feedback, 0.1.18)
+
+Four user requests in one rules/UX round; appVersion 0.1.17 → 0.1.18.
+(1) **Key points are strongholds only**: `occupiesAllKeyPoints` now
+requires every **Stadt/Burg/Palast** tile (plus the seat) — Dörfer,
+Märkte and **Häfen** no longer count toward the total-occupation
+takeover. (2) **Total conquest = points-based annexation, no aliasing**:
+when a resolved ruler capture finds all strongholds occupied, the
+loser's ENTIRE territory is transferred tile by tile into the WINNER's
+realm (§11.4 `transferTile`, per-tile `tileConquered` spam discarded;
+leftover treasury/harvest follow, debt never), then `checkLandLoss`
+vacates the landless loser slot (`realmOverrun` popup for the table,
+`humanLossReason = 'rulerCaptured'`). The 2026-07-10 §19 pointer
+overwrite — winner "inherits" and steers the loser slot as a second
+realm — is gone; players found it confusing. Coercion (§12) still runs;
+the Kurfürst strip is already covered by `checkLandLoss`. Mid-turn
+sole-ruler wins surface via the shared `_surfaceMidTurnWin` (also used
+by the settlement path). (3) **Realm-loss notifications**: an online
+player lost their home realm to a §19.1 popularity coup and "never got
+told why". Every involuntary loss of a human seat now announces itself:
+`internalStrife`/`bankruptcy` carry a `human` payload flag,
+`islamicSuccessionCrisis` too, and an inheritance away from a human
+emits the new public `seatLost` event (`dynasty.dart
+_noteSeatLostEvent`). The client shows them as prominent "Reich
+verloren !" drama popups (victim and table), headline recap rows and
+explicit feed lines; the online waiting screen's out-of-turn drama set
+includes them. (4) **War preparation: per-troop stances over the
+visible map**: the `warPlan` dialog's all-troops bulk stance choice is
+removed (engine + dialog); instead each unit is set individually
+(Halten/Angreifen, `SetTroopStance`) during the whole preparation
+window. The war panel's preparation card now lists the own units as
+selectable chips with the stance toggle and stays available after this
+side answered (keyed to the new `GameController.warPrepSlot`, not the
+acting side). Online, the DEFENDER does this from "Reich & Karte
+ansehen": the read-only viewer renders the war panel during a
+preparation involving the seat, `SetTroopStance` (and own-slot
+decisions) are exempt from the read-only guard, and the server accepts
+`SetTroopStance` OUT OF TURN while the war is in preparation for a
+participant realm (`match_service._submit` carve-out, mirrors the
+decision path) — the lobby button relabels to "Kriegsvorbereitung:
+Truppen aufstellen". Tests: war/bugfix_v13 fixtures give the loser a
+second unoccupied Burg where the settlement path is under test;
+conquest tests assert annexation + vacated slot; new backend test for
+the out-of-turn stance window; strife/seatLost payload tests. 369 core
++ 41 backend tests green (Flutter client suite not runnable on this
+machine — no Flutter SDK).
+
 ## 2026-07-10 — Menu & game-setup restructure (user feedback)
 
 (1) Home screen action order is now play-first: Neues Spiel (filled),

@@ -567,8 +567,21 @@ void main() {
 
     test(
         'holding ONLY the capital captures the ruler and opens the claim '
-        'settlement — the Dorf is unoccupied, no realm takeover', () {
+        'settlement — a Burg elsewhere is unoccupied, no realm takeover', () {
       var s = marchOntoCapital();
+      // Give the loser a SECOND stronghold the captor does not occupy.
+      // Key points are Stadt/Burg/Palast tiles only (user rule
+      // 2026-07-13) — the starting realm's sole stronghold is its capital
+      // Burg, which the captor is already standing on.
+      final map = s.map;
+      for (var i = 0; i < map.terrain.length; i++) {
+        if (map.owner[i] == 2 && map.building[i] == Building.none) {
+          map.building[i] = Building.burg;
+          s.realm(2).tileCount[Building.none]--;
+          s.realm(2).tileCount[Building.burg]++;
+          break;
+        }
+      }
       final loserRulerId = s.realm(2).rulerId;
       // First round end ARMS the capture; the second resolves it (the
       // defender gets one full round to retake the seat).
@@ -588,22 +601,15 @@ void main() {
     });
 
     test(
-        'occupying ALL key points (seat AND Dorf) hands the WHOLE realm '
-        'to the captor (§19 pointer overwrite)', () {
+        'occupying ALL strongholds (here: only the seat) annexes the WHOLE '
+        'realm into the captor\'s own — the loser slot is vacated', () {
       var s = marchOntoCapital();
-      final captorRulerId = s.realm(1).rulerId;
-      // A second army onto the loser's remaining key point (its Dorf):
-      // total occupation needs several armies, one tile each.
-      final town = s.realm(2).towns.single;
-      s.realm(1).troops.add(Troop(
-          name: 'Zweite',
-          men: 20,
-          troopClass: TroopClass.infanterie,
-          quality: TroopQuality.regular,
-          garrisonCounted: true,
-          x: town.x,
-          y: town.y));
-      s.rebuildTroopMarkers();
+      // The starting realm's only Stadt/Burg/Palast tile is its capital
+      // Burg — occupied by the captor. The Dorf does NOT count as a key
+      // point (user rule 2026-07-13), so total occupation is reached with
+      // this one army.
+      final loserTiles = s.realm(2).tileCount.fold(0, (a, b) => a + b);
+      final captorTiles = s.realm(1).tileCount.fold(0, (a, b) => a + b);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
       final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
       s = result.state;
@@ -612,14 +618,21 @@ void main() {
       final warWon = result.events.firstWhere((e) => e.type == 'warWon');
       expect(warWon.payload['conquered'], isTrue);
       expect(s.activeWar, isNull,
-          reason: 'no claim settlement — the realm changes hands whole');
-      expect(s.realm(2).rulerId, captorRulerId,
-          reason: 'the loser slot is now ruled by the captor (§19 aliasing)');
-      expect(s.dynasty(2).status, s.dynasty(1).status,
-          reason: 'control follows the new ruler');
-      // The land itself stays on slot 2 — the slot is an additional realm
-      // of the captor now, not annexed tile by tile.
-      expect(s.realm(2).tileCount.fold(0, (a, b) => a + b), greaterThan(0));
+          reason: 'no claim settlement — the takeover is complete');
+      // Points-based total conquest (user rule 2026-07-13, replaces the
+      // §19 slot aliasing): every loser tile is transferred into the
+      // WINNER's realm — the winner never inherits the loser slot as a
+      // second realm to steer.
+      expect(s.realm(2).tileCount.fold(0, (a, b) => a + b), 0,
+          reason: 'the loser keeps no land');
+      expect(s.realm(1).tileCount.fold(0, (a, b) => a + b),
+          captorTiles + loserTiles,
+          reason: 'the whole territory joined the winner\'s realm');
+      expect(s.realm(1).towns, hasLength(2),
+          reason: 'the loser\'s Dorf moved with its tile');
+      expect(s.realm(2).rulerId, isNull,
+          reason: 'the landless loser slot is vacated');
+      expect(result.events.any((e) => e.type == 'realmOverrun'), isTrue);
     });
 
     test('a capital tile no longer owned by the enemy does not count', () {
@@ -634,11 +647,23 @@ void main() {
 
   group('ruler capture must be HELD through a full round (rules v11)', () {
     /// Declares war (latest rules) and parks slot 1's unit on slot 2's
-    /// capital; the defender's unit is moved aside first.
+    /// capital; the defender's unit is moved aside first. The defender
+    /// also gets a SECOND (unoccupied) Burg so the capture opens the
+    /// claim settlement — with the capital as the only stronghold the
+    /// whole realm would be annexed instead (user rule 2026-07-13).
     GameState marchOntoCapital() {
       var s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
+      final map = s.map;
+      for (var i = 0; i < map.terrain.length; i++) {
+        if (map.owner[i] == 2 && map.building[i] == Building.none) {
+          map.building[i] = Building.burg;
+          s.realm(2).tileCount[Building.none]--;
+          s.realm(2).tileCount[Building.burg]++;
+          break;
+        }
+      }
       final enemy = s.realm(2);
       enemy.troops.single.x = enemy.towns.single.x;
       enemy.troops.single.y = enemy.towns.single.y;
@@ -673,7 +698,7 @@ void main() {
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
       expect(result.events.any((e) => e.type == 'warWon'), isTrue);
       expect(s.activeWar!.phase, WarPhase.settlement,
-          reason: 'capital only — the loser\'s Dorf is unoccupied');
+          reason: 'capital only — the loser\'s second Burg is unoccupied');
       expect(s.activeWar!.winnerSlot, 1);
       expect(s.activeWar!.remainingClaim, greaterThanOrEqualTo(3000));
     });
@@ -700,7 +725,7 @@ void main() {
 
       expect(result.events.any((e) => e.type == 'rulerCaptured'), isTrue);
       expect(s.activeWar!.phase, WarPhase.settlement,
-          reason: 'capital only — the loser\'s Dorf is unoccupied');
+          reason: 'capital only — the loser\'s second Burg is unoccupied');
     });
 
     test(
@@ -1136,34 +1161,31 @@ void main() {
     });
 
     test(
-        'occupying ALL key points in a human-vs-human war takes the realm',
-        () {
+        'occupying ALL strongholds in a human-vs-human war annexes the '
+        'realm — the loser seat is vacated, never inherited', () {
       final attacker = war.realm(1).troops.first;
       final defender = war.realm(2);
       defender.troops.clear();
       war.activeWar!.movesLeft[2] = [];
       attacker.x = defender.capitalX;
       attacker.y = defender.capitalY;
-      // The second army occupies the defender's remaining key point.
-      final town = defender.towns.single;
-      war.realm(1).troops.add(Troop(
-          name: 'Zweite',
-          men: 20,
-          troopClass: TroopClass.infanterie,
-          quality: TroopQuality.regular,
-          garrisonCounted: true,
-          x: town.x,
-          y: town.y));
       war.rebuildTroopMarkers();
       final events = <GameEvent>[];
       endWarRoundFor(war, 1, Rng(war.rngSeed), events);
       expect(war.activeWar, isNull,
           reason: 'total occupation ends the war with the takeover (§11.2)');
-      expect(war.realm(2).rulerId, war.realm(1).rulerId);
-      expect(war.dynasty(2).status, DynastyStatus.human,
-          reason: 'control follows the captor, who is human');
-      expect(war.dynasty(2).humanPlayer, war.dynasty(1).humanPlayer,
-          reason: 'the captor player now plays the conquered slot');
+      // Points-based total conquest (user rule 2026-07-13): the land joins
+      // the winner's realm; the human loser is out — no §19 aliasing.
+      expect(war.realm(2).tileCount.fold(0, (a, b) => a + b), 0);
+      expect(war.realm(2).rulerId, isNull,
+          reason: 'the landless loser slot is vacated');
+      expect(war.dynasty(2).status, DynastyStatus.ai,
+          reason: 'the vacated slot belongs to no player anymore');
+      expect(war.dynasty(2).humanPlayer, isNull);
+      expect(war.humanLossReason, 'rulerCaptured',
+          reason: 'the defeat screen names the ruler capture');
+      expect(events.any((e) => e.type == 'realmOverrun'), isTrue,
+          reason: 'both sides get the explicit "everything lost" popup');
     });
 
     test('a defenceless human side is auto-skipped so the war advances', () {

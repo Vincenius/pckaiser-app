@@ -602,6 +602,73 @@ void main() {
       );
     }
 
+    test(
+        'war preparation: per-unit troop stances are accepted OUT OF '
+        'TURN — and only there', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+
+      // The DEFENDER is never the awaited player during the preparation —
+      // their per-unit stance orders must land anyway (they line up their
+      // troops from the map view, user rule 2026-07-13).
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson:
+            SetTroopStance(slot: 2, unitIndex: 0, stance: TroopStance.attack)
+                .toJson(),
+      );
+      final prep =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(prep.activeWar!.phase, WarPhase.preparation);
+      expect(prep.realm(2).troops.first.stance, TroopStance.attack);
+
+      // A foreign realm's troops stay untouchable.
+      await expectLater(
+        service.submit(
+          matchId: match.id,
+          playerId: b.id,
+          actionJson:
+              SetTroopStance(slot: 1, unitIndex: 0, stance: TroopStance.attack)
+                  .toJson(),
+        ),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+      );
+
+      // Once the war leaves the preparation the allowance ends: both
+      // answer live, the deadline sweep starts the rounds — the defender
+      // (not the acting side) is rejected like any off-turn action.
+      await answerPlan(match, a.id, 1, {'auto': false});
+      await answerPlan(match, b.id, 2, {'auto': false});
+      now = now.add(const Duration(hours: 12, minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      final started =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(started.activeWar!.phase, WarPhase.rounds);
+      expect(warActingSlot(started), 1, reason: 'the attacker acts first');
+      await expectLater(
+        service.submit(
+          matchId: match.id,
+          playerId: b.id,
+          actionJson: SetTroopStance(
+                  slot: 2, unitIndex: 0, stance: TroopStance.holdPosition)
+              .toJson(),
+        ),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+      );
+    });
+
     test('an agreed warPlan slot arms the deadline at the appointment',
         () async {
       final start = DateTime.utc(2026, 1, 1);

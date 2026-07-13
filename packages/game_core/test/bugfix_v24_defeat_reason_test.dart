@@ -69,6 +69,13 @@ void main() {
           reason: 'the realm passed to the foreign (AI) spouse');
       expect(state.humanLossReason, 'realmInherited');
 
+      // 2026-07-13: the loss also announces itself — the affected player
+      // gets an explicit public event (the client shows it as a popup)
+      // instead of the realm silently flipping to the AI.
+      final seatLost = events.singleWhere((e) => e.type == 'seatLost');
+      expect(seatLost.slot, 1);
+      expect(seatLost.payload['reason'], 'realmInherited');
+
       // The defeat event carries the inheritance cause — never the unrelated
       // war capture still sitting in the log.
       final defeat = advanceUntilHuman(state, Rng(5))

@@ -8,6 +8,7 @@ import '../l10n/strings.dart';
 import '../services/game_session.dart';
 import '../state/game_controller.dart';
 import '../widgets/menus.dart';
+import '../widgets/war_panel.dart';
 
 /// Read-only view of the seat's realm(s) while it is another player's turn
 /// in an online match: the Flame map with pan/zoom plus the Info menu
@@ -49,7 +50,32 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    // The viewer is not fully static: during a WAR PREPARATION the seat
+    // may select own units and set their stance (the panel below) — the
+    // controller then notifies, and the selection ring must follow.
+    _controller.addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+    final slot = _controller.warPrepSlot;
+    final selected = _controller.selectedWarUnit;
+    if (slot != null && selected != null) {
+      final troops = _controller.state.realm(slot).troops;
+      _game.selectedTile = selected < troops.length
+          ? (troops[selected].x, troops[selected].y)
+          : null;
+    } else {
+      _game.selectedTile = null;
+    }
+  }
+
+  @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     super.dispose();
   }
@@ -79,7 +105,23 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(child: GameWidget(game: _game)),
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(child: GameWidget(game: _game)),
+                  // War preparation involving this seat: the one
+                  // interactive element of the viewer — answer the war
+                  // plan and set every troop's stance individually while
+                  // studying the own land (the server accepts these out
+                  // of turn during the preparation window).
+                  if (_controller.warPrepSlot != null)
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: WarPanel(controller: _controller),
+                    ),
+                ],
+              ),
+            ),
             _statusRow(ownedSlots),
             _menuBar(),
           ],

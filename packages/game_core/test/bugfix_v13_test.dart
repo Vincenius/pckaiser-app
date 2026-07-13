@@ -171,26 +171,29 @@ void main() {
         'the v12 cap is smaller', () {
       var s = marchOntoCapital(state);
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
-      // Strip slot 2 down to capital + Dorf + one bare tile before the
-      // capture resolves: the rolled cap of that small rest stays below
-      // the capital's 5,000. (The Dorf must SURVIVE — with the seat as
-      // the loser's only key point, occupying it would take the whole
-      // realm instead of opening this settlement, §11.2 2026-07-10.)
+      // Strip slot 2 down to capital + Dorf + one further tile before the
+      // capture resolves. That kept tile becomes a BURG: key points are
+      // Stadt/Burg/Palast only (user rule 2026-07-13) — with the occupied
+      // seat as the loser's only stronghold the whole realm would be
+      // annexed instead of opening this settlement.
       final map = s.map;
       final loser = s.realm(2);
-      var kept = false;
+      var keptIndex = -1;
       for (var i = 0; i < map.terrain.length; i++) {
         if (map.owner[i] != 2) continue;
         final isCapital = i == map.index(loser.capitalX, loser.capitalY);
-        if (!kept && !isCapital && map.building[i] == Building.none) {
-          kept = true;
+        if (keptIndex < 0 && !isCapital && map.building[i] == Building.none) {
+          keptIndex = i;
           continue;
         }
         if (isCapital || map.building[i] == Building.dorf) continue;
         loser.tileCount[map.building[i]]--;
         map.owner[i] = World.niemand;
       }
-      expect(kept, isTrue);
+      expect(keptIndex, greaterThanOrEqualTo(0));
+      map.building[keptIndex] = Building.burg;
+      loser.tileCount[Building.none]--;
+      loser.tileCount[Building.burg]++;
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
 
       expect(s.activeWar!.phase, WarPhase.settlement);

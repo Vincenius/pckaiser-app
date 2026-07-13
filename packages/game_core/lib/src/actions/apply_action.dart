@@ -11,7 +11,6 @@ import '../state/pending_ship_return.dart';
 import '../state/realm.dart';
 import '../state/ship.dart';
 import '../state/town.dart';
-import '../state/troop.dart' show TroopStance;
 import '../state/war.dart' show WarPhase;
 import '../state/world_map.dart';
 import 'apply_military.dart';
@@ -827,7 +826,9 @@ List<GameEvent> _resolveDecision(
       // chooses live control (`auto: false`) or the stance autopilot —
       // any NON-explicit answer (incl. the empty timeout default)
       // delegates, so an absent player is protected, never steamrolled.
-      // Optionally re-sets all units' stance in the same answer. The
+      // Troop stances are NOT part of the answer: each unit is set
+      // individually via `SetTroopStance` during the preparation window
+      // (user rule 2026-07-13, replacing the old all-troops choice). The
       // caller layer (local session / server) runs the start rules via
       // `resolveWarPreparation` afterwards. Stale decision → no-op.
       final war = state.activeWar;
@@ -845,13 +846,6 @@ List<GameEvent> _resolveDecision(
         final slots = (choice['slots'] as List?)?.cast<int>();
         if (slots != null && slots.isNotEmpty) {
           war.planSlots[decision.decidingSlot] = List.of(slots)..sort();
-        }
-      }
-      final stance = choice['stance'];
-      if (stance == 'hold' || stance == 'attack') {
-        for (final troop in state.realm(decision.decidingSlot).troops) {
-          troop.stance =
-              stance == 'hold' ? TroopStance.holdPosition : TroopStance.attack;
         }
       }
       // Once every side has answered and BOTH play live, the earliest

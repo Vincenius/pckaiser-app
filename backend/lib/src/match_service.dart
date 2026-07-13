@@ -693,6 +693,16 @@ class MatchService {
               emitted);
           state = _resumeAfterWarIfOver(state, emitted);
         }
+      } else if (action is SetTroopStance &&
+          state.activeWar?.phase == WarPhase.preparation &&
+          state.activeWar!.isParticipant(action.slot)) {
+        // War-preparation troop orders are accepted OUT OF TURN like
+        // decisions: both combatants line their units up individually
+        // (hold / attack) before the war starts — the defender is never
+        // the awaited player during the preparation window, and once both
+        // sides answered nobody is. The controlled-realm check above
+        // already ran; the action only sets a unit's autopilot stance.
+        state = _apply(state, action, emitted);
       } else {
         if (awaited != playerId) throw ApiException(403, 'not your turn');
         // No-show bookkeeping (online duel scheduling): ANY interactive

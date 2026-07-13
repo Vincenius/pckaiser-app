@@ -15,7 +15,7 @@ import 'dynasty.dart' as dyn;
 import 'events.dart' show ensureRealmSeat;
 import 'movement.dart';
 import 'population.dart' show cutGarrisonTroops;
-import 'titles.dart' show regenderTitle, switchTitleLadder;
+import 'titles.dart' show switchTitleLadder;
 import 'troops.dart';
 import 'victory.dart';
 
@@ -617,13 +617,14 @@ int? capitalOccupier(GameState state, ActiveWar war) {
 }
 
 /// Whether [slot] occupies EVERY key point of [enemySlot]: each enemy
-/// tile carrying a settlement or stronghold (Dorf, Markt, Stadt, Burg,
-/// Palast, Hafen) — and the enemy seat, whatever stands there — holds at
-/// least one of [slot]'s units. Fields (Kornfeld/Weide) and bare land
-/// don't count. User rule 2026-07-10 (§11.2): only this total occupation
-/// lets a ruler capture take the WHOLE realm; a lone capital capture
-/// wins on points (claim settlement). A rump state whose only key point
-/// is its seat falls with that one tile.
+/// tile carrying a STRONGHOLD (Stadt, Burg, Palast) — and the enemy seat,
+/// whatever stands there — holds at least one of [slot]'s units. Dörfer,
+/// Märkte and Häfen are NOT key points (user rule 2026-07-13; they are
+/// worth war-score points but need not be garrisoned), nor are fields
+/// (Kornfeld/Weide) or bare land. Only this total occupation lets a ruler
+/// capture take the WHOLE realm ([_endWarByCapitalOccupation]); a lone
+/// capital capture wins on points (claim settlement). A rump state whose
+/// only key point is its seat falls with that one tile.
 bool occupiesAllKeyPoints(GameState state, int slot, int enemySlot) {
   final map = state.map;
   final troops = state.realm(slot).troops;
@@ -637,12 +638,9 @@ bool occupiesAllKeyPoints(GameState state, int slot, int enemySlot) {
   for (var i = 0; i < map.terrain.length; i++) {
     if (map.owner[i] != enemySlot) continue;
     final building = map.building[i];
-    if (building != Building.dorf &&
-        building != Building.markt &&
-        building != Building.stadt &&
+    if (building != Building.stadt &&
         building != Building.burg &&
-        building != Building.palast &&
-        building != Building.hafen) {
+        building != Building.palast) {
       continue;
     }
     if (!occupied(i % map.width, i ~/ map.width)) return false;
@@ -724,13 +722,13 @@ int? _cheapestBorderingLoserTile(
 
 /// Ruler capture, resolved at ROUND END (§11.2): the captor holds the
 /// enemy capital when the round ends. The captured ruler is coerced (§12).
-/// The victory's SCOPE follows the occupation (user rule 2026-07-10):
+/// The victory's SCOPE follows the occupation (user rule 2026-07-13):
 ///  - The captor occupies EVERY key point of the loser at that moment
-///    ([occupiesAllKeyPoints]: all Dorf/Markt/Stadt/Burg/Palast/Hafen
-///    tiles, seat included — several armies at work) → the loser's
-///    ENTIRE realm falls: the slot's ruler pointer is overwritten with
-///    the captor's ruler (§19 aliasing), so all land, towns, treasury
-///    and troops change hands at once — no claim settlement.
+///    ([occupiesAllKeyPoints]: all Stadt/Burg/Palast tiles, seat included
+///    — several armies at work) → the loser's ENTIRE territory is annexed
+///    into the captor's own realm, tile by tile through the §11.4 conquest
+///    transfer — no claim settlement, no §19 ruler aliasing. The loser is
+///    landless afterwards and the slot is vacated ([checkLandLoss]).
 ///  - Only the capital is held → the war is won on points: the captor
 ///    SELECTS loser tiles in the claim settlement, against a claim of
 ///    their war score (which includes the +3,000 capital bonus; capped —
@@ -756,6 +754,42 @@ void _endWarByCapitalOccupation(
   ));
 
   if (occupiesAllKeyPoints(state, captorSlot, loserSlot)) {
+    // Total conquest (user rule 2026-07-13, replaces the §19 slot aliasing
+    // of 2026-07-10): the loser's whole territory joins the WINNER'S realm
+    // — the winner never "inherits" the loser's slot as a second realm to
+    // play. Every tile moves through the §11.4 conquest transfer (towns,
+    // population, treasury/harvest shares included); the per-tile
+    // `tileConquered` events are discarded — the `warWon (conquered)`
+    // event tells the story without ~50 feed lines of noise.
+    final loserWasHuman =
+        state.dynasty(loserSlot).status == DynastyStatus.human;
+    final map = state.map;
+    final discard = <GameEvent>[];
+    for (var y = 0; y < map.height; y++) {
+      for (var x = 0; x < map.width; x++) {
+        if (map.ownerAt(x, y) == loserSlot) {
+          transferTile(state, x, y, captorSlot, discard);
+        }
+      }
+    }
+    // Land, towns and shares moved above; the leftover treasury and
+    // harvest stock follow the conquered realm too. Debt is never
+    // inherited (matches transferTile's rule).
+    if (loser.treasury > 0) {
+      captor.treasury += loser.treasury;
+      loser.treasury = 0;
+    }
+    if (loser.grainHarvest > 0) {
+      captor.grainHarvest += loser.grainHarvest;
+      loser.grainHarvest = 0;
+    }
+    if (loser.livestockHarvest > 0) {
+      captor.livestockHarvest += loser.livestockHarvest;
+      loser.livestockHarvest = 0;
+    }
+
+    // Emitted AFTER the transfers so the summary's tile tally includes
+    // the annexation sweep.
     events.add(GameEvent(
       year: state.year,
       slot: captorSlot,
@@ -768,25 +802,23 @@ void _endWarByCapitalOccupation(
       },
     ));
 
-    // §19: overwrite the loser slot's ruler pointer — control follows the
-    // new ruler ([alignSlotControl]). A human loser's defeat reason is set
-    // AFTER the control flip: alignSlotControl's cross-dynasty path would
-    // otherwise overwrite it with 'realmInherited'. The war state is gone
-    // before the coercion decisions land so their prompts resolve outside
-    // any war screen.
-    final loserWasHuman =
-        state.dynasty(loserSlot).status == DynastyStatus.human;
-    loser.rulerId = captor.rulerId;
-    dyn.alignSlotControl(state, loserSlot, captor.rulerId);
-    regenderTitle(state, loser);
-    if (loserWasHuman) state.humanLossReason = 'rulerCaptured';
-
     _returnTroops(state, war, events);
     state.activeWar = null;
+    // The loser is landless: emits the public `realmOverrun` popup event
+    // and vacates the slot. The defeat reason is refined to
+    // 'rulerCaptured' AFTER that call (checkLandLoss stamps the generic
+    // 'realmOverrun') — the ruler's capture is what actually fell the realm.
+    checkLandLoss(state, loser, events);
+    if (loserWasHuman) state.humanLossReason = 'rulerCaptured';
 
+    // The war state is gone before the coercion decisions land so their
+    // prompts resolve outside any war screen. The Kurfürst strip already
+    // happened in checkLandLoss, so only convert-or-die, forced marriage
+    // and a Kaiser's abdication remain relevant here.
     if (capturedRuler != null) {
       runCoercion(state, captorSlot, capturedRuler, rng, events);
     }
+    _surfaceMidTurnWin(state, captorSlot, events);
     return;
   }
 
@@ -1152,13 +1184,18 @@ void finishSettlement(GameState state, Rng rng, List<GameEvent> events) {
   _rehomeStrandedTroops(state, state.realm(loserSlot));
   state.activeWar = null;
   checkLandLoss(state, state.realm(loserSlot), events);
+  _surfaceMidTurnWin(state, winnerSlot, events);
+}
 
-  // A war that overruns the last rival leaves the winner as sole ruler.
-  // Surface the victory the instant the enemy's land is gone — for a HUMAN
-  // winner, so the popup appears right after the war instead of only at
-  // their next "Zug beenden". AI-vs-AI victories resolve at the normal
-  // end-of-turn win check (completeTurn); a war can only ever annex tiles
-  // here, so this is the one mid-turn path that can produce a sole ruler.
+/// A war that overruns the last rival leaves the winner as sole ruler.
+/// Surface the victory the instant the enemy's land is gone — for a HUMAN
+/// winner, so the popup appears right after the war instead of only at
+/// their next "Zug beenden". AI-vs-AI victories resolve at the normal
+/// end-of-turn win check (completeTurn); a war can only ever annex tiles
+/// here (settlement or total conquest), so these are the mid-turn paths
+/// that can produce a sole ruler.
+void _surfaceMidTurnWin(
+    GameState state, int winnerSlot, List<GameEvent> events) {
   if (state.dynasty(winnerSlot).status == DynastyStatus.human &&
       !state.events.any((e) => e.type == 'gameWon') &&
       !events.any((e) => e.type == 'gameWon')) {

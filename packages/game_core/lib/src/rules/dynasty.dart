@@ -338,6 +338,28 @@ void alignSlotControl(GameState state, int slot, int? rulerId) {
   dynasty.humanPlayer = home.humanPlayer;
 }
 
+/// Emits the public `seatLost` event when [slot] just passed OUT of human
+/// control through an inheritance (`alignSlotControl`'s cross-dynasty
+/// path): the affected player must be told why their realm is suddenly
+/// gone — a quiet dynasty-status flip was invisible, especially online.
+/// [wasHuman] is the slot's human status BEFORE the ruler change; a slot
+/// that stayed (or became) human lost nothing.
+void _noteSeatLostEvent(GameState state, int slot, bool wasHuman,
+    String? heirName, List<GameEvent> events) {
+  if (!wasHuman) return;
+  if (state.dynasty(slot).status == DynastyStatus.human) return;
+  events.add(GameEvent(
+    year: state.year,
+    slot: slot,
+    type: 'seatLost',
+    visibility: EventVisibility.public,
+    payload: {
+      'reason': 'realmInherited',
+      if (heirName != null) 'heir': heirName,
+    },
+  ));
+}
+
 /// Death of any person (§15.4): removes them everywhere; rulers trigger
 /// succession across all their slots, office holders get their chronicle
 /// closed (§17.5).
@@ -380,13 +402,18 @@ void handleDeath(
         slot: deceased.dynasty,
         type: 'islamicSuccessionCrisis',
         visibility: EventVisibility.public,
-        payload: {'heir': heir.name},
+        // Always a human loss (the crisis only fires for human realms) —
+        // the flag keys the client's "you lost your realm" popup.
+        payload: {'heir': heir.name, 'human': true},
       ));
     }
     for (final slot in ruledSlots) {
+      final wasHuman =
+          state.dynasty(slot).status == DynastyStatus.human;
       state.realm(slot).rulerId = heir.id;
       alignSlotControl(state, slot, heir.id);
       regenderTitle(state, state.realm(slot));
+      _noteSeatLostEvent(state, slot, wasHuman, heir.name, events);
     }
     events.add(GameEvent(
       year: state.year,
@@ -450,9 +477,12 @@ void handleDeath(
   }
   final inheritor = livingRulers[rng.nextInt(livingRulers.length)];
   for (final slot in ruledSlots) {
+    final wasHuman = state.dynasty(slot).status == DynastyStatus.human;
     state.realm(slot).rulerId = inheritor;
     alignSlotControl(state, slot, inheritor);
     regenderTitle(state, state.realm(slot));
+    _noteSeatLostEvent(
+        state, slot, wasHuman, state.persons[inheritor]?.name, events);
   }
   events.add(GameEvent(
     year: state.year,

@@ -518,10 +518,15 @@ void runEliminationChecks(
     ];
     if (rivals.isNotEmpty) {
       final newRuler = rivals[rng.nextInt(rivals.length)];
+      // Whether a HUMAN player just lost this realm to the coup — the
+      // client keys a prominent "you lost your realm because ..." popup
+      // off this flag (a quiet feed line was easy to miss, especially
+      // online while another player's turn ran).
+      final wasHuman = dynasty.status == DynastyStatus.human;
       realm.rulerId = newRuler;
       regenderTitle(state, realm);
       realm.popularity = 50;
-      if (dynasty.status == DynastyStatus.human) {
+      if (wasHuman) {
         state.humanLossReason = 'internalStrife';
         dynasty.status = DynastyStatus.ai;
         dynasty.humanPlayer = null;
@@ -531,7 +536,10 @@ void runEliminationChecks(
         slot: slot,
         type: 'internalStrife',
         visibility: EventVisibility.public,
-        payload: {'newRuler': state.persons[newRuler]!.name},
+        payload: {
+          'newRuler': state.persons[newRuler]!.name,
+          'human': wasHuman,
+        },
       ));
       return;
     }
@@ -582,7 +590,12 @@ void runEliminationChecks(
     slot: slot,
     type: 'bankruptcy',
     visibility: EventVisibility.public,
-    payload: {'debt': debt},
+    // 'human': a player loses this realm to the foreclosure — flags the
+    // client's "you lost your realm" popup (see internalStrife above).
+    payload: {
+      'debt': debt,
+      'human': dynasty.status == DynastyStatus.human,
+    },
   ));
 
   // The creditor seizes one Stadt/Burg/Palast tile per 5,000 T of debt.

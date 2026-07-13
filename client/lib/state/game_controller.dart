@@ -173,6 +173,28 @@ class GameController extends ChangeNotifier {
   /// in a human-vs-human war the input alternates within each round).
   int? get warHumanSlot => warActingSlot(state);
 
+  /// The war-participant slot the seated (or viewing) player controls
+  /// during the PREPARATION window, or null. Unlike [warHumanSlot] it
+  /// stays set after this side answered its warPlan (online the panel
+  /// must keep offering the per-unit stance orders until the war starts)
+  /// and works for the read-only viewer.
+  int? get warPrepSlot {
+    final war = state.activeWar;
+    if (war == null || war.phase != WarPhase.preparation) return null;
+    final owned = ownedSlots;
+    for (final slot in [war.attackerSlot, war.defenderSlot]) {
+      if (owned.contains(slot)) return slot;
+    }
+    return null;
+  }
+
+  /// War-preparation stance orders are the one action allowed through the
+  /// read-only viewer: online the DEFENDER lines up their troops while
+  /// another player's turn runs (the server accepts `SetTroopStance` out
+  /// of turn during the preparation window).
+  bool _prepStanceAllowed(PlayerAction action) =>
+      action is SetTroopStance && action.slot == warPrepSlot;
+
   /// Events the seated player has not seen yet — the recap card. The
   /// baseline is an absolute event position (`prunedEventCount + index`,
   /// stable across pruning) stored in the game state, so it survives app
@@ -447,7 +469,9 @@ class GameController extends ChangeNotifier {
   /// the seat to the paused turn's player — hot-seat then needs a
   /// handoff before the successor's view appears.
   Future<ActionResult> applyWarAction(PlayerAction action) async {
-    if (_busy || readOnly) return ActionResult(state, const []);
+    if (_busy || (readOnly && !_prepStanceAllowed(action))) {
+      return ActionResult(state, const []);
+    }
     _busy = true;
     notifyListeners();
     try {
@@ -462,13 +486,16 @@ class GameController extends ChangeNotifier {
     }
   }
 
-  /// Resolves a pending decision for [slot].
+  /// Resolves a pending decision for [slot]. Allowed from the read-only
+  /// viewer for the seat's OWN slots: online, decisions are answered out
+  /// of turn by design (the warPlan prompt of a war preparation is the
+  /// main case — the defender answers it right from the map view).
   Future<void> resolveDecision(
     String decisionId,
     int slot,
     Map<String, dynamic> choice,
   ) async {
-    if (_busy || readOnly) return;
+    if (_busy || (readOnly && !ownedSlots.contains(slot))) return;
     _busy = true;
     notifyListeners();
     try {

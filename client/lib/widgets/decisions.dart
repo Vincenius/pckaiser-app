@@ -179,34 +179,13 @@ Future<void> _promptDecision(
         '${attackerRole ? 'Du hast $opponent den Krieg erklärt.' : '$opponent hat dir den Krieg erklärt !'} '
         'Willst du deine Truppen selbst befehligen?\n\n'
         'Bei „Nein" übernimmt der Computer diesen Krieg: deine Truppen '
-        'folgen ihrer Haltung. Der Krieg beginnt, sobald beide Seiten '
-        'gewählt haben — wollen beide selbst steuern, online zum '
-        'vereinbarten Zeitpunkt oder nach Ablauf der Vorbereitungsfrist.',
+        'folgen ihrer Haltung. Bis zum Kriegsbeginn kannst du jede Truppe '
+        'einzeln auf der Karte einstellen (Stellung halten oder '
+        'angreifen) — im Kriegsvorbereitungs-Menü über der Karte. Der '
+        'Krieg beginnt, sobald beide Seiten gewählt haben — wollen beide '
+        'selbst steuern, online zum vereinbarten Zeitpunkt oder nach '
+        'Ablauf der Vorbereitungsfrist.',
       );
-      String? stance;
-      if (context.mounted) {
-        stance = await showDialog<String>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => SimpleDialog(
-            title: const Text('Truppenhaltung für diesen Krieg'),
-            children: [
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, 'hold'),
-                child: const Text('Stellung halten — Basis verteidigen'),
-              ),
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, 'attack'),
-                child: const Text('Angreifen — auf den feindlichen Sitz'),
-              ),
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, 'keep'),
-                child: const Text('Wie eingestellt lassen'),
-              ),
-            ],
-          ),
-        );
-      }
       // Online duel scheduling: a live commander proposes start times.
       // Local hot-seat skips this — both players sit at the device, the
       // war starts as soon as both have chosen.
@@ -216,7 +195,6 @@ Future<void> _promptDecision(
       }
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'auto': !live,
-        if (stance == 'hold' || stance == 'attack') 'stance': stance,
         if (slots != null && slots.isNotEmpty) 'slots': slots,
       });
 

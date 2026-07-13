@@ -5,7 +5,9 @@ import '../state/realm.dart';
 
 /// All realm slots the human player seated at [viewerSlot] currently
 /// controls, [viewerSlot] included — control follows the ruler (§15.4), so
-/// a conquest or inheritance can leave one player holding several realms.
+/// an inheritance can leave one player holding several realms. (A war
+/// conquest no longer does: since 2026-07-13 a total takeover annexes the
+/// loser's land into the winner's own realm instead of aliasing the slot.)
 /// For an AI or vacant viewer slot this is just `{viewerSlot}`.
 Set<int> humanControlledSlots(GameState state, int viewerSlot) {
   final viewer = state.dynasty(viewerSlot);

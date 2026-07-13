@@ -27,10 +27,28 @@ class _WarPanelState extends State<WarPanel> {
 
   GameController get controller => widget.controller;
 
-  /// The war-start preparation window: [slot] still owes their warPlan
-  /// answer (live control vs autopilot + stance) — everything else waits.
+  /// The war-start preparation window for the seated player's own war
+  /// side ([GameController.warPrepSlot]): answer the warPlan decision and
+  /// line up every troop INDIVIDUALLY (hold / attack) on the visible map
+  /// — user rule 2026-07-13, replacing the old all-troops stance choice.
+  /// Stays available after this side answered (online the war may only
+  /// start hours later at the agreed time) and inside the read-only
+  /// off-turn viewer, where stance orders are the one allowed action.
   Widget _preparation(BuildContext context, gc.ActiveWar war, int slot) {
     final theme = Theme.of(context);
+    final state = controller.state;
+    final realm = state.realm(slot);
+    final enemySlot = war.opponentOf(slot);
+    // Whether THIS side still owes its warPlan answer. Online the
+    // opponent's pending decision is filtered out of the visible state,
+    // so the scan only ever finds our own.
+    final owesPlan = state.pendingDecisions.any(
+      (d) => d.type == 'warPlan' && d.decidingSlot == slot,
+    );
+    final selected = controller.selectedWarUnit;
+    final selectedTroop = selected != null && selected < realm.troops.length
+        ? realm.troops[selected]
+        : null;
     // Online duel scheduling: once both sides answered, the agreed start
     // (earliest common warPlan slot) is shown here — in local time.
     final scheduled = war.scheduledStartMs;
@@ -46,9 +64,10 @@ class _WarPanelState extends State<WarPanel> {
               const SizedBox(height: 4),
               Text(
                 '${gc.countryNames[war.attackerSlot]} gegen '
-                '${gc.countryNames[war.defenderSlot]} — beide Seiten wählen, '
-                'ob sie ihre Truppen selbst befehligen. Der Krieg beginnt, '
-                'sobald die Wahl steht.',
+                '${gc.countryNames[war.defenderSlot]} — stelle jede Truppe '
+                'einzeln ein: „Halten" verteidigt ihre Stellung, '
+                '„Angreifen" marschiert auf den feindlichen Sitz. Die '
+                'Haltung gilt, wenn der Computer Truppen führt.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium,
               ),
@@ -60,11 +79,56 @@ class _WarPanelState extends State<WarPanel> {
                   style: theme.textTheme.titleSmall,
                 ),
               ],
-              const SizedBox(height: 8),
-              FilledButton(
-                onPressed: () => promptDecisionsFor(context, controller, slot),
-                child: const Text('Wählen'),
+              const SizedBox(height: 4),
+              // Own units, individually selectable — same capped, scrolling
+              // chip list as during the war rounds.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 124),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 4,
+                    runSpacing: -8,
+                    children: [
+                      for (var i = 0; i < realm.troops.length; i++)
+                        _unitChip(
+                          theme,
+                          state,
+                          realm.troops[i],
+                          enemySlot,
+                          movesLeft: null, // no war moves yet
+                          selected: i == selected,
+                          onTap: () => controller.selectWarUnit(
+                            i == selected ? null : i,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
+              if (selectedTroop != null && selected != null)
+                _stanceToggle(context, slot, selected, selectedTroop)
+              else if (realm.troops.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Tippe eine Truppe an, um ihre Haltung zu ändern.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              const SizedBox(height: 8),
+              if (owesPlan)
+                FilledButton(
+                  onPressed: () =>
+                      promptDecisionsFor(context, controller, slot),
+                  child: const Text('Wählen'),
+                )
+              else
+                Text(
+                  'Wahl getroffen — der Krieg beginnt, sobald beide Seiten '
+                  'bereit sind.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
             ],
           ),
         ),
@@ -75,12 +139,20 @@ class _WarPanelState extends State<WarPanel> {
   @override
   Widget build(BuildContext context) {
     final war = controller.state.activeWar;
-    final slot = controller.warHumanSlot;
-    if (war == null || slot == null) return const SizedBox.shrink();
+    if (war == null) return const SizedBox.shrink();
 
     if (war.phase == gc.WarPhase.preparation) {
-      return _preparation(context, war, slot);
+      // Keyed to the OWN participant slot (not the acting side): the
+      // panel keeps offering the per-unit stance orders after this side
+      // answered its warPlan, while the opponent (or the start time) is
+      // still awaited.
+      final prepSlot = controller.warPrepSlot;
+      if (prepSlot == null) return const SizedBox.shrink();
+      return _preparation(context, war, prepSlot);
     }
+
+    final slot = controller.warHumanSlot;
+    if (slot == null) return const SizedBox.shrink();
     if (war.phase == gc.WarPhase.settlement) {
       return _settlement(context, war, slot);
     }
@@ -348,31 +420,39 @@ class _WarPanelState extends State<WarPanel> {
     return Text(text, style: theme.textTheme.bodySmall);
   }
 
+  /// [movesLeft] is null during the PREPARATION window — there are no war
+  /// moves yet, so the chip shows no move counter.
   Widget _unitChip(
     ThemeData theme,
     gc.GameState state,
     gc.Troop troop,
     int enemySlot, {
-    required int movesLeft,
+    required int? movesLeft,
     required bool selected,
     required VoidCallback onTap,
   }) {
     final onEnemyLand = state.map.ownerAt(troop.x, troop.y) == enemySlot;
     final attackStance = troop.stance == gc.TroopStance.attack;
     return Tooltip(
-      message:
+      message: [
+        if (movesLeft != null)
           'Verbleibende Züge: $movesLeft'
-          '${onEnemyLand ? ' — besetzt feindliches Gebiet' : ''}'
-          '\nHaltung: ${attackStance ? 'Angreifen' : 'Position halten'}',
+              '${onEnemyLand ? ' — besetzt feindliches Gebiet' : ''}'
+        else if (onEnemyLand)
+          'Besetzt feindliches Gebiet',
+        'Haltung: ${attackStance ? 'Angreifen' : 'Position halten'}',
+      ].join('\n'),
       child: ChoiceChip(
         selected: selected,
         showCheckmark: false,
-        avatar: CircleAvatar(
-          backgroundColor: movesLeft > 0
-              ? theme.colorScheme.surface
-              : theme.colorScheme.surfaceContainerHighest,
-          child: Text('$movesLeft', style: theme.textTheme.labelSmall),
-        ),
+        avatar: movesLeft == null
+            ? null
+            : CircleAvatar(
+                backgroundColor: movesLeft > 0
+                    ? theme.colorScheme.surface
+                    : theme.colorScheme.surfaceContainerHighest,
+                child: Text('$movesLeft', style: theme.textTheme.labelSmall),
+              ),
         onSelected: (_) => onTap(),
         label: Row(
           mainAxisSize: MainAxisSize.min,

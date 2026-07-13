@@ -129,7 +129,19 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       return;
     }
 
-    const strong = {'crowned', 'realmOverrun', 'rulerCaptured', 'playerKicked'};
+    // The realm-loss family ('internalStrife' … 'seatLost') is only
+    // popup-worthy when a HUMAN seat fell — the payload flag decides in
+    // showDramaPopupsFor; listing them here just feeds the candidates.
+    const strong = {
+      'crowned',
+      'realmOverrun',
+      'rulerCaptured',
+      'playerKicked',
+      'internalStrife',
+      'bankruptcy',
+      'islamicSuccessionCrisis',
+      'seatLost',
+    };
     final fresh = <gc.GameEvent>[];
     for (var i = 0; i < state.events.length; i++) {
       final pos = base + i;
@@ -516,18 +528,45 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         // Off-turn: let the seat study the board and their own realm(s)
         // (read-only, Info menu included) while waiting for the others. The
         // server already ships this seat's filtered state, so no extra
-        // request is needed.
+        // request is needed. During a WAR PREPARATION involving this seat
+        // the same view is where the troops are lined up (each unit's
+        // stance individually) — say so on the button.
         if (status == 'active' && !yourTurn && view['state'] != null)
           OutlinedButton.icon(
             onPressed: () => _viewMap(view),
-            icon: const Icon(Icons.map_outlined),
-            label: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Reich & Karte ansehen'),
+            icon: Icon(
+              warPreparing && _iAmWarParticipant(view)
+                  ? Icons.gavel
+                  : Icons.map_outlined,
+            ),
+            label: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                warPreparing && _iAmWarParticipant(view)
+                    ? 'Kriegsvorbereitung: Truppen aufstellen'
+                    : 'Reich & Karte ansehen',
+              ),
             ),
           ),
       ],
     );
+  }
+
+  /// Whether one of this seat's controlled realms fights in the active
+  /// war (drives the preparation wording of the off-turn map button).
+  bool _iAmWarParticipant(Map<String, dynamic> view) {
+    final warJson = (view['state'] as Map?)?['activeWar'] as Map?;
+    if (warJson == null) return false;
+    final mySlots = <int>{};
+    for (final p in (view['players'] as List).cast<Map>()) {
+      if (p['player_id'] != widget.service.playerId) continue;
+      mySlots.addAll(
+        (p['controlled_slots'] as List?)?.cast<int>() ??
+            [p['dynasty_index'] as int],
+      );
+    }
+    return mySlots.contains(warJson['attackerSlot'] as int?) ||
+        mySlots.contains(warJson['defenderSlot'] as int?);
   }
 
   /// Opens the read-only realm/map view for this seat while another player
