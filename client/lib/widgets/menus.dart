@@ -190,6 +190,7 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
   final realm = controller.currentRealm;
   final state = controller.state;
   final freeCapacity = realm.troopCapacity - realm.armySize;
+  final levyLeft = gc.levyLeft(realm);
   // No recruiting/hiring while at war (engine gate, mirrored).
   final atWar = state.activeWar?.isParticipant(slot) ?? false;
 
@@ -217,9 +218,11 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
             subtitle: Text(
               atWar
                   ? 'Nicht mitten im Krieg !'
-                  : '5 T pro Mann — freie Kapazität: $freeCapacity',
+                  : '5 T pro Mann — freie Kapazität: $freeCapacity — '
+                        'Aushebung dieses Jahr: $levyLeft',
             ),
-            enabled: !atWar && freeCapacity > 0 && realm.treasury >= 5,
+            enabled:
+                !atWar && freeCapacity > 0 && realm.treasury >= 5 && levyLeft > 0,
             onTap: () {
               Navigator.pop(sheetContext);
               // Position first, then class and amount. Follow-up sheets use
@@ -369,11 +372,14 @@ void _recruitSheet(
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setState) {
         // 5 T per man plus the one-time class surcharge — the slider only
-        // offers what the quarters and the treasury can carry.
-        final maxMen = math.min(
+        // offers what the quarters, the treasury and this year's levy
+        // limit can carry.
+        final levyLeft = gc.levyLeft(realm);
+        final maxMen = [
           realm.troopCapacity - realm.armySize,
+          levyLeft,
           (realm.treasury - gc.classSurcharge(troopClass)) ~/ 5,
-        );
+        ].reduce(math.min);
         return SafeArea(
           child: Padding(
             // Keep the sheet above the on-screen keyboard.
@@ -419,8 +425,13 @@ void _recruitSheet(
                     ),
                   ),
                   if (maxMen < 1)
-                    const ListTile(
-                      title: Text('Du hast nicht genügend Taler !'),
+                    ListTile(
+                      title: Text(
+                        levyLeft < 1
+                            ? 'Deine Bevölkerung gibt dieses Jahr keine '
+                                  'weiteren Rekruten her !'
+                            : 'Du hast nicht genügend Taler !',
+                      ),
                     )
                   else
                     _AmountSlider(
@@ -530,9 +541,12 @@ void showTroopActions(
         final costPerMan = soeldner ? 50 : 5;
         final affordable = realm.treasury ~/ costPerMan;
         final capacity = realm.troopCapacity - realm.armySize;
+        // Regulars are capped by quarters AND this year's levy limit;
+        // Söldner (hired abroad) by the treasury alone.
+        final levyLeft = gc.levyLeft(realm);
         final maxReinforce = soeldner
             ? affordable
-            : (capacity < affordable ? capacity : affordable);
+            : [capacity, affordable, levyLeft].reduce(math.min);
         // Merging/disbanding is forbidden while at war (the war state is
         // keyed to the troop list) — mirror the engine gate so the options
         // grey out (the gate covers reinforcing as well).

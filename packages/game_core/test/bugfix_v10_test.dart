@@ -157,6 +157,9 @@ void main() {
       realm.treasury = 10000;
       realm.towns.single.troopCapacity = 200;
       realm.troopCapacity = 200;
+      // Levy limit (10% of population/turn): room for the 150-man recruit.
+      realm.towns.single.population += 1500;
+      realm.population += 1500;
       var s = applyAction(
               state,
               RecruitTroops(

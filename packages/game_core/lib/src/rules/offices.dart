@@ -319,6 +319,21 @@ void advanceElection(GameState state, Rng rng, List<GameEvent> events) {
     ));
     return;
   }
+  // `[BUGFIX 2026-07-14, user report]` The winner may have lost every
+  // realm MID-election (an heirChoice override swapped the provisional
+  // heir out, a conquest deposed them): a throne without a realm behind
+  // it must never be filled — void the result, the office stays vacant
+  // and the next world phase elects anew.
+  if (realmRuledBy(state, winner.id) == null) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: 0,
+      type: 'interregnum',
+      visibility: EventVisibility.public,
+      payload: {'office': election.office.name},
+    ));
+    return;
+  }
   _crown(state, election.office, winner, events);
 }
 
@@ -351,6 +366,91 @@ void _crown(
       'acclaimed': acclaimed,
     },
   ));
+}
+
+/// `[BUGFIX 2026-07-14, user report]` The priority heir installed on a
+/// human ruler's death is a PLACEHOLDER until the heirChoice decision
+/// resolves — but a round rollover inside that window runs the office
+/// phase, which can hand the placeholder a Kurfürst seat or even crown
+/// them Kaiser/Sultan (they carry the deceased's König title). When the
+/// player then picks a DIFFERENT heir, the realms are re-crowned
+/// retroactively (apply_action `heirChoice`) — and every honor the
+/// placeholder collected must follow the realm the same way, or the game
+/// is left with an office holder who rules nothing and, since elections
+/// only re-trigger on a VACANT office, stays enthroned forever
+/// ("Kaiser ohne Reich"). Seats/crowns pass to the chosen heir when they
+/// are eligible, otherwise they fall vacant for the next refill/election.
+void transferProvisionalHonors(
+    GameState state, int provisionalId, Person heir, List<GameEvent> events) {
+  final seat = state.kurfuerstenIds.indexOf(provisionalId);
+  if (seat >= 0) {
+    if (_officeEligible(state, heir, muslim: false) &&
+        !state.kurfuerstenIds.contains(heir.id)) {
+      state.kurfuerstenIds[seat] = heir.id;
+    } else {
+      state.kurfuerstenIds.removeAt(seat);
+    }
+  }
+  if (state.kaiserId == provisionalId) {
+    _retitleOffice(
+        state, Office.kaiser, state.kaiserChronicle, provisionalId, heir,
+        events);
+  }
+  if (state.sultanId == provisionalId) {
+    _retitleOffice(
+        state, Office.sultan, state.sultanChronicle, provisionalId, heir,
+        events);
+  }
+}
+
+/// §17.2 person eligibility for a seat/crown: male, age ≥ 14, and the
+/// dynasty religion matching the office (Kaiser/Kurfürst: non-Muslim,
+/// Sultan: Muslim).
+bool _officeEligible(GameState state, Person person, {required bool muslim}) {
+  final isMuslim =
+      state.dynasty(person.dynasty).religion == Religion.moslemisch;
+  return person.isMale && person.age >= 14 && isMuslim == muslim;
+}
+
+/// Passes an office the provisional heir held to the true [heir]: the open
+/// chronicle record is REWRITTEN (same accession year — retroactively it
+/// was the heir's reign all along). An ineligible heir vacates the office
+/// instead and the placeholder's record is dropped as never legitimate.
+void _retitleOffice(GameState state, Office office,
+    List<ChronicleRecord> chronicle, int provisionalId, Person heir,
+    List<GameEvent> events) {
+  final index = chronicle.lastIndexWhere(
+      (r) => r.deathYear == null && r.personId == provisionalId);
+  if (_officeEligible(state, heir, muslim: office == Office.sultan)) {
+    if (office == Office.kaiser) {
+      state.kaiserId = heir.id;
+    } else {
+      state.sultanId = heir.id;
+    }
+    if (index >= 0) {
+      final old = chronicle[index];
+      chronicle[index] = ChronicleRecord(
+        name: heir.name,
+        accessionYear: old.accessionYear,
+        personId: heir.id,
+        slot: old.slot,
+      );
+    }
+    events.add(GameEvent(
+      year: state.year,
+      slot: heir.dynasty,
+      type: 'crowned',
+      visibility: EventVisibility.public,
+      payload: {'office': office.name, 'name': heir.name, 'acclaimed': true},
+    ));
+  } else {
+    if (office == Office.kaiser) {
+      state.kaiserId = null;
+    } else {
+      state.sultanId = null;
+    }
+    if (index >= 0) chronicle.removeAt(index);
+  }
 }
 
 /// §17.5: a Kaiser/Sultan dying in office gets their chronicle record

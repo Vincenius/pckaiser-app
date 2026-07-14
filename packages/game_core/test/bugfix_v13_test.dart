@@ -114,6 +114,10 @@ void main() {
 
     test('recruiting costs 1 + men/200 popularity', () {
       state.realm(1).popularity = 50;
+      // Levy limit: the setUp already levied 50 this turn — enough people
+      // that the 50 + 400 recruits below fit into this year's 10% levy.
+      state.realm(1).towns.single.population += 5000;
+      state.realm(1).population += 5000;
       var s = applyAction(
               state,
               RecruitTroops(

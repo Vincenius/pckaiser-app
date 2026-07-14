@@ -30,6 +30,7 @@ class Realm {
     this.soldGrainThisTurn = false,
     this.soldCattleThisTurn = false,
     this.investedThisTurn = false,
+    this.recruitedThisTurn = 0,
     List<int>? proposedThisTurnIds,
     this.warThisYear = false,
     this.recentWars = 0,
@@ -74,6 +75,8 @@ class Realm {
         soldGrainThisTurn: json['soldGrainThisTurn'] as bool? ?? false,
         soldCattleThisTurn: json['soldCattleThisTurn'] as bool? ?? false,
         investedThisTurn: json['investedThisTurn'] as bool? ?? false,
+        // Additive field — older mid-turn saves start with a fresh levy.
+        recruitedThisTurn: json['recruitedThisTurn'] as int? ?? 0,
         // Replaces the pre-2026-07-10 realm-wide bool
         // `proposedMarriageThisTurn` (the limit is per PERSON now); the
         // legacy key is simply ignored — worst case an old mid-turn save
@@ -161,6 +164,11 @@ class Realm {
   bool investedThisTurn;
   bool warThisYear;
 
+  /// Regulars levied this turn, counted against the per-turn levy limit
+  /// (see `levyLimit` in rules/troops.dart). Reset with the other
+  /// per-turn flags; Söldner are exempt.
+  int recruitedThisTurn;
+
   /// Dynasty members who already made a royal marriage proposal this turn
   /// (modern UX rule: one proposal per PERSON per turn — the original had
   /// no cap at all, §14.1). Cleared with the other per-turn flags.
@@ -216,6 +224,7 @@ class Realm {
         soldGrainThisTurn: soldGrainThisTurn,
         soldCattleThisTurn: soldCattleThisTurn,
         investedThisTurn: investedThisTurn,
+        recruitedThisTurn: recruitedThisTurn,
         proposedThisTurnIds: List.of(proposedThisTurnIds),
         warThisYear: warThisYear,
         recentWars: recentWars,
@@ -250,6 +259,7 @@ class Realm {
         'soldGrainThisTurn': soldGrainThisTurn,
         'soldCattleThisTurn': soldCattleThisTurn,
         'investedThisTurn': investedThisTurn,
+        'recruitedThisTurn': recruitedThisTurn,
         'proposedThisTurnIds': proposedThisTurnIds,
         'warThisYear': warThisYear,
         'recentWars': recentWars,

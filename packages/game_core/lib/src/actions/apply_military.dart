@@ -51,6 +51,16 @@ void _levyPopularityCost(GameState state, Realm realm, int men) {
   militarismPopularityCost(realm, 1 + men ~/ 200);
 }
 
+/// Per-turn levy limit for regulars (see [levyLimit]) — Söldner exempt.
+void _requireLevy(Realm realm, int men) {
+  final left = levyLeft(realm);
+  if (men > left) {
+    throw ActionException(left <= 0
+        ? 'Deine Bevölkerung gibt dieses Jahr keine weiteren Rekruten her !'
+        : 'Deine Bevölkerung gibt dieses Jahr nur noch $left Rekruten her !');
+  }
+}
+
 List<GameEvent> applyRecruitTroops(
     GameState state, Realm realm, RecruitTroops action, Rng rng) {
   _requireNotAtWar(state, realm);
@@ -62,12 +72,14 @@ List<GameEvent> applyRecruitTroops(
   if (realm.armySize + action.men > realm.troopCapacity) {
     throw ActionException('Nicht genügend Quartiere in deinen Orten !');
   }
+  _requireLevy(realm, action.men);
   final cost = 5 * action.men + classSurcharge(action.troopClass);
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
   final (px, py) = _stationAt(state, realm, action.x, action.y);
   realm.treasury -= cost;
+  realm.recruitedThisTurn += action.men;
   _levyPopularityCost(state, realm, action.men);
   quarterRecruits(realm, action.men, rng);
   final recruitName = clampName(action.name);
@@ -152,6 +164,7 @@ List<GameEvent> applyReinforceTroop(
     if (realm.armySize + action.men > realm.troopCapacity) {
       throw ActionException('Nicht genügend Quartiere in deinen Orten !');
     }
+    _requireLevy(realm, action.men);
     cost = 5 * action.men;
   }
   if (realm.treasury < cost) {
@@ -159,8 +172,11 @@ List<GameEvent> applyReinforceTroop(
   }
   final oldMen = troop.men;
   realm.treasury -= cost;
+  if (troop.garrisonCounted) {
+    realm.recruitedThisTurn += action.men;
+    quarterRecruits(realm, action.men, rng);
+  }
   _levyPopularityCost(state, realm, action.men);
-  if (troop.garrisonCounted) quarterRecruits(realm, action.men, rng);
   troop.men += action.men;
   // New recruits dilute the trained quality toward regular (1).
   if (troop.garrisonCounted && troop.quality > TroopQuality.regular) {

@@ -803,11 +803,24 @@ List<GameEvent> _resolveDecision(
       }
       // Re-crown only slots still held by the provisional heir — conquest
       // in between must not be undone.
+      var recrowned = false;
       for (final slot in (payload['slots'] as List).cast<int>()) {
         if (state.realm(slot).rulerId == provisional) {
           state.realm(slot).rulerId = heirId;
           regenderTitle(state, state.realm(slot));
+          recrowned = true;
         }
+      }
+      // [BUGFIX 2026-07-14, user report] A round rollover inside the
+      // provisional window may have handed the placeholder a Kurfürst
+      // seat or even the Kaiser/Sultan crown — those honors follow the
+      // realm to the chosen heir (or fall vacant), never stay with a now
+      // realm-less placeholder ("Kaiser ohne Reich"). Only when a realm
+      // actually changed hands: a placeholder deposed by conquest keeps
+      // the war path's own consequences.
+      if (recrowned && heirId != provisional) {
+        transferProvisionalHonors(
+            state, provisional, state.persons[heirId]!, events);
       }
       events.add(GameEvent(
         year: state.year,

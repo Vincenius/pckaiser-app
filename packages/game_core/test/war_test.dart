@@ -124,6 +124,10 @@ void main() {
 
     test('reinforcing regular troops costs popularity like a levy', () {
       final popBefore = state.realm(1).popularity;
+      // Levy limit: the setUp already levied 50 this turn — enough people
+      // that 100 more still fit into this year's 10% levy.
+      state.realm(1).towns.single.population += 2000;
+      state.realm(1).population += 2000;
       // Free capacity = 200 - 50 = 150; 100 men cost 500 T and 1 popularity.
       final result = applyAction(state,
           ReinforceTroop(slot: 1, unitIndex: 0, men: 100), Rng(state.rngSeed));

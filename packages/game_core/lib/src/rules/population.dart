@@ -35,6 +35,27 @@ const int famineDesertionCapPercent = 25;
 /// always FOUGHT, never a walkover.
 const int famineArmyFloor = 100;
 
+/// §8.1 harvest rolls: `base + rng.nextInt(span)` per field, × efficiency
+/// (grain 20–34 per Kornfeld, livestock 20–29 per Weide). The means below
+/// are DERIVED from these so the growth ceiling can never silently desync
+/// from a retuned roll.
+const int grainYieldBase = 20;
+const int grainYieldSpan = 15;
+const int livestockYieldBase = 20;
+const int livestockYieldSpan = 10;
+const double grainYieldMean = grainYieldBase + (grainYieldSpan - 1) / 2;
+const double livestockYieldMean =
+    livestockYieldBase + (livestockYieldSpan - 1) / 2;
+
+/// `[DESIGNED 2026-07-14]` Growth plateaus at this share of the EXPECTED
+/// yield — the remaining margin accumulates as the harvest stock that
+/// buffers bad rolls (the famine-trickle fix, see the growth block).
+const double foodCeilingMargin = 0.9;
+
+/// `[DESIGNED 2026-07-14]` Spoilage: the stores keep at most this many
+/// years' worth of food (1 food per inhabitant per year).
+const int storeCapYears = 2;
+
 /// What the food/population upkeep did this turn (§8) — feeds the §21.1
 /// status report.
 class FoodReport {
@@ -63,17 +84,27 @@ FoodReport runFoodAndPopulation(
     return report;
   }
 
-  // §8.1 Food production.
+  // §8.1 Food production. [DEVIATION 2026-07-14, user report] The original
+  // rounded the labour efficiency to a whole factor (e ∈ {1, 2}), so
+  // crossing the (pop − army) = 15 × fields boundary — by building MORE
+  // fields, or by recruiting — HALVED every field's output in one step:
+  // exactly the "I keep building fields and it gets worse" trap. The
+  // multiplier is continuous now; extra fields and levies dilute the
+  // workforce smoothly instead of cliffing.
   final fields =
       realm.tileCount[Building.kornfeld] + realm.tileCount[Building.weide];
+  var efficiency = 0.0;
   if (fields > 0) {
-    final efficiency =
+    efficiency =
         ((realm.population - realm.armySize) / fields / 10).clamp(0.5, 2.0);
-    final e = efficiency.round(); // ∈ {1, 2}
-    report.grainYield =
-        e * (rng.nextInt(15) + 20) * realm.tileCount[Building.kornfeld];
-    report.livestockYield =
-        e * (rng.nextInt(10) + 20) * realm.tileCount[Building.weide];
+    report.grainYield = (efficiency *
+            (rng.nextInt(grainYieldSpan) + grainYieldBase) *
+            realm.tileCount[Building.kornfeld])
+        .round();
+    report.livestockYield = (efficiency *
+            (rng.nextInt(livestockYieldSpan) + livestockYieldBase) *
+            realm.tileCount[Building.weide])
+        .round();
     realm.grainHarvest += report.grainYield;
     realm.livestockHarvest += report.livestockYield;
   }
@@ -113,15 +144,26 @@ FoodReport runFoodAndPopulation(
   // feeds only ~50 and the player can build just a handful of fields per turn
   // — so a large realm's population inevitably OVERSHOT what its farms (even a
   // fully-built territory) could feed, then crashed into famine "out of
-  // nowhere". A lingering harvest STOCK kept the surplus positive past the
-  // real ceiling, deepening the overshoot. We now cap positive growth at what
-  // THIS turn's production can actually feed: the population climbs toward the
-  // food ceiling and plateaus there instead of overshooting. More fields /
-  // land raise the ceiling; famine is left to real causes (a plundered or
-  // quaked field, or selling the harvest your people needed to eat). Famine
-  // shrink (g < 0) is untouched — it still corrects any existing excess.
+  // nowhere". [REVISED 2026-07-14, user report] Capping growth at THIS turn's
+  // rolled yield pinned the population to the top of a ±25 %-noisy ceiling:
+  // every low harvest roll dipped below break-even → chronic famine trickle
+  // that building more fields could never cure (growth immediately consumed
+  // the new headroom). The ceiling is now 90 % of the EXPECTED yield (mean
+  // rolls: 27/Kornfeld, 24.5/Weide, × efficiency) — the ~10 % average surplus
+  // accumulates as a real harvest STOCK that absorbs bad rolls, so famine is
+  // left to real causes: lost fields (war, quake), an army starving its own
+  // farms, or selling the food your people needed to eat. Famine shrink
+  // (g < 0) is untouched — it still corrects any existing excess.
   if (g > 0) {
-    final foodCeiling = report.grainYield + report.livestockYield;
+    final expectedYield = efficiency *
+        (grainYieldMean * realm.tileCount[Building.kornfeld] +
+            livestockYieldMean * realm.tileCount[Building.weide]);
+    // Also never past what is actually ON HAND this turn (the stock,
+    // fresh yield included): with empty stores and a bad roll the
+    // population holds instead of growing into next year's famine — the
+    // buffer model only protects once a buffer exists.
+    final foodCeiling =
+        math.min((expectedYield * foodCeilingMargin).floor(), stock);
     final room = foodCeiling - realm.population;
     if (room <= 0) {
       g = 0; // already at or over what the fields can feed — hold steady
@@ -178,6 +220,19 @@ FoodReport runFoodAndPopulation(
   realm.grainHarvest -= grainEaten;
   toEat -= grainEaten;
   realm.livestockHarvest = math.max(0, realm.livestockHarvest - toEat);
+
+  // [DESIGNED 2026-07-14] Spoilage: the stores keep at most
+  // [storeCapYears] years' worth of food. The stock is the famine buffer
+  // the growth margin above builds up — without a cap it would accumulate
+  // without bound and turn into an infinite grain-gold printer at the
+  // market. Windfalls beyond the cap (war loot, a realm merge) survive
+  // until this realm's NEXT upkeep — sell them the turn they arrive.
+  final maxStore = storeCapYears * realm.population;
+  final stored = realm.grainHarvest + realm.livestockHarvest;
+  if (stored > maxStore) {
+    realm.grainHarvest = realm.grainHarvest * maxStore ~/ stored;
+    realm.livestockHarvest = realm.livestockHarvest * maxStore ~/ stored;
+  }
 
   return report;
 }

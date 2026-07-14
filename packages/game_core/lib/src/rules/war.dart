@@ -192,15 +192,13 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 ///                                          [0.75, 1.25) vs its mirror)
 ///
 /// wins the clash. `[BALANCE 2026-07-08]` Casualties scale with how
-/// lopsided the clash is (superiority = winner eff / loser eff) — before,
-/// both sides' losses were flat shares of their OWN size, so a tiny unit
-/// stripped 10–25% off any giant it touched and splitting an army into
-/// chaff multiplied its damage:
+/// lopsided the clash is — before, both sides' losses were flat shares of
+/// their OWN size, so a tiny unit stripped 10–25% off any giant it touched
+/// and splitting an army into chaff multiplied its damage:
 ///  - the loser takes 35–65% casualties, rising toward a total rout as
-///    superiority grows (≥ ~4.3× always annihilates; a remnant under 5
-///    men is wiped) — but never more men than the winner's effective
-///    strength can plausibly cut down, so an upset winner can't shred a
-///    huge army in one clash;
+///    superiority grows (a remnant under 5 men is wiped) — but never more
+///    men than the winner's effective strength can plausibly cut down, so
+///    an upset winner can't shred a huge army in one clash;
 ///  - the winner takes 10–25% of what the LOSER's effective strength is
 ///    worth in winner-quality men (and always survives) — crushing a far
 ///    weaker unit is near-bloodless, and a loser can never out-kill the
@@ -209,6 +207,22 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 /// EVERY clash (the old [0.5, 1.5) band let a 3× weaker side win on
 /// luck). Equal forces on open ground still trade ~50/50 wins and fall
 /// after 2–5 engagements.
+///
+/// `[BALANCE 2026-07-14, user report]` Mass alone no longer routs:
+/// superiority = √(men ratio) × per-man-power ratio. Raw headcount is
+/// dampened (an equal-quality force now needs ~18× the men for a
+/// guaranteed annihilation, before ~4.3×) while the PER-MAN edge —
+/// drilled quality and troop class — counts in full: a drilled unit
+/// routs an untrained mob of its own size, and a big green levy grinds a
+/// small veteran unit down over several clashes instead of erasing it.
+///
+/// `[DESIGNED 2026-07-14]` Each class also has a tactical role beyond its
+/// raw §10.1 power (applied to eff AND casualty reach):
+///  - Infanterie holds walls: +1 defense on any defended tile (def ≥ 1);
+///  - Kavallerie charges: ×1.2 strength when BOTH sides stand on open
+///    ground (def 0);
+///  - Artillerie besieges: the ENEMY's tile defense counts only half
+///    against its guns.
 List<GameEvent> resolveCombat(
     GameState state, int slotA, Troop a, int slotB, Troop b, Rng rng) {
   int defense(Troop t) {
@@ -225,41 +239,65 @@ List<GameEvent> resolveCombat(
 
   final defenseA = defense(a);
   final defenseB = defense(b);
+
+  // [DESIGNED 2026-07-14] Class roles: Infanterie holds walls (+1 def on a
+  // defended tile), Artillerie besieges (the DEFENDED total — wall bonus
+  // included, breached walls protect no one — counts half against its
+  // guns), Kavallerie charges (×1.2 in an open-field clash).
+  double defenseFactor(int ownDef, int ownClass, int enemyClass) {
+    var def = ownDef.toDouble();
+    if (ownClass == TroopClass.infanterie && def > 0) def += 1;
+    if (enemyClass == TroopClass.artillerie) def /= 2;
+    return 1 + def / 2;
+  }
+
+  final openField = defenseA == 0 && defenseB == 0;
+  double charge(Troop t) =>
+      openField && t.troopClass == TroopClass.kavallerie ? 1.2 : 1.0;
+  final defFactorA = defenseFactor(defenseA, a.troopClass, b.troopClass);
+  final defFactorB = defenseFactor(defenseB, b.troopClass, a.troopClass);
+
   final r = rng.nextReal();
-  final powerA = (a.men * (3 * a.troopClass + a.quality) / 10).floor();
-  final powerB = (b.men * (3 * b.troopClass + b.quality) / 10).floor();
+  final powerA = troopStrength(a).floor();
+  final powerB = troopStrength(b).floor();
   int lossesA;
   int lossesB;
 
   final fortuneA = 0.75 + r / 2;
   final fortuneB = 1.25 - r / 2;
-  final effA = powerA * (1 + defenseA / 2) * fortuneA;
-  final effB = powerB * (1 + defenseB / 2) * fortuneB;
+  final effA = powerA * defFactorA * charge(a) * fortuneA;
+  final effB = powerB * defFactorB * charge(b) * fortuneB;
   final aWins = effA >= effB;
   // Casualty math runs on UNfloored per-man power (small units would be
   // quantized into fake 4× superiorities: 19 men floor to power 1, 48 men
   // to 4). `raw` is the defense-free fighting strength, `rawEff` includes
   // the tile defense (a fortified side's reach — its blades kill more).
-  final rawA = a.men * powerPerMan(a) * fortuneA;
-  final rawB = b.men * powerPerMan(b) * fortuneB;
-  final rawEffA = rawA * (1 + defenseA / 2);
-  final rawEffB = rawB * (1 + defenseB / 2);
+  final rawA = a.men * powerPerMan(a) * charge(a) * fortuneA;
+  final rawB = b.men * powerPerMan(b) * charge(b) * fortuneB;
+  final rawEffA = rawA * defFactorA;
+  final rawEffB = rawB * defFactorB;
   final winnerRawEff = aWins ? rawEffA : rawEffB;
   final loserRawEff = aWins ? rawEffB : rawEffA;
-  // How lopsided the clash is, on the DEFENSE-FREE strength ratio (floored
-  // at 1 — a fortified winner with fewer men is no "superior"): walls decide
-  // who WINS, but a rout takes superior MEN — an equal attacker repelled
-  // from a Burg is bloodied, not annihilated.
-  final winnerRaw = aWins ? rawA : rawB;
-  final loserRaw = aWins ? rawB : rawA;
-  final superiority =
-      loserRaw > 0 ? math.max(1.0, winnerRaw / loserRaw) : double.infinity;
+  // How lopsided the clash is: √(men ratio) × per-man-power ratio, floored
+  // at 1. Walls decide who WINS, but a rout takes superior MEN — and mass
+  // is dampened while the drilled/class edge counts in full ([BALANCE
+  // 2026-07-14] above): a big green levy bloodies a veteran unit, it does
+  // not erase it.
+  final winnerT = aWins ? a : b;
+  final loserT = aWins ? b : a;
+  final superiority = loserT.men > 0
+      ? math.max(
+          1.0,
+          math.sqrt(winnerT.men / loserT.men) *
+              (powerPerMan(winnerT) / powerPerMan(loserT)))
+      : double.infinity;
   final loserShare = 0.35 + 0.3 * rng.nextReal();
   final winnerShare = 0.10 + 0.15 * rng.nextReal();
   int loserLosses(Troop loser) {
-    // The base 35–65% share grows with the winner's superiority: a ≥ ~4.3×
-    // superior force always annihilates the unit outright (a rout, not a
-    // skirmish). Below 1.5× the share stays at its base value.
+    // The base 35–65% share grows with the winner's superiority: at ≥ ~4.3×
+    // the unit is annihilated outright (a rout, not a skirmish) — via the
+    // dampened superiority that takes ~18× the MEN at equal quality, or a
+    // ~4.3× per-man edge. Below 1.5× the share stays at its base value.
     final share = math.min(1.0, loserShare * math.max(1.0, superiority / 1.5));
     var losses = math.max(1, (loser.men * share).round());
     // The winner can't cut down more men than its own effective strength

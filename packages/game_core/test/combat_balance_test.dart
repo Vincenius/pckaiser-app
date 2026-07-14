@@ -133,4 +133,148 @@ void main() {
       expect(defender, greaterThanOrEqualTo(1), reason: 'seed $seed');
     }
   });
+
+  // 2026-07-14 rebalance: superiority = √(men ratio) × per-man-power ratio.
+  // Mass is dampened in the casualty math; the drilled/class edge counts in
+  // full, and each class has a tactical role (walls / charge / siege).
+  group('2026-07-14: Ausbildung und Gattung', () {
+    /// A second bonus-free tile (≠ the shared one) with a Burg placed on
+    /// it — the fortified defender's position for the wall/siege tests.
+    (int, int) placeBurg() {
+      for (var y = 0; y < state.map.height; y++) {
+        for (var x = 0; x < state.map.width; x++) {
+          if ((x != openX || y != openY) &&
+              !state.map.isWaterAt(x, y) &&
+              state.map.terrainAt(x, y) != Terrain.berg &&
+              state.map.buildingAt(x, y) == Building.none) {
+            state.map.building[state.map.index(x, y)] = Building.burg;
+            return (x, y);
+          }
+        }
+      }
+      throw StateError('no second open tile');
+    }
+
+    Troop typed(String name, int men, int troopClass,
+            {int quality = TroopQuality.regular, int? x, int? y}) =>
+        Troop(
+          name: name,
+          men: men,
+          troopClass: troopClass,
+          quality: quality,
+          garrisonCounted: false,
+          x: x ?? openX,
+          y: y ?? openY,
+        );
+
+    test('a drilled unit routs an untrained mob of 3× its size', () {
+      // 100 men quality 5 (power 50) vs 300 regulars (power 30): the 5/3
+      // edge wins every clash, and the FULL quality ratio in the casualty
+      // superiority makes it a rout — while the veterans stay coherent.
+      for (var seed = 0; seed < 100; seed++) {
+        final payload = clash(unit('Veteranen', 100, quality: 5),
+            unit('Aufgebot', 300), seed);
+        expect(payload['attackerDestroyed'], isFalse, reason: 'seed $seed');
+        expect(payload['defenderLosses'], greaterThanOrEqualTo(200),
+            reason: 'quality superiority routs the mob (seed $seed)');
+        expect(payload['attackerLosses'], lessThanOrEqualTo(20),
+            reason: 'the drilled unit keeps its order (seed $seed)');
+      }
+    });
+
+    test('2× the men still wins — but no longer annihilates', () {
+      // √2 ≈ 1.41 < 1.5: the loser share stays at its 35–65% base, so a
+      // merely-bigger equal-quality force bloodies the loser instead of
+      // erasing it (before: 47–87%, annihilation from ~4.3× men).
+      for (var seed = 0; seed < 100; seed++) {
+        final payload = clash(unit('Gross', 200), unit('Klein', 100), seed);
+        expect(payload['defenderDestroyed'], isFalse,
+            reason: 'no annihilation at 2× men (seed $seed)');
+        expect(payload['defenderLosses'], lessThanOrEqualTo(66),
+            reason: 'base 35–65% share only (seed $seed)');
+      }
+    });
+
+    test('overwhelming mass (20×) still wipes a unit outright', () {
+      for (var seed = 0; seed < 50; seed++) {
+        final payload = clash(unit('Heer', 1000), unit('Häuflein', 50), seed);
+        expect(payload['defenderDestroyed'], isTrue, reason: 'seed $seed');
+      }
+    });
+
+    test('Artillerie bricht Mauern, gleichstarke Infanterie nicht', () {
+      final (bx, by) = placeBurg();
+      var infantryAttackerEverLost = false;
+      for (var seed = 0; seed < 100; seed++) {
+        // 60 Artillerie (power 42) vs 100 Infanterie in the Burg: the
+        // defender's def 4 (3 + wall bonus) counts only half against the
+        // siege guns — the Burg falls every time.
+        final artPayload = clash(
+            typed('Belagerer', 60, TroopClass.artillerie),
+            typed('Besatzung', 100, TroopClass.infanterie, x: bx, y: by),
+            seed);
+        expect(artPayload['defenderDestroyed'], isTrue,
+            reason: 'siege guns negate half the walls (seed $seed)');
+
+        // The same total power as plain infantry (420 men, power 42) faces
+        // the full def 4 — it can be repelled.
+        final infPayload = clash(
+            typed('Sturmhaufen', 420, TroopClass.infanterie),
+            typed('Besatzung', 100, TroopClass.infanterie, x: bx, y: by),
+            seed);
+        if (infPayload['defenderDestroyed'] != true) {
+          infantryAttackerEverLost = true;
+        }
+      }
+      expect(infantryAttackerEverLost, isTrue,
+          reason: 'equal-power infantry must not crack the Burg as '
+              'reliably as artillery');
+    });
+
+    test('Kavallerie-Charge entscheidet die Feldschlacht', () {
+      // 100 Kavallerie (power 40, ×1.2 charge = 48) vs 288 Infanterie
+      // (power 28): with the charge the cavalry clears the 5/3 bar and
+      // wins EVERY open-field clash — without it (40 vs 28) it would
+      // lose on bad fortune.
+      for (var seed = 0; seed < 100; seed++) {
+        final payload = clash(
+            typed('Reiterei', 100, TroopClass.kavallerie),
+            typed('Fussvolk', 288, TroopClass.infanterie),
+            seed);
+        expect(payload['attackerDestroyed'], isFalse, reason: 'seed $seed');
+        expect(payload['defenderLosses'],
+            greaterThan(payload['attackerLosses'] as int),
+            reason: 'the charge carries the field (seed $seed)');
+      }
+    });
+
+    test('Infanterie hält Mauern besser als gleichstarke Kavallerie', () {
+      final (bx, by) = placeBurg();
+      // A 5-man Janitscharen storm (power 25): its huge per-man edge means
+      // any WIN routs the garrison outright, so `defenderDestroyed`
+      // cleanly marks who held the walls. Against the infantry garrison
+      // (raw 10, wall bonus → eff 30) it needs far better fortune than
+      // against equal-power cavalry (raw 10, no wall bonus → eff 25).
+      var infDefFell = 0;
+      var kavDefFell = 0;
+      for (var seed = 0; seed < 100; seed++) {
+        final infPayload = clash(
+            typed('Sturm', 5, TroopClass.infanterie,
+                quality: TroopQuality.janitscharen),
+            typed('Stadtwache', 100, TroopClass.infanterie, x: bx, y: by),
+            seed);
+        if (infPayload['defenderDestroyed'] == true) infDefFell++;
+
+        final kavPayload = clash(
+            typed('Sturm', 5, TroopClass.infanterie,
+                quality: TroopQuality.janitscharen),
+            typed('Reiterwache', 25, TroopClass.kavallerie, x: bx, y: by),
+            seed);
+        if (kavPayload['defenderDestroyed'] == true) kavDefFell++;
+      }
+      expect(kavDefFell, greaterThan(infDefFell),
+          reason: 'the +1 wall bonus must make the infantry garrison '
+              'hold noticeably more storms ($infDefFell vs $kavDefFell)');
+    });
+  });
 }

@@ -6,6 +6,66 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-14 — Troop-balance round: training vs. mass, per-turn levy limit, chronic-famine fix (user reports)
+
+Three user reports in one balancing round (rules only, no schema change —
+`recruitedThisTurn` is an additive per-turn field).
+(1) **Combat: mass dampened, training and class in full** ("größere
+Armeen machen unverhältnismäßig viel Schaden"): the casualty superiority
+in `resolveCombat` is now `√(men ratio) × per-man-power ratio` instead of
+the raw strength ratio — an equal-quality force needs ~18× the men for a
+guaranteed annihilation (was ~4.3×), while a drilled unit routs an
+untrained mob of its own size; a 2× force bloodies (35–65 %) instead of
+erasing. New tactical class roles, applied to win-eff AND casualty reach:
+Infanterie +1 defense on any defended tile (holds walls), Kavallerie ×1.2
+when both sides stand on open ground (charge), Artillerie halves the
+enemy's tile defense (siege). Win decision (5/3 fortune band) unchanged.
+(2) **Per-turn levy limit** (report: late-game AI raised armies
+"impossibly fast" — it was legal, not cheating: no per-turn cap +
+capacity compounding + the Schwer AI refilling to 80 % capacity from a
+huge treasury): regulars are now capped at 10 % of the population per
+year (min. 100; `levyLimit` in rules/troops.dart), enforced in
+`RecruitTroops`/`ReinforceTroop` for humans and AI alike; Söldner stay
+uncapped (10× price). The AI plans within the cap (`_levyLeft`), the
+recruit/reinforce sheets clamp their sliders and show the remaining levy.
+(3) **Chronic famine fix** (report: constant troop losses to
+Nahrungsmangel although the player kept building fields): the [DESIGNED]
+growth-to-food-ceiling coupling capped growth at THIS turn's ±25 %-noisy
+rolled yield, pinning population to the top of the noise band — every low
+roll dipped below break-even and deserted troops, and new fields only
+moved the same trap upward. Growth now plateaus at 90 % of the EXPECTED
+yield (mean rolls 27/Kornfeld, 24.5/Weide × efficiency, both derived
+from the named roll constants) and never past the on-hand stock — so
+the ~10 % average margin accumulates as a real harvest stock that
+absorbs bad rolls and an empty-store realm can't grow into next year's
+famine; stores cap at 2 × population (spoilage) so the buffer is no
+grain-gold printer. The §8.1 labour efficiency is continuous now (was
+rounded to e ∈ {1, 2}) — building one more field or recruiting can no
+longer HALVE total output at the rounding boundary. Famine desertion
+itself (25 %-cap, 100-man home guard) is unchanged and now only fires on
+real shortages (lost fields, oversized army, sold-off stores). Tests:
+`combat_balance_test.dart` (training/class group), new
+`balance_2026_07_14_test.dart` (levy + food plateau/cliff);
+tutorial Militär step updated.
+
+Same day, second user report — **"Kaiser ohne Reich"**: a human ruler's
+death installs the priority heir as PROVISIONAL ruler at once while the
+heirChoice decision is non-blocking; a round rollover inside that window
+runs the office phase, so the placeholder (carrying the deceased's König
+title) could take a Kurfürst seat or win the Kaiser election. When the
+player then chose a different heir, the realms were re-crowned but the
+office stayed with the now realm-less placeholder forever (elections only
+re-trigger on a VACANT office). Fix, two layers: (1) the heirChoice
+resolution now calls `transferProvisionalHonors` (offices.dart) — seat and
+crown follow the realm to the chosen heir (open chronicle record rewritten,
+same accession year), or fall vacant when the heir is §17.2-ineligible
+(record dropped as never legitimate); only when a realm actually changed
+hands, so conquest keeps the war path's consequences. (2) The election
+tally refuses to crown a winner who rules no realm (mid-election heir
+override or deposition) — `interregnum` event, throne stays vacant, fresh
+election next world phase. Tests:
+`bugfix_2026_07_14_kaiser_ohne_reich_test.dart`.
+
 ## 2026-07-13 — War takeover via annexation, per-troop war prep, realm-loss popups (user feedback, 0.1.18)
 
 Four user requests in one rules/UX round; appVersion 0.1.17 → 0.1.18.

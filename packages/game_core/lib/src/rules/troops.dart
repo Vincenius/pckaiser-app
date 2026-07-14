@@ -10,6 +10,20 @@ double powerPerMan(Troop troop) => (3 * troop.troopClass + troop.quality) / 10;
 /// A unit's total combat strength.
 double troopStrength(Troop troop) => troop.men * powerPerMan(troop);
 
+/// `[DESIGNED 2026-07-14, user report]` Per-turn levy limit for REGULAR
+/// recruits: at most 10% of the population (min. 100 men) can be levied
+/// per year — men come from the people, not from thin air. The original
+/// had no per-turn cap, so a gold-rich late-game realm (human or AI —
+/// especially the schwer AI's planned recruiting) could raise thousands
+/// of men in a single turn, which read as cheating and made war losses
+/// meaningless. Söldner are exempt: hired abroad, at 10× the price.
+int levyLimit(Realm realm) => math.max(100, realm.population ~/ 10);
+
+/// Regulars this year's levy still allows — the ONE definition shared by
+/// the action gate, the AI's pacing and the client's sliders/labels.
+int levyLeft(Realm realm) =>
+    math.max(0, levyLimit(realm) - realm.recruitedThisTurn);
+
 /// One-time surcharge on creating a regular unit of this class (§10.1):
 /// Kavallerie +500, Artillerie +1,000.
 int classSurcharge(int troopClass) => switch (troopClass) {

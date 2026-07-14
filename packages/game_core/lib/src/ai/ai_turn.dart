@@ -6,7 +6,7 @@ import '../data/tables.dart';
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
 import '../rules/realm_merge.dart';
-import '../rules/troops.dart' show classSurcharge, troopStrength;
+import '../rules/troops.dart' show classSurcharge, levyLeft, troopStrength;
 import '../rules/war.dart';
 import 'ai_tuning.dart';
 import '../state/constants.dart';
@@ -358,7 +358,9 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events,
       // halving divisor and free capacity 1 the levy would otherwise be
       // deterministically 0 and the realm could never arm at all.
       final men = math.min(
-          math.max(1, (rng.nextInt(free) + 1) ~/ tuning.reinforceDivisor),
+          math.min(
+              math.max(1, (rng.nextInt(free) + 1) ~/ tuning.reinforceDivisor),
+              levyLeft(realm)),
           math.min(free, realm.treasury ~/ 5));
       if (men > 0) {
         _act(
@@ -377,9 +379,11 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events,
   for (var i = 0; i < realm.troops.length; i++) {
     final freeNow = realm.troopCapacity - realm.armySize;
     if (freeNow <= 0) break;
+    if (levyLeft(realm) <= 0) break;
     if (!realm.troops[i].garrisonCounted) continue;
     final wanted = (rng.nextInt(freeNow) + 1) ~/ tuning.reinforceDivisor;
-    final men = math.min(wanted, math.min(freeNow, realm.treasury ~/ 5));
+    final men = math.min(math.min(wanted, levyLeft(realm)),
+        math.min(freeNow, realm.treasury ~/ 5));
     if (men <= 0) continue;
     _act(state, ReinforceTroop(slot: realm.slot, unitIndex: i, men: men), rng,
         events);
@@ -406,8 +410,11 @@ void _reinforcePlanned(GameState state, Realm realm, Rng rng,
   final unitCap = math.max(10, (target / 3).ceil());
   var guard = 0;
   while (guard++ < 10) {
-    final deficit = target - realm.armySize;
-    if (deficit <= 0 || budget < 5) return;
+    // This iteration's levy-capped step toward the target: the levy limit
+    // paces the buildup, so even a rich schwer AI reaches its capacity
+    // target over several years, not in one turn.
+    final step = math.min(target - realm.armySize, levyLeft(realm));
+    if (step <= 0 || budget < 5) return;
     final regulars = [
       for (var i = 0; i < realm.troops.length; i++)
         if (realm.troops[i].garrisonCounted) i,
@@ -417,13 +424,13 @@ void _reinforcePlanned(GameState state, Realm realm, Rng rng,
       // real unit — never buy it for a token squad.
       final kavSurcharge = classSurcharge(TroopClass.kavallerie);
       final kavMen = math.min(
-          math.min(deficit, unitCap), (budget - kavSurcharge) ~/ 5);
+          math.min(step, unitCap), (budget - kavSurcharge) ~/ 5);
       final kav = tuning.kavallerieTreasury > 0 &&
           realm.treasury >= tuning.kavallerieTreasury &&
           kavMen >= 10;
       final surcharge = kav ? kavSurcharge : 0;
       final men =
-          kav ? kavMen : math.min(math.min(deficit, unitCap), budget ~/ 5);
+          kav ? kavMen : math.min(math.min(step, unitCap), budget ~/ 5);
       if (men <= 0) return;
       try {
         _act(
@@ -445,7 +452,7 @@ void _reinforcePlanned(GameState state, Realm realm, Rng rng,
       for (final i in regulars) {
         if (realm.troops[i].men < realm.troops[index].men) index = i;
       }
-      final men = math.min(deficit, budget ~/ 5);
+      final men = math.min(step, budget ~/ 5);
       if (men <= 0) return;
       try {
         _act(state, ReinforceTroop(slot: realm.slot, unitIndex: index, men: men),

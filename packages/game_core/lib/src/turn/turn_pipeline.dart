@@ -192,6 +192,7 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
   realm.soldGrainThisTurn = false;
   realm.soldCattleThisTurn = false;
   realm.investedThisTurn = false;
+  realm.recruitedThisTurn = 0;
   realm.proposedThisTurnIds.clear();
 
   events.add(GameEvent(
