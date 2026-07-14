@@ -161,7 +161,6 @@ class _WarPanelState extends State<WarPanel> {
     final state = controller.state;
     final realm = state.realm(slot);
     final enemySlot = war.opponentOf(slot);
-    final enemy = state.realm(enemySlot);
     final moves = war.movesLeft[slot] ?? const <int>[];
     final selected = controller.selectedWarUnit;
     final selectedTroop = selected != null && selected < realm.troops.length
@@ -200,11 +199,11 @@ class _WarPanelState extends State<WarPanel> {
     final header = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.gavel, size: 18),
+        const Icon(Icons.gavel, size: 16),
         const SizedBox(width: 6),
         Flexible(
           child: Text(
-            'Krieg gegen ${gc.countryNames[enemySlot]}',
+            'Krieg: ${gc.countryNames[enemySlot]}',
             style: theme.textTheme.titleSmall,
             overflow: TextOverflow.ellipsis,
           ),
@@ -216,12 +215,20 @@ class _WarPanelState extends State<WarPanel> {
               'entscheidet, wer mehr (und wertvolleres) feindliches '
               'Gebiet besetzt hält.',
           child: Text(
-            'Runde ${war.round + 1}/20',
+            'R. ${war.round + 1}/20',
             style: theme.textTheme.labelSmall,
           ),
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
+          iconSize: 20,
+          tooltip: 'Deine Truppen & Feindheer',
+          icon: const Icon(Icons.info_outline),
+          onPressed: () => _showWarDetails(context, war, slot),
+        ),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          iconSize: 20,
           tooltip: _collapsed ? 'Kriegsmenü öffnen' : 'Einklappen',
           icon: Icon(_collapsed ? Icons.expand_more : Icons.expand_less),
           onPressed: () => setState(() => _collapsed = !_collapsed),
@@ -229,89 +236,187 @@ class _WarPanelState extends State<WarPanel> {
       ],
     );
 
-    return Card(
-      margin: const EdgeInsets.all(8),
-      color: theme.colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            header,
-            if (!_collapsed) ...[
-              _enemyArmyLine(theme, realm, enemy, enemySlot),
-              if (capitalNote != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    capitalNote,
-                    style: theme.textTheme.bodySmall!.copyWith(
-                      color: occupier == slot
-                          ? Colors.green.shade800
-                          : theme.colorScheme.error,
-                      fontWeight: FontWeight.w600,
+    // Constrain the width so the panel never blankets the map — the details
+    // (own troops + strength) now live behind the header's info button.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Card(
+        margin: const EdgeInsets.all(8),
+        color: theme.colorScheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              header,
+              if (!_collapsed) ...[
+                if (capitalNote != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      capitalNote,
+                      style: theme.textTheme.bodySmall!.copyWith(
+                        color: occupier == slot
+                            ? Colors.green.shade800
+                            : theme.colorScheme.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                ),
-              if (war.wantsPeace(slot) || enemyReady)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    enemyReady
-                        ? 'Der Gegner ist friedensbereit ! „Frieden wünschen" '
-                              'und „Runde beenden" beendet den Krieg ohne '
-                              'Gebietsänderungen.'
-                        : 'Friedenswunsch geäußert — der Gegner muss '
-                              'zustimmen.',
-                    style: theme.textTheme.bodySmall!.copyWith(
-                      color: enemyReady
-                          ? Colors.green.shade800
-                          : theme.colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w600,
+                if (war.wantsPeace(slot) || enemyReady)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      enemyReady
+                          ? 'Der Gegner ist friedensbereit ! „Frieden wünschen" '
+                                'und „Runde beenden" beendet den Krieg ohne '
+                                'Gebietsänderungen.'
+                          : 'Friedenswunsch geäußert — der Gegner muss '
+                                'zustimmen.',
+                      style: theme.textTheme.bodySmall!.copyWith(
+                        color: enemyReady
+                            ? Colors.green.shade800
+                            : theme.colorScheme.onErrorContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                ),
-              const SizedBox(height: 4),
-              // Cap the unit list and let it scroll: a large army would
-              // otherwise grow the panel past the map's bottom edge and push
-              // the action buttons ("Runde beenden") off small screens.
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 124),
-                child: SingleChildScrollView(
-                  child: Wrap(
-                    spacing: 4,
-                    runSpacing: -8,
-                    children: [
-                      for (var i = 0; i < realm.troops.length; i++)
-                        _unitChip(
-                          theme,
-                          state,
-                          realm.troops[i],
-                          enemySlot,
-                          movesLeft: i < moves.length ? moves[i] : 0,
-                          selected: i == selected,
-                          onTap: () => controller.selectWarUnit(
-                            i == selected ? null : i,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              // The autopilot stance only matters online, where an idle
-              // war round is fought by each unit's stance. Offline the
-              // player moves every unit by hand, so the toggle is hidden.
-              if (controller.isOnline &&
-                  selectedTroop != null &&
-                  selected != null)
-                _stanceToggle(context, slot, selected, selectedTroop),
-              _actions(context, war, slot, selectedTroop, enemySlot),
+                _selectionRow(context, slot, selectedTroop, selected, moves),
+                // The autopilot stance only matters online, where an idle
+                // war round is fought by each unit's stance. Offline the
+                // player moves every unit by hand, so the toggle is hidden.
+                if (controller.isOnline &&
+                    selectedTroop != null &&
+                    selected != null)
+                  _stanceToggle(context, slot, selected, selectedTroop),
+                _actions(context, war, slot, selectedTroop, enemySlot),
+              ],
             ],
-          ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// The one always-visible unit line: the currently selected troop (name +
+  /// remaining war moves + a clear button), or a hint to pick one. The full
+  /// army roster and strength live behind the header's info button
+  /// ([_showWarDetails]) so the panel stays small over the map.
+  Widget _selectionRow(
+    BuildContext context,
+    int slot,
+    gc.Troop? troop,
+    int? index,
+    List<int> moves,
+  ) {
+    final theme = Theme.of(context);
+    if (troop == null || index == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          'Tippe eine Truppe auf der Karte (oder ℹ) an, dann ein Ziel.',
+          style: theme.textTheme.bodySmall,
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+    final movesLeft = index < moves.length ? moves[index] : 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            troop.stance == gc.TroopStance.attack
+                ? Icons.gps_fixed
+                : Icons.shield_outlined,
+            size: 14,
+            color: theme.colorScheme.outline,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              '${troop.name} · Züge $movesLeft',
+              style: theme.textTheme.bodySmall!.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            iconSize: 16,
+            tooltip: 'Auswahl aufheben',
+            icon: const Icon(Icons.close),
+            onPressed: () => controller.selectWarUnit(null),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Bottom sheet with the roster hidden from the compact panel: the enemy
+  /// army summary and the player's own troops (with strength), still tappable
+  /// to select a unit — picking one closes the sheet.
+  void _showWarDetails(BuildContext context, gc.ActiveWar war, int slot) {
+    final state = controller.state;
+    final realm = state.realm(slot);
+    final enemySlot = war.opponentOf(slot);
+    final enemy = state.realm(enemySlot);
+    final moves = war.movesLeft[slot] ?? const <int>[];
+    final selected = controller.selectedWarUnit;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Kriegsdetails', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                _enemyArmyLine(theme, realm, enemy, enemySlot),
+                const SizedBox(height: 12),
+                Text(
+                  'Deine Truppen — tippen zum Auswählen',
+                  style: theme.textTheme.labelMedium,
+                ),
+                const SizedBox(height: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 280),
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: -8,
+                      children: [
+                        for (var i = 0; i < realm.troops.length; i++)
+                          _unitChip(
+                            theme,
+                            state,
+                            realm.troops[i],
+                            enemySlot,
+                            movesLeft: i < moves.length ? moves[i] : 0,
+                            selected: i == selected,
+                            onTap: () {
+                              controller.selectWarUnit(i == selected ? null : i);
+                              Navigator.of(sheetContext).pop();
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -510,17 +615,26 @@ class _WarPanelState extends State<WarPanel> {
         ? 'Hier steht nichts zum Plündern'
         : 'Bebautes feindliches Feld plündern';
 
-    // Wrap (not Row): on a narrow screen three buttons in a single row
-    // overflow and clip the rightmost one — "Runde beenden" then becomes
-    // unreachable. Wrapping flows the overflow onto a second line instead.
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 4,
-      children: [
+    const compactBtn = ButtonStyle(
+      visualDensity: VisualDensity.compact,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 8),
+      ),
+    );
+
+    // FittedBox around a single Row: keeps all three actions on ONE line,
+    // scaling them down on a narrow screen instead of wrapping "Runde
+    // beenden" onto a second line and growing the panel.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
         Tooltip(
           message: plunderHint,
           child: TextButton.icon(
+            style: compactBtn,
             onPressed: canPlunder
                 ? () async {
                     final List<gc.GameEvent> events;
@@ -549,11 +663,13 @@ class _WarPanelState extends State<WarPanel> {
                     );
                   }
                 : null,
-            icon: const Icon(Icons.local_fire_department),
+            icon: const Icon(Icons.local_fire_department, size: 18),
             label: const Text('Plündern'),
           ),
         ),
-        TextButton(
+        const SizedBox(width: 4),
+        TextButton.icon(
+          style: compactBtn,
           onPressed: () async {
             try {
               await controller.applyWarAction(
@@ -567,11 +683,12 @@ class _WarPanelState extends State<WarPanel> {
               }
             }
           },
-          child: Text(
-            war.wantsPeace(slot) ? 'Frieden zurückziehen' : 'Frieden wünschen',
-          ),
+          icon: const Icon(Icons.handshake_outlined, size: 18),
+          label: Text(war.wantsPeace(slot) ? 'Zurückziehen' : 'Frieden'),
         ),
+        const SizedBox(width: 4),
         FilledButton(
+          style: compactBtn,
           onPressed: () async {
             final List<gc.GameEvent> events;
             try {
@@ -607,11 +724,12 @@ class _WarPanelState extends State<WarPanel> {
           child: Text(
             slot == war.attackerSlot &&
                     state.dynasty(enemySlot).status == gc.DynastyStatus.human
-                ? 'Züge übergeben'
+                ? 'Übergeben'
                 : 'Runde beenden',
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 
