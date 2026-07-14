@@ -363,6 +363,49 @@ class WarMove extends PlayerAction {
       };
 }
 
+/// March a unit toward a target tile over several war-round steps in ONE
+/// action: the engine walks the §11.2 shortest passable land path step by
+/// step (each step with the full [WarMove] semantics — combat, capture
+/// arming) until the unit arrives, runs out of moves, is held by a
+/// defender, or is destroyed. Replaces the client-side step loop, whose
+/// name-and-position identity tracking was the workaround for units having
+/// had no stable identity inside the engine.
+class WarMarch extends PlayerAction {
+  WarMarch({
+    required super.slot,
+    required this.unitIndex,
+    required this.x,
+    required this.y,
+  });
+
+  factory WarMarch.fromJson(Map<String, dynamic> json) => WarMarch(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'warMarch';
+
+  final int unitIndex;
+
+  /// Target tile; the march stops early when the path is exhausted.
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'x': x,
+        'y': y,
+      };
+}
+
 /// "Plündern" during a war round (§11.5) — once per side per round.
 class WarPlunder extends PlayerAction {
   WarPlunder({required super.slot, required this.x, required this.y});

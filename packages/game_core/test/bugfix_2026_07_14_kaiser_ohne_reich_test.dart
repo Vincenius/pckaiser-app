@@ -8,11 +8,14 @@ import 'package:test/test.dart';
 ///
 /// Root cause: death installs a PROVISIONAL heir as ruler at once; the
 /// heirChoice decision is non-blocking, so a round rollover (office phase,
-/// Kaiser election) can run before the player answers. The provisional
-/// heir — carrying the deceased's König title — could win a Kurfürst seat
-/// or the crown; the later heirChoice override then stripped the realm but
-/// left the office pointing at a realm-less person forever (elections only
-/// re-trigger on a VACANT office).
+/// Kaiser election) can run before the player answers. ROOT FIX
+/// (cleanup round, same day): a provisional heir is office-INELIGIBLE
+/// while the choice is open (`rulesOnlyProvisionally`) — no seat or crown
+/// can accrue to the placeholder, so nothing needs to be transferred or
+/// voided when the player picks a different heir. The election tally
+/// additionally refuses to crown a winner who lost every realm
+/// MID-election (conquest deposition — a case the ineligibility window
+/// cannot cover).
 void main() {
   late GameState state;
 
@@ -62,25 +65,29 @@ void main() {
       gender: gender);
 
   test(
-      'a crown won by the provisional heir follows the chosen heir '
-      '(no "Kaiser ohne Reich")', () {
+      'a provisional heir gains no Kurfürst seat and no crown while the '
+      'heirChoice is open (no "Kaiser ohne Reich")', () {
     final young = child('Junior', age: 15);
     final eldest = child('Ältester', age: 25);
     final decision = die([young, eldest]);
     expect(state.realm(1).rulerId, young.id,
         reason: 'the FIRST male child is the provisional heir');
+    expect(rulesOnlyProvisionally(state, young.id), isTrue);
 
     // The round rolls over while the heirChoice is unanswered: the office
-    // phase seats the provisional heir as Kurfürst and crowns them Kaiser.
-    state.kurfuerstenIds.add(young.id);
-    state.kaiserId = young.id;
-    state.kaiserChronicle.add(ChronicleRecord(
-        name: young.name,
-        accessionYear: state.year,
-        personId: young.id,
-        slot: 1));
+    // phase runs — seats fill and a Kaiser election may complete — but the
+    // placeholder must be passed over everywhere.
+    final events = <GameEvent>[];
+    runOfficePhase(state, Rng(9), events);
 
-    // The player picks the eldest instead.
+    expect(state.kurfuerstenIds, isNot(contains(young.id)),
+        reason: 'a provisional heir must not take a Kurfürst seat');
+    expect(state.kaiserId, isNot(young.id),
+        reason: 'a provisional heir must not be crowned');
+
+    // The player picks the eldest: the realm re-crowns, the placeholder
+    // holds nothing that would need transferring, and the chosen heir is
+    // a fully eligible ruler from now on.
     final next = applyAction(
             state,
             ResolveDecision(
@@ -91,48 +98,25 @@ void main() {
         .state;
 
     expect(next.realm(1).rulerId, eldest.id);
-    expect(next.kaiserId, eldest.id,
-        reason: 'the crown follows the realm to the true heir');
-    expect(next.kurfuerstenIds, contains(eldest.id));
     expect(next.kurfuerstenIds, isNot(contains(young.id)));
-    final record = next.kaiserChronicle
-        .lastWhere((r) => r.deathYear == null);
-    expect(record.personId, eldest.id,
-        reason: 'retroactively it was the heir\'s reign all along');
-    expect(record.accessionYear, state.year);
+    expect(next.kaiserId, isNot(young.id));
+    expect(rulesOnlyProvisionally(next, eldest.id), isFalse,
+        reason: 'the resolved choice ends the ineligibility window');
   });
 
-  test('an heir ineligible for the office vacates it for a fresh election',
-      () {
-    final young = child('Junior', age: 15);
-    final daughter = child('Tochter', age: 22, gender: 1);
-    final decision = die([young, daughter]);
-    state.kurfuerstenIds.add(young.id);
-    state.kaiserId = young.id;
-    state.kaiserChronicle.add(ChronicleRecord(
-        name: young.name,
-        accessionYear: state.year,
-        personId: young.id,
-        slot: 1));
+  test(
+      'a provisional heir who already rules another realm stays a '
+      'legitimate ruler and office candidate', () {
+    final young = child('Junior', age: 20);
+    final sibling = child('Bruder', age: 18);
+    // Junior already rules slot 3 in his own right.
+    state.realm(3).rulerId = young.id;
+    die([young, sibling]);
 
-    // The player picks the daughter — she can rule the realm, but §17.2
-    // bars her from the Kaiser throne: the office falls vacant instead of
-    // sticking to the realm-less placeholder.
-    final next = applyAction(
-            state,
-            ResolveDecision(
-                slot: 1,
-                decisionId: decision.id,
-                choice: {'heirId': daughter.id}),
-            Rng(state.rngSeed))
-        .state;
-
-    expect(next.realm(1).rulerId, daughter.id);
-    expect(next.kaiserId, isNull,
-        reason: 'vacant throne → the next world phase elects anew');
-    expect(next.kurfuerstenIds, isNot(contains(young.id)));
-    expect(next.kaiserChronicle.where((r) => r.deathYear == null), isEmpty,
-        reason: 'the placeholder\'s record is dropped as never legitimate');
+    expect(state.realm(1).rulerId, young.id, reason: 'provisional for slot 1');
+    expect(rulesOnlyProvisionally(state, young.id), isFalse,
+        reason: 'slot 3 is his outside the pending choice — he is a real '
+            'ruler, only slot 1 is provisional');
   });
 
   test('a finalist who lost every realm mid-election is never crowned', () {

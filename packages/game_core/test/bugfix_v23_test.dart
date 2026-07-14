@@ -97,7 +97,6 @@ GameState warReadyGame() {
   loser.tileCount[Building.hafen] = 1;
   loser.towns.clear();
   loser.troops.clear();
-  loser.armySize = 0;
   // Slot 1's unit occupies the Hafen — its only foothold on enemy soil.
   state.realm(1).troops.first
     ..x = hx
@@ -158,7 +157,6 @@ GameState warReadyGame() {
   loser.tileCount[Building.hafen] = 1;
   loser.towns.clear();
   loser.troops.clear();
-  loser.armySize = 0;
   state.realm(1).troops.first
     ..x = mx
     ..y = my;
@@ -220,7 +218,7 @@ void main() {
     });
   });
 
-  group('landless realm sweep (rules v15)', () {
+  group('landless realm vacate (rules v15)', () {
     test('a realm with no tiles is vacated and unblocks the sole-ruler win',
         () {
       var s = warReadyGame();
@@ -243,8 +241,10 @@ void main() {
       expect(checkWinCondition(s), isNull,
           reason: 'a landless ruler still counts — the win is blocked');
 
+      // Every land-loss cause (earthquake, bankruptcy, war teardown) calls
+      // checkLandLoss inline — the old once-per-round sweep is gone.
       final events = <GameEvent>[];
-      vacateLandlessRealms(s, events);
+      checkLandLoss(s, s.realm(2), events);
 
       expect(s.realm(2).isVacant, isTrue);
       expect(events.any((e) => e.type == 'realmOverrun'), isTrue);

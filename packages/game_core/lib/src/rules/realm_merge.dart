@@ -63,13 +63,11 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
   source.pendingShipReturns.clear();
   target.population += source.population;
   target.troopCapacity += source.troopCapacity;
-  target.armySize += source.armySize;
   target.grainHarvest += source.grainHarvest;
   target.livestockHarvest += source.livestockHarvest;
   target.treasury += source.treasury;
   source.population = 0;
   source.troopCapacity = 0;
-  source.armySize = 0;
   source.grainHarvest = 0;
   source.livestockHarvest = 0;
   source.treasury = 0;

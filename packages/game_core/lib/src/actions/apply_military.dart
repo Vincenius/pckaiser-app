@@ -5,10 +5,10 @@ library;
 
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
+import '../rules/movement.dart' show warPathStep;
 import '../rules/troops.dart';
 import '../rules/war.dart';
 import '../state/constants.dart';
-import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
@@ -73,7 +73,7 @@ List<GameEvent> applyRecruitTroops(
     throw ActionException('Nicht genügend Quartiere in deinen Orten !');
   }
   _requireLevy(realm, action.men);
-  final cost = 5 * action.men + classSurcharge(action.troopClass);
+  final cost = recruitCost(action.men, action.troopClass);
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
@@ -84,6 +84,7 @@ List<GameEvent> applyRecruitTroops(
   quarterRecruits(realm, action.men, rng);
   final recruitName = clampName(action.name);
   realm.troops.add(Troop(
+    id: state.nextUnitId++,
     name: recruitName.isEmpty ? 'Rekruten' : recruitName,
     men: action.men,
     troopClass: action.troopClass,
@@ -119,7 +120,7 @@ List<GameEvent> applyHireSoeldner(
     GameState state, Realm realm, HireSoeldner action) {
   _requireNotAtWar(state, realm);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
-  final cost = 50 * action.men;
+  final cost = soeldnerCost(action.men);
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
@@ -128,6 +129,7 @@ List<GameEvent> applyHireSoeldner(
   _levyPopularityCost(state, realm, action.men);
   final soeldnerName = clampName(action.name);
   realm.troops.add(Troop(
+    id: state.nextUnitId++,
     name: soeldnerName.isEmpty ? 'Söldner' : soeldnerName,
     men: action.men,
     troopClass: TroopClass.infanterie,
@@ -153,20 +155,16 @@ List<GameEvent> applyReinforceTroop(
   _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
   if (action.men <= 0) throw ActionException('Das geht nicht !!!');
-  final int cost;
-  // Söldner cost 50/man and ignore garrison capacity; they are identified
-  // by NOT being garrison-counted — never by quality == 3, which a drilled
-  // regular also reaches (it would then be mischarged and skip the quarters
-  // check).
-  if (!troop.garrisonCounted) {
-    cost = 50 * action.men;
-  } else {
+  // Söldner ignore garrison capacity and the levy; the price split lives
+  // in [reinforceCost] (keyed on garrisonCounted, never on quality — a
+  // drilled regular shares the Söldner quality value).
+  if (troop.garrisonCounted) {
     if (realm.armySize + action.men > realm.troopCapacity) {
       throw ActionException('Nicht genügend Quartiere in deinen Orten !');
     }
     _requireLevy(realm, action.men);
-    cost = 5 * action.men;
   }
+  final cost = reinforceCost(troop, action.men);
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
@@ -206,7 +204,7 @@ List<GameEvent> applyDrillTroop(
   if (troop.quality >= Troop.drillCap) {
     throw ActionException('Diese Truppe ist bereits voll ausgebildet !');
   }
-  final cost = 5 * troop.men * troop.quality;
+  final cost = drillCost(troop);
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
@@ -233,7 +231,7 @@ List<GameEvent> applyTrainTroop(
   if (action.troopClass == troop.troopClass) {
     throw ActionException('Diese Ausbildung hat die Truppe schon !');
   }
-  final cost = 5 * troop.men + classSurcharge(action.troopClass);
+  final cost = retrainCost(troop, action.troopClass);
   if (realm.treasury < cost) {
     throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
   }
@@ -293,13 +291,7 @@ List<GameEvent> applyMergeTroops(
   }
   final from = unitAt(realm, action.fromIndex);
   final to = unitAt(realm, action.toIndex);
-  // garrisonCounted must match too: quality alone cannot tell a twice-
-  // drilled regular (quartered, wage via armySize) from a Söldner
-  // (quality 3, unquartered, wage via soeldnerMen) — absorbing one into
-  // the other corrupts the garrison and wage bookkeeping for good.
-  if (from.troopClass != to.troopClass ||
-      from.quality != to.quality ||
-      from.garrisonCounted != to.garrisonCounted) {
+  if (!canMergeTroops(from, to)) {
     throw ActionException('Nur gleichartige Truppen können vereinigt werden !');
   }
   to.men += from.men;
@@ -336,39 +328,57 @@ List<GameEvent> applyMoveTroop(GameState state, Realm realm, MoveTroop action) {
   return const [];
 }
 
-List<GameEvent> applyDeclareWar(
-    GameState state, Realm realm, DeclareWar action, Rng rng) {
+/// Why [realm] cannot declare ANY war right now (§11.1 general gates), or
+/// null. Shared by the DeclareWar validation, the AI's war check and the
+/// client's Militär menu (which greys the button with this exact reason)
+/// — the gates exist exactly once.
+String? warDeclarationBlocker(GameState state, Realm realm) {
   if (state.year < state.warStartYear) {
-    throw ActionException(
-        'Kriege sind erst ab dem Jahr ${state.warStartYear} erlaubt !');
+    return 'Kriege sind erst ab dem Jahr ${state.warStartYear} erlaubt !';
   }
   if (realm.warThisYear) {
-    throw ActionException('Du hast dieses Jahr schon einmal Krieg geführt !');
+    return 'Du hast dieses Jahr schon einmal Krieg geführt !';
   }
   if (realm.troops.where((t) => t.men > 0).isEmpty) {
-    throw ActionException('Du hast nicht genug Truppen !');
+    return 'Du hast nicht genug Truppen !';
   }
   if (state.activeWar != null) {
-    throw ActionException('Es tobt bereits ein anderer Krieg !');
+    return 'Es tobt bereits ein anderer Krieg !';
   }
-  if (action.targetSlot == realm.slot ||
-      action.targetSlot < 1 ||
-      action.targetSlot > World.realmCount ||
-      state.realm(action.targetSlot).isVacant) {
-    throw ActionException('Ungültiges Kriegsziel !');
+  return null;
+}
+
+/// Why [realm] cannot declare war on [targetSlot], or null when the
+/// declaration is legal — THE full DeclareWar validation. The AI filters
+/// its target picks with it, so an AI pick can never be rejected.
+String? declareWarBlocker(GameState state, Realm realm, int targetSlot) {
+  final general = warDeclarationBlocker(state, realm);
+  if (general != null) return general;
+  if (targetSlot == realm.slot ||
+      targetSlot < 1 ||
+      targetSlot > World.realmCount ||
+      state.realm(targetSlot).isVacant) {
+    return 'Ungültiges Kriegsziel !';
   }
   // [DEVIATION] No war against a slot your own ruler already holds
   // (ruler aliasing, §19) — merging is the intended path.
-  if (state.realm(action.targetSlot).rulerId == realm.rulerId) {
-    throw ActionException('Dieses Reich gehört bereits deinem Herrscher !');
+  if (state.realm(targetSlot).rulerId == realm.rulerId) {
+    return 'Dieses Reich gehört bereits deinem Herrscher !';
   }
   // Human-vs-human wars are allowed: war input alternates between the two
   // human sides (war.actingSlot, hot-seat handoff locally, the war clock
   // online).
   // [DEVIATION] Wars only against realms with a shared border.
-  if (!state.map.realmNeighbors(realm.slot).contains(action.targetSlot)) {
-    throw ActionException('Du hast keine gemeinsame Grenze !');
+  if (!state.map.realmNeighbors(realm.slot).contains(targetSlot)) {
+    return 'Du hast keine gemeinsame Grenze !';
   }
+  return null;
+}
+
+List<GameEvent> applyDeclareWar(
+    GameState state, Realm realm, DeclareWar action, Rng rng) {
+  final blocker = declareWarBlocker(state, realm, action.targetSlot);
+  if (blocker != null) throw ActionException(blocker);
   final events = <GameEvent>[];
   startWar(state, realm.slot, action.targetSlot, rng, events: events);
   // The people resent war, and repeated aggression compounds: the penalty
@@ -401,14 +411,47 @@ ActiveWar _warFor(GameState state, int slot, {WarPhase? phase}) {
     throw ActionException('Falsche Kriegsphase !');
   }
   // Human-vs-human rounds run sequentially (attacker first): only the
-  // acting side may issue war input. AI sides are exempt — their moves
-  // are driven by the round-end orchestration, not awaited input.
+  // acting side may issue LIVE war input. AI sides are exempt — their
+  // moves are driven by the round-end orchestration, not awaited input —
+  // and so is a DELEGATED human side (war.autoSlots): its units are moved
+  // by the same stance autopilot, out of turn by design. (Keying this on
+  // the raw dynasty status used to reject every autopilot move for a
+  // delegated human side — silently, behind the AI driver's old
+  // catch-and-ignore.)
   if (war.phase == WarPhase.rounds &&
-      state.dynasty(slot).status == DynastyStatus.human &&
+      warSideIsHuman(state, war, slot) &&
       warActingSlot(state) != slot) {
     throw ActionException('Dein Gegner ist gerade am Zug !');
   }
   return war;
+}
+
+/// The §11.2 per-step passability rule, shared by [applyWarMove]'s
+/// validation and [applyWarMarch]'s step planning (ONE definition — a
+/// planner that used its own copy could drift and plan a rejected step):
+///  - water only through an own Hafen (embark) or when already at sea
+///    (manual sea steering, tile by tile);
+///  - `[DESIGNED]` own, enemy and neutral unowned tiles are passable;
+///    only a THIRD realm's land is off-limits during the war.
+/// Returns the rejection message, or null when the step is legal.
+String? warStepBlocker(
+    GameState state, int slot, int enemySlot, int x, int y, int nx, int ny) {
+  final map = state.map;
+  if (!map.inBounds(nx, ny)) return 'Unpassierbar !';
+  if (map.isWaterAt(nx, ny)) {
+    final embarking =
+        map.ownerAt(nx, ny) == slot && map.buildingAt(nx, ny) == Building.hafen;
+    if (!embarking && !map.isWaterAt(x, y)) {
+      return 'Truppen gehen nur über einen eigenen Hafen an Bord !';
+    }
+  }
+  final tileOwner = map.ownerAt(nx, ny);
+  if (tileOwner != slot &&
+      tileOwner != enemySlot &&
+      tileOwner != World.niemand) {
+    return 'Durch fremde Reiche darf man im Krieg nicht ziehen !';
+  }
+  return null;
 }
 
 List<GameEvent> applyWarMove(
@@ -428,33 +471,11 @@ List<GameEvent> applyWarMove(
   final nx = troop.x + action.dx;
   final ny = troop.y + action.dy;
   final map = state.map;
-  if (!map.inBounds(nx, ny)) {
-    throw ActionException('Unpassierbar !');
-  }
-  // Manual sea steering: a unit may take to the water only through an own
-  // Hafen, then sail tile by tile over open water (1 Zug each, like the
-  // colony ship) and disembark on any reachable coast. Open water is
-  // unowned, so the territory check below lets it through; a foreign Hafen
-  // tile (a third realm's) is still off-limits.
-  if (map.isWaterAt(nx, ny)) {
-    final embarking = map.ownerAt(nx, ny) == realm.slot &&
-        map.buildingAt(nx, ny) == Building.hafen;
-    final alreadyAtSea = map.isWaterAt(troop.x, troop.y);
-    if (!embarking && !alreadyAtSea) {
-      throw ActionException(
-          'Truppen gehen nur über einen eigenen Hafen an Bord !');
-    }
-  }
   final enemySlot = war.opponentOf(realm.slot);
-  final tileOwner = map.ownerAt(nx, ny);
-  // `[DESIGNED]` Armies may march across neutral, unowned land
-  // (`World.niemand`) as well as own and enemy territory — only a THIRD
-  // realm's land is off-limits during the war.
-  if (tileOwner != realm.slot &&
-      tileOwner != enemySlot &&
-      tileOwner != World.niemand) {
-    throw ActionException(
-        'Durch fremde Reiche darf man im Krieg nicht ziehen !');
+  final stepBlocker =
+      warStepBlocker(state, realm.slot, enemySlot, troop.x, troop.y, nx, ny);
+  if (stepBlocker != null) {
+    throw ActionException(stepBlocker);
   }
 
   moves[action.unitIndex]--;
@@ -487,6 +508,95 @@ List<GameEvent> applyWarMove(
   // enemy capital arms the capture, but the occupier must HOLD the tile
   // through the enemy's full response round — `endWarRound` resolves it
   // and opens the claim settlement.
+  return events;
+}
+
+/// One whole march (§11.2): walks the unit step by step along the shortest
+/// passable LAND path toward the target — every step with the full
+/// [applyWarMove] semantics (combat, capture arming) — until it arrives,
+/// its round moves run out, a defender holds the tile, the unit is
+/// destroyed, or the war ends. Throws only when no step is possible AT ALL
+/// (no passable path, or the unit cannot move this round); once the unit
+/// moved, the march simply ends where it got to. Water crossings stay
+/// manual (single [WarMove] steps / [WarNavalTransport]).
+///
+/// The unit is tracked by OBJECT identity across the steps: combat
+/// compacts the troop list, so an index (or a name — they repeat) could
+/// silently come to mean a different unit mid-march. This used to live in
+/// the client as a 120-line loop with name+expected-position tracking.
+List<GameEvent> applyWarMarch(
+    GameState state, Realm realm, WarMarch action, Rng rng) {
+  final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
+  final troop = unitAt(realm, action.unitIndex);
+  final map = state.map;
+  if (!map.inBounds(action.x, action.y)) {
+    throw ActionException('Das Feld liegt außerhalb der Karte !');
+  }
+  if (troop.x == action.x && troop.y == action.y) {
+    throw ActionException('Da steht die Truppe doch schon !');
+  }
+  // Own land, the enemy's, and neutral unowned tiles are passable in war
+  // (mirrors [applyWarMove]); only third realms block the march.
+  final enemySlot = war.opponentOf(realm.slot);
+  final warOwners = {realm.slot, enemySlot, World.niemand};
+
+  final events = <GameEvent>[];
+  var guard = 0;
+  while (identical(state.activeWar, war) &&
+      war.phase == WarPhase.rounds &&
+      guard++ < 60) {
+    final index = realm.troops.indexOf(troop);
+    if (index < 0) break; // destroyed in a step's combat
+    if (troop.x == action.x && troop.y == action.y) break; // arrived
+    var step = warPathStep(map, troop.x, troop.y, action.x, action.y,
+        allowedOwners: warOwners);
+    if (step == null) {
+      // No land path (water target, unit at sea, island shore): manual
+      // straight-line legs — primary axis first, then the secondary —
+      // under the same per-step §11.2 rule ([warStepBlocker]) WarMove
+      // enforces, so a planned step can never be rejected.
+      final remX = action.x - troop.x;
+      final remY = action.y - troop.y;
+      final candidates = remX.abs() >= remY.abs()
+          ? [(remX.sign, 0), (0, remY.sign)]
+          : [(0, remY.sign), (remX.sign, 0)];
+      for (final (dx, dy) in candidates) {
+        if (dx == 0 && dy == 0) continue;
+        if (warStepBlocker(state, realm.slot, enemySlot, troop.x, troop.y,
+                troop.x + dx, troop.y + dy) ==
+            null) {
+          step = (dx, dy);
+          break;
+        }
+      }
+    }
+    if (step == null) {
+      if (events.isEmpty) {
+        throw ActionException('Unpassierbar !');
+      }
+      break; // combat reshaped the situation — stop where we stand
+    }
+    final beforeX = troop.x;
+    final beforeY = troop.y;
+    try {
+      events.addAll(applyWarMove(
+          state,
+          realm,
+          WarMove(
+              slot: action.slot, unitIndex: index, dx: step.$1, dy: step.$2),
+          rng));
+    } on ActionException {
+      // Out of moves for this round (or the step became illegal): a march
+      // that never moved surfaces the reason, a partial march just ends.
+      if (events.isEmpty) rethrow;
+      break;
+    }
+    if (realm.troops.contains(troop) &&
+        troop.x == beforeX &&
+        troop.y == beforeY) {
+      break; // combat: the defender held the tile
+    }
+  }
   return events;
 }
 
@@ -639,15 +749,7 @@ List<GameEvent> applySettlementAnnex(
   if (value > war.remainingClaim) {
     throw ActionException('So viel steht dir nicht zu !');
   }
-  var borders = false;
-  for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-    if (map.inBounds(action.x + dx, action.y + dy) &&
-        map.ownerAt(action.x + dx, action.y + dy) == realm.slot) {
-      borders = true;
-      break;
-    }
-  }
-  if (!borders) {
+  if (!map.bordersSlot(action.x, action.y, realm.slot)) {
     throw ActionException(
         'Du kannst dir nur Felder aneignen, die direkt an dein Land grenzen !');
   }
@@ -698,7 +800,7 @@ List<GameEvent> applySettlementFinish(
 
 List<GameEvent> applySpyMission(
     GameState state, Realm realm, SpyMission action, Rng rng) {
-  if (action.agents < 1 || action.agents > 30) {
+  if (action.agents < 1 || action.agents > maxAgentsPerMission) {
     throw ActionException('So viele Spione würden zu sehr auffallen');
   }
   if (action.targetSlot == realm.slot ||
@@ -721,7 +823,7 @@ List<GameEvent> applySpyMission(
 
 List<GameEvent> applyOrderAssassination(
     GameState state, Realm realm, OrderAssassination action) {
-  if (action.agents < 1 || action.agents > 30) {
+  if (action.agents < 1 || action.agents > maxAgentsPerMission) {
     throw ActionException('So viele Spione würden zu sehr auffallen');
   }
   if (action.targetSlot == realm.slot ||

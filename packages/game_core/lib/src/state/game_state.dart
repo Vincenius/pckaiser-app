@@ -35,6 +35,7 @@ class GameState {
     List<ChronicleRecord>? sultanChronicle,
     Map<int, Person>? persons,
     this.nextPersonId = 1,
+    this.nextUnitId = 1,
     List<AssassinationOrder>? assassinationOrders,
     this.currentPlayer = 1,
     required this.map,
@@ -64,7 +65,7 @@ class GameState {
     // Older documents are migrated up to the current schema first; newer
     // ones (from a future app version) are rejected with a clear error.
     final json = migrateGameStateJson(raw);
-    return GameState(
+    final state = GameState(
         schemaVersion: json['schemaVersion'] as int? ?? 1,
         year: json['year'] as int,
         reformationYear: json['reformationYear'] as int,
@@ -77,8 +78,7 @@ class GameState {
         // Additive — old saves keep the prefilled name suggestion.
         suggestChildNames: json['suggestChildNames'] as bool? ?? true,
         // Additive — old saves play the pre-difficulty AI (= mittel).
-        aiDifficulty:
-            AiDifficulty.fromName(json['aiDifficulty'] as String?),
+        aiDifficulty: AiDifficulty.fromName(json['aiDifficulty'] as String?),
         grainPrice: (json['grainPrice'] as num? ?? 0).toDouble(),
         cattlePrice: (json['cattlePrice'] as num? ?? 0).toDouble(),
         kaiserId: json['kaiserId'] as int?,
@@ -95,6 +95,10 @@ class GameState {
             (p as Map)['id'] as int: Person.fromJson(p.cast<String, dynamic>()),
         },
         nextPersonId: json['nextPersonId'] as int? ?? 1,
+        // Additive — the unit-id counter starts fresh for older saves; the
+        // post-load pass below lifts it above every id already in play and
+        // assigns ids to units that predate it.
+        nextUnitId: json['nextUnitId'] as int? ?? 1,
         assassinationOrders: (json['assassinationOrders'] as List?)
             ?.map((o) =>
                 AssassinationOrder.fromJson((o as Map).cast<String, dynamic>()))
@@ -131,6 +135,20 @@ class GameState {
         humanLossReason: json['humanLossReason'] as String?,
         // Additive — old saves have never marked an AI action phase.
         aiTurnActed: json['aiTurnActed'] as bool? ?? false);
+    // Stable unit ids (additive, 2026-07-14): units from saves written
+    // before the field existed carry id 0 — assign each a fresh id once,
+    // with the counter kept above every id already in play.
+    for (final realm in state.realms) {
+      for (final troop in realm.troops) {
+        if (troop.id >= state.nextUnitId) state.nextUnitId = troop.id + 1;
+      }
+    }
+    for (final realm in state.realms) {
+      for (final troop in realm.troops) {
+        if (troop.id == 0) troop.id = state.nextUnitId++;
+      }
+    }
+    return state;
   }
 
   static List<ChronicleRecord> _recordList(Object? json) => (json as List? ??
@@ -202,6 +220,9 @@ class GameState {
 
   /// Next person id to assign; ids are never reused.
   int nextPersonId;
+
+  /// Next troop-unit id to assign (see `Troop.id`); ids are never reused.
+  int nextUnitId;
 
   final List<AssassinationOrder> assassinationOrders;
 
@@ -317,6 +338,7 @@ class GameState {
         sultanChronicle: [for (final r in sultanChronicle) r.copy()],
         persons: {for (final e in persons.entries) e.key: e.value.copy()},
         nextPersonId: nextPersonId,
+        nextUnitId: nextUnitId,
         assassinationOrders: [for (final o in assassinationOrders) o.copy()],
         currentPlayer: currentPlayer,
         map: map.copy(),
@@ -353,6 +375,7 @@ class GameState {
         'sultanChronicle': [for (final r in sultanChronicle) r.toJson()],
         'persons': [for (final p in persons.values) p.toJson()],
         'nextPersonId': nextPersonId,
+        'nextUnitId': nextUnitId,
         'assassinationOrders': [
           for (final o in assassinationOrders) o.toJson()
         ],

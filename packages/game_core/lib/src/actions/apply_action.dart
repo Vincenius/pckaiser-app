@@ -1,4 +1,5 @@
 import '../rng/rng.dart';
+import '../rules/costs.dart';
 import '../rules/dynasty.dart';
 import '../rules/offices.dart';
 import '../rules/realm_merge.dart';
@@ -81,6 +82,7 @@ List<GameEvent> applyActionInPlace(
     MoveTroop() => applyMoveTroop(state, realm, action),
     DeclareWar() => applyDeclareWar(state, realm, action, rng),
     WarMove() => applyWarMove(state, realm, action, rng),
+    WarMarch() => applyWarMarch(state, realm, action, rng),
     WarNavalTransport() => applyWarNavalTransport(state, realm, action, rng),
     WarPlunder() => applyWarPlunder(state, realm, action, rng),
     WarPeaceWish() => applyWarPeaceWish(state, realm, action),
@@ -113,28 +115,6 @@ void _requireOnMap(WorldMap map, int x, int y) {
   }
 }
 
-bool _adjacentToOwn(WorldMap map, int slot, int x, int y) {
-  for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-    if (map.inBounds(x + dx, y + dy) && map.ownerAt(x + dx, y + dy) == slot) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/// Like [_adjacentToOwn], but only own LAND tiles count — an own Hafen on
-/// a water tile must not anchor further coastal builds.
-bool _adjacentToOwnLand(WorldMap map, int slot, int x, int y) {
-  for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-    if (map.inBounds(x + dx, y + dy) &&
-        map.ownerAt(x + dx, y + dy) == slot &&
-        Terrain.isLand(map.terrainAt(x + dx, y + dy))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /// Claiming an adjacent unowned land tile costs 1 movement point (§4).
 List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   final map = state.map;
@@ -145,7 +125,7 @@ List<GameEvent> _claimTile(GameState state, Realm realm, ClaimTile action) {
   if (map.ownerAt(action.x, action.y) != World.niemand) {
     throw ActionException('Das Feld hat bereits einen Besitzer !');
   }
-  if (!_adjacentToOwn(map, realm.slot, action.x, action.y)) {
+  if (!map.bordersSlot(action.x, action.y, realm.slot)) {
     throw ActionException('Das Feld grenzt nicht an dein Territorium !');
   }
   _requireMovementPoint(realm);
@@ -317,11 +297,11 @@ List<GameEvent> _build(GameState state, Realm realm, Build action, Rng rng) {
   // along the coast with no land contact at all.
   final hafenOnCoast = building == Building.hafen &&
       owner == World.niemand &&
-      _adjacentToOwnLand(map, realm.slot, action.x, action.y);
+      map.bordersSlotLand(action.x, action.y, realm.slot);
   final claimOnBuild = building != Building.hafen &&
       owner == World.niemand &&
       Terrain.isLand(terrain) &&
-      _adjacentToOwn(map, realm.slot, action.x, action.y);
+      map.bordersSlot(action.x, action.y, realm.slot);
   if (owner != realm.slot && !hafenOnCoast && !claimOnBuild) {
     throw ActionException('Das Feld gehört dir nicht !');
   }
@@ -408,12 +388,10 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
   if (building == Building.none) {
     throw ActionException('Hier steht doch gar nichts !');
   }
-  if (building == Building.dorf ||
-      building == Building.markt ||
-      building == Building.stadt) {
+  if (Building.isTown(building)) {
     throw ActionException('Orte können nicht abgerissen werden !');
   }
-  const cost = 100;
+  const cost = demolishCost;
   _requireMovementPoint(realm);
   _requireFunds(realm, cost);
 
@@ -510,7 +488,7 @@ List<GameEvent> _investShips(
   if (realm.investedThisTurn) {
     throw ActionException('Du hast diese Runde schon investiert !');
   }
-  final maxInvestment = realm.tileCount[Building.hafen] * 600;
+  final maxInvestment = shipInvestmentCap(realm);
   if (action.amount <= 0 ||
       action.amount > realm.treasury ||
       action.amount > maxInvestment) {
@@ -590,20 +568,15 @@ List<GameEvent> _relocateCapital(
     throw ActionException('Der neue Sitz muss auf deinem Territorium liegen !');
   }
   final building = map.buildingAt(action.x, action.y);
-  if (building != Building.stadt &&
-      building != Building.burg &&
-      building != Building.palast) {
+  if (!Building.isSeat(building)) {
     throw ActionException(
         'Der neue Sitz braucht eine Stadt, Burg oder einen Palast !');
   }
-  final currentBuilding = map.buildingAt(realm.capitalX, realm.capitalY);
   final lost = map.ownerAt(realm.capitalX, realm.capitalY) != realm.slot ||
-      (currentBuilding != Building.stadt &&
-          currentBuilding != Building.burg &&
-          currentBuilding != Building.palast);
+      !Building.isSeat(map.buildingAt(realm.capitalX, realm.capitalY));
   if (!lost) {
-    _requireFunds(realm, 5000);
-    realm.treasury -= 5000;
+    _requireFunds(realm, relocateCapitalCost);
+    realm.treasury -= relocateCapitalCost;
   }
   realm.capitalX = action.x;
   realm.capitalY = action.y;
@@ -690,16 +663,7 @@ List<GameEvent> _proposeMarriage(
       awaitingMarriageConsent(state, target.id)) {
     throw ActionException('Hier wird noch auf eine Antwort gewartet !');
   }
-  final eligible = proposer.spouseId == null &&
-      target.spouseId == null &&
-      proposer.gender != target.gender &&
-      proposer.age >= 14 &&
-      target.age >= 14 &&
-      (proposer.age - target.age).abs() < 10 &&
-      proposer.dynasty != target.dynasty &&
-      state.dynasty(proposer.dynasty).religion ==
-          state.dynasty(target.dynasty).religion;
-  if (!eligible) {
+  if (!marriageEligible(state, proposer, target)) {
     throw ActionException('Es gibt zur Zeit keinen passenden Partner !');
   }
   final events = <GameEvent>[];
@@ -747,8 +711,14 @@ List<GameEvent> _resolveDecision(
   if (decision.decidingSlot != action.slot) {
     throw ActionException('Diese Entscheidung steht dir nicht zu !');
   }
-  state.pendingDecisions.removeAt(index);
 
+  // Validate-then-commit: the decision is consumed AFTER its case ran (see
+  // the removal at the end). A case that rejects the submission
+  // (electionBribe over-spend, electorVote without a finalist) throws
+  // before any mutation — the working copy is discarded and the decision
+  // structurally stays pending for a corrected answer. A STALE decision
+  // (election over, war gone, heir dead) resolves as an explicit no-op
+  // (`break`) and is still consumed.
   final events = <GameEvent>[];
   final payload = decision.payload;
   final choice = action.choice;
@@ -797,30 +767,20 @@ List<GameEvent> _resolveDecision(
           !candidates.contains(heirId) ||
           state.persons[heirId] == null) {
         // The chosen heir died in the meantime (disease, assassination):
-        // the provisional heir simply stays crowned — never throw, or the
-        // decision would be re-prompted with no resolvable answer.
+        // the provisional heir simply stays crowned — a no-op consumes the
+        // decision (throwing would keep re-prompting an unanswerable one).
         break;
       }
       // Re-crown only slots still held by the provisional heir — conquest
-      // in between must not be undone.
-      var recrowned = false;
+      // in between must not be undone. No honors can have accrued to the
+      // placeholder in the meantime: a provisional heir is office-
+      // ineligible until this choice resolves (`rulesOnlyProvisionally`,
+      // the "Kaiser ohne Reich" root fix).
       for (final slot in (payload['slots'] as List).cast<int>()) {
         if (state.realm(slot).rulerId == provisional) {
           state.realm(slot).rulerId = heirId;
           regenderTitle(state, state.realm(slot));
-          recrowned = true;
         }
-      }
-      // [BUGFIX 2026-07-14, user report] A round rollover inside the
-      // provisional window may have handed the placeholder a Kurfürst
-      // seat or even the Kaiser/Sultan crown — those honors follow the
-      // realm to the chosen heir (or fall vacant), never stay with a now
-      // realm-less placeholder ("Kaiser ohne Reich"). Only when a realm
-      // actually changed hands: a placeholder deposed by conquest keeps
-      // the war path's own consequences.
-      if (recrowned && heirId != provisional) {
-        transferProvisionalHonors(
-            state, provisional, state.persons[heirId]!, events);
       }
       events.add(GameEvent(
         year: state.year,
@@ -866,7 +826,9 @@ List<GameEvent> _resolveDecision(
       // proposals) leaves it null — the caller's fallback deadline (half
       // the turn timer online) governs, exactly as without scheduling. An
       // agreed time may lie LATER than that fallback: both sides chose it.
-      if (!state.pendingDecisions.any((d) => d.type == 'warPlan') &&
+      // (The CURRENT decision is consumed after the switch — exclude it.)
+      if (!state.pendingDecisions
+              .any((d) => d.type == 'warPlan' && d.id != decision.id) &&
           war_rules.warSideIsHuman(state, war, war.attackerSlot) &&
           war_rules.warSideIsHuman(state, war, war.defenderSlot)) {
         final common = (war.planSlots[war.attackerSlot] ?? const <int>[])
@@ -919,9 +881,8 @@ List<GameEvent> _resolveDecision(
 
     case 'relocateCapital':
       // Forced re-seat after a lost capital — free. An invalid/stale pick
-      // is a no-op; `reseatLostCapitals` re-prompts next round if the seat
-      // is still lost (never throw, or the removed decision is restored
-      // with the discarded copy and re-prompted forever).
+      // is a no-op that consumes the decision; `reseatLostCapitals`
+      // re-prompts next round if the seat is still lost.
       final x = choice['x'] as int?;
       final y = choice['y'] as int?;
       final building = (x != null && y != null && state.map.inBounds(x, y))
@@ -930,9 +891,7 @@ List<GameEvent> _resolveDecision(
       if (x != null &&
           y != null &&
           state.map.ownerAt(x, y) == decision.decidingSlot &&
-          (building == Building.stadt ||
-              building == Building.burg ||
-              building == Building.palast)) {
+          Building.isSeat(building)) {
         realm.capitalX = x;
         realm.capitalY = y;
         events.add(GameEvent(
@@ -951,9 +910,7 @@ List<GameEvent> _resolveDecision(
           election.office.name != payload['office'] ||
           election.bribesDone.contains(finalistId)) {
         // The election moved on without this decision (e.g. the finalist
-        // died) — resolving must not throw, or the now-removed decision
-        // would be restored with the discarded state copy and re-prompted
-        // forever. Stale phase: the resolution is simply a no-op.
+        // died) — a stale answer is a no-op that consumes the decision.
         break;
       }
       // Validate exactly the gifts that will be applied — summing raw
@@ -1017,12 +974,15 @@ List<GameEvent> _resolveDecision(
 
     default:
       // A decision type this build does not know — written by a newer app
-      // version (decision types are additive schema changes). Throwing
-      // would restore the decision with the discarded state copy and
-      // re-prompt it forever; dropping it resolves to the rules' default.
+      // version (decision types are additive schema changes). Consuming it
+      // resolves to the rules' default; throwing would leave it pending
+      // and re-prompted forever.
       break;
   }
 
+  // Commit: the answer was accepted (or the decision was stale) — consume
+  // it. Rejections threw above, so the decision is still pending then.
+  state.pendingDecisions.remove(decision);
   return events;
 }
 
@@ -1042,22 +1002,16 @@ List<GameEvent> _changeReligion(
   if (religion == dynasty.religion) {
     throw ActionException('Das ist bereits deine Religion !');
   }
-  // Inclusive of the event year itself: the Reformation/Ottoman event fires
-  // in the round where year == eventYear, and its announcement invites the
-  // conversion — blocking it for one more year read as a bug (user report
-  // 2026-07-10).
-  if (religion == Religion.evangelisch && state.year < state.reformationYear) {
-    throw ActionException('Die Reformation hat noch nicht stattgefunden !');
-  }
-  if (religion == Religion.moslemisch && state.year < state.ottomanYear) {
-    throw ActionException('Der Islam ist noch nicht verfügbar !');
+  // Availability is inclusive of the event year itself (see
+  // [religionAvailable]) — blocking the announcement year read as a bug
+  // (user report 2026-07-10).
+  if (!religionAvailable(state, religion)) {
+    throw ActionException(religion == Religion.evangelisch
+        ? 'Die Reformation hat noch nicht stattgefunden !'
+        : 'Der Islam ist noch nicht verfügbar !');
   }
 
-  final cost = switch (religion) {
-    Religion.evangelisch => 500,
-    Religion.moslemisch => 1000,
-    _ => 0,
-  };
+  final cost = religionChangeCost(religion);
   _requireFunds(realm, cost);
   realm.treasury -= cost;
   dynasty.religion = religion;

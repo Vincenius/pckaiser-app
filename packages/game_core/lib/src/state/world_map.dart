@@ -58,6 +58,41 @@ class WorldMap {
   bool isWaterAt(int x, int y) => Terrain.isWater(terrainAt(x, y));
   bool isLandAt(int x, int y) => Terrain.isLand(terrainAt(x, y));
 
+  /// The four orthogonal step offsets — THE definition of adjacency
+  /// (movement, claims, borders, war marches all use it).
+  static const List<(int, int)> orthogonalSteps = [
+    (-1, 0),
+    (1, 0),
+    (0, 1),
+    (0, -1),
+  ];
+
+  /// In-bounds orthogonal neighbor coordinates of ([x],[y]).
+  Iterable<(int, int)> neighborsOf(int x, int y) sync* {
+    for (final (dx, dy) in orthogonalSteps) {
+      if (inBounds(x + dx, y + dy)) yield (x + dx, y + dy);
+    }
+  }
+
+  /// Whether any orthogonal neighbor of ([x],[y]) is owned by [slot] —
+  /// the shared border test (tile claims, settlement annexes, hafen
+  /// anchoring, AI expansion).
+  bool bordersSlot(int x, int y, int slot) {
+    for (final (nx, ny) in neighborsOf(x, y)) {
+      if (ownerAt(nx, ny) == slot) return true;
+    }
+    return false;
+  }
+
+  /// Like [bordersSlot], but only [slot]'s LAND tiles count — an own Hafen
+  /// on a water tile must not anchor further coastal builds.
+  bool bordersSlotLand(int x, int y, int slot) {
+    for (final (nx, ny) in neighborsOf(x, y)) {
+      if (ownerAt(nx, ny) == slot && isLandAt(nx, ny)) return true;
+    }
+    return false;
+  }
+
   /// All realm slots whose territory orthogonally touches [slot]'s — wars
   /// may only be declared across a shared border.
   Set<int> realmNeighbors(int slot) {
@@ -65,9 +100,8 @@ class WorldMap {
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {
         if (ownerAt(x, y) != slot) continue;
-        for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-          if (!inBounds(x + dx, y + dy)) continue;
-          final other = ownerAt(x + dx, y + dy);
+        for (final (nx, ny) in neighborsOf(x, y)) {
+          final other = ownerAt(nx, ny);
           if (other != slot && other != World.niemand) neighbors.add(other);
         }
       }

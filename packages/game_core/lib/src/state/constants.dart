@@ -85,6 +85,17 @@ abstract final class Building {
   /// "(S)chiff" colony ship (§4/§9.3) — not a building on a tile: sent
   /// from a Hafen to claim a free land tile across water, consumed on use.
   static const int shipCost = 700;
+
+  /// Seat-eligible buildings (§6.2/§17): a realm's capital must stand on
+  /// a Stadt, Burg or Palast. THE one definition shared by the relocate
+  /// action, the automatic re-seat, the key-point occupation test and the
+  /// client's seat pickers.
+  static bool isSeat(int building) =>
+      building == stadt || building == burg || building == palast;
+
+  /// Town buildings (§8.3): tiles that carry a `Town` object.
+  static bool isTown(int building) =>
+      building == dorf || building == markt || building == stadt;
 }
 
 /// World dimensions and slot conventions (§2, §3.1).

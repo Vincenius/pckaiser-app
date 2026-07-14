@@ -4,11 +4,64 @@ import '../rng/rng.dart';
 import '../state/realm.dart';
 import '../state/troop.dart';
 
-/// Per-man combat power (§10.1): `(3 × class + quality) / 10`.
-double powerPerMan(Troop troop) => (3 * troop.troopClass + troop.quality) / 10;
+/// Per-man combat power (§10.1) for a class/quality pair: `(3 × class +
+/// quality) / 10`. The ONE formula behind [powerPerMan]/[troopStrength]
+/// and every client-side strength preview (recruit/retrain sheets).
+double powerPerManOf(int troopClass, int quality) =>
+    (3 * troopClass + quality) / 10;
+
+/// Per-man combat power of an existing unit (§10.1).
+double powerPerMan(Troop troop) =>
+    powerPerManOf(troop.troopClass, troop.quality);
 
 /// A unit's total combat strength.
 double troopStrength(Troop troop) => troop.men * powerPerMan(troop);
+
+/// Rounded strength of a hypothetical unit — the preview the recruit and
+/// retrain sheets show before the unit exists.
+int previewTroopStrength(int men, int troopClass, int quality) =>
+    (men * powerPerManOf(troopClass, quality)).round();
+
+/// Price of one regular recruit (§10.1) — the base of the recruit,
+/// reinforce, retrain and drill costs.
+const int recruitCostPerMan = 5;
+
+/// Price of one Söldner (§10.3): hired abroad at 10× the levy price,
+/// exempt from quarters and the levy limit.
+const int soeldnerCostPerMan = 50;
+
+/// Cost of raising [men] fresh regulars of [troopClass] (§10.1).
+int recruitCost(int men, int troopClass) =>
+    recruitCostPerMan * men + classSurcharge(troopClass);
+
+/// Cost of hiring [men] Söldner (§10.3).
+int soeldnerCost(int men) => soeldnerCostPerMan * men;
+
+/// Cost of reinforcing [troop] with [men]: levy price for regulars,
+/// Söldner price for a mercenary unit (identified by NOT being
+/// garrison-counted — never by quality, which a drilled regular shares).
+int reinforceCost(Troop troop, int men) =>
+    troop.garrisonCounted ? recruitCostPerMan * men : soeldnerCostPerMan * men;
+
+/// Cost of one drill step for [troop] (§10.2 `[DESIGNED]`): scales with
+/// the current level — `5 × men × quality`.
+int drillCost(Troop troop) => recruitCostPerMan * troop.men * troop.quality;
+
+/// Cost of retraining [troop] to [troopClass]: 5 T/man plus the class
+/// surcharge.
+int retrainCost(Troop troop, int troopClass) =>
+    recruitCostPerMan * troop.men + classSurcharge(troopClass);
+
+/// Whether two units may be merged (§10.2 bookkeeping): class, quality AND
+/// garrison accounting must match — quality alone cannot tell a twice-
+/// drilled regular (quartered, wage via armySize) from a Söldner
+/// (quality 3, unquartered, wage via soeldnerMen); absorbing one into the
+/// other corrupts the garrison and wage bookkeeping for good. The ONE
+/// predicate shared by the action gate and the client's merge picker.
+bool canMergeTroops(Troop a, Troop b) =>
+    a.troopClass == b.troopClass &&
+    a.quality == b.quality &&
+    a.garrisonCounted == b.garrisonCounted;
 
 /// `[DESIGNED 2026-07-14, user report]` Per-turn levy limit for REGULAR
 /// recruits: at most 10% of the population (min. 100 men) can be levied
@@ -59,13 +112,12 @@ void quarterRecruits(Realm realm, int men, Rng rng) {
       assigned++;
     }
   }
-  realm.armySize += assigned;
 }
 
 /// Removes a disbanded/destroyed garrison-counted unit's men from the
-/// town garrisons and `armySize` (§10.2 bookkeeping).
+/// town garrisons (§10.2 bookkeeping; `armySize` is derived from the
+/// units themselves).
 void releaseGarrison(Realm realm, int men) {
-  realm.armySize = math.max(0, realm.armySize - men);
   var left = men;
   for (final town in realm.towns) {
     if (left == 0) break;

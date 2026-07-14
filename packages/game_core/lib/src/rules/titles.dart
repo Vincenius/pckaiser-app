@@ -4,6 +4,23 @@ import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
 
+/// Whether a stored title class is the female form (`class + 12`, §16.1).
+bool isFemaleTitleClass(int titleClass) => titleClass > 12;
+
+/// The gender-neutral rank of a stored title class — THE one place the
+/// `class − 12` female-form convention is decoded (§16.1).
+int baseTitleClass(int titleClass) =>
+    isFemaleTitleClass(titleClass) ? titleClass - 12 : titleClass;
+
+/// Christian-equivalent rank: Muslim classes 9–12 map to 1/3/6/8 for the
+/// tables that only exist on the Christian ladder — the §6.3 movement roll
+/// and the §19.2 bankruptcy limits share this ONE mapping.
+int christianEquivalentClass(int titleClass) {
+  const muslimEquivalent = {9: 1, 10: 3, 11: 6, 12: 8};
+  final base = baseTitleClass(titleClass);
+  return muslimEquivalent[base] ?? base;
+}
+
 /// Prestige score (§16.2):
 /// `population + treasury + 10×weight + 1,000×Häfen + 10,000×Burgen +
 /// 20,000×Paläste`.
@@ -38,8 +55,8 @@ const List<(int, int)> _muslimLadder = [
 /// per-turn promotion check climbs back by prestige. Catholic↔Protestant
 /// share the Christian ladder, so nothing changes there.
 void switchTitleLadder(Realm realm, int religion) {
-  final female = realm.titleClass > 12;
-  final base = female ? realm.titleClass - 12 : realm.titleClass;
+  final female = isFemaleTitleClass(realm.titleClass);
+  final base = baseTitleClass(realm.titleClass);
   if (religion == Religion.moslemisch) {
     if (base <= 8) realm.titleClass = 9 + (female ? 12 : 0);
   } else if (base >= 9) {
@@ -55,16 +72,15 @@ void switchTitleLadder(Realm realm, int religion) {
 void regenderTitle(GameState state, Realm realm) {
   final ruler = state.person(realm.rulerId);
   if (ruler == null) return;
-  final base = realm.titleClass > 12 ? realm.titleClass - 12 : realm.titleClass;
-  realm.titleClass = base + (ruler.isMale ? 0 : 12);
+  realm.titleClass = baseTitleClass(realm.titleClass) + (ruler.isMale ? 0 : 12);
 }
 
 /// §16.2 promotion check ("checked every turn, every player"): promotes
 /// the realm's title when the prestige score reaches a higher class.
 void checkTitlePromotion(GameState state, Realm realm, List<GameEvent> events) {
   if (realm.isVacant) return;
-  final female = realm.titleClass > 12;
-  final current = female ? realm.titleClass - 12 : realm.titleClass;
+  final female = isFemaleTitleClass(realm.titleClass);
+  final current = baseTitleClass(realm.titleClass);
   final muslim = state.dynasty(realm.slot).religion == Religion.moslemisch;
   final ladder = muslim ? _muslimLadder : _christianLadder;
 

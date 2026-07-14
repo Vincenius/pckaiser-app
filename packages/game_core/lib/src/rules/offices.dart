@@ -10,6 +10,7 @@ import '../state/pending_decision.dart';
 import '../state/person.dart';
 import '../state/realm.dart';
 import 'protection.dart';
+import 'titles.dart' show baseTitleClass;
 
 /// World-phase office bookkeeping (§17): refill Kurfürst seats, then start
 /// or advance a Kaiser/Sultan election.
@@ -40,15 +41,40 @@ int _rulerTitleClass(GameState state, int personId) {
   var best = 0;
   for (final realm in state.realms) {
     if (realm.rulerId != personId) continue;
-    final base =
-        realm.titleClass > 12 ? realm.titleClass - 12 : realm.titleClass;
+    final base = baseTitleClass(realm.titleClass);
     if (base > best) best = base;
   }
   return best;
 }
 
+/// Whether [personId] rules ONLY provisionally right now: every realm they
+/// hold came to them as the priority heir of an unresolved `heirChoice`
+/// (§15.4 — the player may still crown someone else). Such a placeholder
+/// must not gain offices: a round rollover inside the window used to hand
+/// them a Kurfürst seat or the crown, and an heir override then left the
+/// office with a realm-less person forever ("Kaiser ohne Reich",
+/// 2026-07-14). Derived from the pending decision itself — no extra state
+/// to keep in sync. A person who also holds a realm OUTSIDE the pending
+/// choice is a legitimate ruler and stays eligible.
+bool rulesOnlyProvisionally(GameState state, int personId) {
+  final provisionalSlots = <int>{};
+  for (final d in state.pendingDecisions) {
+    if (d.type == 'heirChoice' && d.payload['provisionalHeirId'] == personId) {
+      provisionalSlots.addAll((d.payload['slots'] as List).cast<int>());
+    }
+  }
+  if (provisionalSlots.isEmpty) return false;
+  for (final realm in state.realms) {
+    if (realm.rulerId == personId && !provisionalSlots.contains(realm.slot)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// §17.2 eligibility: a living dynasty's ruler, male, age ≥ 14, dynasty
-/// religion ≠ Muslim, not already an elector.
+/// religion ≠ Muslim, not already an elector, not a provisional heir
+/// awaiting the player's `heirChoice` ([rulesOnlyProvisionally]).
 List<Person> _kurfuerstCandidates(GameState state) {
   final seen = <int>{};
   final candidates = <Person>[];
@@ -58,7 +84,8 @@ List<Person> _kurfuerstCandidates(GameState state) {
     if (!ruler.isMale ||
         ruler.age < 14 ||
         state.dynasty(ruler.dynasty).religion == Religion.moslemisch ||
-        state.kurfuerstenIds.contains(ruler.id)) {
+        state.kurfuerstenIds.contains(ruler.id) ||
+        rulesOnlyProvisionally(state, ruler.id)) {
       continue;
     }
     candidates.add(ruler);
@@ -113,12 +140,13 @@ void maybeStartElection(
     // A seated Kurfürst who no longer rules any realm (deposed
     // by internal strife, realm captured) keeps the vote but is no longer
     // a candidate — a throne without a realm could never collect the pot.
+    // A provisional heir (unresolved heirChoice) is no candidate either.
     candidates = _kurfuerstCandidates(state)
       ..addAll([
         for (final id in state.kurfuerstenIds)
-          // Candidates must currently rule a realm — a deposed Kurfürst
-          // must not be electable to a throne with no realm behind it.
-          if (state.persons[id] != null && realmRuledBy(state, id) != null)
+          if (state.persons[id] != null &&
+              realmRuledBy(state, id) != null &&
+              !rulesOnlyProvisionally(state, id))
             state.persons[id]!,
       ]);
   } else {
@@ -131,7 +159,11 @@ void maybeStartElection(
       if (state.dynasty(ruler.dynasty).religion != Religion.moslemisch) {
         continue;
       }
-      if (ruler.isMale && ruler.age >= 14) candidates.add(ruler);
+      if (ruler.isMale &&
+          ruler.age >= 14 &&
+          !rulesOnlyProvisionally(state, ruler.id)) {
+        candidates.add(ruler);
+      }
     }
     electorIds = [for (final c in candidates) c.id];
   }
@@ -366,91 +398,6 @@ void _crown(
       'acclaimed': acclaimed,
     },
   ));
-}
-
-/// `[BUGFIX 2026-07-14, user report]` The priority heir installed on a
-/// human ruler's death is a PLACEHOLDER until the heirChoice decision
-/// resolves — but a round rollover inside that window runs the office
-/// phase, which can hand the placeholder a Kurfürst seat or even crown
-/// them Kaiser/Sultan (they carry the deceased's König title). When the
-/// player then picks a DIFFERENT heir, the realms are re-crowned
-/// retroactively (apply_action `heirChoice`) — and every honor the
-/// placeholder collected must follow the realm the same way, or the game
-/// is left with an office holder who rules nothing and, since elections
-/// only re-trigger on a VACANT office, stays enthroned forever
-/// ("Kaiser ohne Reich"). Seats/crowns pass to the chosen heir when they
-/// are eligible, otherwise they fall vacant for the next refill/election.
-void transferProvisionalHonors(
-    GameState state, int provisionalId, Person heir, List<GameEvent> events) {
-  final seat = state.kurfuerstenIds.indexOf(provisionalId);
-  if (seat >= 0) {
-    if (_officeEligible(state, heir, muslim: false) &&
-        !state.kurfuerstenIds.contains(heir.id)) {
-      state.kurfuerstenIds[seat] = heir.id;
-    } else {
-      state.kurfuerstenIds.removeAt(seat);
-    }
-  }
-  if (state.kaiserId == provisionalId) {
-    _retitleOffice(
-        state, Office.kaiser, state.kaiserChronicle, provisionalId, heir,
-        events);
-  }
-  if (state.sultanId == provisionalId) {
-    _retitleOffice(
-        state, Office.sultan, state.sultanChronicle, provisionalId, heir,
-        events);
-  }
-}
-
-/// §17.2 person eligibility for a seat/crown: male, age ≥ 14, and the
-/// dynasty religion matching the office (Kaiser/Kurfürst: non-Muslim,
-/// Sultan: Muslim).
-bool _officeEligible(GameState state, Person person, {required bool muslim}) {
-  final isMuslim =
-      state.dynasty(person.dynasty).religion == Religion.moslemisch;
-  return person.isMale && person.age >= 14 && isMuslim == muslim;
-}
-
-/// Passes an office the provisional heir held to the true [heir]: the open
-/// chronicle record is REWRITTEN (same accession year — retroactively it
-/// was the heir's reign all along). An ineligible heir vacates the office
-/// instead and the placeholder's record is dropped as never legitimate.
-void _retitleOffice(GameState state, Office office,
-    List<ChronicleRecord> chronicle, int provisionalId, Person heir,
-    List<GameEvent> events) {
-  final index = chronicle.lastIndexWhere(
-      (r) => r.deathYear == null && r.personId == provisionalId);
-  if (_officeEligible(state, heir, muslim: office == Office.sultan)) {
-    if (office == Office.kaiser) {
-      state.kaiserId = heir.id;
-    } else {
-      state.sultanId = heir.id;
-    }
-    if (index >= 0) {
-      final old = chronicle[index];
-      chronicle[index] = ChronicleRecord(
-        name: heir.name,
-        accessionYear: old.accessionYear,
-        personId: heir.id,
-        slot: old.slot,
-      );
-    }
-    events.add(GameEvent(
-      year: state.year,
-      slot: heir.dynasty,
-      type: 'crowned',
-      visibility: EventVisibility.public,
-      payload: {'office': office.name, 'name': heir.name, 'acclaimed': true},
-    ));
-  } else {
-    if (office == Office.kaiser) {
-      state.kaiserId = null;
-    } else {
-      state.sultanId = null;
-    }
-    if (index >= 0) chronicle.removeAt(index);
-  }
 }
 
 /// §17.5: a Kaiser/Sultan dying in office gets their chronicle record

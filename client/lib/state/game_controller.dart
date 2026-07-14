@@ -23,7 +23,7 @@ class GameController extends ChangeNotifier {
   /// and every action dispatch is a silent no-op — the server would 403 an
   /// off-turn submission anyway, this just keeps the UI honest.
   GameController.readOnly(this._session, {required int viewSlot})
-      : _viewSlotOverride = viewSlot {
+    : _viewSlotOverride = viewSlot {
     _handoffToSlot = viewSlot;
     _lastSeat = viewSlot;
   }
@@ -194,6 +194,28 @@ class GameController extends ChangeNotifier {
   /// of turn during the preparation window).
   bool _prepStanceAllowed(PlayerAction action) =>
       action is SetTroopStance && action.slot == warPrepSlot;
+
+  /// The war ([attacker, defender, year] — §11.1 allows one war per realm
+  /// per year) whose defender briefing already fired. An explicit marker:
+  /// the old approach inferred "brief exactly once" from whether the
+  /// `warDeclared` event was still inside the recap window, which coupled
+  /// a one-time UI popup to recap-baseline timing.
+  String? _warBriefedKey;
+
+  /// True exactly once per war for its defender: whether the "Krieg !"
+  /// orientation popup is still owed. Marks the war as briefed.
+  bool takeWarBriefing(int slot) {
+    final war = state.activeWar;
+    if (war == null ||
+        war.phase != WarPhase.rounds ||
+        war.defenderSlot != slot) {
+      return false;
+    }
+    final key = '${war.attackerSlot}-${war.defenderSlot}-${state.year}';
+    if (_warBriefedKey == key) return false;
+    _warBriefedKey = key;
+    return true;
+  }
 
   /// Events the seated player has not seen yet — the recap card. The
   /// baseline is an absolute event position (`prunedEventCount + index`,

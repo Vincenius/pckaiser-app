@@ -9,7 +9,6 @@ import '../rules/offices.dart';
 import '../rules/population.dart';
 import '../rules/titles.dart';
 import '../rules/victory.dart';
-import '../rules/war.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
@@ -136,13 +135,11 @@ TurnResult completeTurn(GameState state, Rng rng) {
 void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   state.year++;
   rollMarketPrices(state, rng);
-  runWorldEvents(state, rng, events); // §18
+  // §18 world events; every cause of land loss (earthquake, bankruptcy
+  // seizure, war teardown) vacates a landless realm inline via
+  // checkLandLoss — no round sweep needed.
+  runWorldEvents(state, rng, events);
   normalizeTowns(state);
-  // Vacate any realm an earthquake (or other non-war loss) just stripped of
-  // its last tile, BEFORE re-seating or the win check sees it: a landless
-  // ruler would otherwise linger as a "zombie" and keep the last player
-  // standing from ever owning everything. War losses are vacated inline.
-  vacateLandlessRealms(state, events);
   // Re-seat any realm whose capital tile was lost this round (earthquake,
   // war claim, bankruptcy seizure): AI picks automatically, humans are
   // prompted with a `relocateCapital` decision.

@@ -61,6 +61,9 @@ GameState sampleState() {
     y: 10,
   ));
   realm1.troops.add(Troop(
+    // A CURRENT save carries assigned unit ids; an id-less unit (legacy
+    // save) would get one assigned on load — see the migration test below.
+    id: 1,
     name: 'Garde',
     men: 10,
     troopClass: TroopClass.infanterie,
@@ -91,6 +94,7 @@ GameState sampleState() {
     ],
     persons: {1: founder, 2: spouse, 3: child},
     nextPersonId: 4,
+    nextUnitId: 2,
     assassinationOrders: [
       AssassinationOrder(sponsorSlot: 2, targetSlot: 1, count: 3),
     ],
@@ -135,6 +139,30 @@ void main() {
           (jsonDecode(json1) as Map).cast<String, dynamic>());
       final json2 = jsonEncode(decoded.toJson());
       expect(json2, json1);
+    });
+
+    test('a legacy save without unit ids gets them assigned once on load', () {
+      final source = sampleState().toJson();
+      // Strip the additive id fields, like a pre-2026-07-14 save.
+      (source['realms'] as List).cast<Map<String, dynamic>>().forEach((r) {
+        for (final t in (r['troops'] as List).cast<Map<String, dynamic>>()) {
+          t.remove('id');
+        }
+      });
+      source.remove('nextUnitId');
+
+      final loaded = GameState.fromJson(
+          (jsonDecode(jsonEncode(source)) as Map).cast<String, dynamic>());
+
+      final ids = [
+        for (final realm in loaded.realms)
+          for (final troop in realm.troops) troop.id,
+      ];
+      expect(ids, everyElement(greaterThan(0)));
+      expect(ids.toSet().length, ids.length, reason: 'ids are unique');
+      expect(
+          loaded.nextUnitId, greaterThan(ids.reduce((a, b) => a > b ? a : b)),
+          reason: 'the counter stays above every id in play');
     });
 
     test('fromJson detaches index-mutated lists from the source JSON', () {

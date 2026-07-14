@@ -267,7 +267,6 @@ void _runTownTransitions(GameState state, Realm realm, List<GameEvent> events) {
 
     if (town.population < 5) {
       // Garrison soldiers are removed from the army; the tile reverts.
-      realm.armySize = math.max(0, realm.armySize - town.garrison);
       cutGarrisonTroops(realm, town.garrison);
       realm.population -= math.max(0, town.population);
       realm.troopCapacity -= town.troopCapacity;
@@ -297,13 +296,11 @@ void _setTownBuilding(GameState state, Realm realm, Town town, int building) {
   state.map.building[state.map.index(town.x, town.y)] = building;
 }
 
-/// Removes [count] garrisoned men from the realm: town garrisons,
-/// garrison-counted troop units and `armySize` all shrink together;
-/// emptied units are deleted (§8.2, §10.2).
+/// Removes [count] garrisoned men from the realm: town garrisons and
+/// garrison-counted troop units shrink together (`armySize` is derived
+/// from the units); emptied units are deleted (§8.2, §10.2).
 void removeArmyMen(Realm realm, int count) {
   if (count <= 0) return;
-  realm.armySize = math.max(0, realm.armySize - count);
-
   var left = count;
   for (final town in realm.towns) {
     if (left == 0) break;
@@ -337,7 +334,6 @@ void normalizeTowns(GameState state) {
       if (town.garrison > town.troopCapacity) {
         final excess = town.garrison - town.troopCapacity;
         town.garrison = town.troopCapacity;
-        realm.armySize = math.max(0, realm.armySize - excess);
         cutGarrisonTroops(realm, excess);
       }
     }

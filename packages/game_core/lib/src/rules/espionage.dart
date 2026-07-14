@@ -18,6 +18,11 @@ const int militarySpyCost = 200;
 const int assassinCost = 250;
 const int guardCost = 100;
 
+/// Largest squad per mission (§13): "So viele Spione würden zu sehr
+/// auffallen" — shared by the spy/assassination action gates and the AI's
+/// squad sizing.
+const int maxAgentsPerMission = 30;
+
 /// Fuzzes a spied value ±10% uniform — never show exact numbers
 /// (§13.2 `[APPROX]`, adopted as final design).
 int fuzz(int value, Rng rng) => (value * (0.9 + rng.nextReal() * 0.2)).round();

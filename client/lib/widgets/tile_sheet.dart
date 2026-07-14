@@ -1,30 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/labels.dart';
 import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 import 'menus.dart' show showTroopActions;
-
-const _buildingNames = [
-  '',
-  'Kornfeld',
-  'Weide',
-  'Dorf',
-  'Markt',
-  'Stadt',
-  'Burg',
-  'Palast',
-  'Hafen',
-];
-
-bool _adjacentToOwn(gc.WorldMap map, int slot, int x, int y) {
-  for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-    if (map.inBounds(x + dx, y + dy) && map.ownerAt(x + dx, y + dy) == slot) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /// Tap-tile action sheet (PROJECT_REQUIREMENTS "Tap tile → action sheet"):
 /// available builds with inline costs; confirmation before irreversible
@@ -112,7 +92,8 @@ Future<void> showTileActionSheet(
       owner == gc.World.niemand &&
       isLand &&
       hasMoves &&
-      _adjacentToOwn(map, slot, x, y);
+      // The engine's own border test (claim-on-build rule).
+      map.bordersSlot(x, y, slot);
   final buildable =
       owner == slot && building == gc.Building.none && isLand && hasMoves;
   final money = realm.treasury;
@@ -197,7 +178,7 @@ Future<void> showTileActionSheet(
       ListTile(
         leading: const Icon(Icons.sailing),
         title: const Text('Schiff kaufen'),
-        trailing: const Text('700 T'),
+        trailing: Text('${gc.Building.shipCost} T'),
         subtitle: Text(
           !hasMoves
               ? 'Du hast keine Züge mehr !'
@@ -288,7 +269,7 @@ Future<void> showTileActionSheet(
       building != gc.Building.stadt) {
     act(
       tr('demolish'),
-      '100 T',
+      '${gc.demolishCost} T',
       gc.Demolish(slot: slot, x: x, y: y),
       confirm: true,
     );
@@ -315,7 +296,6 @@ Future<void> showTileActionSheet(
 
   // Spied enemy units on this tile (newest military intel per target):
   // a snapshot from the spy year, matching the map's ghost badges.
-  const classNames = ['Infanterie', 'Kavallerie', 'Artillerie'];
   final newestIntel = <int, gc.IntelReport>{};
   for (final report in realm.intelReports) {
     if (report.values.containsKey('unitCount')) {
@@ -338,7 +318,7 @@ Future<void> showTileActionSheet(
             '${gc.countryNames[report.targetSlot]}',
           ),
           subtitle: Text(
-            '~${men ?? '?'} Mann ${classNames[cls.clamp(0, 2)]} — '
+            '~${men ?? '?'} Mann ${troopClassName(cls)} — '
             'Stand Anno ${report.year}',
           ),
         ),
@@ -367,7 +347,7 @@ Future<void> showTileActionSheet(
                   : terrain == gc.Terrain.berg
                   ? 'Berg'
                   : 'Wasser'}'
-              '${building == gc.Building.none ? '' : ' — ${_buildingNames[building]}'}',
+              '${building == gc.Building.none ? '' : ' — ${buildingName(building)}'}',
             ),
             subtitle: Text(
               town.isNotEmpty ? '$ownerLine — ${town.first.name}' : ownerLine,

@@ -16,7 +16,6 @@ class Realm {
     this.cursorY = 0,
     this.population = 0,
     this.troopCapacity = 0,
-    this.armySize = 0,
     List<int>? tileCount,
     this.grainHarvest = 0,
     this.livestockHarvest = 0,
@@ -57,7 +56,9 @@ class Realm {
         cursorY: json['cursorY'] as int? ?? 0,
         population: json['population'] as int? ?? 0,
         troopCapacity: json['troopCapacity'] as int? ?? 0,
-        armySize: json['armySize'] as int? ?? 0,
+        // 'armySize' in the document is ignored: the army is DERIVED from
+        // the troop list (see the getter), so a stored value can never
+        // contradict the units again.
         // `.toList()` detaches from the decoded JSON: tileCount is index-
         // mutated in place (`tileCount[building]++`), so a bare cast view
         // would write back into the source document. (copy() already copies.)
@@ -125,8 +126,20 @@ class Realm {
   /// Σ of this realm's towns' capacities.
   int troopCapacity;
 
-  /// Σ of this realm's towns' garrisons.
-  int armySize;
+  /// The standing regular army: Σ men of the garrison-counted units.
+  /// DERIVED from the troop list — it can never drift from the units, so
+  /// no mutation site has to hand-sync it and no sweep has to repair it.
+  /// (The per-town `garrison` fields track where those men are QUARTERED
+  /// and sum to the same number; `quarterRecruits`/`releaseGarrison` and
+  /// friends keep them aligned.) Söldner are not garrison-counted; their
+  /// wages run via their own head count (see runEconomy).
+  int get armySize {
+    var sum = 0;
+    for (final troop in troops) {
+      if (troop.garrisonCounted) sum += troop.men;
+    }
+    return sum;
+  }
 
   /// Owned-tile counters per building type, indexed 1–8; index 0 counts
   /// owned tiles without a building (claimed but empty).
@@ -201,6 +214,17 @@ class Realm {
 
   bool get isVacant => rulerId == null;
 
+  /// The town on tile ([x],[y]), or null. A Dorf/Markt/Stadt tile owned by
+  /// this realm always has a matching town object — callers that looked
+  /// the tile's building up first may `assert` on null to surface a
+  /// map/town desync in debug and tests instead of silently skipping.
+  Town? townAt(int x, int y) {
+    for (final town in towns) {
+      if (town.x == x && town.y == y) return town;
+    }
+    return null;
+  }
+
   Realm copy() => Realm(
         slot: slot,
         titleClass: titleClass,
@@ -210,7 +234,6 @@ class Realm {
         cursorY: cursorY,
         population: population,
         troopCapacity: troopCapacity,
-        armySize: armySize,
         tileCount: List.of(tileCount),
         grainHarvest: grainHarvest,
         livestockHarvest: livestockHarvest,
@@ -245,6 +268,8 @@ class Realm {
         'cursorY': cursorY,
         'population': population,
         'troopCapacity': troopCapacity,
+        // Derived, but still written so older builds reading this save
+        // (additive-JSON rule) keep a correct value.
         'armySize': armySize,
         'tileCount': tileCount,
         'grainHarvest': grainHarvest,

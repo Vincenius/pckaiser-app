@@ -38,10 +38,12 @@ class LocalGameSession implements GameSession {
     return session;
   }
 
-  /// Resumes a saved game. Saves from before the first-player fix can be
-  /// parked on an AI slot — the human seat would then control (and watch
-  /// the AI play) a foreign realm. Heal them by advancing to the first
-  /// human action phase.
+  /// Resumes a saved game. SAVE MIGRATION, guarded: healthy saves are
+  /// always parked on a human action phase (auto-save runs after
+  /// endTurnAndAdvance) or inside a war — for those the check below is a
+  /// no-op. Only a save from before the first-player fix, parked on an AI
+  /// slot, is advanced to the first human action phase once and re-saved
+  /// (the human seat would otherwise control a foreign AI realm).
   static Future<LocalGameSession> resume({
     required String slotName,
     required SaveService saves,

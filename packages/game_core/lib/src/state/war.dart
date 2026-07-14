@@ -7,19 +7,31 @@ enum WarPhase { preparation, rounds, settlement }
 /// A unit's snapshotted pre-war position (§11.1) — used by the AI peace
 /// test and the post-war troop return.
 class UnitSnapshot {
-  UnitSnapshot({required this.name, required this.x, required this.y});
+  UnitSnapshot({
+    required this.name,
+    required this.x,
+    required this.y,
+    this.unitId = 0,
+  });
 
   factory UnitSnapshot.fromJson(Map<String, dynamic> json) => UnitSnapshot(
         name: json['name'] as String,
         x: json['x'] as int,
         y: json['y'] as int,
+        // Additive — snapshots from older saves pair by name instead.
+        unitId: json['unitId'] as int? ?? 0,
       );
 
   final String name;
   final int x;
   final int y;
 
-  Map<String, dynamic> toJson() => {'name': name, 'x': x, 'y': y};
+  /// The snapshotted unit's stable id (`Troop.id`); 0 for snapshots from
+  /// saves that predate unit ids — those pair by name (`matchedSnapshots`).
+  final int unitId;
+
+  Map<String, dynamic> toJson() =>
+      {'name': name, 'x': x, 'y': y, 'unitId': unitId};
 }
 
 /// State of an ongoing war (§11). Lives in the game state so both sides

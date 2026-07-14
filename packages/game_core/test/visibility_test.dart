@@ -98,14 +98,17 @@ void main() {
             men: 42,
             troopClass: TroopClass.infanterie,
             quality: TroopQuality.regular,
-            garrisonCounted: false,
+            // A regular army: armySize is derived from garrison-counted
+            // units, so the combatant view below must expose it too.
+            garrisonCounted: true,
             x: realm.capitalX,
             y: realm.capitalY));
-        realm.armySize = 42;
       }
 
       // Peacetime: the enemy army is hidden.
       expect(visibleStateFor(state, 1).realm(2).troops, isEmpty);
+      expect(visibleStateFor(state, 1).realm(2).armySize, 0,
+          reason: 'a redacted troop list also hides the derived army size');
 
       // At war: realm 1 sees realm 2's units (and vice versa), but a
       // bystander still sees nothing.

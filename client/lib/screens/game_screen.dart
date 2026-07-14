@@ -227,11 +227,13 @@ class _GameScreenState extends State<GameScreen> {
     await _marchToward(controller, slot, selected, x, y);
   }
 
-  /// Greedy orthogonal march of the selected unit toward (tx, ty): one
-  /// step at a time until the moves run out, combat holds the unit, or
-  /// the path is blocked. Afterwards all battle events of the march pop
-  /// up as a report. (Should the war end mid-march, the post-march
-  /// resume handles it.)
+  /// Marches the selected unit toward (tx, ty): ONE engine `WarMarch`
+  /// walks the whole path — the engine plans each step and tracks the
+  /// unit by identity through any combat (the old client-side step loop
+  /// tracked units by name + expected position, a workaround for units
+  /// having had no stable identity). The client keeps only the sea-route
+  /// convenience: when no path exists, ship via an own harbor — directly,
+  /// or after marching to the nearest connecting harbor coast first.
   Future<void> _marchToward(
     GameController controller,
     int slot,
@@ -240,75 +242,57 @@ class _GameScreenState extends State<GameScreen> {
     int ty,
   ) async {
     final report = <gc.GameEvent>[];
-    final unitName = controller.state.realm(slot).troops[unitIndex].name;
-    // Names repeat ("Rekruten", "Söldner") and the engine compacts the
-    // troop list on destruction — track the expected position too, or a
-    // same-named unit sliding into this index would silently inherit the
-    // march (and the selection ring).
-    var expectedX = controller.state.realm(slot).troops[unitIndex].x;
-    var expectedY = controller.state.realm(slot).troops[unitIndex].y;
-    // The tile we currently walk toward. It starts as the tapped target and
-    // is re-pointed at an own harbor's coast when the only way across is by
-    // sea — then the unit ships from there to the tapped target.
-    var goalX = tx;
-    var goalY = ty;
-    for (var guard = 0; guard < 60; guard++) {
-      final war = controller.state.activeWar;
-      if (war == null || war.phase != gc.WarPhase.rounds) break;
-      final troops = controller.state.realm(slot).troops;
-      if (unitIndex >= troops.length ||
-          troops[unitIndex].name != unitName ||
-          troops[unitIndex].x != expectedX ||
-          troops[unitIndex].y != expectedY) {
-        controller.selectWarUnit(null);
-        break; // the unit was destroyed
-      }
-      final troop = troops[unitIndex];
-      final map = controller.state.map;
-      final remainingX = goalX - troop.x;
-      final remainingY = goalY - troop.y;
-      if (remainingX == 0 && remainingY == 0) {
-        // Reached the goal. If it was a harbor approach (goal ≠ tapped
-        // target), embark now and ship across — unless a battle en route
-        // deferred it (re-tap to finish the hop next round).
-        if ((goalX != tx || goalY != ty) &&
-            report.isEmpty &&
-            map.canNavalTransport(slot, troop.x, troop.y, tx, ty)) {
-          final navError = await _navalTransport(
-            controller,
-            slot,
-            unitIndex,
-            tx,
-            ty,
-            report,
-          );
-          if (navError != null) _toast(navError);
-        }
-        break;
-      }
+    final map = controller.state.map;
+    final troop = controller.state.realm(slot).troops[unitIndex];
+    final fromX = troop.x;
+    final fromY = troop.y;
 
-      // Prefer the longer axis; fall back to the other on a blocked step.
-      final primary = remainingX.abs() >= remainingY.abs()
-          ? (remainingX.sign, 0)
-          : (0, remainingY.sign);
-      final secondary = remainingX.abs() >= remainingY.abs()
-          ? (0, remainingY.sign)
-          : (remainingX.sign, 0);
-      final beforeX = troop.x;
-      final beforeY = troop.y;
-      var step = primary;
-      var error = await _warStep(controller, slot, unitIndex, primary, report);
-      if (error != null && secondary != (0, 0)) {
-        step = secondary;
-        error = await _warStep(controller, slot, unitIndex, secondary, report);
+    Future<String?> march(int x, int y) async {
+      try {
+        final result = await controller.applyWarAction(
+          gc.WarMarch(slot: slot, unitIndex: unitIndex, x: x, y: y),
+        );
+        report.addAll(result.events);
+        return null;
+      } on gc.ActionException catch (e) {
+        return e.message;
       }
-      if (error != null) {
-        // Blocked or out of moves. The convenience sea-route only applies
-        // from LAND (at sea the unit is steered manually, tile by tile) and
-        // while no battle has happened yet (a fought march defers it).
-        if (report.isEmpty && !map.isWaterAt(beforeX, beforeY)) {
-          // Standing next to a harbor that reaches the target → ship across.
-          if (map.canNavalTransport(slot, beforeX, beforeY, tx, ty)) {
+    }
+
+    final error = await march(tx, ty);
+    // The convenience sea-route only applies from LAND (at sea the unit is
+    // steered manually) and while no battle happened yet (a fought march
+    // defers it — re-tap to continue next round).
+    if (error != null && report.isEmpty && !map.isWaterAt(fromX, fromY)) {
+      if (map.canNavalTransport(slot, fromX, fromY, tx, ty)) {
+        // Standing next to a harbor that reaches the target → ship across.
+        final navError = await _navalTransport(
+          controller,
+          slot,
+          unitIndex,
+          tx,
+          ty,
+          report,
+        );
+        if (navError != null) _toast(navError);
+      } else {
+        // Otherwise march to the nearest harbor coast that connects, then
+        // ship from there — unless a battle en route defers the hop.
+        final embark = map.navalEmbarkTile(slot, fromX, fromY, tx, ty);
+        if (embark == null || (embark.$1 == fromX && embark.$2 == fromY)) {
+          _toast(error);
+        } else {
+          final marchError = await march(embark.$1, embark.$2);
+          final troops = controller.state.realm(slot).troops;
+          final arrived =
+              unitIndex < troops.length &&
+              troops[unitIndex].x == embark.$1 &&
+              troops[unitIndex].y == embark.$2;
+          if (marchError != null) {
+            _toast(marchError);
+          } else if (arrived &&
+              report.isEmpty &&
+              map.canNavalTransport(slot, embark.$1, embark.$2, tx, ty)) {
             final navError = await _navalTransport(
               controller,
               slot,
@@ -318,34 +302,18 @@ class _GameScreenState extends State<GameScreen> {
               report,
             );
             if (navError != null) _toast(navError);
-            break;
           }
-          // Otherwise march to the nearest harbor coast that connects, then
-          // ship from there on a later iteration.
-          final embark = map.navalEmbarkTile(slot, beforeX, beforeY, tx, ty);
-          if (embark != null &&
-              (embark.$1 != goalX || embark.$2 != goalY) &&
-              (embark.$1 != beforeX || embark.$2 != beforeY)) {
-            goalX = embark.$1;
-            goalY = embark.$2;
-            continue; // head for the harbor now
-          }
-          _toast(error);
         }
-        break;
       }
-      final after = controller.state.realm(slot).troops;
-      if (unitIndex < after.length &&
-          after[unitIndex].name == unitName &&
-          after[unitIndex].x == beforeX &&
-          after[unitIndex].y == beforeY) {
-        break; // combat: the defender held the tile
-      }
-      // The step went through: the unit now stands one tile further along
-      // [step] — the next iteration's identity check expects it there.
-      expectedX = beforeX + step.$1;
-      expectedY = beforeY + step.$2;
+    } else if (error != null && report.isEmpty) {
+      _toast(error);
     }
+
+    // The march may have ended with the unit destroyed — drop a stale
+    // selection so the ring never marks a different unit.
+    final troops = controller.state.realm(slot).troops;
+    if (unitIndex >= troops.length) controller.selectWarUnit(null);
+
     if (!mounted) return;
     await showWarReport(context, report, viewerSlot: slot);
     // A capital capture ends the war mid-march: resume the paused AI turn.
@@ -370,27 +338,6 @@ class _GameScreenState extends State<GameScreen> {
     try {
       final result = await controller.applyWarAction(
         gc.WarNavalTransport(slot: slot, unitIndex: unitIndex, x: tx, y: ty),
-      );
-      report.addAll(result.events);
-      return null;
-    } on gc.ActionException catch (e) {
-      return e.message;
-    }
-  }
-
-  /// One war step; returns null on success or the engine's message.
-  /// Emitted events (battles, capture, war end) are appended to [report].
-  Future<String?> _warStep(
-    GameController controller,
-    int slot,
-    int unitIndex,
-    (int, int) step,
-    List<gc.GameEvent> report,
-  ) async {
-    if (step == (0, 0)) return 'Unpassierbar !';
-    try {
-      final result = await controller.applyWarAction(
-        gc.WarMove(slot: slot, unitIndex: unitIndex, dx: step.$1, dy: step.$2),
       );
       report.addAll(result.events);
       return null;
@@ -752,20 +699,12 @@ class _GameScreenState extends State<GameScreen> {
   /// over. The attacker started the war themselves and needs no briefing.
   Future<void> _maybeShowWarAlert(GameController controller, int slot) async {
     final war = controller.state.activeWar;
-    if (war == null ||
-        war.phase != gc.WarPhase.rounds ||
-        war.defenderSlot != slot) {
-      return;
-    }
-    // Brief the defender exactly once — while the declaration is still fresh
-    // in their recap. The recap baseline advances per war round (and online
-    // the GameScreen is rebuilt every turn, so an instance flag wouldn't
-    // survive), so once this side has played one war round the warDeclared
-    // event is no longer in the recap and the briefing never repeats.
-    final freshDeclaration = controller
-        .recapFor(slot)
-        .any((e) => e.type == 'warDeclared');
-    if (!freshDeclaration) return;
+    // Brief the defender exactly once per war: an explicit marker on the
+    // controller (which outlives the per-turn GameScreen rebuilds) instead
+    // of inferring freshness from the recap contents. After an app restart
+    // mid-war the briefing may show once more — by design, it doubles as
+    // the save-resume orientation.
+    if (war == null || !controller.takeWarBriefing(slot)) return;
     if (!mounted) return;
     await showDialog<void>(
       context: context,

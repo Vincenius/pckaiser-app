@@ -204,7 +204,6 @@ void main() {
       town.troopCapacity = 50;
       town.garrison = 20;
       realm.troopCapacity = realm.towns.fold(0, (n, t) => n + t.troopCapacity);
-      realm.armySize = 20;
       realm.troops.add(Troop(
           name: 'Garde',
           men: 20,

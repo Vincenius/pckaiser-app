@@ -173,7 +173,6 @@ void main() {
       town.troopCapacity = 200;
       realm.troopCapacity = 200;
       town.garrison = 100;
-      realm.armySize = 100;
       realm.troops.add(Troop(
         name: 'Heer',
         men: 100,

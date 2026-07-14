@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/labels.dart';
 import '../state/game_controller.dart';
 import 'event_feed.dart';
 import 'turn_report.dart';
@@ -313,17 +314,13 @@ Future<void> _promptDecision(
       // pick a new one. Free, and not dismissible: leaving the realm
       // seatless is not an option.
       final map = state.map;
-      const buildingNames = {
-        gc.Building.stadt: 'Stadt',
-        gc.Building.burg: 'Burg',
-        gc.Building.palast: 'Palast',
-      };
       final candidates = <(int, int, int)>[];
       for (var y = 0; y < map.height; y++) {
         for (var x = 0; x < map.width; x++) {
           final building = map.buildingAt(x, y);
+          // The engine's seat rule (§6.2): Stadt, Burg or Palast.
           if (map.ownerAt(x, y) == decision.decidingSlot &&
-              buildingNames.containsKey(building)) {
+              gc.Building.isSeat(building)) {
             candidates.add((x, y, building));
           }
         }
@@ -346,7 +343,7 @@ Future<void> _promptDecision(
             for (final (x, y, building) in candidates)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, (x, y)),
-                child: Text('${buildingNames[building]} (${x + 1}, ${y + 1})'),
+                child: Text('${buildingName(building)} (${x + 1}, ${y + 1})'),
               ),
           ],
         ),
@@ -372,16 +369,18 @@ const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 /// A duel start instant (epoch ms UTC) in the device's local time —
 /// "Heute 18:00", "Morgen 03:00", else "Mi 14:00".
 String formatWarStartTime(int epochMs) {
-  final local = DateTime.fromMillisecondsSinceEpoch(epochMs, isUtc: true)
-      .toLocal();
+  final local = DateTime.fromMillisecondsSinceEpoch(
+    epochMs,
+    isUtc: true,
+  ).toLocal();
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(local.year, local.month, local.day);
   final dayLabel = day == today
       ? 'Heute'
       : day == today.add(const Duration(days: 1))
-          ? 'Morgen'
-          : _weekdays[local.weekday - 1];
+      ? 'Morgen'
+      : _weekdays[local.weekday - 1];
   final hh = local.hour.toString().padLeft(2, '0');
   final mm = local.minute.toString().padLeft(2, '0');
   return '$dayLabel $hh:$mm Uhr';
@@ -398,10 +397,13 @@ Future<List<int>> _askWarStartSlots(
   int? turnTimeoutHours,
 ) async {
   final now = DateTime.now().toUtc();
-  final firstHour = DateTime.utc(now.year, now.month, now.day, now.hour)
-      .add(const Duration(hours: 1));
-  final count =
-      turnTimeoutHours == null ? 24 : turnTimeoutHours.clamp(1, 24);
+  final firstHour = DateTime.utc(
+    now.year,
+    now.month,
+    now.day,
+    now.hour,
+  ).add(const Duration(hours: 1));
+  final count = turnTimeoutHours == null ? 24 : turnTimeoutHours.clamp(1, 24);
   final offered = [
     0,
     for (var i = 0; i < count; i++)
@@ -446,8 +448,7 @@ Future<List<int>> _askWarStartSlots(
         ),
         actions: [
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, picked.toList()..sort()),
+            onPressed: () => Navigator.pop(context, picked.toList()..sort()),
             child: Text(picked.isEmpty ? 'Ohne Terminvorschlag' : 'Bestätigen'),
           ),
         ],

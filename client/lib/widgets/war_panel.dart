@@ -404,7 +404,9 @@ class _WarPanelState extends State<WarPanel> {
                             movesLeft: i < moves.length ? moves[i] : 0,
                             selected: i == selected,
                             onTap: () {
-                              controller.selectWarUnit(i == selected ? null : i);
+                              controller.selectWarUnit(
+                                i == selected ? null : i,
+                              );
                               Navigator.of(sheetContext).pop();
                             },
                           ),
@@ -618,9 +620,7 @@ class _WarPanelState extends State<WarPanel> {
     const compactBtn = ButtonStyle(
       visualDensity: VisualDensity.compact,
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      padding: WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 8),
-      ),
+      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
     );
 
     // FittedBox around a single Row: keeps all three actions on ONE line,
@@ -631,103 +631,106 @@ class _WarPanelState extends State<WarPanel> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-        Tooltip(
-          message: plunderHint,
-          child: TextButton.icon(
-            style: compactBtn,
-            onPressed: canPlunder
-                ? () async {
-                    final List<gc.GameEvent> events;
-                    try {
-                      events = (await controller.applyWarAction(
-                        gc.WarPlunder(
-                          slot: slot,
-                          x: selectedTroop.x,
-                          y: selectedTroop.y,
-                        ),
-                      )).events;
-                    } on gc.ActionException catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context)
-                          ..hideCurrentSnackBar()
-                          ..showSnackBar(SnackBar(content: Text(e.message)));
+          Tooltip(
+            message: plunderHint,
+            child: TextButton.icon(
+              style: compactBtn,
+              onPressed: canPlunder
+                  ? () async {
+                      final List<gc.GameEvent> events;
+                      try {
+                        events = (await controller.applyWarAction(
+                          gc.WarPlunder(
+                            slot: slot,
+                            x: selectedTroop.x,
+                            y: selectedTroop.y,
+                          ),
+                        )).events;
+                      } on gc.ActionException catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(SnackBar(content: Text(e.message)));
+                        }
+                        return;
                       }
-                      return;
+                      if (!context.mounted) return;
+                      await showWarReport(
+                        context,
+                        events,
+                        viewerSlot: slot,
+                        title: 'Plünderung',
+                      );
                     }
-                    if (!context.mounted) return;
-                    await showWarReport(
-                      context,
-                      events,
-                      viewerSlot: slot,
-                      title: 'Plünderung',
-                    );
-                  }
-                : null,
-            icon: const Icon(Icons.local_fire_department, size: 18),
-            label: const Text('Plündern'),
+                  : null,
+              icon: const Icon(Icons.local_fire_department, size: 18),
+              label: const Text('Plündern'),
+            ),
           ),
-        ),
-        const SizedBox(width: 4),
-        TextButton.icon(
-          style: compactBtn,
-          onPressed: () async {
-            try {
-              await controller.applyWarAction(
-                gc.WarPeaceWish(slot: slot, wantsPeace: !war.wantsPeace(slot)),
-              );
-            } on gc.ActionException catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(SnackBar(content: Text(e.message)));
+          const SizedBox(width: 4),
+          TextButton.icon(
+            style: compactBtn,
+            onPressed: () async {
+              try {
+                await controller.applyWarAction(
+                  gc.WarPeaceWish(
+                    slot: slot,
+                    wantsPeace: !war.wantsPeace(slot),
+                  ),
+                );
+              } on gc.ActionException catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(SnackBar(content: Text(e.message)));
+                }
               }
-            }
-          },
-          icon: const Icon(Icons.handshake_outlined, size: 18),
-          label: Text(war.wantsPeace(slot) ? 'Zurückziehen' : 'Frieden'),
-        ),
-        const SizedBox(width: 4),
-        FilledButton(
-          style: compactBtn,
-          onPressed: () async {
-            final List<gc.GameEvent> events;
-            try {
-              events = await controller.endWarRound();
-            } on gc.ActionException catch (e) {
-              // Online the server can reject the round end (turn already
-              // advanced, or the build is out of date) — show the message
-              // instead of crashing, like the plunder/peace buttons.
-              if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(SnackBar(content: Text(e.message)));
-              }
-              return;
-            }
-            if (context.mounted) {
-              await showWarReport(
-                context,
-                events,
-                viewerSlot: slot,
-                title: 'Rundenbericht',
-              );
-            }
-            // A round end can resolve a ruler capture: the coercion
-            // choices (Abdanken, Kurfürstensitz, …) must come right now,
-            // not at the next turn's start.
-            if (context.mounted) {
-              await promptDecisionsFor(context, controller, slot);
-            }
-          },
-          // A human-vs-human attacker hands the round to the defender —
-          // only the defender's button really ends the round.
-          child: Text(
-            slot == war.attackerSlot &&
-                    state.dynasty(enemySlot).status == gc.DynastyStatus.human
-                ? 'Übergeben'
-                : 'Runde beenden',
+            },
+            icon: const Icon(Icons.handshake_outlined, size: 18),
+            label: Text(war.wantsPeace(slot) ? 'Zurückziehen' : 'Frieden'),
           ),
-        ),
+          const SizedBox(width: 4),
+          FilledButton(
+            style: compactBtn,
+            onPressed: () async {
+              final List<gc.GameEvent> events;
+              try {
+                events = await controller.endWarRound();
+              } on gc.ActionException catch (e) {
+                // Online the server can reject the round end (turn already
+                // advanced, or the build is out of date) — show the message
+                // instead of crashing, like the plunder/peace buttons.
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(SnackBar(content: Text(e.message)));
+                }
+                return;
+              }
+              if (context.mounted) {
+                await showWarReport(
+                  context,
+                  events,
+                  viewerSlot: slot,
+                  title: 'Rundenbericht',
+                );
+              }
+              // A round end can resolve a ruler capture: the coercion
+              // choices (Abdanken, Kurfürstensitz, …) must come right now,
+              // not at the next turn's start.
+              if (context.mounted) {
+                await promptDecisionsFor(context, controller, slot);
+              }
+            },
+            // A human-vs-human attacker hands the round to the defender —
+            // only the defender's button really ends the round.
+            child: Text(
+              slot == war.attackerSlot &&
+                      state.dynasty(enemySlot).status == gc.DynastyStatus.human
+                  ? 'Übergeben'
+                  : 'Runde beenden',
+            ),
+          ),
         ],
       ),
     );
@@ -804,9 +807,11 @@ class _WarPanelState extends State<WarPanel> {
                 isWinner
                     ? 'Wähle deine Beute: Tippe Felder des Verlierers an, '
                           'die an dein Land grenzen, um sie zu übernehmen. '
-                          'Jedes Feld kostet seinen Wert (Markt 2500, Stadt '
-                          '5000, leeres Land 100). Der nicht genutzte Rest wird '
-                          'in Talern ausgezahlt.'
+                          'Jedes Feld kostet seinen Wert (Markt '
+                          '${gc.Building.value[gc.Building.markt]}, Stadt '
+                          '${gc.Building.value[gc.Building.stadt]}, leeres '
+                          'Land ${gc.settlementTileValue(controller.state, gc.Building.none)}). '
+                          'Der nicht genutzte Rest wird in Talern ausgezahlt.'
                     : 'Der Sieger wählt nun Felder deines Landes.',
                 style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,

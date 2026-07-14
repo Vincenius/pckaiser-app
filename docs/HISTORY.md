@@ -6,6 +6,109 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-14 — Root-cause cleanup round (workarounds → structural fixes)
+
+Full-codebase audit for symptom-patches, then four refactor clusters. No
+rule/price/UI change intended (no appVersion bump); two real bug fixes
+fell out. Tests: 387 core + 45 backend + 37 client green;
+`cleanup_2026_07_14_test.dart` pins the two behavior fixes.
+
+1. **One source of truth for costs, previews and legality.** The engine
+   now exports what the client and the AI used to re-implement:
+   `rules/costs.dart` (relocate/demolish/ship-investment/religion prices
+   + `religionAvailable`), troop cost/preview helpers in `rules/troops.dart`
+   (`recruitCost`/`soeldnerCost`/`reinforceCost`/`drillCost`/`retrainCost`,
+   `previewTroopStrength`, `canMergeTroops`), `marriageEligible`
+   (dynasty.dart), `warDeclarationBlocker`/`declareWarBlocker`
+   (apply_military.dart, now exported) and `maxAgentsPerMission`.
+   `menus.dart`/`tile_sheet.dart`/`war_panel.dart` lost ~15 hand-copied
+   formulas and gate ladders; `apply_military` is exported from the barrel.
+2. **AI: no shadow validation, no catch-and-ignore.** All nine
+   `on ActionException`-swallow blocks in `ai_turn.dart` are gone; the AI
+   picks only engine-legal actions via the shared predicates
+   (`declareWarBlocker`, `bordersSlot(Land)`, cost helpers) — a rejection
+   now surfaces as a real bug instead of a silent skip. **Bugfix found
+   underneath:** `_warFor`'s acting-side check keyed on the raw dynasty
+   status, so every autopilot `WarMove` of a DELEGATED human side
+   (war.autoSlots) threw "Dein Gegner ist gerade am Zug !" and was
+   swallowed — delegated sides never moved. The check now keys on
+   `warSideIsHuman`. The peacetime reposition also reserves the home
+   guard up front instead of moving it out and marching it back.
+3. **`Realm.armySize` is DERIVED** (Σ men of garrison-counted units) —
+   the third hand-synced army copy is gone, along with every
+   `armySize = max(0, …)` repair write (population, events, war, merge,
+   visibility). `toJson` still writes the value for older readers;
+   `fromJson` ignores it. `_damageTown` now trims a rounding-created
+   garrison>capacity overhang at the site; the map/town desync tolerances
+   in the earthquake and plunder paths became `assert`s on the shared
+   `Realm.townAt` (debug/tests fail loudly, release still skips).
+   `normalizeTowns` stays: capacity following population at ¼ rate is a
+   §8.3 rule, not drift repair.
+4. **Legacy repairs removed; land loss vacates at the cause.** The
+   per-round `ensureRealmSeat` in `endWarRound` ("belt and braces" for
+   pre-2026-07-09 saves) and the empty-unit prunes at war start/end are
+   gone — startWar establishes the seat invariant and nothing mid-war can
+   break it. `_rehomeStrandedTroops` folded into the war teardown
+   (`_returnTroops`), which now also runs `checkLandLoss` for BOTH sides —
+   fixing a latent zombie: a side plundered to landlessness whose war
+   ended in PEACE was only vacated by the next round sweep.
+   `vacateLandlessRealms` is deleted; earthquake and bankruptcy call
+   `checkLandLoss` (now idempotent) inline. The pipeline's stale
+   decision/assassination-order sweep is deliberately KEPT: seats flip to
+   AI on many paths (engine + server kick), and the round sweep is the one
+   mechanism that cannot miss one.
+5. **Deduplication.** `WorldMap.neighborsOf`/`bordersSlot`/`bordersSlotLand`
+   replace ~15 copies of the 4-neighbor literal (incl. the drift-prone
+   settlement-annex border check and tile_sheet's private copy);
+   `baseTitleClass`/`christianEquivalentClass` (titles.dart) replace the
+   6× inlined female-form/Muslim-class mappings (movement roll and
+   bankruptcy limits share one mapping now); `Building.isSeat`/`isTown`
+   replace the Stadt/Burg/Palast triples across engine and client;
+   `removePersonFromWorld` (dynasty.dart) is the shared person-removal
+   cleanup for `handleDeath` and `foundReplacementDynasty`; the client's
+   three diverged building-name tables and inline troop-class lists moved
+   to `client/lib/l10n/labels.dart` (the copies had already drifted:
+   '' vs 'Feld' for a bare tile).
+
+Follow-up round (same day, Vincent approved all four): 390 core + 45
+backend + 37 client tests green.
+
+6. **"Kaiser ohne Reich", the real root fix**: a provisional heir
+   (unresolved heirChoice) is office-INELIGIBLE — `rulesOnlyProvisionally`
+   (offices.dart), derived from the pending decision itself, filters the
+   Kurfürst refill and both election candidate pools (a person also ruling
+   a realm OUTSIDE the pending choice stays eligible). The same-day
+   4-guard compensation (`transferProvisionalHonors`, `_retitleOffice`,
+   chronicle rewriting, the heirChoice hook) is deleted; the election
+   tally's realm-less-winner interregnum guard STAYS (it covers
+   mid-election conquest depositions, which no ineligibility window can).
+   Side effect: a provisionally-ruling Muslim placeholder also doesn't
+   vote in a Sultan election (Sultan electors = the candidate pool).
+7. **Decisions resolve validate-then-commit**: `_resolveDecision` consumes
+   the decision AFTER its case ran — a rejection (bribe over-spend,
+   voteless electorVote) now structurally leaves the decision pending
+   instead of relying on the removal being rolled back with the discarded
+   state copy; stale answers stay explicit no-ops. The warPlan
+   all-answered check excludes the in-flight decision.
+8. **Stable unit ids + engine war march**: additive `Troop.id` (assigned
+   from the new `GameState.nextUnitId`; older saves get ids once on load),
+   war snapshots carry `unitId` and pair by id (name matching only for
+   legacy snapshots), the AI peace home-test follows. New `WarMarch`
+   action: the engine walks the whole §11.2 march — BFS land path
+   (routes around lakes now, where the old client walker jammed on
+   shores), straight-line manual sea legs, per-step combat — tracking the
+   unit by object identity; per-step passability lives once in
+   `warStepBlocker` (shared with WarMove). The client's 120-line
+   `_marchToward` step loop with its name+expected-position identity
+   tracking shrinks to a WarMarch dispatch plus the harbor-hop
+   convenience. NOTE: a new wire action → online seats need matching
+   builds; ship with an appVersion bump (Vincent's call, not bumped here).
+9. **Client**: the "Krieg !" defender briefing keys on an explicit
+   once-per-war marker (`GameController.takeWarBriefing`) instead of
+   inferring freshness from recap contents; the resume-time
+   parked-on-AI-slot heal is documented as the guarded one-time save
+   migration it (already) is.
+
 ## 2026-07-14 — Troop-balance round: training vs. mass, per-turn levy limit, chronic-famine fix (user reports)
 
 Three user reports in one balancing round (rules only, no schema change —

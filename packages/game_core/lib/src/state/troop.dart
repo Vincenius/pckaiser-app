@@ -36,6 +36,7 @@ class Troop {
     required this.garrisonCounted,
     required this.x,
     required this.y,
+    this.id = 0,
     this.stance = TroopStance.holdPosition,
     this.plunderedThisRound = false,
   });
@@ -48,12 +49,21 @@ class Troop {
         garrisonCounted: json['garrisonCounted'] as bool,
         x: json['x'] as int,
         y: json['y'] as int,
+        // Additive field — units from older saves get an id assigned on
+        // load (GameState.fromJson).
+        id: json['id'] as int? ?? 0,
         // Additive field — units from older saves default to holding their
         // position (defending the base).
         stance: json['stance'] as int? ?? TroopStance.holdPosition,
         // Additive field — units from older saves have not plundered yet.
         plunderedThisRound: json['plunderedThisRound'] as bool? ?? false,
       );
+
+  /// Stable unit identity, unique within one game (assigned from
+  /// `GameState.nextUnitId` at creation; older saves get ids on load).
+  /// 0 = unassigned — the war snapshot pairing then falls back to the
+  /// legacy name matching (hand-built test units, pre-id snapshots).
+  int id;
 
   String name;
   int men;
@@ -92,6 +102,7 @@ class Troop {
         garrisonCounted: garrisonCounted,
         x: x,
         y: y,
+        id: id,
         stance: stance,
         plunderedThisRound: plunderedThisRound,
       );
@@ -104,6 +115,7 @@ class Troop {
         'garrisonCounted': garrisonCounted,
         'x': x,
         'y': y,
+        'id': id,
         'stance': stance,
         'plunderedThisRound': plunderedThisRound,
       };

@@ -46,6 +46,7 @@ sealed class PlayerAction {
         MoveTroop.kind => MoveTroop.fromJson(json),
         DeclareWar.kind => DeclareWar.fromJson(json),
         WarMove.kind => WarMove.fromJson(json),
+        WarMarch.kind => WarMarch.fromJson(json),
         WarPlunder.kind => WarPlunder.fromJson(json),
         WarPeaceWish.kind => WarPeaceWish.fromJson(json),
         WarEndRound.kind => WarEndRound.fromJson(json),

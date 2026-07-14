@@ -6,12 +6,14 @@
 library;
 
 export 'src/actions/apply_action.dart';
+export 'src/actions/apply_military.dart';
 export 'src/actions/player_action.dart';
 export 'src/ai/ai_tuning.dart';
 export 'src/ai/ai_turn.dart';
 export 'src/data/tables.dart';
 export 'src/map/map_generator.dart';
 export 'src/rng/rng.dart';
+export 'src/rules/costs.dart';
 export 'src/rules/dynasty.dart';
 export 'src/rules/economy.dart';
 export 'src/rules/espionage.dart';

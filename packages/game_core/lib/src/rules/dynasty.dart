@@ -105,19 +105,27 @@ bool awaitingMarriageConsent(GameState state, int personId) =>
         (d.payload['proposerId'] == personId ||
             d.payload['targetId'] == personId));
 
-/// §14.1 eligibility: unmarried, opposite gender, age ≥ 14, age gap < 10,
-/// different dynasty, same religion, not awaiting a consent answer. Scans
-/// the master list in id order and picks uniformly among the eligible.
+/// §14.1 static marriage eligibility between two persons: both unmarried,
+/// opposite gender, both ≥ 14, age gap < 10, different dynasty, same
+/// religion. The ONE gate shared by the action validation, the annual
+/// loop's candidate scan and the client's partner pickers. A pending
+/// consent is a separate, transient block ([awaitingMarriageConsent]).
+bool marriageEligible(GameState state, Person a, Person b) =>
+    a.spouseId == null &&
+    b.spouseId == null &&
+    a.gender != b.gender &&
+    a.age >= 14 &&
+    b.age >= 14 &&
+    (a.age - b.age).abs() < 10 &&
+    a.dynasty != b.dynasty &&
+    state.dynasty(a.dynasty).religion == state.dynasty(b.dynasty).religion;
+
+/// §14.1 candidate scan: picks uniformly among all [marriageEligible]
+/// partners not awaiting a consent answer, in master-list id order.
 Person? findMarriageCandidate(GameState state, Person seeker, Rng rng) {
-  final religion = state.dynasty(seeker.dynasty).religion;
   final candidates = <Person>[];
   for (final other in state.persons.values) {
-    if (other.spouseId != null ||
-        other.gender == seeker.gender ||
-        other.age < 14 ||
-        (other.age - seeker.age).abs() >= 10 ||
-        other.dynasty == seeker.dynasty ||
-        state.dynasty(other.dynasty).religion != religion ||
+    if (!marriageEligible(state, seeker, other) ||
         awaitingMarriageConsent(state, other.id)) {
       continue;
     }
@@ -360,6 +368,21 @@ void _noteSeatLostEvent(GameState state, int slot, bool wasHuman,
   ));
 }
 
+/// Removes [person] from the world and severs the references EVERY removal
+/// path must clear: person registry, member list, spouse link, Kurfürst
+/// seat, open office chronicle (§17.5). Child links and ruled slots stay
+/// the caller's business — succession ([handleDeath]) and the dynasty
+/// replacement (§18.5/§19.2 `foundReplacementDynasty`) handle those
+/// differently, but must never diverge on THIS part again.
+void removePersonFromWorld(
+    GameState state, Person person, Rng rng, List<GameEvent> events) {
+  state.persons.remove(person.id);
+  state.dynasty(person.dynasty).memberIds.remove(person.id);
+  state.person(person.spouseId)?.spouseId = null;
+  state.kurfuerstenIds.remove(person.id); // seat refilled next round
+  closeChronicleIfOfficeHolder(state, person, rng, events);
+}
+
 /// Death of any person (§15.4): removes them everywhere; rulers trigger
 /// succession across all their slots, office holders get their chronicle
 /// closed (§17.5).
@@ -367,17 +390,10 @@ void handleDeath(
     GameState state, Person deceased, Rng rng, List<GameEvent> events) {
   final dynasty = state.dynasty(deceased.dynasty);
 
-  // Remove from the world.
-  state.persons.remove(deceased.id);
-  dynasty.memberIds.remove(deceased.id);
-  final spouse = state.person(deceased.spouseId);
-  spouse?.spouseId = null;
+  removePersonFromWorld(state, deceased, rng, events);
   for (final person in state.persons.values) {
     person.childrenIds.remove(deceased.id);
   }
-  state.kurfuerstenIds.remove(deceased.id); // seat refilled next round
-
-  closeChronicleIfOfficeHolder(state, deceased, rng, events);
 
   final ruledSlots = [
     for (final realm in state.realms)
@@ -408,8 +424,7 @@ void handleDeath(
       ));
     }
     for (final slot in ruledSlots) {
-      final wasHuman =
-          state.dynasty(slot).status == DynastyStatus.human;
+      final wasHuman = state.dynasty(slot).status == DynastyStatus.human;
       state.realm(slot).rulerId = heir.id;
       alignSlotControl(state, slot, heir.id);
       regenderTitle(state, state.realm(slot));
@@ -539,13 +554,10 @@ Person? _chooseHeirByPriority(
   // ahead of her widower, who per §15.4 is the rightful heir (rank 3)
   // once her own house holds no male. Filtering here (not at birth)
   // also fixes running games whose saves carry the double links.
-  final children = !deceased.isMale && spouse != null
-      ? const <int>[]
-      : deceased.childrenIds;
+  final children =
+      !deceased.isMale && spouse != null ? const <int>[] : deceased.childrenIds;
   final heir = state.genderEqualSuccession
-      ? firstAlive(children) ??
-          firstAlive(dynasty.memberIds) ??
-          spouse
+      ? firstAlive(children) ?? firstAlive(dynasty.memberIds) ?? spouse
       : firstAlive(children, male: true) ??
           firstAlive(dynasty.memberIds, male: true) ??
           spouse ??

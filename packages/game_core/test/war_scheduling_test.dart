@@ -178,7 +178,6 @@ void _prepareWar(GameState state, int a, int b) {
           garrisonCounted: false,
           x: realm.capitalX,
           y: realm.capitalY));
-      realm.armySize += 100;
     }
   }
   if (state.map.realmNeighbors(a).contains(b)) return;

@@ -90,7 +90,8 @@ void main() {
           Building.value[map.buildingAt(realm.capitalX, realm.capitalY)];
       for (var i = 0; i < map.terrain.length; i++) {
         if (map.owner[i] != 2) continue;
-        expect(seatValue, greaterThanOrEqualTo(Building.value[map.building[i]]));
+        expect(
+            seatValue, greaterThanOrEqualTo(Building.value[map.building[i]]));
       }
     });
   });
@@ -134,22 +135,14 @@ void main() {
 
       expect(map.ownerAt(realm.capitalX, realm.capitalY), 1);
       expect(state.pendingDecisions.any((d) => d.type == 'relocateCapital'),
-          isFalse, reason: 'the forced re-seat resolved the prompt');
+          isFalse,
+          reason: 'the forced re-seat resolved the prompt');
     });
 
-    test('endWarRound repairs a seat that went stale mid-war (old saves)', () {
-      startWar(state, 1, 2, Rng(1));
-      final map = state.map;
-      final defender = state.realm(2);
-      map.owner[map.index(defender.capitalX, defender.capitalY)] =
-          World.niemand;
-
-      final events = <GameEvent>[];
-      endWarRound(state, Rng(1), events);
-
-      expect(map.ownerAt(defender.capitalX, defender.capitalY), 2,
-          reason: 'the occupation victory needs an enemy-owned seat tile');
-    });
+    // (The old "endWarRound repairs a stale mid-war seat" test is gone with
+    // the per-round repair itself: startWar establishes the seat invariant
+    // and no mid-war action can strip a seat tile — transfers only happen
+    // at settlement, plunder never touches Stadt/Burg/Palast ownership.)
 
     test('the settlement re-seats a loser whose capital was annexed', () {
       final war = startWar(state, 1, 2, Rng(1));

@@ -181,7 +181,17 @@ void main() {
     test('wages cost 0.5 T per man', () {
       final state = startGame(freshGame(), Rng(7)).state;
       final realm = state.realm(2);
-      realm.armySize = 100;
+      // armySize is derived from the units — the wage bill needs a real
+      // garrison-counted troop, not a bare counter.
+      realm.troops.add(Troop(
+        name: 'Heer',
+        men: 100,
+        troopClass: TroopClass.infanterie,
+        quality: TroopQuality.regular,
+        garrisonCounted: true,
+        x: realm.capitalX,
+        y: realm.capitalY,
+      ));
       realm.towns.single.garrison = 100;
       realm.towns.single.troopCapacity = 100;
       realm.grainHarvest = 10000; // well fed — no famine desertion

@@ -1,12 +1,17 @@
 import 'dart:math' as math;
 
 import '../actions/apply_action.dart';
+import '../actions/apply_military.dart'
+    show declareWarBlocker, warDeclarationBlocker;
 import '../actions/player_action.dart';
 import '../data/tables.dart';
 import '../rng/rng.dart';
+import '../rules/costs.dart';
 import '../rules/espionage.dart';
+import '../rules/movement.dart' show greedyStepToward, warPathStep;
 import '../rules/realm_merge.dart';
-import '../rules/troops.dart' show classSurcharge, levyLeft, troopStrength;
+import '../rules/troops.dart'
+    show classSurcharge, drillCost, levyLeft, recruitCostPerMan, troopStrength;
 import '../rules/war.dart';
 import 'ai_tuning.dart';
 import '../state/constants.dart';
@@ -16,7 +21,6 @@ import '../state/game_state.dart';
 import '../state/realm.dart';
 import '../state/troop.dart';
 import '../state/war.dart';
-import '../state/world_map.dart';
 import '../turn/turn_pipeline.dart';
 
 /// AI action phase for [slot] (ORIGINAL_GAME.md §20): "Die `<name>` zieht."
@@ -90,7 +94,9 @@ void _runAiTurnInPlace(
     _maybeAssassinate(state, realm, rng, events, tuning);
   }
 
-  // §20.4 Build loop.
+  // §20.4 Build loop. The picker only returns actions the engine accepts
+  // (same predicates, no shadow rules) — a rejection here is a genuine
+  // engine/AI bug and must surface, not be swallowed.
   var warFlag = false;
   while (realm.movementPoints > 0) {
     final action = _pickBuildAction(state, realm, rng, tuning);
@@ -98,11 +104,7 @@ void _runAiTurnInPlace(
       warFlag = true; // boxed in (§20.4)
       break;
     }
-    try {
-      _act(state, action, rng, events);
-    } on ActionException {
-      break; // defensive: a stale target pick must not kill the AI turn
-    }
+    _act(state, action, rng, events);
   }
 
   // §20.5 Reinforce, drill (schwer only), guards, ships.
@@ -149,25 +151,16 @@ void _runAiTurnInPlace(
   // + 1), floored below the strife line) — demand a matching mood cushion
   // so a serial-warring AI never talks itself into a §19.1 revolt.
   final warMoodOk = realm.popularity >= 50 + 5 * realm.recentWars;
-  if ((warFlag ||
-          tuning.warChance > 0 && rng.nextInt(tuning.warChance) == 0) &&
+  if ((warFlag || tuning.warChance > 0 && rng.nextInt(tuning.warChance) == 0) &&
       rng.nextInt(3) == 0 &&
       warMoodOk &&
-      state.year >= state.warStartYear &&
-      !realm.warThisYear &&
-      state.activeWar == null &&
-      realm.troops.any((t) => t.men > 0)) {
+      warDeclarationBlocker(state, realm) == null) {
     // A boxed-in AI (warFlag) wars to break out even without a clear
     // strength edge — otherwise a schwer realm with only strong
     // neighbours would idle forever (§20.4's escape valve).
-    final target =
-        _pickWarTarget(state, slot, rng, tuning, desperate: warFlag);
+    final target = _pickWarTarget(state, slot, rng, tuning, desperate: warFlag);
     if (target != null) {
-      try {
-        _act(state, DeclareWar(slot: slot, targetSlot: target), rng, events);
-      } on ActionException {
-        return; // defensive: an invalid pick must not kill the AI turn
-      }
+      _act(state, DeclareWar(slot: slot, targetSlot: target), rng, events);
       _fastForwardAiWar(state, rng, events);
     }
   }
@@ -204,13 +197,7 @@ PlayerAction? _pickBuildAction(
         if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
           continue;
         }
-        for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-          if (map.inBounds(x + dx, y + dy) &&
-              map.ownerAt(x + dx, y + dy) == slot) {
-            candidates.add((x, y));
-            break;
-          }
-        }
+        if (map.bordersSlot(x, y, slot)) candidates.add((x, y));
       }
     }
     return pickRandom(candidates);
@@ -252,7 +239,8 @@ PlayerAction? _pickBuildAction(
     }
   }
 
-  // Hafen on a qualifying coastal water tile.
+  // Hafen on a qualifying coastal water tile — the engine's hafenOnCoast
+  // anchoring rule, via the same shared predicate ([bordersSlotLand]).
   if (realm.treasury >= 700) {
     final coast = <(int, int)>[];
     for (var y = 0; y < map.height; y++) {
@@ -262,17 +250,7 @@ PlayerAction? _pickBuildAction(
             map.buildingAt(x, y) != Building.none) {
           continue;
         }
-        for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-          // Own LAND adjacency, like the engine's hafenOnCoast rule — an
-          // own Hafen on water must not anchor the pick (the engine would
-          // reject the build and end the AI's build loop early).
-          if (map.inBounds(x + dx, y + dy) &&
-              map.ownerAt(x + dx, y + dy) == slot &&
-              Terrain.isLand(map.terrainAt(x + dx, y + dy))) {
-            coast.add((x, y));
-            break;
-          }
-        }
+        if (map.bordersSlotLand(x, y, slot)) coast.add((x, y));
       }
     }
     final spot = pickRandom(coast);
@@ -353,7 +331,7 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events,
   }
   final free = realm.troopCapacity - realm.armySize;
   if (realm.troops.isEmpty) {
-    if (free > 0 && realm.treasury >= 5 * 10) {
+    if (free > 0 && realm.treasury >= recruitCostPerMan * 10) {
       // Floored at 1 man: the first unit must always be raisable — with a
       // halving divisor and free capacity 1 the levy would otherwise be
       // deterministically 0 and the realm could never arm at all.
@@ -361,7 +339,7 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events,
           math.min(
               math.max(1, (rng.nextInt(free) + 1) ~/ tuning.reinforceDivisor),
               levyLeft(realm)),
-          math.min(free, realm.treasury ~/ 5));
+          math.min(free, realm.treasury ~/ recruitCostPerMan));
       if (men > 0) {
         _act(
             state,
@@ -383,7 +361,7 @@ void _reinforce(GameState state, Realm realm, Rng rng, List<GameEvent> events,
     if (!realm.troops[i].garrisonCounted) continue;
     final wanted = (rng.nextInt(freeNow) + 1) ~/ tuning.reinforceDivisor;
     final men = math.min(math.min(wanted, levyLeft(realm)),
-        math.min(freeNow, realm.treasury ~/ 5));
+        math.min(freeNow, realm.treasury ~/ recruitCostPerMan));
     if (men <= 0) continue;
     _act(state, ReinforceTroop(slot: realm.slot, unitIndex: i, men: men), rng,
         events);
@@ -403,8 +381,7 @@ void _reinforcePlanned(GameState state, Realm realm, Rng rng,
   var budget = realm.treasury ~/ 2;
   // Clamped to the capacity so a tuning target > 1.0 can never oversize
   // the deficit past the free quarters.
-  final target = math.min(
-      (realm.troopCapacity * tuning.capacityTarget).floor(),
+  final target = math.min((realm.troopCapacity * tuning.capacityTarget).floor(),
       realm.troopCapacity);
   // Founding cap per new unit: ~a third of the target, at least 10 men.
   final unitCap = math.max(10, (target / 3).ceil());
@@ -414,7 +391,7 @@ void _reinforcePlanned(GameState state, Realm realm, Rng rng,
     // paces the buildup, so even a rich schwer AI reaches its capacity
     // target over several years, not in one turn.
     final step = math.min(target - realm.armySize, levyLeft(realm));
-    if (step <= 0 || budget < 5) return;
+    if (step <= 0 || budget < recruitCostPerMan) return;
     final regulars = [
       for (var i = 0; i < realm.troops.length; i++)
         if (realm.troops[i].garrisonCounted) i,
@@ -423,44 +400,37 @@ void _reinforcePlanned(GameState state, Realm realm, Rng rng,
       // Found a new unit. The Kavallerie surcharge only pays off for a
       // real unit — never buy it for a token squad.
       final kavSurcharge = classSurcharge(TroopClass.kavallerie);
-      final kavMen = math.min(
-          math.min(step, unitCap), (budget - kavSurcharge) ~/ 5);
+      final kavMen = math.min(math.min(step, unitCap),
+          (budget - kavSurcharge) ~/ recruitCostPerMan);
       final kav = tuning.kavallerieTreasury > 0 &&
           realm.treasury >= tuning.kavallerieTreasury &&
           kavMen >= 10;
       final surcharge = kav ? kavSurcharge : 0;
-      final men =
-          kav ? kavMen : math.min(math.min(step, unitCap), budget ~/ 5);
+      final men = kav
+          ? kavMen
+          : math.min(math.min(step, unitCap), budget ~/ recruitCostPerMan);
       if (men <= 0) return;
-      try {
-        _act(
-            state,
-            RecruitTroops(
-                slot: realm.slot,
-                men: men,
-                troopClass: kav ? TroopClass.kavallerie : TroopClass.infanterie,
-                name: _newTroopName(realm)),
-            rng,
-            events);
-      } on ActionException {
-        return; // defensive: never kill the AI turn over a levy
-      }
-      budget -= surcharge + 5 * men;
+      _act(
+          state,
+          RecruitTroops(
+              slot: realm.slot,
+              men: men,
+              troopClass: kav ? TroopClass.kavallerie : TroopClass.infanterie,
+              name: _newTroopName(realm)),
+          rng,
+          events);
+      budget -= surcharge + recruitCostPerMan * men;
     } else {
       // Reinforce the smallest regular unit toward the target.
       var index = regulars.first;
       for (final i in regulars) {
         if (realm.troops[i].men < realm.troops[index].men) index = i;
       }
-      final men = math.min(step, budget ~/ 5);
+      final men = math.min(step, budget ~/ recruitCostPerMan);
       if (men <= 0) return;
-      try {
-        _act(state, ReinforceTroop(slot: realm.slot, unitIndex: index, men: men),
-            rng, events);
-      } on ActionException {
-        return;
-      }
-      budget -= 5 * men;
+      _act(state, ReinforceTroop(slot: realm.slot, unitIndex: index, men: men),
+          rng, events);
+      budget -= recruitCostPerMan * men;
     }
   }
 }
@@ -470,8 +440,8 @@ void _reinforcePlanned(GameState state, Realm realm, Rng rng,
 /// most a quarter of the treasury per turn — cheapest drill first, so
 /// quality rises evenly across the army. Runs AFTER reinforcing: new
 /// recruits dilute quality, so the drill works on the final roster.
-void _drillTroops(GameState state, Realm realm, Rng rng,
-    List<GameEvent> events, AiTuning tuning) {
+void _drillTroops(GameState state, Realm realm, Rng rng, List<GameEvent> events,
+    AiTuning tuning) {
   if (tuning.drillMaxQuality <= TroopQuality.regular) return;
   var budget = realm.treasury ~/ 4;
   var guard = 0;
@@ -485,7 +455,7 @@ void _drillTroops(GameState state, Realm realm, Rng rng,
           troop.quality >= Troop.drillCap) {
         continue;
       }
-      final cost = 5 * troop.men * troop.quality;
+      final cost = drillCost(troop);
       if (cost < bestCost) {
         bestCost = cost;
         index = i;
@@ -494,11 +464,7 @@ void _drillTroops(GameState state, Realm realm, Rng rng,
     // budget ≤ treasury holds throughout: both start with budget =
     // treasury/4 and each drill decrements both by the same cost.
     if (index < 0 || bestCost > budget) return;
-    try {
-      _act(state, DrillTroop(slot: realm.slot, unitIndex: index), rng, events);
-    } on ActionException {
-      return; // defensive: never kill the AI turn over a drill
-    }
+    _act(state, DrillTroop(slot: realm.slot, unitIndex: index), rng, events);
     budget -= bestCost;
   }
 }
@@ -516,12 +482,11 @@ void _adjustGuardsTowardTarget(
   _act(state, AdjustGuards(slot: realm.slot, delta: delta), rng, events);
 }
 
-/// §20.5: buy ships up to 600 T × harbors.
+/// §20.5: buy ships up to the §9.2 investment cap.
 void _investInShips(
     GameState state, Realm realm, Rng rng, List<GameEvent> events) {
   if (realm.investedThisTurn) return;
-  final cap = realm.tileCount[Building.hafen] * 600;
-  final amount = math.min(cap, realm.treasury ~/ 2);
+  final amount = math.min(shipInvestmentCap(realm), realm.treasury ~/ 2);
   if (amount <= 0) return;
   _act(state, InvestShips(slot: realm.slot, amount: amount), rng, events);
 }
@@ -535,25 +500,14 @@ void _investInShips(
 /// requirement but keeps the weakest-target pick.
 int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
     {bool desperate = false}) {
-  final map = state.map;
-  final adjacent = <int>{};
-  for (var y = 0; y < map.height; y++) {
-    for (var x = 0; x < map.width; x++) {
-      if (map.ownerAt(x, y) != slot) continue;
-      for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-        if (!map.inBounds(x + dx, y + dy)) continue;
-        final other = map.ownerAt(x + dx, y + dy);
-        // A slot the AI's own ruler already holds (aliasing, §19) is no
-        // war target — DeclareWar rejects it; merging is the path.
-        if (other != World.niemand &&
-            other != slot &&
-            !state.realm(other).isVacant &&
-            state.realm(other).rulerId != state.realm(slot).rulerId) {
-          adjacent.add(other);
-        }
-      }
-    }
-  }
+  final realm = state.realm(slot);
+  // Only targets the engine's DeclareWar validation would accept — the
+  // adjacency, vacancy and §19 ruler-aliasing rules live in ONE place
+  // (declareWarBlocker), so a pick can never be rejected on apply.
+  final adjacent = [
+    for (final other in state.map.realmNeighbors(slot))
+      if (declareWarBlocker(state, realm, other) == null) other,
+  ];
   if (adjacent.isEmpty) return null;
   if (tuning.warStrengthAdvantage > 0) {
     final own = _armyStrength(state.realm(slot));
@@ -577,7 +531,7 @@ int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
     for (final s in adjacent)
       if (state.dynasty(s).religion != religion) s,
   ];
-  final pool = infidels.isNotEmpty ? infidels : adjacent.toList();
+  final pool = infidels.isNotEmpty ? infidels : adjacent;
   return pool[rng.nextInt(pool.length)];
 }
 
@@ -598,10 +552,8 @@ void _repositionTroops(
   for (var y = 0; y < map.height; y++) {
     for (var x = 0; x < map.width; x++) {
       if (map.ownerAt(x, y) != slot) continue;
-      for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-        final nx = x + dx;
-        final ny = y + dy;
-        if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) continue;
+      for (final (nx, ny) in map.neighborsOf(x, y)) {
+        if (map.isWaterAt(nx, ny)) continue;
         if (map.ownerAt(nx, ny) != slot) {
           frontier.add((x, y));
           break;
@@ -619,40 +571,33 @@ void _repositionTroops(
   final destinations = <(int, int)>[...frontier, ...frontier, ...rear];
   if (destinations.isEmpty) return;
 
-  for (var i = 0; i < realm.troops.length; i++) {
-    if (rng.nextInt(3) == 0) continue; // hold position
-    final (dx, dy) = destinations[rng.nextInt(destinations.length)];
-    final troop = realm.troops[i];
-    if (troop.x == dx && troop.y == dy) continue;
-    try {
-      _act(state, MoveTroop(slot: slot, unitIndex: i, x: dx, y: dy), rng,
-          events);
-    } on ActionException {
-      // Defensive: a stale destination must not kill the AI turn.
-    }
+  // `[DESIGNED]` Always leave a home guard on the capital — never strip
+  // the base of its last defender (mirrors the war-time home guard). The
+  // reserved unit is picked UP FRONT and simply never marched out, instead
+  // of moving it away and marching it back afterwards.
+  final homeGuard =
+      realm.troops.any((t) => t.x == realm.capitalX && t.y == realm.capitalY)
+          ? null
+          : _nearestToCapital(realm);
+  if (homeGuard != null) {
+    _act(
+        state,
+        MoveTroop(
+            slot: slot,
+            unitIndex: realm.troops.indexOf(homeGuard),
+            x: realm.capitalX,
+            y: realm.capitalY),
+        rng,
+        events);
   }
 
-  // `[DESIGNED]` Always leave a home guard on the capital — never strip the
-  // base of its last defender (mirrors the war-time home guard). If the
-  // reposition above left the capital empty, send the nearest unit back.
-  if (!realm.troops
-      .any((t) => t.x == realm.capitalX && t.y == realm.capitalY)) {
-    final guard = _nearestToCapital(realm);
-    if (guard != null) {
-      try {
-        _act(
-            state,
-            MoveTroop(
-                slot: slot,
-                unitIndex: realm.troops.indexOf(guard),
-                x: realm.capitalX,
-                y: realm.capitalY),
-            rng,
-            events);
-      } on ActionException {
-        // Defensive: the capital is always own land, so this should not throw.
-      }
-    }
+  for (var i = 0; i < realm.troops.length; i++) {
+    final troop = realm.troops[i];
+    if (identical(troop, homeGuard)) continue; // holds the base
+    if (rng.nextInt(3) == 0) continue; // hold position
+    final (dx, dy) = destinations[rng.nextInt(destinations.length)];
+    if (troop.x == dx && troop.y == dy) continue;
+    _act(state, MoveTroop(slot: slot, unitIndex: i, x: dx, y: dy), rng, events);
   }
 }
 
@@ -721,24 +666,21 @@ void _maybeAssassinate(GameState state, Realm realm, Rng rng,
   }
 
   // A squad scaled to a share of the war chest (mittel: a quarter, 3–20
-  // agents; schwer sends a third). The bound is pinned into [3, 30]: below
-  // 3 `clamp` would throw (min > max), above 30 the action rejects the
-  // order — either way a bad tuning row must not kill the AI turn.
-  final maxAgents = math.min(math.max(tuning.assassinMaxAgents, 3), 30);
-  final agents = ((realm.treasury ~/ tuning.assassinTreasuryDivisor) ~/
-          assassinCost)
-      .clamp(3, maxAgents);
+  // agents; schwer sends a third). The bound is pinned into
+  // [3, maxAgentsPerMission]: below 3 `clamp` would throw (min > max),
+  // above the mission cap the action rejects the order — a bad tuning row
+  // must stay inside the engine's own gate.
+  final maxAgents =
+      math.min(math.max(tuning.assassinMaxAgents, 3), maxAgentsPerMission);
+  final agents =
+      ((realm.treasury ~/ tuning.assassinTreasuryDivisor) ~/ assassinCost)
+          .clamp(3, maxAgents);
   if (realm.treasury < agents * assassinCost) return;
-  try {
-    _act(
-        state,
-        OrderAssassination(
-            slot: realm.slot, targetSlot: target, agents: agents),
-        rng,
-        events);
-  } on ActionException {
-    // Defensive: an invalid target pick must not kill the AI turn.
-  }
+  _act(
+      state,
+      OrderAssassination(slot: realm.slot, targetSlot: target, agents: agents),
+      rng,
+      events);
 }
 
 /// AI war-round movement (§11.2): the attacker's units march toward the
@@ -790,17 +732,17 @@ void runAiWarMovement(
       // Own land, the enemy's, and neutral unowned tiles are passable in
       // war (mirrors [applyWarMove]); only third realms block the march.
       final warOwners = {slot, war.opponentOf(slot), World.niemand};
-      final step = _bfsStep(state.map, troop.x, troop.y, tx, ty,
+      final step = warPathStep(state.map, troop.x, troop.y, tx, ty,
               allowedOwners: warOwners) ??
-          _stepToward(state, troop.x, troop.y, tx, ty,
+          greedyStepToward(state.map, troop.x, troop.y, tx, ty,
               allowedOwners: warOwners);
       if (step == null) break;
-      try {
-        events.addAll(applyActionInPlace(state,
-            WarMove(slot: slot, unitIndex: i, dx: step.$1, dy: step.$2), rng));
-      } on ActionException {
-        break; // blocked — give up on this unit for this round
-      }
+      // Planned over the same passability rules applyWarMove enforces —
+      // a rejection is a real pathing bug and must surface. (The old
+      // catch-and-ignore here also hid that _warFor rejected every
+      // autopilot move of a DELEGATED human side; see _warFor.)
+      events.addAll(applyActionInPlace(state,
+          WarMove(slot: slot, unitIndex: i, dx: step.$1, dy: step.$2), rng));
     }
     if (state.activeWar == null) return; // capture ended the war
   }
@@ -858,68 +800,6 @@ void runAiWarMovement(
 
   // Walk back home.
   return homeSnapshot();
-}
-
-/// First step of a shortest land path from ([x],[y]) to ([tx],[ty]);
-/// null when the target is start itself or unreachable over land.
-/// If [allowedOwners] is non-null, only tiles whose owner is in the set
-/// (or the start tile itself) are traversed — used during war to prevent
-/// routing through uninvolved realms.
-(int, int)? _bfsStep(WorldMap map, int x, int y, int tx, int ty,
-    {Set<int>? allowedOwners}) {
-  final start = map.index(x, y);
-  final goal = map.index(tx, ty);
-  if (start == goal) return null;
-  final prev = List<int>.filled(map.terrain.length, -1);
-  prev[start] = start;
-  final queue = <int>[start];
-  for (var head = 0; head < queue.length; head++) {
-    final cur = queue[head];
-    if (cur == goal) break;
-    final cx = cur % map.width;
-    final cy = cur ~/ map.width;
-    for (final (dx, dy) in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
-      final nx = cx + dx;
-      final ny = cy + dy;
-      if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) continue;
-      final ni = map.index(nx, ny);
-      if (prev[ni] != -1) continue;
-      if (allowedOwners != null && !allowedOwners.contains(map.owner[ni])) {
-        continue;
-      }
-      prev[ni] = cur;
-      queue.add(ni);
-    }
-  }
-  if (prev[goal] == -1) return null; // unreachable (island capital etc.)
-  var cur = goal;
-  while (prev[cur] != start) {
-    cur = prev[cur];
-  }
-  return (cur % map.width - x, cur ~/ map.width - y);
-}
-
-(int, int)? _stepToward(GameState state, int x, int y, int tx, int ty,
-    {Set<int>? allowedOwners}) {
-  final map = state.map;
-  final candidates = <(int, int)>[];
-  if (tx > x) candidates.add((1, 0));
-  if (tx < x) candidates.add((-1, 0));
-  if (ty > y) candidates.add((0, 1));
-  if (ty < y) candidates.add((0, -1));
-  // Detours when the direct axes are blocked by water.
-  candidates.addAll(const [(0, 1), (0, -1), (1, 0), (-1, 0)]);
-  for (final (dx, dy) in candidates) {
-    final nx = x + dx;
-    final ny = y + dy;
-    if (!map.inBounds(nx, ny) || map.isWaterAt(nx, ny)) continue;
-    if (allowedOwners != null &&
-        !allowedOwners.contains(map.owner[map.index(nx, ny)])) {
-      continue;
-    }
-    return (dx, dy);
-  }
-  return null;
 }
 
 /// Awaited war-round input from [slot] ("Runde beenden"): in a

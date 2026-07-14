@@ -1,17 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
-const _buildingNames = [
-  'Feld',
-  'Kornfeld',
-  'Weide',
-  'Dorf',
-  'Markt',
-  'Stadt',
-  'Burg',
-  'Palast',
-  'Hafen',
-];
+import '../l10n/labels.dart';
 
 /// One rendered line of the war report popup.
 class _ReportEntry {
@@ -256,9 +246,7 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
 
     case 'plunder':
       final building = p['building'] as int? ?? 0;
-      final name = building < _buildingNames.length
-          ? _buildingNames[building]
-          : 'Feld';
+      final name = buildingName(building, empty: 'Feld');
       final victim = gc.countryNames[p['victim'] as int? ?? 0];
       final details = <String>[
         if (p['destroyed'] == true) 'Das Land liegt verwüstet und brach.',

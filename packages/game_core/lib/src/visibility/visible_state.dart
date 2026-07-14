@@ -161,7 +161,8 @@ Realm _redactRealm(Realm realm, {bool keepTroops = false}) => Realm(
       tileCount: List.of(realm.tileCount),
       rulerId: realm.rulerId,
       popularity: 0,
-      armySize: keepTroops ? realm.armySize : 0,
+      // armySize is derived from the troop list: kept units keep it, a
+      // redacted list reads as 0 — hidden by construction.
       troops: keepTroops ? [for (final t in realm.troops) t.copy()] : null,
       towns: [
         for (final town in realm.towns)

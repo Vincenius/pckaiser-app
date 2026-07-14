@@ -21,8 +21,7 @@ import 'victory.dart';
 
 /// §11.1: starts a war. Prunes empty units, snapshots positions, rolls the
 /// first round's movement allowance.
-ActiveWar startWar(
-    GameState state, int attackerSlot, int defenderSlot, Rng rng,
+ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot, Rng rng,
     {List<GameEvent>? events}) {
   // A war must be winnable: both seats are repaired up front. A capital
   // lost earlier the same year (settlement, earthquake, bankruptcy) is
@@ -36,8 +35,9 @@ ActiveWar startWar(
   }
   for (final slot in [attackerSlot, defenderSlot]) {
     final realm = state.realm(slot);
-    realm.troops.removeWhere((t) => t.men <= 0);
-    // Fresh war, fresh §11.5 plunder budget for every army.
+    // Fresh war, fresh §11.5 plunder budget for every army. (No empty-unit
+    // pruning: a unit hits 0 men only through combat/desertion paths that
+    // delete it on the spot.)
     for (final troop in realm.troops) {
       troop.plunderedThisRound = false;
     }
@@ -49,7 +49,8 @@ ActiveWar startWar(
   for (final slot in [attackerSlot, defenderSlot]) {
     final realm = state.realm(slot);
     war.snapshots[slot] = [
-      for (final t in realm.troops) UnitSnapshot(name: t.name, x: t.x, y: t.y),
+      for (final t in realm.troops)
+        UnitSnapshot(name: t.name, x: t.x, y: t.y, unitId: t.id),
     ];
   }
   state.activeWar = war;
@@ -313,8 +314,8 @@ List<GameEvent> resolveCombat(
   // effective strength measured in winner-quality men — never with the
   // winner's size (that let 100 men out-kill the 200-man force beating
   // them, and chaff strip a fixed share off any giant it touched).
-  int winnerLosses(int men) => math.min(
-      men - 1, (winnerShare * loserRawEff / powerPerMan(aWins ? a : b)).round());
+  int winnerLosses(int men) => math.min(men - 1,
+      (winnerShare * loserRawEff / powerPerMan(aWins ? a : b)).round());
 
   // The winner is decided by `eff`, and `winnerLosses` always keeps it at
   // ≥ 1 man — so exactly one side can ever be wiped, never both. (There is
@@ -438,9 +439,8 @@ void transferTile(
     final town = loser.towns.removeAt(townIndex);
     loser.population -= town.population;
     loser.troopCapacity -= town.troopCapacity;
-    loser.armySize = math.max(0, loser.armySize - town.garrison);
-    // The lost garrison also leaves the loser's garrison-counted units —
-    // cutting only `armySize` would let unit men drift out of sync.
+    // The lost garrison leaves the loser's garrison-counted units
+    // (`armySize` follows the units by derivation).
     cutGarrisonTroops(loser, town.garrison);
     town.garrison = 0; // the defenders are gone with the realm
     winner.towns.add(town);
@@ -675,12 +675,7 @@ bool occupiesAllKeyPoints(GameState state, int slot, int enemySlot) {
   }
   for (var i = 0; i < map.terrain.length; i++) {
     if (map.owner[i] != enemySlot) continue;
-    final building = map.building[i];
-    if (building != Building.stadt &&
-        building != Building.burg &&
-        building != Building.palast) {
-      continue;
-    }
+    if (!Building.isSeat(map.building[i])) continue;
     if (!occupied(i % map.width, i ~/ map.width)) return false;
   }
   return true;
@@ -840,13 +835,12 @@ void _endWarByCapitalOccupation(
       },
     ));
 
+    // The teardown vacates the landless loser (public `realmOverrun`
+    // popup, checkLandLoss). The defeat reason is refined to
+    // 'rulerCaptured' AFTER it (checkLandLoss stamps the generic
+    // 'realmOverrun') — the ruler's capture is what actually fell the realm.
     _returnTroops(state, war, events);
     state.activeWar = null;
-    // The loser is landless: emits the public `realmOverrun` popup event
-    // and vacates the slot. The defeat reason is refined to
-    // 'rulerCaptured' AFTER that call (checkLandLoss stamps the generic
-    // 'realmOverrun') — the ruler's capture is what actually fell the realm.
-    checkLandLoss(state, loser, events);
     if (loserWasHuman) state.humanLossReason = 'rulerCaptured';
 
     // The war state is gone before the coercion decisions land so their
@@ -910,13 +904,10 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
 
-  // Belt and braces for saves whose war began with a stale seat (before
-  // the startWar repair existed): keep both seats valid on every round
-  // end so the occupation check below can actually fire.
-  for (final slot in [war.attackerSlot, war.defenderSlot]) {
-    ensureRealmSeat(state, slot, rng, events, allowDecision: false);
-  }
-
+  // Both seats were repaired at startWar and nothing mid-war can strip a
+  // seat tile (transfers only happen at settlement; plunder never touches
+  // Stadt/Burg/Palast ownership), so the occupation check below always
+  // finds two valid seats — no per-round re-repair needed.
   final captor = capitalOccupier(state, war);
   if (captor != null &&
       (captor == war.heldCapitalSlot ||
@@ -989,25 +980,41 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   _rollWarMoves(state, war, rng);
 }
 
-/// Pairs each troop with a distinct snapshot of the same name, in list
-/// order. Units are snapshotted by name only, and names repeat (every AI
-/// recruit is "Rekruten") — naive name lookup would match every duplicate
-/// to the FIRST snapshot. Entries are null for troops without a snapshot
-/// (defensive — merging is forbidden mid-war).
+/// Pairs each troop with its snapshot: by STABLE UNIT ID first (the
+/// identity that survives every list reshape), by name for legacy
+/// snapshots without ids (pre-id saves, hand-built test units — names
+/// repeat, so each snapshot is claimed at most once, in list order).
+/// Entries are null for troops without a snapshot.
 List<UnitSnapshot?> matchedSnapshots(
     List<Troop> troops, List<UnitSnapshot> snapshots) {
   final used = List<bool>.filled(snapshots.length, false);
-  UnitSnapshot? claim(Troop troop) {
+  final result = List<UnitSnapshot?>.filled(troops.length, null);
+  // Pass 1: stable ids.
+  for (var t = 0; t < troops.length; t++) {
+    final id = troops[t].id;
+    if (id == 0) continue;
     for (var i = 0; i < snapshots.length; i++) {
-      if (!used[i] && snapshots[i].name == troop.name) {
+      if (!used[i] && snapshots[i].unitId == id) {
         used[i] = true;
-        return snapshots[i];
+        result[t] = snapshots[i];
+        break;
       }
     }
-    return null;
   }
-
-  return [for (final troop in troops) claim(troop)];
+  // Pass 2: legacy name matching for whatever has no id pairing.
+  for (var t = 0; t < troops.length; t++) {
+    if (result[t] != null) continue;
+    for (var i = 0; i < snapshots.length; i++) {
+      if (!used[i] &&
+          snapshots[i].unitId == 0 &&
+          snapshots[i].name == troops[t].name) {
+        used[i] = true;
+        result[t] = snapshots[i];
+        break;
+      }
+    }
+  }
+  return result;
 }
 
 /// Whether [slot]'s AI would currently agree to peace (§11.2 AI peace
@@ -1022,24 +1029,16 @@ bool aiWouldAcceptPeace(GameState state, int slot) {
 bool _aiWantsPeace(GameState state, ActiveWar war, int slot) {
   final realm = state.realm(slot);
   final snapshots = war.snapshots[slot] ?? const [];
-  // Home test: every unit claims a distinct snapshot matching name AND
-  // position — same-named units are interchangeable, so the side is home
-  // exactly when the position multisets match.
-  final used = List<bool>.filled(snapshots.length, false);
+  // Home test: every unit stands on ITS OWN snapshotted pre-war position —
+  // paired by stable unit id ([matchedSnapshots]; legacy snapshots without
+  // ids pair by name).
+  final matched = matchedSnapshots(realm.troops, snapshots);
   var allHome = true;
-  for (final troop in realm.troops) {
-    var found = false;
-    for (var i = 0; i < snapshots.length; i++) {
-      if (!used[i] &&
-          snapshots[i].name == troop.name &&
-          snapshots[i].x == troop.x &&
-          snapshots[i].y == troop.y) {
-        used[i] = true;
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
+  for (var i = 0; i < realm.troops.length; i++) {
+    final snapshot = matched[i];
+    if (snapshot == null ||
+        snapshot.x != realm.troops[i].x ||
+        snapshot.y != realm.troops[i].y) {
       allHome = false;
       break;
     }
@@ -1212,16 +1211,13 @@ void finishSettlement(GameState state, Rng rng, List<GameEvent> events) {
   // occupation even forces it into the claim). Repair the seat NOW, not at
   // the next year start: the map flag stays correct and a follow-up war
   // the same year finds a valid seat. A human loser with an eligible tile
-  // keeps the manual choice (relocateCapital decision); the stranded-troop
-  // re-homing below then still falls back to the nearest owned tile.
+  // keeps the manual choice (relocateCapital decision); the teardown's
+  // stranded-troop re-homing then still falls back to an owned tile.
   ensureRealmSeat(state, loserSlot, rng, events);
+  // Teardown: troops return home (annexed snapshot tiles fall back to
+  // owned ground) and a landless loser is vacated.
   _returnTroops(state, war, events);
-  // Settlement annexation can transfer tiles that were snapshot positions for
-  // the loser's troops. Re-home any stranded unit to the loser's capital (or
-  // the nearest owned tile if the capital itself was annexed).
-  _rehomeStrandedTroops(state, state.realm(loserSlot));
   state.activeWar = null;
-  checkLandLoss(state, state.realm(loserSlot), events);
   _surfaceMidTurnWin(state, winnerSlot, events);
 }
 
@@ -1249,55 +1245,57 @@ void _surfaceMidTurnWin(
   }
 }
 
-/// Afterwards every surviving unit returns to its snapshotted pre-war
-/// position; emptied units are deleted (§11.2).
+/// War teardown, run exactly once by every war-ending path (peace, draw,
+/// winter settlement, total conquest): every surviving unit returns to its
+/// snapshotted pre-war position (§11.2) — clamped to still-owned ground,
+/// since a snapshot tile may have been annexed in the settlement or
+/// plundered into no-man's-land during the rounds — and a side whose LAST
+/// tile was destroyed by plunder is vacated ([checkLandLoss]; before this
+/// lived in a once-per-round sweep, which left a peace-ending war with a
+/// landless zombie until the next round start).
 void _returnTroops(GameState state, ActiveWar war, List<GameEvent> events) {
+  final map = state.map;
   for (final slot in [war.attackerSlot, war.defenderSlot]) {
     final realm = state.realm(slot);
-    realm.troops.removeWhere((t) => t.men <= 0);
     final snapshots = war.snapshots[slot] ?? const [];
     final matched = matchedSnapshots(realm.troops, snapshots);
+    int? homeX, homeY; // lazily resolved fallback for lost snapshot tiles
     for (var i = 0; i < realm.troops.length; i++) {
       final snapshot = matched[i];
-      if (snapshot != null) {
-        realm.troops[i].x = snapshot.x;
-        realm.troops[i].y = snapshot.y;
+      final x = snapshot?.x ?? realm.troops[i].x;
+      final y = snapshot?.y ?? realm.troops[i].y;
+      if (map.ownerAt(x, y) == realm.slot) {
+        realm.troops[i].x = x;
+        realm.troops[i].y = y;
+        continue;
       }
-    }
-  }
-  state.rebuildTroopMarkers();
-}
-
-/// Moves any troop that ended up on non-owned territory (e.g. because its
-/// pre-war snapshot position was annexed during settlement) to the realm's
-/// capital, or to the nearest owned tile if the capital itself was taken.
-void _rehomeStrandedTroops(GameState state, Realm realm) {
-  final map = state.map;
-  int? homeX, homeY;
-  for (final troop in realm.troops) {
-    if (map.ownerAt(troop.x, troop.y) == realm.slot) continue;
-    if (homeX == null) {
-      // Capital first; fall back to a map scan if the capital was also annexed.
-      if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
-        homeX = realm.capitalX;
-        homeY = realm.capitalY;
-      } else {
-        outer:
-        for (var y = 0; y < map.height; y++) {
-          for (var x = 0; x < map.width; x++) {
-            if (map.ownerAt(x, y) == realm.slot) {
-              homeX = x;
-              homeY = y;
-              break outer;
+      // Home base gone: the capital, or the first owned tile when the
+      // capital itself was lost. A landless realm keeps positions as they
+      // are — checkLandLoss below clears its troops anyway.
+      if (homeX == null) {
+        if (map.ownerAt(realm.capitalX, realm.capitalY) == realm.slot) {
+          homeX = realm.capitalX;
+          homeY = realm.capitalY;
+        } else {
+          outer:
+          for (var y = 0; y < map.height; y++) {
+            for (var x = 0; x < map.width; x++) {
+              if (map.ownerAt(x, y) == realm.slot) {
+                homeX = x;
+                homeY = y;
+                break outer;
+              }
             }
           }
         }
+        if (homeX == null) break;
       }
-      if (homeX == null) break; // realm is landless; checkLandLoss handles it
+      realm.troops[i].x = homeX;
+      realm.troops[i].y = homeY!;
     }
-    troop.x = homeX;
-    troop.y = homeY!;
+    checkLandLoss(state, realm, events);
   }
+  state.rebuildTroopMarkers();
 }
 
 /// A ruler who lost all land loses any Kurfürst seat (§17.2). Losing the
@@ -1313,9 +1311,12 @@ void _rehomeStrandedTroops(GameState state, Realm realm) {
 /// it to AI control, and `advanceUntilHuman` fires `humansDefeated`. It
 /// would ALSO keep [checkWinCondition] from ever firing — a landless rival
 /// counts as a living ruler, so the last player standing never "owns
-/// everything". Called inline at war settlement and swept once per round
-/// ([vacateLandlessRealms]) for non-war losses (earthquake, §18.1).
+/// everything". Called at every cause of land loss: the war teardown
+/// (`_returnTroops` — settlement, conquest, plunder-emptied sides), the
+/// earthquake and the bankruptcy seizure. No-op for a realm that still
+/// owns land or is already vacant, so repeated calls are safe.
 void checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
+  if (loser.isVacant) return;
   final owned = loser.tileCount.fold(0, (a, b) => a + b);
   if (owned > 0) return;
   if (loser.rulerId != null) {
@@ -1345,18 +1346,6 @@ void checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   state.rebuildTroopMarkers();
 }
 
-/// Defensive round sweep: vacate any realm that lost its LAST tile to a
-/// non-war cause — an earthquake levelling a town-less rump, a bankruptcy
-/// seizure taking the final seat — so a landless "zombie" never lingers in
-/// the turn order or blocks the §19.3 sole-ruler win. War losses are
-/// already handled inline at the settlement ([checkLandLoss]).
-void vacateLandlessRealms(GameState state, List<GameEvent> events) {
-  for (final realm in state.realms) {
-    if (realm.isVacant) continue;
-    checkLandLoss(state, realm, events);
-  }
-}
-
 /// §11.5 plunder during war rounds, once per ARMY per round (the per-unit
 /// flag lives on [Troop.plunderedThisRound], checked in `applyWarPlunder`).
 List<GameEvent> plunderTile(
@@ -1384,15 +1373,18 @@ List<GameEvent> plunderTile(
       victim.tileCount[building]--;
       destroyed = true;
     case Building.dorf || Building.markt || Building.stadt:
-      // Tolerate a building/town desync (like the earthquake path in
-      // events.dart) — a missing town object means nothing to plunder,
-      // not a crash.
-      final townMatches =
-          victim.towns.where((t) => t.x == x && t.y == y).toList();
-      if (townMatches.isNotEmpty) {
-        final town = townMatches.first;
+      final town = victim.townAt(x, y);
+      // Every town tile has a town object; the assert surfaces a map/town
+      // desync in debug and tests. In release nothing is plundered rather
+      // than crashing mid-war.
+      assert(town != null, 'town tile ($x,$y) has no town object');
+      if (town != null) {
         killed = rng.nextInt(town.population ~/ 2);
         loot = rng.nextInt(town.population);
+        // Only FREE quarters burn (capacity above the garrison). The
+        // difference can be briefly negative between a population shrink
+        // (capacity follows at ¼ rate) and the next §8.3 normalization —
+        // nextInt clamps that to a no-op.
         final capacityCut =
             rng.nextInt(math.max(0, town.troopCapacity - town.garrison));
         plunderer.treasury += loot; // victim's treasury is NOT touched

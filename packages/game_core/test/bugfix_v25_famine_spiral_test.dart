@@ -35,7 +35,6 @@ void _starve(Realm realm, {required int population, required int army}) {
   town.garrison = army;
   realm.population = population;
   realm.troopCapacity = population;
-  realm.armySize = army;
   for (var i = 0; i < realm.tileCount.length; i++) {
     realm.tileCount[i] = 0;
   }
@@ -111,7 +110,6 @@ void main() {
       town.garrison = 0;
       realm.population = population;
       realm.troopCapacity = population;
-      realm.armySize = 0;
       realm.troops.clear();
       for (var i = 0; i < realm.tileCount.length; i++) {
         realm.tileCount[i] = 0;

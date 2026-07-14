@@ -12,10 +12,11 @@ import '../state/realm.dart';
 import '../state/town.dart';
 import '../state/troop.dart';
 import 'dynasty.dart' as dyn;
-import 'offices.dart' show closeChronicleIfOfficeHolder;
 import 'population.dart' show cutGarrisonTroops;
 import 'protection.dart';
-import 'titles.dart' show regenderTitle, switchTitleLadder;
+import 'titles.dart'
+    show christianEquivalentClass, regenderTitle, switchTitleLadder;
+import 'war.dart' show checkLandLoss;
 
 /// `[DESIGNED]` How many consecutive end-of-turns a realm may stay below
 /// the §19.2 bankruptcy limit before the creditor forecloses. The first
@@ -67,16 +68,12 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
           map.owner[map.index(x, y)] = World.niemand;
           realm.tileCount[building]--;
         case Building.dorf || Building.markt || Building.stadt:
-          // Tolerate a building/town desync rather than aborting the whole
-          // event phase mid-pass (a thrown firstWhere would leave the world
-          // partially mutated): skip a town tile with no matching object.
-          Town? town;
-          for (final t in realm.towns) {
-            if (t.x == x && t.y == y) {
-              town = t;
-              break;
-            }
-          }
+          final town = realm.townAt(x, y);
+          // Every town tile has a town object; the assert surfaces a
+          // map/town desync in debug and tests. In release the tile is
+          // skipped rather than aborting the event phase mid-pass (a
+          // throw would leave the world partially mutated).
+          assert(town != null, 'town tile ($x,$y) has no town object');
           if (town != null) {
             _damageTown(state, realm, town, rng.nextInt(town.population));
           }
@@ -91,6 +88,12 @@ void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
       visibility: EventVisibility.public,
       payload: {'x': ex, 'y': ey, 'affectedSlots': affected.toList()},
     ));
+    // A quake that levelled a realm's LAST tile vacates it right here —
+    // a landless "zombie" must never linger in the turn order or block
+    // the §19.3 sole-ruler win (no-op for realms that kept land).
+    for (final slot in affected) {
+      checkLandLoss(state, state.realm(slot), events);
+    }
   }
 }
 
@@ -121,8 +124,7 @@ void reseatLostCapitals(GameState state, Rng rng, List<GameEvent> events) {
 /// (war context: war start, every war-round end, the claim settlement) the
 /// seat is re-seated immediately — mid-war there is no decision loop, and
 /// an unresolved seat would make the war unwinnable and flag-less.
-void ensureRealmSeat(
-    GameState state, int slot, Rng rng, List<GameEvent> events,
+void ensureRealmSeat(GameState state, int slot, Rng rng, List<GameEvent> events,
     {bool allowDecision = true}) {
   final realm = state.realm(slot);
   if (realm.isVacant) return;
@@ -182,10 +184,7 @@ void ensureRealmSeat(
   for (var i = 0; i < map.terrain.length; i++) {
     if (map.owner[i] != slot) continue;
     final building = map.building[i];
-    if (!anyTile &&
-        building != Building.stadt &&
-        building != Building.burg &&
-        building != Building.palast) {
+    if (!anyTile && !Building.isSeat(building)) {
       continue;
     }
     final value = Building.value[building];
@@ -216,8 +215,16 @@ void _damageTown(GameState state, Realm realm, Town town, int t) {
   if (garrisonLoss > 0) {
     final cut = math.min(garrisonLoss, town.garrison);
     town.garrison -= cut;
-    realm.armySize = math.max(0, realm.armySize - cut);
     cutGarrisonTroops(realm, cut);
+  }
+  // The two proportional losses round independently, which can leave the
+  // garrison a man above the shrunken capacity — trim right here so
+  // `garrison ≤ troopCapacity` survives every damage path (war-round
+  // plunder reads it mid-turn, before the next §8.3 normalization).
+  if (town.garrison > town.troopCapacity) {
+    final excess = town.garrison - town.troopCapacity;
+    town.garrison = town.troopCapacity;
+    cutGarrisonTroops(realm, excess);
   }
   town.population -= t;
   realm.population -= t;
@@ -349,9 +356,9 @@ void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
   town.garrison += 1000;
   realm.population += 1000;
   realm.troopCapacity += 1000;
-  realm.armySize += 1000;
 
   realm.troops.add(Troop(
+    id: state.nextUnitId++,
     name: 'Die Janitscharen',
     men: 1000,
     troopClass: TroopClass.infanterie,
@@ -400,23 +407,20 @@ Person foundReplacementDynasty(
   final realm = state.realm(slot);
   final dynasty = state.dynasty(slot);
 
-  // The old dynasty's members disappear with it. Each removal gets the
-  // full handleDeath-style cleanup: a vanished person must not stay
-  // referenced as someone's child, as Kaiser/Sultan (a dangling kaiserId
-  // would block every future election) or as ruler of another slot
-  // (ruler aliasing, §19 — a dangling rulerId would freeze that realm
-  // without succession and make the §19.3 win check unsatisfiable).
+  // The old dynasty's members disappear with it. Each removal runs the
+  // same reference cleanup as a death (`removePersonFromWorld`): a
+  // vanished person must not stay referenced as spouse, Kurfürst or
+  // Kaiser/Sultan (a dangling kaiserId would block every future
+  // election). Child links are swept once for the whole batch, and ruled
+  // slots pass on §15.4-style below (no per-person succession — the
+  // house is gone as a whole).
   final removedIds = <int>{};
   for (final id in List.of(dynasty.memberIds)) {
-    final person = state.persons.remove(id);
+    final person = state.persons[id];
     if (person == null) continue;
     removedIds.add(id);
-    final spouse = state.person(person.spouseId);
-    spouse?.spouseId = null;
-    state.kurfuerstenIds.remove(id);
-    closeChronicleIfOfficeHolder(state, person, rng, events);
+    dyn.removePersonFromWorld(state, person, rng, events);
   }
-  dynasty.memberIds.clear();
   for (final person in state.persons.values) {
     person.childrenIds.removeWhere(removedIds.contains);
   }
@@ -556,8 +560,7 @@ void runEliminationChecks(
     75000,
     100000,
   ];
-  final base = realm.titleClass > 12 ? realm.titleClass - 12 : realm.titleClass;
-  final classIndex = (base >= 9 ? _muslimEquivalent(base) : base) - 1;
+  final classIndex = christianEquivalentClass(realm.titleClass) - 1;
   final limit = thresholds[classIndex.clamp(0, 7)];
   if (realm.treasury >= -limit) {
     realm.debtTurns = 0; // back above the limit — the debt clock resets
@@ -604,11 +607,7 @@ void runEliminationChecks(
   for (var i = 0; i < map.terrain.length && seizures > 0; i++) {
     if (map.owner[i] != slot) continue;
     final building = map.building[i];
-    if (building != Building.stadt &&
-        building != Building.burg &&
-        building != Building.palast) {
-      continue;
-    }
+    if (!Building.isSeat(building)) continue;
     if (building == Building.stadt) {
       final x = i % map.width;
       final y = i ~/ map.width;
@@ -620,7 +619,6 @@ void runEliminationChecks(
         // The seized town's garrison vanishes with it — like a dying town
         // (§8.3), not like a disbanded unit: cutting other towns' garrisons
         // here (the old releaseGarrison call) double-counted the loss.
-        realm.armySize = math.max(0, realm.armySize - town.garrison);
         cutGarrisonTroops(realm, town.garrison);
       }
     }
@@ -633,7 +631,7 @@ void runEliminationChecks(
   final wasHuman = dynasty.status == DynastyStatus.human;
   foundReplacementDynasty(state, slot, rng, events);
   if (wasHuman) state.humanLossReason = 'bankruptcy';
+  // A seizure that took the realm's LAST tiles leaves the fresh founder
+  // landless — vacate immediately (no-op when land remains).
+  checkLandLoss(state, realm, events);
 }
-
-int _muslimEquivalent(int muslimClass) =>
-    const {9: 1, 10: 3, 11: 6, 12: 8}[muslimClass] ?? 1;
