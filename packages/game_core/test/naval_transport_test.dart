@@ -39,6 +39,14 @@ void main() {
       expect(m.canNavalTransport(1, 5, 5, 8, 5), isFalse);
     });
 
+    test('canNavalTransport: harborOwners admits the enemy\'s harbor (war)',
+        () {
+      final m = coast();
+      m.owner[m.index(6, 5)] = 2; // enemy harbor
+      expect(m.canNavalTransport(1, 5, 5, 8, 5, harborOwners: {1, 2}), isTrue);
+      expect(m.navalEmbarkTile(1, 0, 5, 8, 5, harborOwners: {1, 2}), (5, 5));
+    });
+
     test('navalEmbarkTile: nearest harbor-coast that reaches the target', () {
       final m = coast();
       expect(m.navalEmbarkTile(1, 5, 5, 8, 5), (5, 5));
@@ -230,6 +238,35 @@ void main() {
           .state;
       expect(
           (s.realm(1).troops.single.x, s.realm(1).troops.single.y), (23, 20));
+    });
+
+    test('war rule 2026-07-19: the ENEMY\'s harbor serves the invader too',
+        () {
+      paintCoast(war, 2);
+      final m = war.map;
+      m.owner[m.index(21, 20)] = 2; // the harbor belongs to the enemy
+      final troop = war.realm(1).troops.single;
+      troop.x = 20;
+      troop.y = 20;
+      war.activeWar!.movesLeft[1]![0] = 5;
+
+      // Naval transport embarks via the enemy harbor.
+      final result = applyAction(
+          war,
+          WarNavalTransport(slot: 1, unitIndex: 0, x: 23, y: 20),
+          Rng(war.rngSeed));
+      final moved = result.state.realm(1).troops.single;
+      expect((moved.x, moved.y), (23, 20));
+
+      // Manual steering may step onto the enemy harbor tile as well.
+      war.activeWar!.movesLeft[1]![0] = 5;
+      final stepped = applyAction(war,
+              WarMove(slot: 1, unitIndex: 0, dx: 1, dy: 0), Rng(war.rngSeed))
+          .state
+          .realm(1)
+          .troops
+          .single;
+      expect((stepped.x, stepped.y), (21, 20));
     });
 
     test('manual steering: cannot enter open water except via an own harbor',

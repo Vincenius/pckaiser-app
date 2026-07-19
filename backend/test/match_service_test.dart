@@ -490,16 +490,40 @@ void main() {
           GameState.fromJson((handed['state'] as Map).cast<String, dynamic>());
       expect(handedState.activeWar!.round, 0, reason: 'same round');
 
-      // Berta's round end advances the round — back to Anna.
+      // Berta's round end advances the round — the initiative ALTERNATES
+      // (engine rule 2026-07-19): the defender opens the odd rounds, so
+      // round 1 awaits Berta again.
       final advanced = await service.submit(
         matchId: match.id,
         playerId: b.id,
         actionJson: WarEndRound(slot: 2).toJson(),
       );
-      expect(advanced['awaited_player_id'], a.id);
+      expect(advanced['awaited_player_id'], b.id,
+          reason: 'the defender has the initiative in odd rounds');
       final advancedState = GameState.fromJson(
           (advanced['state'] as Map).cast<String, dynamic>());
       expect(advancedState.activeWar!.round, 1);
+
+      // Round 1 mirrors round 0 with the sides swapped: Berta hands over,
+      // Anna's round end advances to round 2 (Anna opens again).
+      final handedBack = await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarEndRound(slot: 2).toJson(),
+      );
+      expect(handedBack['awaited_player_id'], a.id);
+      final round2 = await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: WarEndRound(slot: 1).toJson(),
+      );
+      expect(round2['awaited_player_id'], a.id,
+          reason: 'the attacker has the initiative in even rounds');
+      expect(
+          GameState.fromJson((round2['state'] as Map).cast<String, dynamic>())
+              .activeWar!
+              .round,
+          2);
     });
 
     test('human-vs-AI war runs on the full turn clock, not the war clock',

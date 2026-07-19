@@ -429,8 +429,9 @@ ActiveWar _warFor(GameState state, int slot, {WarPhase? phase}) {
 /// The §11.2 per-step passability rule, shared by [applyWarMove]'s
 /// validation and [applyWarMarch]'s step planning (ONE definition — a
 /// planner that used its own copy could drift and plan a rejected step):
-///  - water only through an own Hafen (embark) or when already at sea
-///    (manual sea steering, tile by tile);
+///  - water only through an own or ENEMY Hafen (embark; captured enemy
+///    ports serve the invader, user rule 2026-07-19) or when already at
+///    sea (manual sea steering, tile by tile);
 ///  - `[DESIGNED]` own, enemy and neutral unowned tiles are passable;
 ///    only a THIRD realm's land is off-limits during the war.
 /// Returns the rejection message, or null when the step is legal.
@@ -439,10 +440,12 @@ String? warStepBlocker(
   final map = state.map;
   if (!map.inBounds(nx, ny)) return 'Unpassierbar !';
   if (map.isWaterAt(nx, ny)) {
-    final embarking =
-        map.ownerAt(nx, ny) == slot && map.buildingAt(nx, ny) == Building.hafen;
+    final harborOwner = map.ownerAt(nx, ny);
+    final embarking = (harborOwner == slot || harborOwner == enemySlot) &&
+        map.buildingAt(nx, ny) == Building.hafen;
     if (!embarking && !map.isWaterAt(x, y)) {
-      return 'Truppen gehen nur über einen eigenen Hafen an Bord !';
+      return 'Truppen gehen nur über einen eigenen oder feindlichen '
+          'Hafen an Bord !';
     }
   }
   final tileOwner = map.ownerAt(nx, ny);
@@ -600,7 +603,8 @@ List<GameEvent> applyWarMarch(
   return events;
 }
 
-/// Seetransport im Krieg: embark a unit standing next to an own Hafen and
+/// Seetransport im Krieg: embark a unit standing next to an own or ENEMY
+/// Hafen (captured ports serve the invader, user rule 2026-07-19) and
 /// ship it to a sea-connected coastal tile. The destination may be own,
 /// enemy or neutral coast — an **amphibious landing** on enemy coast fights
 /// any defenders there (§11.3), exactly like a land step onto the tile; a
@@ -619,12 +623,13 @@ List<GameEvent> applyWarNavalTransport(
         'Diese Truppe kann in dieser Runde nicht weiter ziehen !');
   }
   final map = state.map;
-  if (!map.canNavalTransport(
-      realm.slot, troop.x, troop.y, action.x, action.y)) {
-    throw ActionException(
-        'Keine Seeverbindung von einem eigenen Hafen zu diesem Ziel !');
-  }
   final enemySlot = war.opponentOf(realm.slot);
+  if (!map.canNavalTransport(realm.slot, troop.x, troop.y, action.x, action.y,
+      harborOwners: {realm.slot, enemySlot})) {
+    throw ActionException(
+        'Keine Seeverbindung von einem eigenen oder feindlichen Hafen '
+        'zu diesem Ziel !');
+  }
   final tileOwner = map.ownerAt(action.x, action.y);
   if (tileOwner != realm.slot &&
       tileOwner != enemySlot &&
@@ -687,18 +692,21 @@ List<GameEvent> applyWarPlunder(
   if (unitsHere.isEmpty) {
     throw ActionException('Keine Truppen auf diesem Feld !');
   }
+  // The STRONGEST unspent unit carries the plunder — its strength bounds
+  // the haul (plunderTile, 2026-07-19), so a weak splinter must not
+  // shadow a full army standing on the same tile.
   Troop? unit;
   for (final t in unitsHere) {
-    if (!t.plunderedThisRound) {
-      unit = t;
-      break;
-    }
+    if (t.plunderedThisRound) continue;
+    if (unit == null || troopStrength(t) > troopStrength(unit)) unit = t;
   }
   if (unit == null) {
     throw ActionException('Diese Armee hat diese Runde schon geplündert !');
   }
   unit.plunderedThisRound = true;
-  return plunderTile(state, realm.slot, action.x, action.y, rng);
+  // The carrying unit also bounds the haul: loot, kills and razed
+  // quarters scale with ITS strength (see plunderTile, 2026-07-19).
+  return plunderTile(state, realm.slot, action.x, action.y, unit, rng);
 }
 
 List<GameEvent> applyWarPeaceWish(

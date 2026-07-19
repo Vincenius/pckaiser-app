@@ -91,19 +91,34 @@ FoodReport runFoodAndPopulation(
   // exactly the "I keep building fields and it gets worse" trap. The
   // multiplier is continuous now; extra fields and levies dilute the
   // workforce smoothly instead of cliffing.
-  final fields =
-      realm.tileCount[Building.kornfeld] + realm.tileCount[Building.weide];
+  // War-devastated fields (2026-07-19) lie fallow: they keep owner and
+  // building — titles, settlement values and the map are untouched — but
+  // yield nothing until they recover (`WorldMap.devastatedUntil`).
+  var devastatedGrain = 0;
+  var devastatedLivestock = 0;
+  final map = state.map;
+  for (var i = 0; i < map.terrain.length; i++) {
+    if (map.owner[i] != realm.slot) continue;
+    if (map.devastatedUntil[i] <= state.year) continue;
+    if (map.building[i] == Building.kornfeld) devastatedGrain++;
+    if (map.building[i] == Building.weide) devastatedLivestock++;
+  }
+  final grainFields = realm.tileCount[Building.kornfeld] - devastatedGrain;
+  final livestockFields =
+      realm.tileCount[Building.weide] - devastatedLivestock;
+
+  final fields = grainFields + livestockFields;
   var efficiency = 0.0;
   if (fields > 0) {
     efficiency =
         ((realm.population - realm.armySize) / fields / 10).clamp(0.5, 2.0);
     report.grainYield = (efficiency *
             (rng.nextInt(grainYieldSpan) + grainYieldBase) *
-            realm.tileCount[Building.kornfeld])
+            grainFields)
         .round();
     report.livestockYield = (efficiency *
             (rng.nextInt(livestockYieldSpan) + livestockYieldBase) *
-            realm.tileCount[Building.weide])
+            livestockFields)
         .round();
     realm.grainHarvest += report.grainYield;
     realm.livestockHarvest += report.livestockYield;
@@ -155,9 +170,9 @@ FoodReport runFoodAndPopulation(
   // farms, or selling the food your people needed to eat. Famine shrink
   // (g < 0) is untouched — it still corrects any existing excess.
   if (g > 0) {
+    // Devastated fields feed nobody — the ceiling uses the WORKING fields.
     final expectedYield = efficiency *
-        (grainYieldMean * realm.tileCount[Building.kornfeld] +
-            livestockYieldMean * realm.tileCount[Building.weide]);
+        (grainYieldMean * grainFields + livestockYieldMean * livestockFields);
     // Also never past what is actually ON HAND this turn (the stock,
     // fresh yield included): with empty stores and a bad roll the
     // population holds instead of growing into next year's famine — the

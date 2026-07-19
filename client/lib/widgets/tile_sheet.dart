@@ -347,7 +347,10 @@ Future<void> showTileActionSheet(
                   : terrain == gc.Terrain.berg
                   ? 'Berg'
                   : 'Wasser'}'
-              '${building == gc.Building.none ? '' : ' — ${buildingName(building)}'}',
+              '${building == gc.Building.none ? '' : ' — ${buildingName(building)}'}'
+              // A war-plundered field lies fallow until it recovers
+              // (engine rule 2026-07-19).
+              '${state.map.isDevastatedAt(x, y, state.year) ? ' (verwüstet bis Anno ${state.map.devastatedUntil[state.map.index(x, y)]})' : ''}',
             ),
             subtitle: Text(
               town.isNotEmpty ? '$ownerLine — ${town.first.name}' : ownerLine,

@@ -242,14 +242,34 @@ void main() {
     expect(controller.handoffToSlot, 5);
     controller.confirmHandoff();
 
-    // The defender's round end advances the round — back to the
-    // attacker, again behind a handoff.
+    // The defender's round end advances the round — and the initiative
+    // ALTERNATES (2026-07-19): the defender opens round 1, so the seat
+    // stays with them.
     await controller.endWarRound();
     expect(controller.state.activeWar!.round, 1);
+    expect(
+      controller.currentSlot,
+      5,
+      reason: 'the defender has the initiative in odd rounds',
+    );
+    if (controller.handoffPending) controller.confirmHandoff();
+
+    // Round 1 mirrors round 0: the defender hands over mid-round, the
+    // attacker's round end advances to round 2 (attacker opens again).
+    await controller.endWarRound();
+    expect(controller.state.activeWar!.round, 1, reason: 'same round');
     expect(controller.currentSlot, 1);
     expect(controller.handoffPending, isTrue);
     expect(controller.handoffToSlot, 1);
     controller.confirmHandoff();
+    await controller.endWarRound();
+    expect(controller.state.activeWar!.round, 2);
+    expect(
+      controller.currentSlot,
+      1,
+      reason: 'the attacker has the initiative in even rounds',
+    );
+    if (controller.handoffPending) controller.confirmHandoff();
 
     // Mutual peace ends the war; the seat stays with the attacker,
     // whose interrupted turn resumes.

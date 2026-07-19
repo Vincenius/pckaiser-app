@@ -259,12 +259,26 @@ class _GameScreenState extends State<GameScreen> {
       }
     }
 
+    // At war, the ENEMY's harbors serve the invader too (engine rule
+    // 2026-07-19) — route over both sides' ports.
+    final war = controller.state.activeWar;
+    final harborOwners = war != null && war.isParticipant(slot)
+        ? {slot, war.opponentOf(slot)}
+        : {slot};
+
     final error = await march(tx, ty);
     // The convenience sea-route only applies from LAND (at sea the unit is
     // steered manually) and while no battle happened yet (a fought march
     // defers it — re-tap to continue next round).
     if (error != null && report.isEmpty && !map.isWaterAt(fromX, fromY)) {
-      if (map.canNavalTransport(slot, fromX, fromY, tx, ty)) {
+      if (map.canNavalTransport(
+        slot,
+        fromX,
+        fromY,
+        tx,
+        ty,
+        harborOwners: harborOwners,
+      )) {
         // Standing next to a harbor that reaches the target → ship across.
         final navError = await _navalTransport(
           controller,
@@ -278,7 +292,14 @@ class _GameScreenState extends State<GameScreen> {
       } else {
         // Otherwise march to the nearest harbor coast that connects, then
         // ship from there — unless a battle en route defers the hop.
-        final embark = map.navalEmbarkTile(slot, fromX, fromY, tx, ty);
+        final embark = map.navalEmbarkTile(
+          slot,
+          fromX,
+          fromY,
+          tx,
+          ty,
+          harborOwners: harborOwners,
+        );
         if (embark == null || (embark.$1 == fromX && embark.$2 == fromY)) {
           _toast(error);
         } else {
@@ -292,7 +313,14 @@ class _GameScreenState extends State<GameScreen> {
             _toast(marchError);
           } else if (arrived &&
               report.isEmpty &&
-              map.canNavalTransport(slot, embark.$1, embark.$2, tx, ty)) {
+              map.canNavalTransport(
+                slot,
+                embark.$1,
+                embark.$2,
+                tx,
+                ty,
+                harborOwners: harborOwners,
+              )) {
             final navError = await _navalTransport(
               controller,
               slot,
@@ -368,7 +396,9 @@ class _GameScreenState extends State<GameScreen> {
                   child: Stack(
                     children: [
                       Positioned.fill(child: GameWidget(game: game)),
-                      // Vitals over the map; hidden while the war panel or the
+                      // Vitals over the map; hidden during a war (the
+                      // docked war panel rules the screen and the turn
+                      // vitals don't apply mid-war) and while the
                       // tile-pick banner occupies the top edge.
                       if (controller.state.activeWar == null &&
                           !controller.tilePickActive &&
@@ -377,12 +407,6 @@ class _GameScreenState extends State<GameScreen> {
                           top: 8,
                           right: 8,
                           child: _resourceChip(controller),
-                        ),
-                      if (controller.state.activeWar != null &&
-                          !controller.handoffPending)
-                        Align(
-                          alignment: Alignment.topCenter,
-                          child: WarPanel(controller: controller),
                         ),
                       if (controller.tilePickActive &&
                           !controller.handoffPending)
@@ -417,6 +441,12 @@ class _GameScreenState extends State<GameScreen> {
                     ],
                   ),
                 ),
+                // War controls docked above the status row: full width,
+                // an extension of the bottom menu block instead of an
+                // overlay hiding the map.
+                if (controller.state.activeWar != null &&
+                    !controller.handoffPending)
+                  WarPanel(controller: controller),
                 _statusRow(controller),
                 _actionBar(controller),
               ],

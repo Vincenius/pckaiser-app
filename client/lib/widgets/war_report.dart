@@ -175,9 +175,11 @@ _ReportEntry _warSummaryEntry(Map<String, dynamic> s, int viewerSlot) {
         : gc.countryNames[slot];
   }
 
-  String tally(String prefix, int menLost, int loot, int tiles) {
+  String tally(String prefix, int menLost, int loot, int tiles, int won) {
     final parts = [
       '−$menLost Mann',
+      // Won battles feed the war score since 2026-07-19 — worth showing.
+      if (won > 0) '$won Schlacht${won == 1 ? '' : 'en'} gewonnen',
       if (loot > 0) '$loot T erbeutet',
       if (tiles > 0) '$tiles ${tiles == 1 ? 'Feld' : 'Felder'} erobert',
     ];
@@ -191,12 +193,14 @@ _ReportEntry _warSummaryEntry(Map<String, dynamic> s, int viewerSlot) {
       s['attackerMenLost'] as int? ?? 0,
       s['attackerLoot'] as int? ?? 0,
       s['attackerTilesTaken'] as int? ?? 0,
+      s['attackerBattlesWon'] as int? ?? 0,
     ),
     tally(
       side(s['defenderSlot'] as int?),
       s['defenderMenLost'] as int? ?? 0,
       s['defenderLoot'] as int? ?? 0,
       s['defenderTilesTaken'] as int? ?? 0,
+      s['defenderBattlesWon'] as int? ?? 0,
     ),
   ];
   return _ReportEntry(
@@ -249,7 +253,9 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
       final name = buildingName(building, empty: 'Feld');
       final victim = gc.countryNames[p['victim'] as int? ?? 0];
       final details = <String>[
-        if (p['destroyed'] == true) 'Das Land liegt verwüstet und brach.',
+        if (p['destroyed'] == true)
+          'Das Feld ist verwüstet und liegt '
+              '${p['recoversIn'] ?? 3} Jahre brach.',
         if ((p['loot'] as int? ?? 0) > 0) '${p['loot']} Taler erbeutet.',
         if ((p['killed'] as int? ?? 0) > 0) '${p['killed']} Einwohner getötet.',
       ];

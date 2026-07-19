@@ -1121,11 +1121,29 @@ void main() {
         throwsA(isA<ActionException>()),
       );
 
-      // Defender's round end advances the round; attacker acts again.
+      // Defender's round end advances the round — and the initiative
+      // ALTERNATES (2026-07-19): the defender opens the odd rounds, so
+      // round 1 starts with slot 2 again and the attacker is locked out.
       s = applyAction(s, WarEndRound(slot: 2), Rng(s.rngSeed)).state;
       expect(s.activeWar, isNotNull);
       expect(s.activeWar!.round, 1);
+      expect(warActingSlot(s), 2,
+          reason: 'the defender has the initiative in odd rounds');
+      expect(
+        () => applyAction(
+            s, WarPeaceWish(slot: 1, wantsPeace: true), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+
+      // Round 1: the DEFENDER's round end now only hands over ...
+      s = applyAction(s, WarEndRound(slot: 2), Rng(s.rngSeed)).state;
+      expect(s.activeWar!.round, 1);
       expect(warActingSlot(s), 1);
+      // ... and the attacker's advances to round 2, where they open again.
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.activeWar!.round, 2);
+      expect(warActingSlot(s), 1,
+          reason: 'the attacker has the initiative in even rounds');
     });
 
     test('mutual peace wishes end the war at the defender\'s round end', () {

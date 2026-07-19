@@ -110,10 +110,21 @@ bool warSideIsHuman(GameState state, ActiveWar war, int slot) =>
     state.dynasty(slot).status == DynastyStatus.human &&
     !war.autoSlots.contains(slot);
 
-/// The first human war side in attacker-before-defender order (the
-/// original's round order), or null in a pure AI (or fully delegated) war.
+/// The acting order of the CURRENT war round, `[DESIGNED 2026-07-19]`:
+/// initiative alternates — the attacker opens the even rounds (round 0,
+/// the declaration round, as in the original), the defender the odd ones.
+/// Before, the attacker moved first in every one of the 20 rounds, which
+/// summed to a real edge in human-vs-human wars (and decided the both-
+/// occupy-capitals tie). ONE definition used by the round handover, the
+/// acting-slot rolls, the AI movement order and the capital tie-break.
+List<int> warRoundOrder(ActiveWar war) => war.round.isEven
+    ? [war.attackerSlot, war.defenderSlot]
+    : [war.defenderSlot, war.attackerSlot];
+
+/// The first human war side in THIS round's initiative order
+/// ([warRoundOrder]), or null in a pure AI (or fully delegated) war.
 int? _firstHumanSide(GameState state, ActiveWar war) {
-  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+  for (final slot in warRoundOrder(war)) {
     if (warSideIsHuman(state, war, slot)) return slot;
   }
   return null;
@@ -152,20 +163,21 @@ int? warActingSlot(GameState state) {
   return _firstHumanSide(state, war);
 }
 
-/// Human-vs-human round handover: an attacker finishing their half of
-/// the round passes the input to the human defender instead of ending
-/// the round. Returns true when the handover happened (the caller must
-/// NOT advance the round then). All other constellations — AI opponent,
-/// defender finishing — return false: the round really ends.
+/// Human-vs-human round handover: the side that OPENED this round
+/// ([warRoundOrder]) finishing their half passes the input to the other
+/// human side instead of ending the round. Returns true when the handover
+/// happened (the caller must NOT advance the round then). All other
+/// constellations — AI opponent, the second side finishing — return
+/// false: the round really ends.
 bool handWarRoundOver(GameState state, int slot) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return false;
-  if (slot != war.attackerSlot) return false;
+  if (slot != warRoundOrder(war).first) return false;
   if (!warSideIsHuman(state, war, war.defenderSlot) ||
       !warSideIsHuman(state, war, war.attackerSlot)) {
     return false;
   }
-  war.actingSlot = war.defenderSlot;
+  war.actingSlot = war.opponentOf(slot);
   return true;
 }
 
@@ -185,160 +197,105 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 /// [DEVIATION from §11.3] The original's formula made tile defense
 /// MULTIPLY the occupant's own losses (a Burg tripled your casualties)
 /// and open ground meant zero casualties ever — wars degenerated into
-/// walking races to the capital. The clone keeps the §10.1 power values
-/// and the one-roll-per-encounter shape, but every encounter is DECIDED:
-/// the side with the higher effective strength
+/// walking races to the capital. Every encounter here is DECIDED: the
+/// side with the higher effective strength wins the clash.
 ///
-///   eff = P × (1 + def / 2) × fortune     (one shared fortune roll,
-///                                          [0.75, 1.25) vs its mirror)
+/// `[BALANCE 2026-07-19, user-designed]` A unit's STRENGTH — men ×
+/// per-man power (§10.1), exactly the number the client displays — is the
+/// ONE base factor in combat. On top of it only these modifiers:
+///  - fortification: +15% on an own Burg tile, +25% on a Palast;
+///  - Artillerie besieges: a fortified ENEMY keeps only half its
+///    fortification bonus against the guns, and the guns fire ×1.1 at it;
+///  - Schere-Stein-Papier, ×1.15 against the countered class:
+///    Infanterie schlägt Kavallerie, Kavallerie schlägt Artillerie,
+///    Artillerie schlägt Infanterie;
+///  - one shared fortune roll, [0.75, 1.25) vs its mirror — a ≥ 5/3×
+///    effective advantage therefore wins EVERY clash.
 ///
-/// wins the clash. `[BALANCE 2026-07-08]` Casualties scale with how
-/// lopsided the clash is — before, both sides' losses were flat shares of
-/// their OWN size, so a tiny unit stripped 10–25% off any giant it touched
-/// and splitting an army into chaff multiplied its damage:
-///  - the loser takes 35–65% casualties, rising toward a total rout as
-///    superiority grows (a remnant under 5 men is wiped) — but never more
-///    men than the winner's effective strength can plausibly cut down, so
-///    an upset winner can't shred a huge army in one clash;
-///  - the winner takes 10–25% of what the LOSER's effective strength is
-///    worth in winner-quality men (and always survives) — crushing a far
-///    weaker unit is near-bloodless, and a loser can never out-kill the
-///    force beating it.
-/// The narrowed fortune band means a ≥ 5/3× effective advantage wins
-/// EVERY clash (the old [0.5, 1.5) band let a 3× weaker side win on
-/// luck). Equal forces on open ground still trade ~50/50 wins and fall
-/// after 2–5 engagements.
-///
-/// `[BALANCE 2026-07-14, user report]` Mass alone no longer routs:
-/// superiority = √(men ratio) × per-man-power ratio. Raw headcount is
-/// dampened (an equal-quality force now needs ~18× the men for a
-/// guaranteed annihilation, before ~4.3×) while the PER-MAN edge —
-/// drilled quality and troop class — counts in full: a drilled unit
-/// routs an untrained mob of its own size, and a big green levy grinds a
-/// small veteran unit down over several clashes instead of erasing it.
-///
-/// `[DESIGNED 2026-07-14]` Each class also has a tactical role beyond its
-/// raw §10.1 power (applied to eff AND casualty reach):
-///  - Infanterie holds walls: +1 defense on any defended tile (def ≥ 1);
-///  - Kavallerie charges: ×1.2 strength when BOTH sides stand on open
-///    ground (def 0);
-///  - Artillerie besieges: the ENEMY's tile defense counts only half
-///    against its guns.
+/// Casualties follow the OPPONENT's effective strength (converted into
+/// men via the casualty side's per-man power) — never a share of a unit's
+/// own size, so chaff cannot strip fixed percentages off a giant:
+///  - the loser loses 35–65% of what the winner's strength reaches
+///    (a remnant under 5 men is wiped — no endless 1-man tail fights);
+///  - the winner loses 10–25% of the loser's reach and always survives.
 List<GameEvent> resolveCombat(
     GameState state, int slotA, Troop a, int slotB, Troop b, Rng rng) {
-  int defense(Troop t) {
-    var def = 0;
-    if (state.map.terrainAt(t.x, t.y) == Terrain.berg) def += 1;
-    def += switch (state.map.buildingAt(t.x, t.y)) {
-      Building.dorf || Building.palast || Building.hafen => 1,
-      Building.markt || Building.stadt => 2,
-      Building.burg => 3,
-      _ => 0,
+  bool fortified(Troop t) => switch (state.map.buildingAt(t.x, t.y)) {
+        Building.burg || Building.palast => true,
+        _ => false,
+      };
+
+  // Fortification bonus of the tile a unit stands on; Artillerie's guns
+  // halve the enemy's bonus.
+  double fortFactor(Troop t, Troop enemy) {
+    final bonus = switch (state.map.buildingAt(t.x, t.y)) {
+      Building.burg => 0.15,
+      Building.palast => 0.25,
+      _ => 0.0,
     };
-    return def;
+    return 1 + (enemy.troopClass == TroopClass.artillerie ? bonus / 2 : bonus);
   }
 
-  final defenseA = defense(a);
-  final defenseB = defense(b);
-
-  // [DESIGNED 2026-07-14] Class roles: Infanterie holds walls (+1 def on a
-  // defended tile), Artillerie besieges (the DEFENDED total — wall bonus
-  // included, breached walls protect no one — counts half against its
-  // guns), Kavallerie charges (×1.2 in an open-field clash).
-  double defenseFactor(int ownDef, int ownClass, int enemyClass) {
-    var def = ownDef.toDouble();
-    if (ownClass == TroopClass.infanterie && def > 0) def += 1;
-    if (enemyClass == TroopClass.artillerie) def /= 2;
-    return 1 + def / 2;
+  // Schere-Stein-Papier (×1.15 vs the countered class) plus the ×1.1
+  // Artillerie siege bonus against a fortified enemy.
+  double attackFactor(Troop t, Troop enemy) {
+    const counters = [
+      TroopClass.kavallerie, // Infanterie schlägt Kavallerie
+      TroopClass.artillerie, // Kavallerie schlägt Artillerie
+      TroopClass.infanterie, // Artillerie schlägt Infanterie
+    ];
+    var factor = counters[t.troopClass] == enemy.troopClass ? 1.15 : 1.0;
+    if (t.troopClass == TroopClass.artillerie && fortified(enemy)) {
+      factor *= 1.1;
+    }
+    return factor;
   }
-
-  final openField = defenseA == 0 && defenseB == 0;
-  double charge(Troop t) =>
-      openField && t.troopClass == TroopClass.kavallerie ? 1.2 : 1.0;
-  final defFactorA = defenseFactor(defenseA, a.troopClass, b.troopClass);
-  final defFactorB = defenseFactor(defenseB, b.troopClass, a.troopClass);
 
   final r = rng.nextReal();
-  final powerA = troopStrength(a).floor();
-  final powerB = troopStrength(b).floor();
-  int lossesA;
-  int lossesB;
-
   final fortuneA = 0.75 + r / 2;
   final fortuneB = 1.25 - r / 2;
-  final effA = powerA * defFactorA * charge(a) * fortuneA;
-  final effB = powerB * defFactorB * charge(b) * fortuneB;
+  final effA =
+      troopStrength(a) * fortFactor(a, b) * attackFactor(a, b) * fortuneA;
+  final effB =
+      troopStrength(b) * fortFactor(b, a) * attackFactor(b, a) * fortuneB;
   final aWins = effA >= effB;
-  // Casualty math runs on UNfloored per-man power (small units would be
-  // quantized into fake 4× superiorities: 19 men floor to power 1, 48 men
-  // to 4). `raw` is the defense-free fighting strength, `rawEff` includes
-  // the tile defense (a fortified side's reach — its blades kill more).
-  final rawA = a.men * powerPerMan(a) * charge(a) * fortuneA;
-  final rawB = b.men * powerPerMan(b) * charge(b) * fortuneB;
-  final rawEffA = rawA * defFactorA;
-  final rawEffB = rawB * defFactorB;
-  final winnerRawEff = aWins ? rawEffA : rawEffB;
-  final loserRawEff = aWins ? rawEffB : rawEffA;
-  // How lopsided the clash is: √(men ratio) × per-man-power ratio, floored
-  // at 1. Walls decide who WINS, but a rout takes superior MEN — and mass
-  // is dampened while the drilled/class edge counts in full ([BALANCE
-  // 2026-07-14] above): a big green levy bloodies a veteran unit, it does
-  // not erase it.
-  final winnerT = aWins ? a : b;
-  final loserT = aWins ? b : a;
-  final superiority = loserT.men > 0
-      ? math.max(
-          1.0,
-          math.sqrt(winnerT.men / loserT.men) *
-              (powerPerMan(winnerT) / powerPerMan(loserT)))
-      : double.infinity;
+  final winner = aWins ? a : b;
+  final loser = aWins ? b : a;
+  final winnerEff = aWins ? effA : effB;
+  final loserEff = aWins ? effB : effA;
+
+  // The loser's casualties are what the WINNER's strength cuts down (its
+  // reach in loser-quality men), the winner's what the loser's strength
+  // still reaches. The winner always keeps ≥ 1 man — so exactly one side
+  // can ever be wiped, never both.
   final loserShare = 0.35 + 0.3 * rng.nextReal();
   final winnerShare = 0.10 + 0.15 * rng.nextReal();
-  int loserLosses(Troop loser) {
-    // The base 35–65% share grows with the winner's superiority: at ≥ ~4.3×
-    // the unit is annihilated outright (a rout, not a skirmish) — via the
-    // dampened superiority that takes ~18× the MEN at equal quality, or a
-    // ~4.3× per-man edge. Below 1.5× the share stays at its base value.
-    final share = math.min(1.0, loserShare * math.max(1.0, superiority / 1.5));
-    var losses = math.max(1, (loser.men * share).round());
-    // The winner can't cut down more men than its own effective strength
-    // reaches (≈ its fighting headcount measured in loser-quality men) — an
-    // upset winner bloodies a bigger army, it doesn't shred a third of it.
-    losses = math.min(
-        losses, math.max(1, (winnerRawEff / powerPerMan(loser)).round()));
-    // A remnant under 5 men is wiped — no endless 1-man tail fights.
-    return loser.men - losses < 5 ? loser.men : losses;
-  }
+  var lossesLoser =
+      math.max(1, (winnerEff * loserShare / powerPerMan(loser)).round());
+  // A remnant under 5 men is wiped — no endless 1-man tail fights.
+  if (loser.men - lossesLoser < 5) lossesLoser = loser.men;
+  final lossesWinner = math.min(winner.men - 1,
+      (loserEff * winnerShare / powerPerMan(winner)).round());
 
-  // Lanchester-flavored: what the LOSER kills scales with the loser's own
-  // effective strength measured in winner-quality men — never with the
-  // winner's size (that let 100 men out-kill the 200-man force beating
-  // them, and chaff strip a fixed share off any giant it touched).
-  int winnerLosses(int men) => math.min(men - 1,
-      (winnerShare * loserRawEff / powerPerMan(aWins ? a : b)).round());
-
-  // The winner is decided by `eff`, and `winnerLosses` always keeps it at
-  // ≥ 1 man — so exactly one side can ever be wiped, never both. (There is
-  // therefore no "simultaneous annihilation" case to break.)
-  if (aWins) {
-    lossesA = winnerLosses(a.men);
-    lossesB = loserLosses(b);
-  } else {
-    lossesA = loserLosses(a);
-    lossesB = winnerLosses(b.men);
-  }
+  final lossesA = aWins ? lossesWinner : lossesLoser;
+  final lossesB = aWins ? lossesLoser : lossesWinner;
 
   final destroyedA = lossesA >= a.men;
   final destroyedB = lossesB >= b.men;
   _applyLosses(state, slotA, a, lossesA);
   _applyLosses(state, slotB, b, lossesB);
 
-  // Running war tally for the end-of-war overview (events are transient).
+  // Running war tally for the end-of-war overview (events are transient);
+  // the winner's tally also feeds the war score (`warScoreBattleBonus`).
   final war = state.activeWar;
   if (war != null && war.isParticipant(slotA) && war.isParticipant(slotB)) {
     war.battles++;
     war.attackerMenLost += slotA == war.attackerSlot ? lossesA : lossesB;
     war.defenderMenLost += slotA == war.attackerSlot ? lossesB : lossesA;
+    final winnerSlot = aWins ? slotA : slotB;
+    winnerSlot == war.attackerSlot
+        ? war.attackerBattlesWon++
+        : war.defenderBattlesWon++;
   }
 
   return [
@@ -353,6 +310,7 @@ List<GameEvent> resolveCombat(
         'attackerLosses': lossesA,
         'defenderLosses': lossesB,
         'defenderSlot': slotB,
+        'attackerWon': aWins,
         'attackerDestroyed': destroyedA,
         'defenderDestroyed': destroyedB,
         'x': b.x,
@@ -629,8 +587,9 @@ void applyConvertOrDie(GameState state, Person capturedRuler, int religion,
 
 /// The war side holding the enemy's (still enemy-owned) capital tile with
 /// at least one unit, or null. When both sides stand on each other's
-/// capital the higher war score wins (tie: the attacker — they moved
-/// first). Surfaced to the war UI ("end the round to seal the victory").
+/// capital the higher war score wins (tie: whoever opened this round —
+/// they moved first, [warRoundOrder]). Surfaced to the war UI ("end the
+/// round to seal the victory").
 int? capitalOccupier(GameState state, ActiveWar war) {
   bool occupies(int slot) {
     final enemy = state.realm(war.opponentOf(slot));
@@ -645,9 +604,9 @@ int? capitalOccupier(GameState state, ActiveWar war) {
   final attacker = occupies(war.attackerSlot);
   final defender = occupies(war.defenderSlot);
   if (attacker && defender) {
-    return warScore(state, war.defenderSlot) > warScore(state, war.attackerSlot)
-        ? war.defenderSlot
-        : war.attackerSlot;
+    final first = warRoundOrder(war).first;
+    final second = war.opponentOf(first);
+    return warScore(state, second) > warScore(state, first) ? second : first;
   }
   if (attacker) return war.attackerSlot;
   if (defender) return war.defenderSlot;
@@ -974,8 +933,9 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
       troop.plunderedThisRound = false;
     }
   }
-  // Attacker before defender, as in the original: every new round starts
-  // with the first human side's input.
+  // Every new round starts with the first human side in the NEW round's
+  // initiative order — the round counter was just advanced, so
+  // [warRoundOrder] already reflects the alternation.
   war.actingSlot = _firstHumanSide(state, war);
   _rollWarMoves(state, war, rng);
 }
@@ -1053,32 +1013,42 @@ bool _aiWantsPeace(GameState state, ActiveWar war, int slot) {
   return allHome && decided;
 }
 
-/// §11.2 war score for a side: Σ (avgStrength × unitStrength ×
-/// value[occupied tile]) over its units on ENEMY tiles, +3,000 for a unit
-/// on the enemy capital.
+/// War-score bonus per battle won (2026-07-19): ten won battles weigh
+/// like an occupied Markt (2,500) — fighting well counts, but holding
+/// valuable ground counts more.
+const int warScoreBattleBonus = 250;
+
+/// War-score bonus for standing on the enemy capital (§11.2, unchanged).
+const int warScoreCapitalBonus = 3000;
+
+/// §11.2 war score for a side, `[REWORKED 2026-07-19, user-designed]`:
+/// "you get what you hold" — Σ `Building.value` over the DISTINCT enemy
+/// tiles occupied by own units (a stack counts its tile once), plus
+/// [warScoreCapitalBonus] for the enemy capital and [warScoreBattleBonus]
+/// per battle won. The old formula multiplied average and unit strength
+/// into the tile value — quadratic in army strength, so a big army was
+/// rewarded twice (it wins the battles AND outscores per tile) and a
+/// doomstack parked on one Kornfeld could outscore real conquest. Strength
+/// now decides battles only; the score is denominated directly in tile
+/// worth, so a claim reads as "what the winner actually held".
 int warScore(GameState state, int slot) {
   final war = state.activeWar;
   if (war == null) return 0;
   final enemySlot = war.opponentOf(slot);
   final realm = state.realm(slot);
   final enemy = state.realm(enemySlot);
-  if (realm.troops.isEmpty) return 0;
 
-  final strengths = [for (final t in realm.troops) troopStrength(t)];
-  final avg = strengths.fold(0.0, (a, b) => a + b) / strengths.length;
-
-  var score = 0.0;
-  for (var i = 0; i < realm.troops.length; i++) {
-    final troop = realm.troops[i];
+  var score = war.battlesWonBy(slot) * warScoreBattleBonus;
+  final occupied = <int>{};
+  for (final troop in realm.troops) {
     if (state.map.ownerAt(troop.x, troop.y) != enemySlot) continue;
-    score += avg *
-        strengths[i] *
-        Building.value[state.map.buildingAt(troop.x, troop.y)];
+    if (!occupied.add(state.map.index(troop.x, troop.y))) continue;
+    score += Building.value[state.map.buildingAt(troop.x, troop.y)];
     if (troop.x == enemy.capitalX && troop.y == enemy.capitalY) {
-      score += 3000;
+      score += warScoreCapitalBonus;
     }
   }
-  return score.round();
+  return score;
 }
 
 /// End-of-war resolution for winter endings (§11.2): the leading side
@@ -1141,28 +1111,50 @@ int settlementTileValue(GameState state, int building) {
   return value;
 }
 
-/// Greedy annex pass over the open settlement: every affordable loser
-/// tile bordering the winner's land is taken (annexed tiles extend the
-/// border, so connected territory is swept). Shared by the AI auto-settle
-/// and the human "Ganzes Land übernehmen" shortcut (`SettlementTakeAll`).
+/// Auto-annex pass over the open settlement, `[REWORKED 2026-07-19, user
+/// request]`: a WAVE from the winner's border. The loser tiles adjacent
+/// to the winner's land are seeded in reading order (top-left → bottom-
+/// right), then processed breadth-first — every annexed tile extends the
+/// wave to its loser-owned neighbors, so a PARTIAL claim grows one
+/// compact, connected area from the border instead of scattering (the
+/// old pass re-scanned the whole map in index order after each annex).
+/// An unaffordable tile simply stops the wave there: the tiles behind it
+/// are unreachable anyway (annexes must border winner land), and the
+/// claim only shrinks, so a skipped tile can never become affordable
+/// later. Shared by the AI auto-settle and the client's auto-annex
+/// button ("Ganzes Land übernehmen" / "Auto-Annexion",
+/// `SettlementTakeAll`).
 void annexAffordableTiles(GameState state, List<GameEvent> events) {
   final war = state.activeWar!;
   final winnerSlot = war.winnerSlot!;
   final loserSlot = war.opponentOf(winnerSlot);
   final map = state.map;
 
-  var annexed = true;
-  while (annexed && war.remainingClaim > 0) {
-    annexed = false;
-    for (var y = 0; y < map.height && !annexed; y++) {
-      for (var x = 0; x < map.width && !annexed; x++) {
-        if (map.ownerAt(x, y) != loserSlot) continue;
-        final value = settlementTileValue(state, map.buildingAt(x, y));
-        if (value > war.remainingClaim) continue;
-        if (!_bordersTerritory(state, winnerSlot, x, y)) continue;
-        transferTile(state, x, y, winnerSlot, events);
-        war.remainingClaim -= value;
-        annexed = true;
+  final queued = List<bool>.filled(map.terrain.length, false);
+  final queue = <int>[];
+  // Seed: every loser tile on the winner's border, in reading order.
+  for (var i = 0; i < map.terrain.length; i++) {
+    if (map.owner[i] != loserSlot) continue;
+    if (_bordersTerritory(state, winnerSlot, i % map.width, i ~/ map.width)) {
+      queued[i] = true;
+      queue.add(i);
+    }
+  }
+  for (var head = 0; head < queue.length; head++) {
+    final i = queue[head];
+    final x = i % map.width;
+    final y = i ~/ map.width;
+    final value = settlementTileValue(state, map.building[i]);
+    if (value > war.remainingClaim) continue; // the wave breaks here
+    transferTile(state, x, y, winnerSlot, events);
+    war.remainingClaim -= value;
+    // The annexed tile carries the wave to its loser-owned neighbors —
+    // enqueued only now, so they are guaranteed to border winner land.
+    for (final (nx, ny) in map.neighborsOf(x, y)) {
+      final ni = map.index(nx, ny);
+      if (!queued[ni] && map.owner[ni] == loserSlot) {
+        queued[ni] = true;
+        queue.add(ni);
       }
     }
   }
@@ -1248,11 +1240,10 @@ void _surfaceMidTurnWin(
 /// War teardown, run exactly once by every war-ending path (peace, draw,
 /// winter settlement, total conquest): every surviving unit returns to its
 /// snapshotted pre-war position (§11.2) — clamped to still-owned ground,
-/// since a snapshot tile may have been annexed in the settlement or
-/// plundered into no-man's-land during the rounds — and a side whose LAST
-/// tile was destroyed by plunder is vacated ([checkLandLoss]; before this
-/// lived in a once-per-round sweep, which left a peace-ending war with a
-/// landless zombie until the next round start).
+/// since a snapshot tile may have been annexed in the settlement — and a
+/// landless side is vacated ([checkLandLoss]; since 2026-07-19 plunder
+/// only devastates fields instead of erasing them, so mid-war land loss
+/// can no longer happen — the check still guards the settlement paths).
 void _returnTroops(GameState state, ActiveWar war, List<GameEvent> events) {
   final map = state.map;
   for (final slot in [war.attackerSlot, war.defenderSlot]) {
@@ -1312,9 +1303,10 @@ void _returnTroops(GameState state, ActiveWar war, List<GameEvent> events) {
 /// would ALSO keep [checkWinCondition] from ever firing — a landless rival
 /// counts as a living ruler, so the last player standing never "owns
 /// everything". Called at every cause of land loss: the war teardown
-/// (`_returnTroops` — settlement, conquest, plunder-emptied sides), the
-/// earthquake and the bankruptcy seizure. No-op for a realm that still
-/// owns land or is already vacant, so repeated calls are safe.
+/// (`_returnTroops` — settlement and conquest; plunder no longer destroys
+/// tiles since 2026-07-19), the earthquake and the bankruptcy seizure.
+/// No-op for a realm that still owns land or is already vacant, so
+/// repeated calls are safe.
 void checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   if (loser.isVacant) return;
   final owned = loser.tileCount.fold(0, (a, b) => a + b);
@@ -1346,10 +1338,35 @@ void checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {
   state.rebuildTroopMarkers();
 }
 
+/// Minimum unit strength to plunder at all (2026-07-19): 1 — ten regular
+/// levies. Splitting an army into 1-man chaff used to multiply plunder
+/// (each splinter counts as its own "army" for §11.5's once-per-round).
+const double minPlunderStrength = 1;
+
+/// Plunder reach per point of unit strength (2026-07-19): loot caps at
+/// 10 T × strength, killed civilians and burned quarters at 5 × strength.
+/// A 100-man regular unit (strength 10) loots up to 100 T and kills up to
+/// 50 — a real army sacks a town, a splinter merely raids it.
+const int plunderLootPerStrength = 10;
+const int plunderKillsPerStrength = 5;
+
+/// How long a plundered Kornfeld/Weide lies fallow (2026-07-19): the
+/// plunder year plus two more; it yields again in year + 3.
+const int fieldDevastationYears = 3;
+
 /// §11.5 plunder during war rounds, once per ARMY per round (the per-unit
 /// flag lives on [Troop.plunderedThisRound], checked in `applyWarPlunder`).
+///
+/// `[BALANCE 2026-07-19, user-designed]` Plunder scales with the acting
+/// [unit]'s strength ([minPlunderStrength], [plunderLootPerStrength]) —
+/// before, a 1-man splinter looted and razed like a full army, so chaff
+/// spam out-plundered real conquest. And fields are DEVASTATED, not
+/// erased: the tile keeps owner and building but yields nothing until
+/// [fieldDevastationYears] have passed (`WorldMap.devastatedUntil`) —
+/// before, every plundered field fell to no-man's-land forever, so wars
+/// permanently shrank the world even when they ended in a white peace.
 List<GameEvent> plunderTile(
-    GameState state, int plundererSlot, int x, int y, Rng rng) {
+    GameState state, int plundererSlot, int x, int y, Troop unit, Rng rng) {
   final map = state.map;
   final building = map.buildingAt(x, y);
   final victimSlot = map.ownerAt(x, y);
@@ -1357,21 +1374,26 @@ List<GameEvent> plunderTile(
     // An ownerless building has no victim to plunder.
     throw ActionException('Hier steht doch gar nichts !');
   }
+  final strength = troopStrength(unit);
+  if (strength < minPlunderStrength) {
+    throw ActionException('Diese Truppe ist zum Plündern zu schwach !');
+  }
   final plunderer = state.realm(plundererSlot);
   final victim = state.realm(victimSlot);
   final events = <GameEvent>[];
+  final lootCap = (strength * plunderLootPerStrength).round();
+  final killCap = (strength * plunderKillsPerStrength).round();
 
   // Result numbers for the event payload (the client's battle report).
   var loot = 0;
   var killed = 0;
-  var destroyed = false;
+  var devastated = false;
 
   switch (building) {
     case Building.kornfeld || Building.weide:
-      map.building[map.index(x, y)] = Building.none;
-      map.owner[map.index(x, y)] = World.niemand;
-      victim.tileCount[building]--;
-      destroyed = true;
+      map.devastatedUntil[map.index(x, y)] =
+          state.year + fieldDevastationYears;
+      devastated = true;
     case Building.dorf || Building.markt || Building.stadt:
       final town = victim.townAt(x, y);
       // Every town tile has a town object; the assert surfaces a map/town
@@ -1379,14 +1401,15 @@ List<GameEvent> plunderTile(
       // than crashing mid-war.
       assert(town != null, 'town tile ($x,$y) has no town object');
       if (town != null) {
-        killed = rng.nextInt(town.population ~/ 2);
-        loot = rng.nextInt(town.population);
+        killed = rng.nextInt(math.min(town.population ~/ 2, killCap) + 1);
+        loot = rng.nextInt(math.min(town.population, lootCap) + 1);
         // Only FREE quarters burn (capacity above the garrison). The
         // difference can be briefly negative between a population shrink
         // (capacity follows at ¼ rate) and the next §8.3 normalization —
-        // nextInt clamps that to a no-op.
-        final capacityCut =
-            rng.nextInt(math.max(0, town.troopCapacity - town.garrison));
+        // the min/max clamps that to a no-op.
+        final capacityCut = rng.nextInt(math.max(
+                0, math.min(town.troopCapacity - town.garrison, killCap)) +
+            1);
         plunderer.treasury += loot; // victim's treasury is NOT touched
         town.population -= killed;
         victim.population -= killed;
@@ -1396,7 +1419,9 @@ List<GameEvent> plunderTile(
         }
       }
     case Building.burg || Building.palast || Building.hafen:
-      loot = victim.treasury > 0 ? rng.nextInt(victim.treasury) : 0;
+      loot = victim.treasury > 0
+          ? rng.nextInt(math.min(victim.treasury, lootCap) + 1)
+          : 0;
       victim.treasury -= loot;
       plunderer.treasury += loot;
   }
@@ -1421,7 +1446,10 @@ List<GameEvent> plunderTile(
       'victim': victimSlot,
       'loot': loot,
       'killed': killed,
-      'destroyed': destroyed,
+      // Key kept as 'destroyed' for older readers; since 2026-07-19 it
+      // means "field devastated" (recovers in 'recoversIn' years).
+      'destroyed': devastated,
+      if (devastated) 'recoversIn': fieldDevastationYears,
     },
   ));
   return events;

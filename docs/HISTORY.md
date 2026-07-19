@@ -6,6 +6,106 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-19 — War panel docked at the bottom, menu-style actions
+
+The red war panel no longer floats over the map (top-center max-width
+card): it is docked full-width between the map and the status row, an
+extension of the bottom menu block — in the game screen and, for the
+preparation window, in the online off-turn map viewer; the preparation
+and settlement cards dock the same way. Contents reworked (user request):
+the unintuitive ℹ info icon became an explicit „Truppen" action opening
+the roster/enemy-army sheet; the four actions (Truppen, Plündern,
+Frieden, Runde beenden) are equal-width icon+label tiles in the
+category-bar style with "Runde beenden" as the filled primary tile; the
+prose war hints became color-coded status banners (Königssitz gehalten /
+verloren, Gegner wünscht Frieden, eigener Friedenswunsch) with a standing
+objective line ("Erobere den gegnerischen Königssitz und halte ihn eine
+volle Runde …") as the fallback so the win condition is always on screen.
+
+## 2026-07-19 — Fix: pinch-zoom ignored horizontal pinches (two thumbs)
+
+`MapGame.onScaleUpdate` used `info.scale.global.y` (= Flutter's
+`verticalScale`), so a mostly-horizontal pinch — typical when zooming
+with two thumbs — barely changed the zoom. Now uses `info.raw.scale`
+(pointer-distance based, direction-independent). The focal-point delta
+is also applied during a pinch, so pan-while-zooming works.
+
+## 2026-07-19 — War balancing: displayed strength IS the combat factor
+
+User-designed rework of `resolveCombat` (war.dart): the unit STRENGTH the
+client displays (men × §10.1 per-man power) is the one base factor for who
+wins AND for casualties — the 2026-07-14 √(men-ratio) superiority damping,
+the floored power quantization and the raw/rawEff split are removed.
+Casualties are what the OPPONENT's effective strength cuts down (converted
+via the casualty side's per-man power): loser 35–65% of the winner's reach
+(remnant < 5 wiped), winner 10–25% of the loser's reach, always survives.
+Battle events now carry `attackerWon` (additive payload field).
+
+Modifiers on top of strength (replacing the old tile-defense table — Berg/
+Dorf/Markt/Stadt/Hafen grant NO defense anymore, and the Infanterie-wall/
+Kavallerie-charge roles are gone):
+- Fortification: +15% on a Burg tile, +25% on a Palast.
+- Artillerie besieges: a fortified enemy keeps only HALF its fortification
+  bonus, and the guns fire ×1.1 at it.
+- Schere-Stein-Papier ×1.15: Infanterie > Kavallerie > Artillerie >
+  Infanterie (≈ 64% win rate between equal-strength units).
+
+Also: at war, troops may enter and use the ENEMY's harbors — embark step
+(`warStepBlocker`), naval transport (`canNavalTransport`/`navalEmbarkTile`
+grew a `harborOwners` parameter) and the client's sea-route routing all
+accept both war sides' ports. Tutorial "Militär" step updated. Tests:
+combat_balance_test rewritten to the new rules, naval_transport_test
+covers enemy-harbor embark; 392 core + 45 backend + 37 client green.
+
+## 2026-07-19 — War balancing round 2: fairness & fun (user-picked 3/4/5/6/7)
+
+Second user-designed round on top of the strength rework (assessment
+points 3–7; tests in `war_balance_2026_07_19_test.dart` plus adjusted
+HvH tests; 401 core + 45 backend + 37 client green):
+
+1. **Occupation-based war score** (`warScore`): Σ `Building.value` over
+   DISTINCT occupied enemy tiles + `warScoreBattleBonus` (250) per won
+   battle + 3,000 capital bonus. The strength multiplier is gone (it was
+   quadratic in army size — double reward for the bigger army). New
+   additive `ActiveWar.attacker/defenderBattlesWon` tally, credited in
+   `resolveCombat`, shown in the war summary payload.
+2. **Alternating round initiative** (`warRoundOrder`): attacker opens
+   even rounds, defender odd ones — drives `_firstHumanSide`, the HvH
+   `handWarRoundOver` (the round OPENER hands over), the AI move order in
+   `endWarRoundWithAi` and the both-occupy-capitals tie-break.
+3. **Gattung visible at war** (client): class letters (I/K/A) on the map
+   troop badges (`_drawTroopClassGlyph`; drawn for every army whose unit
+   list the visible state carries) and a class breakdown in the war
+   details' enemy line. Men/quality stay espionage-only — the engine
+   already shipped both sides' troop lists to combatants.
+4. **Plunder scales with strength** (`plunderTile` now takes the acting
+   unit): `minPlunderStrength` 1, loot ≤ strength × 10, kills/quarters ≤
+   strength × 5; `applyWarPlunder` picks the STRONGEST unspent unit on
+   the tile. Kills chaff-spam plundering.
+5. **Fields devastated, not erased**: plunder keeps owner + building and
+   stamps `WorldMap.devastatedUntil` (additive map layer) = year + 3; the
+   §8.1 yield and the growth ceiling skip fallow fields
+   (`runFoodAndPopulation`). Plunder can no longer strand a realm
+   landless mid-war. Map darkens devastated tiles; Feldinfo and the
+   plunder report show the recovery year ('recoversIn' payload).
+
+## 2026-07-19 — Auto-Annexion for partial claims (user request)
+
+Hand-tapping every tile of a big late-game claim was a chore: the old
+"Ganzes Land übernehmen" button was greyed out unless the claim covered
+the loser's ENTIRE territory. Now the settlement's auto button is always
+available to the winner — labeled "Ganzes Land übernehmen" when the claim
+covers everything, "Auto-Annexion" otherwise — and runs the same
+`SettlementTakeAll` (annex + finish, rest in Taler).
+`annexAffordableTiles` was reworked from repeated map-index scans to a
+breadth-first WAVE from the winner's border (seeds in reading order, each
+annexed tile extends the wave), so a partial claim buys one compact,
+connected area instead of scan-order scatter; an unaffordable tile stops
+the wave locally (tiles behind it can't border winner land anyway). The
+AI auto-settle shares the new order. Tests: wave order + blocked-wave in
+`war_balance_2026_07_19_test.dart`; 403 core + 45 backend + 37 client
+green.
+
 ## 2026-07-14 — Root-cause cleanup round (workarounds → structural fixes)
 
 Full-codebase audit for symptom-patches, then four refactor clusters. No

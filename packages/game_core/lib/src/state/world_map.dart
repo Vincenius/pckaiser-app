@@ -10,7 +10,10 @@ class WorldMap {
     required this.owner,
     required this.building,
     required this.troopMarker,
-  })  : assert(terrain.length == World.mapWidth * World.mapHeight),
+    List<int>? devastatedUntil,
+  })  : devastatedUntil =
+            devastatedUntil ?? List.filled(terrain.length, 0, growable: false),
+        assert(terrain.length == World.mapWidth * World.mapHeight),
         assert(owner.length == terrain.length),
         assert(building.length == terrain.length),
         assert(troopMarker.length == terrain.length);
@@ -37,12 +40,26 @@ class WorldMap {
         owner: (json['owner'] as List).cast<int>().toList(),
         building: (json['building'] as List).cast<int>().toList(),
         troopMarker: (json['troopMarker'] as List).cast<int>().toList(),
+        // Additive field (2026-07-19) — older saves have no devastation.
+        devastatedUntil:
+            (json['devastatedUntil'] as List?)?.cast<int>().toList(),
       );
 
   final List<int> terrain;
   final List<int> owner;
   final List<int> building;
   final List<int> troopMarker;
+
+  /// Per tile: the YEAR a war-plundered field recovers (0 = intact). A
+  /// Kornfeld/Weide with `devastatedUntil[i] > year` lies fallow — it
+  /// yields nothing but keeps its owner and building (user rule
+  /// 2026-07-19: plunder devastates fields instead of erasing them, so
+  /// wars no longer shrink the world permanently).
+  final List<int> devastatedUntil;
+
+  /// Whether the field at ([x],[y]) currently lies devastated in [year].
+  bool isDevastatedAt(int x, int y, int year) =>
+      devastatedUntil[index(x, y)] > year;
 
   int get width => World.mapWidth;
   int get height => World.mapHeight;
@@ -113,7 +130,11 @@ class WorldMap {
   /// to land tile ([toX],[toY]) using [slot]'s harbors: requires an own harbor
   /// water tile adjacent to the troop's position and a connected water path
   /// (via any sea tiles) to a water tile adjacent to the target.
-  bool canNavalTransport(int slot, int fromX, int fromY, int toX, int toY) {
+  /// [harborOwners] widens whose harbors may serve as the embark point —
+  /// at war, troops may also use the ENEMY's harbors (user rule 2026-07-19).
+  bool canNavalTransport(int slot, int fromX, int fromY, int toX, int toY,
+      {Set<int>? harborOwners}) {
+    final owners = harborOwners ?? {slot};
     if (!inBounds(toX, toY) || !isLandAt(toX, toY)) return false;
     final visited = List<bool>.filled(terrain.length, false);
     final queue = <int>[];
@@ -122,7 +143,7 @@ class WorldMap {
       final hy = fromY + dy;
       if (!inBounds(hx, hy)) continue;
       final hi = index(hx, hy);
-      if (owner[hi] == slot &&
+      if (owners.contains(owner[hi]) &&
           building[hi] == Building.hafen &&
           Terrain.isWater(terrain[hi]) &&
           !visited[hi]) {
@@ -154,14 +175,16 @@ class WorldMap {
   /// destination. Null when no harbor of [slot] connects to the target.
   /// Drives the client's "tap a sea-separated tile → march to the harbor,
   /// then ship across" routing; [canNavalTransport] from the returned tile
-  /// to the target is guaranteed true.
-  (int, int)? navalEmbarkTile(
-      int slot, int fromX, int fromY, int toX, int toY) {
+  /// to the target is guaranteed true. [harborOwners] widens the usable
+  /// harbors like in [canNavalTransport] (enemy harbors at war).
+  (int, int)? navalEmbarkTile(int slot, int fromX, int fromY, int toX, int toY,
+      {Set<int>? harborOwners}) {
+    final owners = harborOwners ?? {slot};
     if (!inBounds(toX, toY) || !isLandAt(toX, toY)) return null;
     (int, int)? best;
     var bestDist = 1 << 30;
     for (var i = 0; i < terrain.length; i++) {
-      if (owner[i] != slot ||
+      if (!owners.contains(owner[i]) ||
           building[i] != Building.hafen ||
           !Terrain.isWater(terrain[i])) {
         continue;
@@ -172,7 +195,10 @@ class WorldMap {
         final lx = hx + dx;
         final ly = hy + dy;
         if (!inBounds(lx, ly) || !isLandAt(lx, ly)) continue;
-        if (!canNavalTransport(slot, lx, ly, toX, toY)) continue;
+        if (!canNavalTransport(slot, lx, ly, toX, toY,
+            harborOwners: owners)) {
+          continue;
+        }
         final dist = (lx - fromX).abs() + (ly - fromY).abs();
         if (dist < bestDist) {
           bestDist = dist;
@@ -224,6 +250,7 @@ class WorldMap {
         owner: List.of(owner, growable: false),
         building: List.of(building, growable: false),
         troopMarker: List.of(troopMarker, growable: false),
+        devastatedUntil: List.of(devastatedUntil, growable: false),
       );
 
   Map<String, dynamic> toJson() => {
@@ -231,5 +258,6 @@ class WorldMap {
         'owner': owner,
         'building': building,
         'troopMarker': troopMarker,
+        'devastatedUntil': devastatedUntil,
       };
 }

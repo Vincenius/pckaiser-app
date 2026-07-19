@@ -105,23 +105,15 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(child: GameWidget(game: _game)),
-                  // War preparation involving this seat: the one
-                  // interactive element of the viewer — answer the war
-                  // plan and set every troop's stance individually while
-                  // studying the own land (the server accepts these out
-                  // of turn during the preparation window).
-                  if (_controller.warPrepSlot != null)
-                    Align(
-                      alignment: Alignment.topCenter,
-                      child: WarPanel(controller: _controller),
-                    ),
-                ],
-              ),
-            ),
+            Expanded(child: GameWidget(game: _game)),
+            // War preparation involving this seat: the one interactive
+            // element of the viewer — answer the war plan and set every
+            // troop's stance individually while studying the own land
+            // (the server accepts these out of turn during the
+            // preparation window). Docked above the status row, like the
+            // war panel in the game screen.
+            if (_controller.warPrepSlot != null)
+              WarPanel(controller: _controller),
             _statusRow(ownedSlots),
             _menuBar(),
           ],

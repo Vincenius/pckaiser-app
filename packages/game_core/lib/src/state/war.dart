@@ -53,6 +53,8 @@ class ActiveWar {
     this.attackerMenLost = 0,
     this.defenderMenLost = 0,
     this.battles = 0,
+    this.attackerBattlesWon = 0,
+    this.defenderBattlesWon = 0,
     this.attackerLoot = 0,
     this.defenderLoot = 0,
     this.attackerTilesTaken = 0,
@@ -102,6 +104,9 @@ class ActiveWar {
         attackerMenLost: json['attackerMenLost'] as int? ?? 0,
         defenderMenLost: json['defenderMenLost'] as int? ?? 0,
         battles: json['battles'] as int? ?? 0,
+        // Additive fields (2026-07-19) — won battles feed the war score.
+        attackerBattlesWon: json['attackerBattlesWon'] as int? ?? 0,
+        defenderBattlesWon: json['defenderBattlesWon'] as int? ?? 0,
         attackerLoot: json['attackerLoot'] as int? ?? 0,
         defenderLoot: json['defenderLoot'] as int? ?? 0,
         attackerTilesTaken: json['attackerTilesTaken'] as int? ?? 0,
@@ -145,11 +150,13 @@ class ActiveWar {
   /// null when nobody holds it.
   int? heldCapitalSlot;
 
-  /// The side whose interactive war input is awaited right now. Attacker
-  /// first each round; in a human-vs-human war the attacker's round end
-  /// HANDS OVER to the defender instead of advancing the round (see
-  /// `endWarRoundFor`). Null when no human fights — AI sides never await
-  /// input. Read through `warActingSlot`, which also covers pre-HvH saves.
+  /// The side whose interactive war input is awaited right now. The
+  /// round's initiative alternates (`warRoundOrder`: attacker opens even
+  /// rounds, defender odd ones); in a human-vs-human war the opening
+  /// side's round end HANDS OVER to the other side instead of advancing
+  /// the round (see `endWarRoundFor`). Null when no human fights — AI
+  /// sides never await input. Read through `warActingSlot`, which also
+  /// covers pre-HvH saves.
   int? actingSlot;
 
   /// Cumulative war tally for the end-of-war overview: men lost per side,
@@ -159,10 +166,20 @@ class ActiveWar {
   int attackerMenLost;
   int defenderMenLost;
   int battles;
+
+  /// Battles WON per side (2026-07-19): each `resolveCombat` credits its
+  /// winner. Feeds the war score (`warScoreBattleBonus` per win) and the
+  /// end-of-war overview.
+  int attackerBattlesWon;
+  int defenderBattlesWon;
+
   int attackerLoot;
   int defenderLoot;
   int attackerTilesTaken;
   int defenderTilesTaken;
+
+  int battlesWonBy(int slot) =>
+      slot == attackerSlot ? attackerBattlesWon : defenderBattlesWon;
 
   /// Human war sides who handed THIS war to the computer (`warDefense`
   /// decision): their rounds are played by the stance autopilot like an
@@ -194,6 +211,8 @@ class ActiveWar {
         'defenderSlot': defenderSlot,
         'rounds': round + 1,
         'battles': battles,
+        'attackerBattlesWon': attackerBattlesWon,
+        'defenderBattlesWon': defenderBattlesWon,
         'attackerMenLost': attackerMenLost,
         'defenderMenLost': defenderMenLost,
         'attackerLoot': attackerLoot,
@@ -238,6 +257,8 @@ class ActiveWar {
         attackerMenLost: attackerMenLost,
         defenderMenLost: defenderMenLost,
         battles: battles,
+        attackerBattlesWon: attackerBattlesWon,
+        defenderBattlesWon: defenderBattlesWon,
         attackerLoot: attackerLoot,
         defenderLoot: defenderLoot,
         attackerTilesTaken: attackerTilesTaken,
@@ -271,6 +292,8 @@ class ActiveWar {
         'attackerMenLost': attackerMenLost,
         'defenderMenLost': defenderMenLost,
         'battles': battles,
+        'attackerBattlesWon': attackerBattlesWon,
+        'defenderBattlesWon': defenderBattlesWon,
         'attackerLoot': attackerLoot,
         'defenderLoot': defenderLoot,
         'attackerTilesTaken': attackerTilesTaken,

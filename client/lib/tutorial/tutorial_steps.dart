@@ -123,9 +123,11 @@ final List<TutorialStep> tutorialSteps = [
         'Bevölkerung aus (mind. 100 Mann) — nur Söldner sind unbegrenzt. '
         'Bestehende Truppen kannst du ausbilden (Kosten '
         'steigen pro Level: 5 T/Mann × Stufe) oder zu Kavallerie/Artillerie '
-        'umrüsten — Ausbildung zählt im Kampf voll, reine Masse nicht: '
-        'Infanterie hält Mauern, Kavallerie gewinnt die Feldschlacht, '
-        'Artillerie bricht Befestigungen. Aber Vorsicht: Das Volk verübelt '
+        'umrüsten — die angezeigte Stärke entscheidet den Kampf. Dazu '
+        'kommen Boni: Burgen (+15 %) und Paläste (+25 %) schützen ihre '
+        'Besatzung, Artillerie schwächt diese Boni und belagert am besten; '
+        'Infanterie schlägt Kavallerie, Kavallerie schlägt Artillerie, '
+        'Artillerie schlägt Infanterie. Aber Vorsicht: Das Volk verübelt '
         'dir Aushebungen und Kriege (Beliebtheit sinkt). Krieg erklären '
         'kannst du ab dem Jahr 1010 — nur Nachbarn, einmal pro Jahr.',
     task:

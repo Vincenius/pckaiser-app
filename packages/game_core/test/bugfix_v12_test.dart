@@ -104,6 +104,11 @@ void main() {
       final troop = s.realm(1).troops.single;
       troop.x = enemyTown.x;
       troop.y = enemyTown.y;
+      // 2026-07-19: the score is occupation-based (tile values + won
+      // battles), so a lone occupied Dorf no longer dwarfs the loser's
+      // territory. Pump the score over the cap via battle wins to test
+      // that the anti-swallow cap still binds.
+      s.activeWar!.attackerBattlesWon = 100; // +25,000 score
       final loserValueBefore = territoryValue(s, 2);
       s.activeWar!.round = 21;
       s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
@@ -114,6 +119,25 @@ void main() {
       expect(s.activeWar!.remainingClaim,
           greaterThanOrEqualTo(loserValueBefore ~/ 2),
           reason: 'the rolled share never falls below the old half cap');
+    });
+
+    test('2026-07-19: a claim below the cap is the earned score itself', () {
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      final enemyTown = s.realm(2).towns.single;
+      final troop = s.realm(1).troops.single;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      final score = warScore(s, 1);
+      expect(score, Building.value[s.map.buildingAt(enemyTown.x, enemyTown.y)],
+          reason: 'occupation-based score: the occupied tile\'s worth');
+      s.activeWar!.round = 21;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.remainingClaim, score,
+          reason: 'you get what you hold — no strength multiplier');
     });
   });
 

@@ -163,6 +163,11 @@ class MapGame extends FlameGame with ScaleDetector {
         final building = map.buildingAt(x, y);
         if (building != gc.Building.none) {
           _drawSprite(canvas, _buildingSprite[building], cell, paint);
+          // A war-plundered field lies fallow (engine rule 2026-07-19):
+          // darken it so the lost yield is readable off the map.
+          if (map.isDevastatedAt(x, y, _state.year)) {
+            canvas.drawRect(cell, Paint()..color = const Color(0x77201008));
+          }
         }
 
         final owner = map.ownerAt(x, y);
@@ -209,6 +214,7 @@ class MapGame extends FlameGame with ScaleDetector {
               ..color = const Color(0xEEFFFFFF),
           );
           _drawSprite(canvas, sprite, cell.deflate(tileSize / 5), paint);
+          _drawTroopClassGlyph(canvas, cell, troopOwner, x, y);
         }
       }
     }
@@ -219,6 +225,53 @@ class MapGame extends FlameGame with ScaleDetector {
     // _rebuild runs on every state notification.
     _picture?.dispose();
     _picture = recorder.endRecording();
+  }
+
+  /// Class letters (I/K/A) on a troop badge's lower edge — the Gattung is
+  /// battlefield-observable (user rule 2026-07-19: the Schere-Stein-Papier
+  /// counters need visible classes to play against). Drawn for every army
+  /// whose unit list the visible state carries: the viewer's own troops
+  /// and, at war, the enemy's ([gc.visibleStateFor] keeps both sides'
+  /// lists). Distinct classes of a stack are joined ("IK"); men and
+  /// quality stay hidden as before.
+  void _drawTroopClassGlyph(
+    Canvas canvas,
+    Rect cell,
+    int troopOwner,
+    int x,
+    int y,
+  ) {
+    const letters = ['I', 'K', 'A'];
+    final classes = <int>{
+      for (final t in _state.realm(troopOwner).troops)
+        if (t.x == x && t.y == y) t.troopClass,
+    };
+    if (classes.isEmpty) return;
+    final text = [
+      for (final c in classes.toList()..sort()) letters[c],
+    ].join();
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(
+          color: Color(0xFFFFFFFF),
+          fontSize: tileSize * 0.3,
+          fontWeight: FontWeight.w800,
+          shadows: [
+            Shadow(blurRadius: 3, color: Color(0xDD000000)),
+            Shadow(blurRadius: 1, color: Color(0xDD000000)),
+          ],
+        ),
+      ),
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(
+        cell.center.dx - painter.width / 2,
+        cell.bottom - painter.height + 2,
+      ),
+    );
   }
 
   /// Faded ghost badges for enemy units known from the newest military
@@ -398,15 +451,13 @@ class MapGame extends FlameGame with ScaleDetector {
   @override
   void onScaleUpdate(ScaleUpdateInfo info) {
     if (info.pointerCount >= 2) {
-      camera.viewfinder.zoom = (_startZoom * info.scale.global.y).clamp(
-        0.35,
-        6.0,
-      );
-    } else {
-      final delta = info.delta.global;
-      camera.viewfinder.position -=
-          Vector2(delta.x, delta.y) / camera.viewfinder.zoom;
+      // raw.scale is direction-independent (pointer distance), unlike
+      // scale.global.y which ignores horizontal pinches (e.g. two thumbs).
+      camera.viewfinder.zoom = (_startZoom * info.raw.scale).clamp(0.35, 6.0);
     }
+    final delta = info.delta.global;
+    camera.viewfinder.position -=
+        Vector2(delta.x, delta.y) / camera.viewfinder.zoom;
     _clampCamera();
   }
 

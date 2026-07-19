@@ -846,12 +846,12 @@ void _skipTrooplessWarSides(GameState state, Rng rng, List<GameEvent> events) {
 
 /// Ends a war round: the AI sides move first (their response to the
 /// driving side's moves this round), then the round advances — capture,
-/// peace and winter checks included. Attacker before defender, as in
-/// the original.
+/// peace and winter checks included. AI sides move in this round's
+/// initiative order ([warRoundOrder] — alternating, 2026-07-19).
 void endWarRoundWithAi(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;
-  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+  for (final slot in warRoundOrder(war)) {
     // Delegated human sides (war.autoSlots) are autopiloted like AI sides.
     if (!warSideIsHuman(state, war, slot)) {
       runAiWarMovement(state, slot, rng, events);
