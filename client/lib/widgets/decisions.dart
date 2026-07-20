@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
 import '../l10n/labels.dart';
+import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 import 'event_feed.dart';
 import 'turn_report.dart';
@@ -36,7 +37,7 @@ Future<void> showRecapAndDecisions(
       context,
       controller.recapFor(slot),
       viewerSlot: slot,
-      title: 'Rundenbericht',
+      title: tr('dec.roundReport'),
     );
     if (!context.mounted) return;
     // A round may have resolved a ruler capture: surface its coercion
@@ -108,13 +109,18 @@ Future<void> _promptDecision(
       // realm they are tying their line to before accepting.
       final proposerLine = proposer == null
           ? '?'
-          : '${proposer.name} von ${gc.countryNames[proposer.dynasty]} '
-                '(${proposer.age})';
+          : tr('dec.proposerLine', {
+              'name': proposer.name,
+              'realm': realmName(proposer.dynasty),
+              'age': proposer.age,
+            });
       final accept = await _yesNo(
         context,
-        'Heiratsantrag',
-        '$proposerLine hält um die Hand von '
-            '${target?.name ?? '?'} an. Einverstanden?',
+        tr('dec.marriageProposalTitle'),
+        tr('dec.marriageProposalBody', {
+          'proposer': proposerLine,
+          'target': target?.name ?? '?',
+        }),
       );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'accept': accept,
@@ -140,13 +146,16 @@ Future<void> _promptDecision(
           // Doubles as the death notice: this dialog is the first thing the
           // player sees after the loss, possibly while seated at another of
           // their slots.
-          title: Text('${p['deceasedName']} ist gestorben ! Wähle den Erben:'),
+          title: Text(tr('dec.heirChoiceTitle', {'name': p['deceasedName']})),
           children: [
             for (final id in candidates)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, id),
                 child: Text(
-                  '${state.persons[id]!.name} (${state.persons[id]!.age})',
+                  tr('dec.personWithAge', {
+                    'name': state.persons[id]!.name,
+                    'age': state.persons[id]!.age,
+                  }),
                 ),
               ),
           ],
@@ -170,22 +179,17 @@ Future<void> _promptDecision(
         return;
       }
       final attackerRole = p['role'] == 'attacker';
-      final opponent =
-          gc.countryNames[(attackerRole ? p['defenderSlot'] : p['attackerSlot'])
-                  as int? ??
-              0];
+      final opponent = realmName(
+        (attackerRole ? p['defenderSlot'] : p['attackerSlot']) as int? ?? 0,
+      );
       final live = await _yesNo(
         context,
-        attackerRole ? 'Krieg erklärt !' : 'Kriegserklärung !',
-        '${attackerRole ? 'Du hast $opponent den Krieg erklärt.' : '$opponent hat dir den Krieg erklärt !'} '
-        'Willst du deine Truppen selbst befehligen?\n\n'
-        'Bei „Nein" übernimmt der Computer diesen Krieg: deine Truppen '
-        'folgen ihrer Haltung. Bis zum Kriegsbeginn kannst du jede Truppe '
-        'einzeln auf der Karte einstellen (Stellung halten oder '
-        'angreifen) — im Kriegsvorbereitungs-Menü über der Karte. Der '
-        'Krieg beginnt, sobald beide Seiten gewählt haben — wollen beide '
-        'selbst steuern, online zum vereinbarten Zeitpunkt oder nach '
-        'Ablauf der Vorbereitungsfrist.',
+        attackerRole ? tr('dec.warDeclaredTitle') : tr('dec.warDeclarationTitle'),
+        tr('dec.warPlanBody', {
+          'declaration': attackerRole
+              ? tr('dec.warPlanYouDeclared', {'realm': opponent})
+              : tr('dec.warPlanEnemyDeclared', {'realm': opponent}),
+        }),
       );
       // Online duel scheduling: a live commander proposes start times.
       // Local hot-seat skips this — both players sit at the device, the
@@ -210,15 +214,11 @@ Future<void> _promptDecision(
         );
         return;
       }
-      final attacker = gc.countryNames[p['attackerSlot'] as int? ?? 0];
+      final attacker = realmName(p['attackerSlot'] as int? ?? 0);
       final defend = await _yesNo(
         context,
-        'Kriegserklärung !',
-        '$attacker hat dir den Krieg erklärt ! Willst du deine Truppen '
-            'selbst befehligen?\n\nBei „Nein" übernimmt der Computer '
-            'diesen Krieg: deine Truppen folgen ihrer eingestellten '
-            'Haltung (halten / greifen an), und du spielst erst nach '
-            'Kriegsende wieder selbst.',
+        tr('dec.warDeclarationTitle'),
+        tr('dec.warDefenseBody', {'realm': attacker}),
       );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'defend': defend,
@@ -229,8 +229,7 @@ Future<void> _promptDecision(
       final isBoy = child == null || child.isMale;
       final name = await _askText(
         context,
-        'Ein ${isBoy ? 'Junge' : 'Mädchen'} ist geboren ! '
-        'Wie soll ${isBoy ? 'er' : 'sie'} heißen?',
+        isBoy ? tr('dec.childBornBoy') : tr('dec.childBornGirl'),
         // Per-game setup option: an empty field instead of the suggestion.
         state.suggestChildNames ? p['suggestedName'] as String? ?? '' : '',
       );
@@ -245,14 +244,16 @@ Future<void> _promptDecision(
         context: context,
         barrierDismissible: false,
         builder: (context) => SimpleDialog(
-          title: const Text('Kaiserwahl — deine Stimme'),
+          title: Text(tr('dec.electionVoteTitle')),
           children: [
             for (final id in finalists)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, id),
                 child: Text(
-                  '${state.persons[id]?.name ?? '?'} '
-                  '(Bestechung: ${bribes['$id'] ?? 0} T)',
+                  tr('dec.electionCandidate', {
+                    'name': state.persons[id]?.name ?? '?',
+                    'amount': bribes['$id'] ?? 0,
+                  }),
                 ),
               ),
           ],
@@ -283,18 +284,20 @@ Future<void> _promptDecision(
 
     case 'coercion':
       final captured = state.persons[p['capturedRulerId'] as int];
-      final demand = switch (p['option']) {
-        'convertOrDie' => 'vor die Wahl stellen: Bekehrung oder Tod',
-        'forcedMarriage' => 'zur Heirat zwingen',
-        'abdication' => 'als Kaiser abdanken lassen',
-        'stripSeat' => 'den Kurfürstensitz aberkennen',
-        _ => 'zwingen (${p['option']})',
+      // Full-sentence keys per option: the verb phrase sits at the end in
+      // German but mid-sentence in English, so a shared template won't do.
+      final params = {
+        'name': captured?.name ?? '?',
+        'option': p['option'],
       };
-      final apply = await _yesNo(
-        context,
-        'Zwang',
-        'Willst du ${captured?.name ?? '?'} $demand?',
-      );
+      final question = switch (p['option']) {
+        'convertOrDie' => tr('dec.coerceConvertOrDie', params),
+        'forcedMarriage' => tr('dec.coerceForcedMarriage', params),
+        'abdication' => tr('dec.coerceAbdication', params),
+        'stripSeat' => tr('dec.coerceStripSeat', params),
+        _ => tr('dec.coerceOther', params),
+      };
+      final apply = await _yesNo(context, tr('dec.coercionTitle'), question);
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'apply': apply,
       });
@@ -302,8 +305,8 @@ Future<void> _promptDecision(
     case 'convertOrDie':
       final accept = await _yesNo(
         context,
-        'Bekehrung oder Tod',
-        'Sterben oder sich bekehren — bekehrst du dich?',
+        tr('dec.convertOrDieTitle'),
+        tr('dec.convertOrDieBody'),
       );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'accept': accept,
@@ -338,7 +341,7 @@ Future<void> _promptDecision(
         context: context,
         barrierDismissible: false,
         builder: (context) => SimpleDialog(
-          title: const Text('Dein Sitz ist verloren — wähle einen neuen'),
+          title: Text(tr('dec.relocateSeatTitle')),
           children: [
             for (final (x, y, building) in candidates)
               SimpleDialogOption(
@@ -364,7 +367,15 @@ Future<void> _promptDecision(
   }
 }
 
-const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const _weekdayKeys = [
+  'dec.weekdayMon',
+  'dec.weekdayTue',
+  'dec.weekdayWed',
+  'dec.weekdayThu',
+  'dec.weekdayFri',
+  'dec.weekdaySat',
+  'dec.weekdaySun',
+];
 
 /// A duel start instant (epoch ms UTC) in the device's local time —
 /// "Heute 18:00", "Morgen 03:00", else "Mi 14:00".
@@ -377,13 +388,13 @@ String formatWarStartTime(int epochMs) {
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(local.year, local.month, local.day);
   final dayLabel = day == today
-      ? 'Heute'
+      ? tr('dec.today')
       : day == today.add(const Duration(days: 1))
-      ? 'Morgen'
-      : _weekdays[local.weekday - 1];
+      ? tr('dec.tomorrow')
+      : tr(_weekdayKeys[local.weekday - 1]);
   final hh = local.hour.toString().padLeft(2, '0');
   final mm = local.minute.toString().padLeft(2, '0');
-  return '$dayLabel $hh:$mm Uhr';
+  return tr('dec.warStartTime', {'day': dayLabel, 'time': '$hh:$mm'});
 }
 
 /// Online duel scheduling: the live commander ticks the times that suit
@@ -415,29 +426,22 @@ Future<List<int>> _askWarStartSlots(
     barrierDismissible: false,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
-        title: const Text('Wann soll der Krieg beginnen?'),
+        title: Text(tr('dec.warStartTitle')),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView(
             shrinkWrap: true,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(bottom: 4),
-                child: Text(
-                  'Wähle die Zeitpunkte, die dir passen. Passt einer auch '
-                  'deinem Gegner, beginnt der Krieg zum frühesten '
-                  'gemeinsamen Zeitpunkt — sonst nach Ablauf der '
-                  'Vorbereitungsfrist. Ohne Auswahl gilt die Frist.',
-                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(tr('dec.warStartHint')),
               ),
               for (final ms in offered)
                 CheckboxListTile(
                   dense: true,
                   value: picked.contains(ms),
                   title: Text(
-                    ms == 0
-                        ? 'Sofort — sobald beide gewählt haben'
-                        : formatWarStartTime(ms),
+                    ms == 0 ? tr('dec.warStartNow') : formatWarStartTime(ms),
                   ),
                   onChanged: (v) => setState(
                     () => v == true ? picked.add(ms) : picked.remove(ms),
@@ -449,7 +453,9 @@ Future<List<int>> _askWarStartSlots(
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(context, picked.toList()..sort()),
-            child: Text(picked.isEmpty ? 'Ohne Terminvorschlag' : 'Bestätigen'),
+            child: Text(
+              picked.isEmpty ? tr('dec.warStartNoProposal') : tr('dec.confirm'),
+            ),
           ),
         ],
       ),
@@ -468,11 +474,11 @@ Future<bool> _yesNo(BuildContext context, String title, String message) async {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Nein'),
+          child: Text(tr('dec.no')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Ja'),
+          child: Text(tr('dec.yes')),
         ),
       ],
     ),
@@ -546,7 +552,7 @@ class _BribeDialogState extends State<_BribeDialog> {
     final remaining = affordable - spent;
     final broke = affordable <= 0;
     return AlertDialog(
-      title: const Text('Bestechung der Kurfürsten'),
+      title: Text(tr('dec.bribeTitle')),
       // A per-elector slider stacked over its own row so nothing is crammed
       // side by side (long names + six-digit amounts used to overflow narrow
       // phones); the amount can never exceed the budget, so the confirm button
@@ -563,9 +569,11 @@ class _BribeDialogState extends State<_BribeDialog> {
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
                 broke
-                    ? 'Deine Schatzkammer ist leer — du kannst diesmal niemanden '
-                          'bestechen. Bestätige ohne Geschenk.'
-                    : 'Ausgegeben: $spent T   ·   Verbleibend: $remaining T',
+                    ? tr('dec.bribeBroke')
+                    : tr('dec.bribeBudget', {
+                        'spent': spent,
+                        'remaining': remaining,
+                      }),
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -626,7 +634,9 @@ class _BribeDialogState extends State<_BribeDialog> {
             ]);
             Navigator.pop(context);
           },
-          child: Text(broke || spent == 0 ? 'Ohne Bestechung' : 'Bestätigen'),
+          child: Text(
+            broke || spent == 0 ? tr('dec.bribeNone') : tr('dec.confirm'),
+          ),
         ),
       ],
     );

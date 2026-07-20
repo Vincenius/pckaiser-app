@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' show AiDifficulty;
 
+import '../l10n/strings.dart';
+
 /// Shared "Stärke der KI-Gegner" picker for the local and online setup
 /// screens — ONE place for the level labels and descriptions
 /// (and the only spot to touch when a level is added: the segments iterate
@@ -19,21 +21,15 @@ class AiDifficultyPicker extends StatelessWidget {
   final ValueChanged<AiDifficulty> onChanged;
 
   static String labelFor(AiDifficulty difficulty) => switch (difficulty) {
-    AiDifficulty.leicht => 'Leicht',
-    AiDifficulty.mittel => 'Mittel',
-    AiDifficulty.schwer => 'Schwer',
+    AiDifficulty.leicht => tr('setup.aiEasy'),
+    AiDifficulty.mittel => tr('setup.aiMedium'),
+    AiDifficulty.schwer => tr('setup.aiHard'),
   };
 
   static String descriptionFor(AiDifficulty difficulty) => switch (difficulty) {
-    AiDifficulty.leicht =>
-      'Die KI wirtschaftet nachlässig, rüstet halbherzig '
-          'und verübt keine Attentate.',
-    AiDifficulty.mittel =>
-      'Die KI spielt wie das Original — gelegentliche '
-          'Kriege und seltene Attentate.',
-    AiDifficulty.schwer =>
-      'Die KI plant Wirtschaft und Militär, bildet '
-          'Truppen aus und greift gezielt Schwächere an.',
+    AiDifficulty.leicht => tr('setup.aiEasyDesc'),
+    AiDifficulty.mittel => tr('setup.aiMediumDesc'),
+    AiDifficulty.schwer => tr('setup.aiHardDesc'),
   };
 
   @override

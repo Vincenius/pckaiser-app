@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../actions/player_action.dart' show ActionException;
+import '../l10n/messages.dart';
 import '../rng/rng.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
@@ -1372,11 +1373,11 @@ List<GameEvent> plunderTile(
   final victimSlot = map.ownerAt(x, y);
   if (victimSlot == World.niemand) {
     // An ownerless building has no victim to plunder.
-    throw ActionException('Hier steht doch gar nichts !');
+    throw ActionException(coreMessage('nothingHere'));
   }
   final strength = troopStrength(unit);
   if (strength < minPlunderStrength) {
-    throw ActionException('Diese Truppe ist zum Plündern zu schwach !');
+    throw ActionException(coreMessage('troopTooWeakToPlunder'));
   }
   final plunderer = state.realm(plundererSlot);
   final victim = state.realm(victimSlot);

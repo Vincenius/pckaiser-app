@@ -1,5 +1,7 @@
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/labels.dart';
+import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 
 /// Session name for the tutorial game. The tutorial is ephemeral: its
@@ -59,118 +61,57 @@ class TutorialStep {
 }
 
 /// The tutorial script. KEEP IN SYNC with gameplay/UI changes (CLAUDE.md):
-/// every menu name, price and rule quoted here must match the live game.
+/// every menu name, price and rule quoted here must match the live game —
+/// steps that name a menu entry receive it via `tr()` params so the wording
+/// can never drift. A getter (not a final list) so a live language switch
+/// rebuilds the script in the new locale.
 /// The whole tutorial plays out within the first turn — no step may
 /// require ending the turn, so the player never hits the round-start
 /// handoff/recap flow while the overlay is up.
-final List<TutorialStep> tutorialSteps = [
+List<TutorialStep> get tutorialSteps => [
   TutorialStep(
-    title: 'Willkommen, Ritter!',
-    body:
-        'Du herrschst über Brandenburg, eines von 30 Reichen. Ziel des '
-        'Spiels: Erhebe deine Dynastie vom Ritter zum Kaiser und '
-        'werde alleiniger Herrscher des ganzen Landes.\n\n'
-        'Die Karte: Ziehe mit dem Finger, zoome mit zwei '
-        'Fingern. Die Fahne markiert deinen Königssitz (deine Burg).',
+    title: tr('tut.welcomeTitle'),
+    // Slot 1 = Brandenburg, the tutorial's fixed starting realm.
+    body: tr('tut.welcomeBody', {'realm': realmName(1)}),
   ),
+  TutorialStep(title: tr('tut.statsTitle'), body: tr('tut.statsBody')),
   TutorialStep(
-    title: 'Deine Werte',
-    body:
-        'Oben rechts siehst du das aktuelle Jahr (Kalender), deine '
-        'Taler (Münze), deine verbleibenden Züge (Hammer) und deine '
-        'Beliebtheit (Herz) — '
-        'Bauen und Erweitern auf der Karte kostet einen Zug, Truppen '
-        'verlegen ist kostenlos. Die Züge werden jede Runde neu '
-        'gewürfelt: je höher der Titel deines Herrschers, desto mehr. '
-        'Die Leiste unten zeigt Jahr und Reich; tippe auf beides für '
-        'alle Werte deines Reichs ("Mein Reich"). Der Pfeil macht '
-        'Aktionen innerhalb des Zuges rückgängig.',
-  ),
-  TutorialStep(
-    title: 'Bauen & Erweitern',
-    body:
-        'Dein Reich wächst, indem du auf freien Feldern neben deinem '
-        'Gebiet baust: Kornfelder (100 T) und Weiden (150 T) ernähren '
-        'das Volk, Dörfer (1000 T) bringen Einwohner und Steuern, '
-        'Häfen (700 T) erlauben Handelsschiffe. In einem Hafen kannst '
-        'du außerdem ein Schiff kaufen (700 T) und über See steuern '
-        '(1 Zug pro Feld) — steuerst du ein freies Landfeld an, '
-        'gründet das Schiff dort ein Dorf: so kolonisierst du '
-        'z. B. Inseln.',
-    task:
-        'Tippe ein freies Feld neben deinem Gebiet an und baue '
-        'ein Kornfeld oder eine Weide.',
+    title: tr('tut.buildTitle'),
+    body: tr('tut.buildBody'),
+    task: tr('tut.buildTask'),
     isDone: (c, since) =>
         c.currentRealm.tileCount.fold(0, (a, b) => a + b) > since.buildingTiles,
   ),
   TutorialStep(
-    title: 'Handel',
-    body:
-        'Überschüssiges Korn und Vieh verkaufst du auf dem Markt — '
-        'die Preise schwanken von Jahr zu Jahr. Mit einem Hafen kannst '
-        'du außerdem Handelsschiffe aussenden — ihr Ertrag kehrt zu '
-        'Beginn der nächsten Runde zurück.',
-    task: 'Öffne unten „Handel" und verkaufe Korn oder Rinder.',
+    title: tr('commerce'),
+    body: tr('tut.tradeBody'),
+    task: tr('tut.tradeTask', {'menu': tr('commerce')}),
     isDone: (c, since) =>
         c.currentRealm.soldGrainThisTurn || c.currentRealm.soldCattleThisTurn,
   ),
   TutorialStep(
-    title: 'Militär',
-    body:
-        'Truppen schützen dein Reich und führen Kriege: Rekruten kosten '
-        '5 T pro Mann (Söldner 50 T), die Kapazität kommt aus deinen '
-        'Siedlungen. Pro Jahr hebt dein Volk höchstens 10 % der '
-        'Bevölkerung aus (mind. 100 Mann) — nur Söldner sind unbegrenzt. '
-        'Bestehende Truppen kannst du ausbilden (Kosten '
-        'steigen pro Level: 5 T/Mann × Stufe) oder zu Kavallerie/Artillerie '
-        'umrüsten — die angezeigte Stärke entscheidet den Kampf. Dazu '
-        'kommen Boni: Burgen (+15 %) und Paläste (+25 %) schützen ihre '
-        'Besatzung, Artillerie schwächt diese Boni und belagert am besten; '
-        'Infanterie schlägt Kavallerie, Kavallerie schlägt Artillerie, '
-        'Artillerie schlägt Infanterie. Aber Vorsicht: Das Volk verübelt '
-        'dir Aushebungen und Kriege (Beliebtheit sinkt). Krieg erklären '
-        'kannst du ab dem Jahr 1010 — nur Nachbarn, einmal pro Jahr.',
-    task:
-        'Öffne „Militär" → „Truppe bilden" und stationiere '
-        'Rekruten am Hauptsitz.',
+    title: tr('military'),
+    body: tr('tut.militaryBody'),
+    task: tr('tut.militaryTask', {
+      'military': tr('military'),
+      'recruit': tr('recruit'),
+    }),
     isDone: (c, since) => c.currentRealm.armySize > since.armySize,
   ),
+  TutorialStep(title: tr('espionage'), body: tr('tut.espionageBody')),
   TutorialStep(
-    title: 'Spionage',
-    body:
-        'Andere Reiche sind verdeckt: Schatzkammer, Truppen und Vorräte '
-        'siehst du nur durch Spione (200 T pro Agent, ungefähre Werte — '
-        'je mehr Agenten, desto bessere Chancen). Ausspionierte Armeen '
-        'erscheinen blass auf der Karte (Stand des Spionagejahres). '
-        'Attentäter (250 T pro Agent) können fremde Herrscher beseitigen. '
-        'Die Spionageabwehr (100 T pro Mann) schützt dich vor beidem.',
+    title: tr('misc'),
+    body: tr('tut.dynastyBody', {'menu': tr('misc')}),
   ),
   TutorialStep(
-    title: 'Dynastie',
-    body:
-        'Unter „Dynastie" verwaltest du dein Herrscherhaus: Heirate in '
-        'fremde Häuser ein oder bürgerlich — ohne Erben stirbt deine '
-        'Dynastie aus und das Spiel ist für dich verloren. Die Kurfürsten '
-        'wählen den Kaiser; Titel steigen mit der Größe deines Reichs.',
+    title: tr('endTurn'),
+    body: tr('tut.endTurnBody', {'endTurn': tr('endTurn')}),
   ),
   TutorialStep(
-    title: 'Zug beenden',
-    body:
-        'Mit „Zug beenden" unten rechts schließt du deinen Zug ab: die '
-        'anderen Reiche spielen, ein Jahr vergeht, und Ernte, Steuern und '
-        'Ereignisse werden abgerechnet. Jeder abgeschlossene Zug wird '
-        'automatisch gespeichert, und zu Beginn des nächsten Zuges fasst '
-        'eine Übersicht zusammen, was seither geschah.',
-  ),
-  TutorialStep(
-    title: 'Bereit zur Herrschaft',
-    body:
-        'Das waren die Grundlagen! Alles Weitere findest du unter '
-        '„Info": Ereignisse, Siedlungen, Dynastien und die Kaiserchronik. '
-        'Verlassen kannst du das Spiel jederzeit über das rote Symbol '
-        'links in der Leiste unten.\n\n'
-        'Diese Übungspartie wird nicht gespeichert — mit „Tutorial '
-        'abschließen" kehrst du zum Hauptmenü zurück und kannst dein '
-        'erstes richtiges Spiel starten.',
+    title: tr('tut.readyTitle'),
+    body: tr('tut.readyBody', {
+      'info': tr('info'),
+      'finish': tr('tut.finish'),
+    }),
   ),
 ];

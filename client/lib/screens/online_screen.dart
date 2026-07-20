@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../l10n/strings.dart' show formatTimestamp;
+import '../l10n/strings.dart' show formatTimestamp, tr;
 import '../services/api_client.dart';
 import '../services/match_setup.dart';
 import '../services/online_service.dart';
@@ -117,7 +117,9 @@ class _OnlineScreenState extends State<OnlineScreen> {
         // Players only ever pick their name — the server address is a
         // dev concern, shown solely when no build-time URL is set.
         title: Text(
-          kEnvServerUrl.isEmpty ? 'Online einrichten' : 'Spielernamen wählen',
+          kEnvServerUrl.isEmpty
+              ? tr('online.setupTitle')
+              : tr('online.choosePlayerName'),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -127,26 +129,26 @@ class _OnlineScreenState extends State<OnlineScreen> {
             if (kEnvServerUrl.isEmpty)
               TextField(
                 controller: urlController,
-                decoration: const InputDecoration(
-                  labelText: 'Server-Adresse',
+                decoration: InputDecoration(
+                  labelText: tr('online.serverAddress'),
                   hintText: 'https://kaiser.example.com',
                 ),
               ),
             TextField(
               controller: nameController,
               maxLength: 20,
-              decoration: const InputDecoration(labelText: 'Dein Name'),
+              decoration: InputDecoration(labelText: tr('online.yourName')),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
+            child: Text(tr('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Verbinden'),
+            child: Text(tr('online.connect')),
           ),
         ],
       ),
@@ -253,19 +255,12 @@ class _OnlineScreenState extends State<OnlineScreen> {
   }) async {
     final (title, message) = switch (status) {
       'waiting' when isCreator => (
-        'Partie löschen?',
-        'Die wartende Partie wird für alle Spieler gelöscht.',
+        tr('online.deleteGameQ'),
+        tr('online.deleteWaitingBody'),
       ),
-      'waiting' => ('Partie verlassen?', 'Dein Platz wird wieder frei.'),
-      'active' => (
-        'Partie verlassen?',
-        'Dein Reich wird ab sofort vom Computer weitergespielt — '
-            'eine Rückkehr ist nicht möglich.',
-      ),
-      _ => (
-        'Partie entfernen?',
-        'Die beendete Partie verschwindet aus deiner Liste.',
-      ),
+      'waiting' => (tr('online.leaveGameQ'), tr('online.leaveWaitingBody')),
+      'active' => (tr('online.leaveGameQ'), tr('online.leaveActiveBody')),
+      _ => (tr('online.removeGameQ'), tr('online.removeFinishedBody')),
     };
     final sure = await showDialog<bool>(
       context: context,
@@ -275,12 +270,12 @@ class _OnlineScreenState extends State<OnlineScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
+            child: Text(tr('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(
-              status == 'waiting' && isCreator ? 'Löschen' : 'Verlassen',
+              tr(status == 'waiting' && isCreator ? 'delete' : 'online.leave'),
             ),
           ),
         ],
@@ -313,10 +308,12 @@ class _OnlineScreenState extends State<OnlineScreen> {
     final service = _service;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Online spielen'),
+        title: Text(tr('online')),
         actions: [
           IconButton(
-            tooltip: kEnvServerUrl.isEmpty ? 'Server & Name' : 'Spielername',
+            tooltip: kEnvServerUrl.isEmpty
+                ? tr('online.serverAndName')
+                : tr('online.playerNameTooltip'),
             onPressed: _configure,
             icon: const Icon(Icons.settings),
           ),
@@ -339,13 +336,13 @@ class _OnlineScreenState extends State<OnlineScreen> {
                   FilledButton.icon(
                     onPressed: _createMatch,
                     icon: const Icon(Icons.add),
-                    label: const Text('Neue Partie'),
+                    label: Text(tr('online.newMatch')),
                   ),
                   const SizedBox(height: 8),
                   FilledButton.tonalIcon(
                     onPressed: _joinMatch,
                     icon: const Icon(Icons.login),
-                    label: const Text('Beitreten per Code'),
+                    label: Text(tr('online.joinByCode')),
                   ),
                 ],
               ),
@@ -362,21 +359,14 @@ class _OnlineScreenState extends State<OnlineScreen> {
         children: [
           const Icon(Icons.cloud_outlined, size: 56),
           const SizedBox(height: 12),
-          Text(
-            'Asynchrones Mehrspieler-Kaisern',
-            style: theme.textTheme.titleMedium,
-          ),
+          Text(tr('online.pitchTitle'), style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          const Text(
-            'Wähle deinen Spielernamen, erstelle eine Partie und teile '
-            'den Raum-Code — gespielt wird, wenn du am Zug bist.',
-            textAlign: TextAlign.center,
-          ),
+          Text(tr('online.pitchBody'), textAlign: TextAlign.center),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _configure,
             icon: const Icon(Icons.person),
-            label: const Text('Spielernamen wählen'),
+            label: Text(tr('online.choosePlayerName')),
           ),
         ],
       ),
@@ -400,18 +390,15 @@ class _OnlineScreenState extends State<OnlineScreen> {
             ),
           ListTile(
             title: Text(
-              'Angemeldet als ${service.displayName}',
+              tr('online.signedInAs', {'name': service.displayName}),
               style: theme.textTheme.labelLarge,
             ),
           ),
           const Divider(height: 1),
           if (_matches.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Noch keine Online-Partien — erstelle eine oder '
-                'tritt per Raum-Code bei.',
-              ),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(tr('online.noMatchesYet')),
             ),
           for (final m in _matches.cast<Map>())
             ListTile(
@@ -422,42 +409,42 @@ class _OnlineScreenState extends State<OnlineScreen> {
                 _ => Icons.emoji_events,
               }),
               title: Text(switch (m['status'] as String) {
-                'waiting' => 'Wartet auf Spieler (${m['joined']} beigetreten)',
+                'waiting' => tr('online.waitingJoined', {'n': m['joined']}),
                 'active' =>
                   m['your_turn'] == true
-                      ? 'Du bist am Zug !'
+                      ? tr('onlineYourTurn')
                       : m['awaited_name'] != null
-                      ? '${m['awaited_name']} ist am Zug …'
+                      ? '${m['awaited_name']} ${tr('onlineIsPlaying')}'
                       // Nobody is awaited: with a running war preparation
                       // that is the duel waiting for its start — say WHEN
                       // instead of a misleading "Warten auf Mitspieler".
                       : m['war_scheduled_at'] != null
-                      ? '⚔️ Krieg vereinbart — Beginn: '
+                      ? '${tr('onlineWarScheduledPrefix')}'
                             '${formatWarStartTime(DateTime.parse(m['war_scheduled_at'] as String).millisecondsSinceEpoch)}'
                       : m['war_preparing'] == true
-                      ? '⚔️ Krieg steht bevor — Beginn nach Ablauf der Frist'
-                      : 'Die Partie läuft …',
-                _ => 'Beendet',
+                      ? tr('onlineWarPending')
+                      : tr('onlineInProgress'),
+                _ => tr('online.finished'),
               }),
               subtitle: Text(
-                'Raum ${m['id']}'
-                '${m['turn_deadline'] != null ? ' — ${m['war_preparing'] == true ? 'Kriegsbeginn' : 'Frist'} ${formatTimestamp(m['turn_deadline'] as String)}' : ''}',
+                '${tr('onlineRoom', {'id': m['id']})}'
+                '${m['turn_deadline'] != null ? ' — ${m['war_preparing'] == true ? tr('online.warStartLabel') : tr('online.deadlineLabel')} ${formatTimestamp(m['turn_deadline'] as String)}' : ''}',
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip: 'Raum-Code kopieren',
+                    tooltip: tr('online.copyRoomCode'),
                     icon: const Icon(Icons.copy, size: 18),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: m['id'] as String));
-                      _toast('Raum-Code kopiert');
+                      _toast(tr('online.roomCodeCopied'));
                     },
                   ),
                   IconButton(
                     tooltip: m['status'] == 'waiting' && m['is_creator'] == true
-                        ? 'Partie löschen'
-                        : 'Partie verlassen',
+                        ? tr('online.deleteGame')
+                        : tr('online.leaveGame'),
                     icon: Icon(
                       m['status'] == 'waiting' && m['is_creator'] == true
                           ? Icons.delete_outline
@@ -479,7 +466,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
               child: Text(
-                'Öffentliche Partien',
+                tr('online.publicGames'),
                 style: theme.textTheme.titleSmall,
               ),
             ),
@@ -495,18 +482,25 @@ class _OnlineScreenState extends State<OnlineScreen> {
     final settings = (m['settings'] as Map?)?.cast<String, dynamic>() ?? {};
     final hours = settings['turn_timeout_hours'] as int?;
     final timer = hours == null
-        ? 'kein Zeitlimit'
+        ? tr('online.noTimeLimit')
         : hours == 168
-        ? '7 Tage/Zug'
-        : '$hours h/Zug';
+        ? tr('online.sevenDaysPerTurn')
+        : tr('online.hoursPerTurn', {'hours': hours});
     final host = m['creator_name'] as String?;
     return ListTile(
       leading: const Icon(Icons.public),
-      title: Text(host != null ? 'Partie von $host' : 'Offene Partie'),
-      subtitle: Text('Raum ${m['id']} · ${m['joined']} beigetreten · $timer'),
+      title: Text(
+        host != null
+            ? tr('online.gameBy', {'name': host})
+            : tr('online.openGame'),
+      ),
+      subtitle: Text(
+        '${tr('onlineRoom', {'id': m['id']})} · '
+        '${tr('online.joinedCount', {'n': m['joined']})} · $timer',
+      ),
       trailing: FilledButton(
         onPressed: () => _joinPublic(m['id'] as String),
-        child: const Text('Beitreten'),
+        child: Text(tr('online.join')),
       ),
       onTap: () => _joinPublic(m['id'] as String),
     );

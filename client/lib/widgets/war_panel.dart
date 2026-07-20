@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
-import '../l10n/labels.dart' show troopClassName;
+import '../l10n/labels.dart' show realmName, troopClassName;
+import '../l10n/strings.dart' show tr;
 import '../state/game_controller.dart';
 import 'decisions.dart' show formatWarStartTime, promptDecisionsFor;
 import 'war_report.dart';
@@ -64,21 +65,22 @@ class _WarPanelState extends State<WarPanel> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Kriegsvorbereitung', style: theme.textTheme.titleSmall),
+              Text(tr('war.prepTitle'), style: theme.textTheme.titleSmall),
               const SizedBox(height: 4),
               Text(
-                '${gc.countryNames[war.attackerSlot]} gegen '
-                '${gc.countryNames[war.defenderSlot]} — stelle jede Truppe '
-                'einzeln ein: „Halten" verteidigt ihre Stellung, '
-                '„Angreifen" marschiert auf den feindlichen Sitz. Die '
-                'Haltung gilt, wenn der Computer Truppen führt.',
+                tr('war.prepIntro', {
+                  'attacker': realmName(war.attackerSlot),
+                  'defender': realmName(war.defenderSlot),
+                }),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium,
               ),
               if (scheduled != null && scheduled > 0) ...[
                 const SizedBox(height: 4),
                 Text(
-                  'Vereinbarter Beginn: ${formatWarStartTime(scheduled)}',
+                  tr('war.scheduledStart', {
+                    'time': formatWarStartTime(scheduled),
+                  }),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleSmall,
                 ),
@@ -115,7 +117,7 @@ class _WarPanelState extends State<WarPanel> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Tippe eine Truppe an, um ihre Haltung zu ändern.',
+                    tr('war.tapTroopHint'),
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
@@ -124,12 +126,11 @@ class _WarPanelState extends State<WarPanel> {
                 FilledButton(
                   onPressed: () =>
                       promptDecisionsFor(context, controller, slot),
-                  child: const Text('Wählen'),
+                  child: Text(tr('war.choose')),
                 )
               else
                 Text(
-                  'Wahl getroffen — der Krieg beginnt, sobald beide Seiten '
-                  'bereit sind.',
+                  tr('war.planChosen'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall,
                 ),
@@ -196,25 +197,24 @@ class _WarPanelState extends State<WarPanel> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              'Krieg gegen ${gc.countryNames[enemySlot]}',
+              tr('war.headerVs', {'enemy': realmName(enemySlot)}),
               style: theme.textTheme.titleSmall,
               overflow: TextOverflow.ellipsis,
             ),
           ),
           Tooltip(
-            message:
-                'Nach Runde 20 beendet der Winter den Krieg — dann '
-                'entscheidet, wer mehr (und wertvolleres) feindliches '
-                'Gebiet besetzt hält und wer mehr Schlachten gewonnen hat.',
+            message: tr('war.winterRuleTooltip'),
             child: Text(
-              'Runde ${war.round + 1}/20',
+              tr('war.roundCounter', {'round': war.round + 1}),
               style: theme.textTheme.labelSmall,
             ),
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
             iconSize: 20,
-            tooltip: _collapsed ? 'Kriegsmenü öffnen' : 'Einklappen',
+            tooltip: _collapsed
+                ? tr('war.openMenuTooltip')
+                : tr('war.collapse'),
             icon: Icon(_collapsed ? Icons.expand_more : Icons.expand_less),
             onPressed: () => setState(() => _collapsed = !_collapsed),
           ),
@@ -233,10 +233,8 @@ class _WarPanelState extends State<WarPanel> {
           theme,
           Icons.emoji_events,
           sealsNextRoundEnd
-              ? 'Du hältst den gegnerischen Königssitz ! „Runde beenden" '
-                    'besiegelt jetzt den Sieg — halte das Feld bis dahin.'
-              : 'Du hältst den gegnerischen Königssitz ! Übersteht deine '
-                    'Armee dort die nächste Runde, ist der Krieg gewonnen.',
+              ? tr('war.capitalHeldSealBanner')
+              : tr('war.capitalHeldBanner'),
           background: Colors.green.shade100,
           foreground: Colors.green.shade900,
         ),
@@ -246,8 +244,7 @@ class _WarPanelState extends State<WarPanel> {
         _banner(
           theme,
           Icons.warning_amber,
-          'Der Feind hält deinen Königssitz ! Erobere das Feld zurück — '
-          'sonst ist der Krieg verloren.',
+          tr('war.capitalLostBanner'),
           background: theme.colorScheme.error,
           foreground: theme.colorScheme.onError,
         ),
@@ -258,8 +255,7 @@ class _WarPanelState extends State<WarPanel> {
         _banner(
           theme,
           Icons.handshake,
-          'Der Gegner wünscht Frieden ! „Frieden" und „Runde beenden" '
-          'beendet den Krieg ohne Gebietsänderungen.',
+          tr('war.enemyWantsPeaceBanner'),
           background: Colors.green.shade100,
           foreground: Colors.green.shade900,
         ),
@@ -269,7 +265,7 @@ class _WarPanelState extends State<WarPanel> {
         _banner(
           theme,
           Icons.handshake_outlined,
-          'Friedenswunsch geäußert — der Gegner muss zustimmen.',
+          tr('war.peaceWishSentBanner'),
           background: theme.colorScheme.surface,
           foreground: theme.colorScheme.onSurfaceVariant,
         ),
@@ -280,8 +276,7 @@ class _WarPanelState extends State<WarPanel> {
         _banner(
           theme,
           Icons.flag_outlined,
-          'Ziel: Erobere den gegnerischen Königssitz (Fahne) und halte ihn '
-          'eine volle Runde — ab Runde 20 beendet der Winter den Krieg.',
+          tr('war.objectiveBanner'),
           background: theme.colorScheme.surface,
           foreground: theme.colorScheme.onSurfaceVariant,
         ),
@@ -364,8 +359,7 @@ class _WarPanelState extends State<WarPanel> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
-          'Tippe eine Truppe auf der Karte oder unter „Truppen" an, '
-          'dann ein Ziel auf der Karte.',
+          tr('war.selectUnitHint'),
           style: theme.textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),
@@ -387,7 +381,10 @@ class _WarPanelState extends State<WarPanel> {
           const SizedBox(width: 4),
           Flexible(
             child: Text(
-              '${troop.name} · Züge $movesLeft',
+              tr('war.selectedUnitMoves', {
+                'name': troop.name,
+                'moves': movesLeft,
+              }),
               style: theme.textTheme.bodySmall!.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -397,7 +394,7 @@ class _WarPanelState extends State<WarPanel> {
           IconButton(
             visualDensity: VisualDensity.compact,
             iconSize: 16,
-            tooltip: 'Auswahl aufheben',
+            tooltip: tr('war.clearSelection'),
             icon: const Icon(Icons.close),
             onPressed: () => controller.selectWarUnit(null),
           ),
@@ -428,12 +425,15 @@ class _WarPanelState extends State<WarPanel> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Truppen & Feindheer', style: theme.textTheme.titleMedium),
+                Text(
+                  tr('war.detailsTitle'),
+                  style: theme.textTheme.titleMedium,
+                ),
                 const SizedBox(height: 8),
                 _enemyArmyLine(theme, realm, enemy, enemySlot),
                 const SizedBox(height: 12),
                 Text(
-                  'Deine Truppen — tippen zum Auswählen',
+                  tr('war.yourTroopsHint'),
                   style: theme.textTheme.labelMedium,
                 ),
                 const SizedBox(height: 4),
@@ -491,7 +491,7 @@ class _WarPanelState extends State<WarPanel> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Bei Auto-Krieg: ', style: theme.textTheme.bodySmall),
+            Text(tr('war.autoWarStance'), style: theme.textTheme.bodySmall),
             const SizedBox(width: 4),
             SegmentedButton<int>(
               showSelectedIcon: false,
@@ -499,16 +499,16 @@ class _WarPanelState extends State<WarPanel> {
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: gc.TroopStance.holdPosition,
-                  icon: Icon(Icons.shield_outlined, size: 14),
-                  label: Text('Halten'),
+                  icon: const Icon(Icons.shield_outlined, size: 14),
+                  label: Text(tr('war.stanceHold')),
                 ),
                 ButtonSegment(
                   value: gc.TroopStance.attack,
-                  icon: Icon(Icons.gps_fixed, size: 14),
-                  label: Text('Angreifen'),
+                  icon: const Icon(Icons.gps_fixed, size: 14),
+                  label: Text(tr('war.stanceAttack')),
                 ),
               ],
               selected: {troop.stance},
@@ -551,7 +551,7 @@ class _WarPanelState extends State<WarPanel> {
   ) {
     if (enemy.troops.isEmpty) {
       return Text(
-        'Das feindliche Heer ist vernichtet !',
+        tr('war.enemyArmyDestroyed'),
         style: theme.textTheme.bodySmall!.copyWith(
           fontWeight: FontWeight.w600,
           color: Colors.green.shade800,
@@ -559,14 +559,17 @@ class _WarPanelState extends State<WarPanel> {
       );
     }
     final units = enemy.troops.length;
-    final unitWord = 'Truppe${units == 1 ? '' : 'n'}';
+    final unitWord = tr(units == 1 ? 'war.troopOne' : 'war.troopMany');
     final classCounts = <int, int>{};
     for (final t in enemy.troops) {
       classCounts[t.troopClass] = (classCounts[t.troopClass] ?? 0) + 1;
     }
     final classText = [
       for (final c in classCounts.keys.toList()..sort())
-        '${classCounts[c]}× ${troopClassName(c)}',
+        tr('war.classCount', {
+          'count': classCounts[c],
+          'class': troopClassName(c),
+        }),
     ].join(', ');
     // Newest military intel on this enemy (reports are in chronological
     // order, so the last match wins).
@@ -578,10 +581,18 @@ class _WarPanelState extends State<WarPanel> {
       }
     }
     final text = intel != null
-        ? 'Feindliches Heer: $units $unitWord ($classText) · laut Spionage '
-              '~${intel.values['armySize']} Mann (Stand Anno ${intel.year})'
-        : 'Feindliches Heer: $units $unitWord ($classText) — die Mannstärke '
-              'bleibt ohne Spionage verborgen.';
+        ? tr('war.enemyArmyIntel', {
+            'units': units,
+            'unitWord': unitWord,
+            'classes': classText,
+            'men': intel.values['armySize'],
+            'year': intel.year,
+          })
+        : tr('war.enemyArmyUnknown', {
+            'units': units,
+            'unitWord': unitWord,
+            'classes': classText,
+          });
     return Text(text, style: theme.textTheme.bodySmall);
   }
 
@@ -601,11 +612,15 @@ class _WarPanelState extends State<WarPanel> {
     return Tooltip(
       message: [
         if (movesLeft != null)
-          'Verbleibende Züge: $movesLeft'
-              '${onEnemyLand ? ' — besetzt feindliches Gebiet' : ''}'
+          tr('war.movesLeftTooltip', {'moves': movesLeft}) +
+              (onEnemyLand ? tr('war.occupiesEnemySuffix') : '')
         else if (onEnemyLand)
-          'Besetzt feindliches Gebiet',
-        'Haltung: ${attackStance ? 'Angreifen' : 'Position halten'}',
+          tr('war.occupiesEnemy'),
+        tr('war.stanceTooltip', {
+          'stance': attackStance
+              ? tr('war.stanceAttack')
+              : tr('war.stanceHoldPosition'),
+        }),
       ].join('\n'),
       child: ChoiceChip(
         selected: selected,
@@ -636,8 +651,11 @@ class _WarPanelState extends State<WarPanel> {
               ),
             ),
             Text(
-              '${troop.name} · ${troop.men} Mann · '
-              '⚔ ${gc.troopStrength(troop).round()}',
+              tr('war.unitChipLabel', {
+                'name': troop.name,
+                'men': troop.men,
+                'strength': gc.troopStrength(troop).round(),
+              }),
             ),
           ],
         ),
@@ -665,15 +683,15 @@ class _WarPanelState extends State<WarPanel> {
         state.map.buildingAt(selectedTroop.x, selectedTroop.y) !=
             gc.Building.none;
     final plunderHint = selectedTroop == null
-        ? 'Erst eine Truppe wählen'
+        ? tr('war.plunderNeedUnit')
         : selectedTroop.plunderedThisRound
-        ? 'Diese Armee hat diese Runde schon geplündert'
+        ? tr('war.plunderAlreadyDone')
         : !plunderVictimOk
-        ? 'Die Truppe muss auf feindlichem Gebiet stehen'
+        ? tr('war.plunderNotEnemyLand')
         : state.map.buildingAt(selectedTroop.x, selectedTroop.y) ==
               gc.Building.none
-        ? 'Hier steht nichts zum Plündern'
-        : 'Bebautes feindliches Feld plündern';
+        ? tr('war.plunderNothingHere')
+        : tr('war.plunderHint');
 
     final theme = Theme.of(context);
     // Four equal-width icon+label tiles in the style of the category bar
@@ -686,14 +704,14 @@ class _WarPanelState extends State<WarPanel> {
           _actionItem(
             theme,
             icon: Icons.groups,
-            label: 'Truppen',
-            tooltip: 'Deine Truppen & das Feindheer',
+            label: tr('war.troopsAction'),
+            tooltip: tr('war.troopsTooltip'),
             onTap: () => _showWarDetails(context, war, slot),
           ),
           _actionItem(
             theme,
             icon: Icons.local_fire_department,
-            label: 'Plündern',
+            label: tr('war.plunderAction'),
             tooltip: plunderHint,
             onTap: canPlunder
                 ? () async {
@@ -719,7 +737,7 @@ class _WarPanelState extends State<WarPanel> {
                       context,
                       events,
                       viewerSlot: slot,
-                      title: 'Plünderung',
+                      title: tr('war.plunderReportTitle'),
                     );
                   }
                 : null,
@@ -729,11 +747,12 @@ class _WarPanelState extends State<WarPanel> {
             icon: war.wantsPeace(slot)
                 ? Icons.handshake
                 : Icons.handshake_outlined,
-            label: war.wantsPeace(slot) ? 'Zurückziehen' : 'Frieden',
+            label: war.wantsPeace(slot)
+                ? tr('war.withdrawPeace')
+                : tr('war.peaceAction'),
             tooltip: war.wantsPeace(slot)
-                ? 'Friedenswunsch zurückziehen'
-                : 'Frieden wünschen — stimmen beide Seiten zu, endet der '
-                      'Krieg ohne Gebietsänderungen',
+                ? tr('war.withdrawPeaceTooltip')
+                : tr('war.peaceTooltip'),
             onTap: () async {
               try {
                 await controller.applyWarAction(
@@ -759,8 +778,8 @@ class _WarPanelState extends State<WarPanel> {
             label:
                 slot == war.attackerSlot &&
                     state.dynasty(enemySlot).status == gc.DynastyStatus.human
-                ? 'Übergeben'
-                : 'Runde beenden',
+                ? tr('war.handOver')
+                : tr('war.endRound'),
             emphasized: true,
             onTap: () async {
               final List<gc.GameEvent> events;
@@ -782,7 +801,7 @@ class _WarPanelState extends State<WarPanel> {
                   context,
                   events,
                   viewerSlot: slot,
-                  title: 'Rundenbericht',
+                  title: tr('war.roundReportTitle'),
                 );
               }
               // A round end can resolve a ruler capture: the coercion
@@ -887,15 +906,17 @@ class _WarPanelState extends State<WarPanel> {
         Expanded(
           child: Text(
             isWinner
-                ? 'Sieg ! Anspruch: ${war.remainingClaim}'
-                : 'Niederlage — Anspruch des Siegers: ${war.remainingClaim}',
+                ? tr('war.victoryClaim', {'claim': war.remainingClaim})
+                : tr('war.defeatClaim', {'claim': war.remainingClaim}),
             style: theme.textTheme.titleSmall,
             overflow: TextOverflow.ellipsis,
           ),
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
-          tooltip: _settlementCollapsed ? 'Erklärung zeigen' : 'Einklappen',
+          tooltip: _settlementCollapsed
+              ? tr('war.showExplanation')
+              : tr('war.collapse'),
           icon: Icon(
             _settlementCollapsed ? Icons.expand_more : Icons.expand_less,
           ),
@@ -905,7 +926,7 @@ class _WarPanelState extends State<WarPanel> {
         if (isWinner && _settlementCollapsed)
           TextButton(
             onPressed: () => _finishSettlement(context, slot),
-            child: const Text('Fertig'),
+            child: Text(tr('war.done')),
           ),
       ],
     );
@@ -921,16 +942,15 @@ class _WarPanelState extends State<WarPanel> {
             if (!_settlementCollapsed) ...[
               Text(
                 isWinner
-                    ? 'Wähle deine Beute: Tippe Felder des Verlierers an, '
-                          'die an dein Land grenzen, um sie zu übernehmen. '
-                          'Jedes Feld kostet seinen Wert (Markt '
-                          '${gc.Building.value[gc.Building.markt]}, Stadt '
-                          '${gc.Building.value[gc.Building.stadt]}, leeres '
-                          'Land ${gc.settlementTileValue(controller.state, gc.Building.none)}). '
-                          '„Auto-Annexion" nimmt automatisch bezahlbare '
-                          'Felder ab deiner Grenze. Der nicht genutzte '
-                          'Rest wird in Talern ausgezahlt.'
-                    : 'Der Sieger wählt nun Felder deines Landes.',
+                    ? tr('war.settlementWinnerHelp', {
+                        'market': gc.Building.value[gc.Building.markt],
+                        'town': gc.Building.value[gc.Building.stadt],
+                        'bare': gc.settlementTileValue(
+                          controller.state,
+                          gc.Building.none,
+                        ),
+                      })
+                    : tr('war.settlementLoserHelp'),
                 style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
@@ -946,13 +966,13 @@ class _WarPanelState extends State<WarPanel> {
                         onPressed: () => _takeAllLand(context, slot),
                         label: Text(
                           coversAll
-                              ? 'Ganzes Land übernehmen'
-                              : 'Auto-Annexion',
+                              ? tr('war.takeWholeLand')
+                              : tr('war.autoAnnex'),
                         ),
                       ),
                       FilledButton.tonal(
                         onPressed: () => _finishSettlement(context, slot),
-                        child: const Text('Fertig — Rest in Talern'),
+                        child: Text(tr('war.doneRemainderTaler')),
                       ),
                     ],
                   ),
@@ -999,7 +1019,7 @@ class _WarPanelState extends State<WarPanel> {
         context,
         result.events,
         viewerSlot: slot,
-        title: 'Friedensschluss',
+        title: tr('war.peaceTreatyTitle'),
       );
     }
     if (context.mounted) {
@@ -1037,7 +1057,7 @@ class _WarPanelState extends State<WarPanel> {
         context,
         result.events,
         viewerSlot: slot,
-        title: 'Friedensschluss',
+        title: tr('war.peaceTreatyTitle'),
       );
     }
     // The victor's coercion options (Abdanken, Kurfürstensitz, …) appear

@@ -54,7 +54,7 @@ Unversioned design deviations:
 |---|---|---|
 | Newborn age uninitialized (heap garbage) | Age 0 | Original bug (§15.3) |
 | Shareware year-1019 cutoff | Removed | Copy protection |
-| German-only UI | German default, English toggle | Broader audience |
+| German-only UI | Fully bilingual: every UI string, event line, engine message and realm name exists in German and English (`client/lib/l10n/`, `game_core` message catalog). Language set in the main menu's Options sub-menu; default follows the device language (German devices → German, all others → English), stored in `settings.json` | Broader audience |
 | Keyboard number input | Sliders/steppers | Touch UX |
 | Separate claim step before building | Building on adjacent unowned land claims implicitly (AI still uses ClaimTile) | Fewer taps |
 | Weide only on Berg | Also on Ebene | Gameplay request |

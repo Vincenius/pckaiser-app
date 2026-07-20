@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' show AiDifficulty, minEventYear;
 
+import '../l10n/strings.dart';
 import 'ai_difficulty_picker.dart';
 
 /// Validates the three event-year fields of [AdvancedOptionsCard]; returns
-/// the German error message or null. Shared by the local and the online
+/// the localized error message or null. Shared by the local and the online
 /// setup so both screens accept exactly the same years.
 String? validateEventYears({
   required String reformation,
@@ -13,15 +14,15 @@ String? validateEventYears({
 }) {
   final reformationYear = int.tryParse(reformation);
   if (reformationYear == null || reformationYear < minEventYear) {
-    return 'Das ist zu früh !!! (Reformation ≥ $minEventYear)';
+    return tr('setup.tooEarlyReformation', {'year': minEventYear});
   }
   final ottomanYear = int.tryParse(ottoman);
   if (ottomanYear == null || ottomanYear < minEventYear) {
-    return 'Das ist zu früh !!! (Osmanen ≥ $minEventYear)';
+    return tr('setup.tooEarlyOttoman', {'year': minEventYear});
   }
   final warStartYear = int.tryParse(warStart);
   if (warStartYear == null || warStartYear < 1000) {
-    return 'Das ist zu früh !!! (Krieg ab ≥ 1000)';
+    return tr('setup.tooEarlyWar', {'year': 1000});
   }
   return null;
 }
@@ -69,13 +70,13 @@ class AdvancedOptionsCard extends StatelessWidget {
         shape: const Border(),
         collapsedShape: const Border(),
         leading: const Icon(Icons.tune),
-        title: const Text('Erweiterte Optionen'),
-        subtitle: const Text('Ereignis-Jahre, KI-Stärke, Regeln'),
+        title: Text(tr('setup.advancedOptions')),
+        subtitle: Text(tr('setup.advancedOptionsSubtitle')),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           ...extras,
           AiDifficultyPicker(
-            label: 'Stärke der KI-Gegner',
+            label: tr('setup.aiStrengthLabel'),
             value: aiDifficulty,
             onChanged: onAiDifficultyChanged,
           ),
@@ -86,9 +87,9 @@ class AdvancedOptionsCard extends StatelessWidget {
                 child: TextField(
                   controller: reformation,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Jahr der Reformation',
-                    helperText: 'Original: 1020',
+                  decoration: InputDecoration(
+                    labelText: tr('setup.reformationYearLabel'),
+                    helperText: tr('setup.originalYearHint', {'year': 1020}),
                   ),
                 ),
               ),
@@ -97,9 +98,9 @@ class AdvancedOptionsCard extends StatelessWidget {
                 child: TextField(
                   controller: ottoman,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Osmanen-Invasion',
-                    helperText: 'Original: 1040',
+                  decoration: InputDecoration(
+                    labelText: tr('setup.ottomanInvasionLabel'),
+                    helperText: tr('setup.originalYearHint', {'year': 1040}),
                   ),
                 ),
               ),
@@ -109,9 +110,9 @@ class AdvancedOptionsCard extends StatelessWidget {
           TextField(
             controller: warStart,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Krieg möglich ab Jahr',
-              helperText: 'Original: 1010',
+            decoration: InputDecoration(
+              labelText: tr('setup.warStartYearLabel'),
+              helperText: tr('setup.originalYearHint', {'year': 1010}),
             ),
           ),
           const SizedBox(height: 8),
@@ -119,22 +120,15 @@ class AdvancedOptionsCard extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: genderEqualSuccession,
             onChanged: onGenderEqualSuccessionChanged,
-            title: const Text('Frauen können überall herrschen'),
-            subtitle: const Text(
-              'Abweichend vom Original: das älteste Kind erbt '
-              'unabhängig vom Geschlecht und Frauen können auch '
-              'islamische Reiche erben, ohne auszuscheiden.',
-            ),
+            title: Text(tr('setup.genderEqualTitle')),
+            subtitle: Text(tr('setup.genderEqualSubtitle')),
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: suggestChildNames,
             onChanged: onSuggestChildNamesChanged,
-            title: const Text('Namensvorschläge für Kinder'),
-            subtitle: const Text(
-              'Bei Geburten einen zufälligen Namen vorschlagen — '
-              'ausgeschaltet bleibt das Namensfeld leer.',
-            ),
+            title: Text(tr('setup.childNamesTitle')),
+            subtitle: Text(tr('setup.childNamesSubtitle')),
           ),
         ],
       ),

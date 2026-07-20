@@ -1,9 +1,9 @@
 import 'package:flame/game.dart' show GameWidget;
 import 'package:flutter/material.dart';
-import 'package:game_core/game_core.dart' as gc;
 
 import '../game/map_game.dart';
 import '../game/realm_palette.dart';
+import '../l10n/labels.dart';
 import '../l10n/strings.dart';
 import '../services/game_session.dart';
 import '../state/game_controller.dart';
@@ -93,7 +93,7 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Karte — Anno ${_controller.state.year}'),
+            Text(tr('setup.mapTitle', {'year': _controller.state.year})),
             if (widget.waitingFor != null)
               Text(
                 widget.waitingFor!,
@@ -152,7 +152,7 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          gc.countryNames[slot],
+                          realmName(slot),
                           style: theme.textTheme.titleSmall,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -165,7 +165,7 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
             ),
             if (ownedSlots.length > 1)
               PopupMenuButton<int>(
-                tooltip: 'Reich wechseln',
+                tooltip: tr('setup.switchRealm'),
                 icon: const Icon(Icons.swap_horiz, size: 20),
                 onSelected: _switchRealm,
                 itemBuilder: (context) => [
@@ -179,7 +179,7 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
                             backgroundColor: RealmPalette.colorFor(s),
                           ),
                           const SizedBox(width: 8),
-                          Text(gc.countryNames[s]),
+                          Text(realmName(s)),
                           if (s == slot) ...[
                             const SizedBox(width: 8),
                             const Icon(Icons.check, size: 16),
@@ -197,7 +197,7 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
             ),
             const SizedBox(width: 4),
             Text(
-              'Nur ansehen',
+              tr('setup.viewOnly'),
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

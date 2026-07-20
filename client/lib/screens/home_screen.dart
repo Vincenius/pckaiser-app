@@ -11,6 +11,7 @@ import 'about_screen.dart';
 import 'game_screen.dart';
 import 'online_match_screen.dart';
 import 'online_screen.dart';
+import 'options_screen.dart';
 import 'setup_screen.dart';
 
 /// Landing screen: hero header, the primary actions (new local game,
@@ -158,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('„${slot.name}" löschen?'),
+        title: Text(tr('deleteSlotQuestion', {'name': slot.name})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -166,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Löschen'),
+            child: Text(tr('delete')),
           ),
         ],
       ),
@@ -182,9 +183,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Stack(
           children: [
+            ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              children: [
             const SizedBox(height: 24),
             _header(theme),
             const SizedBox(height: 28),
@@ -256,6 +259,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 8),
+              ],
+            ),
+            // Gear in the top-right corner: the Options sub-menu
+            // (language, …) without taking a slot in the button column.
+            Positioned(
+              top: 0,
+              right: 4,
+              child: IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                tooltip: tr('options'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const OptionsScreen()),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -377,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ? tr('onlineWarPending')
               : tr('onlineInProgress'),
         ),
-        subtitle: Text('Raum ${m['id']}'),
+        subtitle: Text(tr('onlineRoom', {'id': m['id']})),
         onTap: () => _openOnlineMatch(m['id'] as String),
       ),
     );
@@ -404,8 +422,8 @@ class _HomeScreenState extends State<HomeScreen> {
           needsUpdate
               ? tr('saveNeedsUpdate')
               // Older saves carry no player names — fall back to the count.
-              : 'Anno ${slot.year} · '
-                    '${slot.playerNames.isEmpty ? '${slot.humanCount} Spieler' : slot.playerNames.join(', ')} · '
+              : '${tr('slotSubtitleYear', {'year': slot.year})} · '
+                    '${slot.playerNames.isEmpty ? tr('slotSubtitlePlayers', {'n': slot.humanCount}) : slot.playerNames.join(', ')} · '
                     '${slot.savedAt.toLocal().toString().substring(0, 16)}',
         ),
         onTap: needsUpdate
@@ -415,7 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
             : () => _openGame(slot.name),
         trailing: IconButton(
           icon: const Icon(Icons.delete_outline),
-          tooltip: 'Löschen',
+          tooltip: tr('delete'),
           onPressed: () => _deleteSlot(slot),
         ),
       ),

@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/labels.dart';
 import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 
 /// §21.2 popularity tier text for the turn report.
 String popularityTier(int value) => switch (value) {
-  <= 10 => 'Ihr Land steht am Rande einer Revolution !!!',
-  <= 25 => 'In ihrem Land gibt es kleinere Aufstände !!!',
-  <= 40 => 'Sie sind nicht gerade sehr beliebt.',
-  <= 60 => 'Durchschnittlich',
-  <= 75 => 'Nicht gerade niedrig',
-  <= 90 => 'Sehr hoch',
-  _ => 'Unglaublich hoch',
+  <= 10 => tr('game.popularityTierRevolt'),
+  <= 25 => tr('game.popularityTierUprisings'),
+  <= 40 => tr('game.popularityTierUnpopular'),
+  <= 60 => tr('game.popularityTierAverage'),
+  <= 75 => tr('game.popularityTierDecent'),
+  <= 90 => tr('game.popularityTierHigh'),
+  _ => tr('game.popularityTierVeryHigh'),
 };
 
 /// Turn-start status report (the original's §21.1 "Sie sind am Zug!"
@@ -75,7 +76,9 @@ Future<void> showTurnReport(
   await showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Anno ${state.year} — ${gc.countryNames[slot]}'),
+      title: Text(
+        tr('game.annoRealm', {'year': state.year, 'realm': realmName(slot)}),
+      ),
       content: SizedBox(
         width: double.maxFinite,
         child: ListView(
@@ -85,15 +88,21 @@ Future<void> showTurnReport(
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  '${gc.titleName(realm.titleClass)} ${ruler.name}, '
-                  'Ihr seid am Zug !',
+                  tr('game.yourTurnGreeting', {
+                    'title': titleName(realm.titleClass),
+                    'name': ruler.name,
+                  }),
                   style: theme.textTheme.titleSmall,
                 ),
               ),
             row(
               Icons.toll,
-              'Steuern: +${n('tax')} T'
-              '${n('harborIncome') > 0 ? ' — Häfen: +${n('harborIncome')} T' : ''}',
+              tr('game.taxesLine', {'tax': n('tax')}) +
+                  (n('harborIncome') > 0
+                      ? tr('game.harborIncomeSuffix', {
+                          'income': n('harborIncome'),
+                        })
+                      : ''),
             ),
             // The office holder's pot waits for the explicit "Staatskasse
             // plündern" action (Dynastie-Menü) — remind them here.
@@ -102,8 +111,7 @@ Future<void> showTurnReport(
                 state.kaiserPot > 0)
               row(
                 Icons.account_balance_wallet,
-                'Kronschatz: ${state.kaiserPot} T warten — '
-                '„Staatskasse plündern" im Dynastie-Menü !',
+                tr('game.kaiserPotLine', {'amount': state.kaiserPot}),
                 color: Colors.amber.shade800,
               ),
             if (state.sultanId != null &&
@@ -111,45 +119,52 @@ Future<void> showTurnReport(
                 state.sultanPot > 0)
               row(
                 Icons.account_balance_wallet,
-                'Sultansschatz: ${state.sultanPot} T warten — '
-                '„Staatskasse plündern" im Dynastie-Menü !',
+                tr('game.sultanPotLine', {'amount': state.sultanPot}),
                 color: Colors.amber.shade800,
               ),
             if (n('tribute') > 0 || n('wages') > 0)
               row(
                 Icons.money_off,
-                'Tribut: −${n('tribute')} T — Sold: −${n('wages')} T',
+                tr('game.tributeWagesLine', {
+                  'tribute': n('tribute'),
+                  'wages': n('wages'),
+                }),
               ),
             row(
               Icons.account_balance,
-              'Schatzkammer: ${realm.treasury} T',
+              '${tr('treasury')}: ${realm.treasury} T',
               weight: FontWeight.w600,
             ),
             row(
               Icons.people,
-              '${tr('population')}: ${realm.population} Einwohner'
-              '${n('populationDelta') != 0 ? ' (${n('populationDelta') > 0 ? '+' : ''}${n('populationDelta')})' : ''}',
+              tr('game.populationLine', {'population': realm.population}) +
+                  (n('populationDelta') != 0
+                      ? ' (${n('populationDelta') > 0 ? '+' : ''}${n('populationDelta')})'
+                      : ''),
             ),
             row(
               Icons.agriculture,
               foodShort
-                  ? 'Deine Felder ernähren nur $production von '
-                        '${realm.population} Leuten !'
-                  : 'Deine Felder ernähren die Bevölkerung '
-                        '($production ≥ ${realm.population}).',
+                  ? tr('game.foodShortLine', {
+                      'production': production,
+                      'population': realm.population,
+                    })
+                  : tr('game.foodOkLine', {
+                      'production': production,
+                      'population': realm.population,
+                    }),
               color: foodShort ? theme.colorScheme.error : null,
             ),
             if (foodShort)
               row(
                 Icons.warning_amber,
-                'Nahrung wird knapp — baue mehr Kornfelder/Weiden, sonst '
-                'drohen Hungersnot und Desertion !',
+                tr('game.foodWarning'),
                 color: theme.colorScheme.error,
               ),
             if (n('famineLoss') > 0)
               row(
                 Icons.warning_amber,
-                'Hungersnot: ${n('famineLoss')} Soldaten desertieren !',
+                tr('game.famineLine', {'loss': n('famineLoss')}),
                 color: theme.colorScheme.error,
               ),
             row(
@@ -160,8 +175,12 @@ Future<void> showTurnReport(
             ),
             row(
               Icons.construction,
-              'Du kannst diese Runde ${realm.movementPoints} '
-              'Feld${realm.movementPoints == 1 ? '' : 'er'} bebauen.',
+              tr(
+                realm.movementPoints == 1
+                    ? 'game.buildsThisRoundOne'
+                    : 'game.buildsThisRoundMany',
+                {'moves': realm.movementPoints},
+              ),
             ),
           ],
         ),
@@ -169,7 +188,7 @@ Future<void> showTurnReport(
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Weiter'),
+          child: Text(tr('game.continueButton')),
         ),
       ],
     ),

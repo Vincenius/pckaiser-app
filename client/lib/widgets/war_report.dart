@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
 import '../l10n/labels.dart';
+import '../l10n/strings.dart' show tr;
 
 /// One rendered line of the war report popup.
 class _ReportEntry {
@@ -39,12 +40,13 @@ const _reportTypes = {
 /// Shows battle/plunder/war-end results as a popup (like the marriage
 /// dialog) instead of burying them in the event feed. [viewerSlot] is the
 /// human war side — losses are phrased from their perspective. No-op when
-/// [events] contains nothing report-worthy.
+/// [events] contains nothing report-worthy. [title] defaults to the
+/// localized "Kriegsbericht"/"War report".
 Future<void> showWarReport(
   BuildContext context,
   List<gc.GameEvent> events, {
   required int viewerSlot,
-  String title = 'Kriegsbericht',
+  String? title,
 }) async {
   final entries = <_ReportEntry>[];
   var conquered = 0;
@@ -92,9 +94,12 @@ Future<void> showWarReport(
       _ReportEntry(
         Icons.functions,
         ownLosses > enemyLosses ? Colors.red : Colors.green,
-        'Verluste gesamt',
-        'Du: −$ownLosses Mann · Gegner: −$enemyLosses Mann '
-            '($battles Schlachten).',
+        tr('war.totalLossesTitle'),
+        tr('war.totalLossesBody', {
+          'own': ownLosses,
+          'enemy': enemyLosses,
+          'battles': battles,
+        }),
       ),
     );
   }
@@ -104,10 +109,13 @@ Future<void> showWarReport(
       _ReportEntry(
         Icons.flag,
         mine ? Colors.green : Colors.red,
-        'Eroberung',
+        tr('war.conquestTitle'),
         conquered == 1
-            ? '${gc.countryNames[conqueredBy]} übernimmt 1 Feld.'
-            : '${gc.countryNames[conqueredBy]} übernimmt $conquered Felder.',
+            ? tr('war.conquestOne', {'realm': realmName(conqueredBy)})
+            : tr('war.conquestMany', {
+                'realm': realmName(conqueredBy),
+                'count': conquered,
+              }),
       ),
     );
   }
@@ -121,7 +129,7 @@ Future<void> showWarReport(
         children: [
           const Icon(Icons.military_tech),
           const SizedBox(width: 8),
-          Expanded(child: Text(title)),
+          Expanded(child: Text(title ?? tr('war.reportTitle'))),
         ],
       ),
       content: SizedBox(
@@ -157,7 +165,7 @@ Future<void> showWarReport(
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Weiter'),
+          child: Text(tr('war.continueLabel')),
         ),
       ],
     ),
@@ -171,23 +179,32 @@ _ReportEntry _warSummaryEntry(Map<String, dynamic> s, int viewerSlot) {
   String side(int? slot) {
     if (slot == null || slot < 1 || slot >= gc.countryNames.length) return '?';
     return slot == viewerSlot
-        ? '${gc.countryNames[slot]} (du)'
-        : gc.countryNames[slot];
+        ? tr('war.sideYou', {'realm': realmName(slot)})
+        : realmName(slot);
   }
 
   String tally(String prefix, int menLost, int loot, int tiles, int won) {
     final parts = [
-      '−$menLost Mann',
+      tr('war.tallyMenLost', {'n': menLost}),
       // Won battles feed the war score since 2026-07-19 — worth showing.
-      if (won > 0) '$won Schlacht${won == 1 ? '' : 'en'} gewonnen',
-      if (loot > 0) '$loot T erbeutet',
-      if (tiles > 0) '$tiles ${tiles == 1 ? 'Feld' : 'Felder'} erobert',
+      if (won > 0)
+        tr(won == 1 ? 'war.tallyBattleWonOne' : 'war.tallyBattlesWon', {
+          'n': won,
+        }),
+      if (loot > 0) tr('war.tallyLoot', {'n': loot}),
+      if (tiles > 0)
+        tr(tiles == 1 ? 'war.tallyTileOne' : 'war.tallyTilesMany', {
+          'n': tiles,
+        }),
     ];
-    return '$prefix: ${parts.join(', ')}.';
+    return tr('war.tallyLine', {'side': prefix, 'parts': parts.join(', ')});
   }
 
   final lines = [
-    '${s['rounds'] ?? '?'} Runden, ${s['battles'] ?? 0} Schlachten.',
+    tr('war.summaryRounds', {
+      'rounds': s['rounds'] ?? '?',
+      'battles': s['battles'] ?? 0,
+    }),
     tally(
       side(s['attackerSlot'] as int?),
       s['attackerMenLost'] as int? ?? 0,
@@ -206,37 +223,41 @@ _ReportEntry _warSummaryEntry(Map<String, dynamic> s, int viewerSlot) {
   return _ReportEntry(
     Icons.summarize,
     Colors.blueGrey,
-    'Kriegsbilanz',
+    tr('war.summaryTitle'),
     lines.join('\n'),
   );
 }
 
 _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
   final p = event.payload;
-  final realm = gc.countryNames[event.slot];
+  final realm = realmName(event.slot);
 
   switch (event.type) {
     case 'battle':
       final attacker = realm;
       final defenderSlot = p['defenderSlot'] as int?;
       final defender = defenderSlot == null
-          ? 'der Feind'
-          : gc.countryNames[defenderSlot];
+          ? tr('war.theEnemy')
+          : realmName(defenderSlot);
       final attackerDestroyed = p['attackerDestroyed'] == true;
       final defenderDestroyed = p['defenderDestroyed'] == true;
       final lines = [
-        '$attacker: „${p['attackerUnit']}" verliert '
-            '${p['attackerLosses']} Mann'
-            '${attackerDestroyed ? ' — vernichtet !' : '.'}',
-        '$defender: „${p['defenderUnit']}" verliert '
-            '${p['defenderLosses']} Mann'
-            '${defenderDestroyed ? ' — vernichtet !' : '.'}',
+        tr(attackerDestroyed ? 'war.battleLossDestroyed' : 'war.battleLoss', {
+          'realm': attacker,
+          'unit': p['attackerUnit'],
+          'losses': p['attackerLosses'],
+        }),
+        tr(defenderDestroyed ? 'war.battleLossDestroyed' : 'war.battleLoss', {
+          'realm': defender,
+          'unit': p['defenderUnit'],
+          'losses': p['defenderLosses'],
+        }),
         if (attackerDestroyed)
-          'Der Angriff wurde abgeschlagen.'
+          tr('war.attackRepelled')
         else if (defenderDestroyed)
-          'Der Angriff war erfolgreich.'
+          tr('war.attackSucceeded')
         else
-          'Die Verteidiger halten das Feld.',
+          tr('war.defendersHold'),
       ];
       final won = event.slot == viewerSlot
           ? defenderDestroyed && !attackerDestroyed
@@ -244,89 +265,92 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
       return _ReportEntry(
         Icons.gavel,
         won ? Colors.green : Colors.red,
-        'Schlacht bei (${(p['x'] as int) + 1}, ${(p['y'] as int) + 1})',
+        tr('war.battleAt', {
+          'x': (p['x'] as int) + 1,
+          'y': (p['y'] as int) + 1,
+        }),
         lines.join('\n'),
       );
 
     case 'plunder':
       final building = p['building'] as int? ?? 0;
-      final name = buildingName(building, empty: 'Feld');
-      final victim = gc.countryNames[p['victim'] as int? ?? 0];
+      final name = buildingName(building, empty: tr('war.bareTile'));
+      final victim = realmName(p['victim'] as int? ?? 0);
       final details = <String>[
         if (p['destroyed'] == true)
-          'Das Feld ist verwüstet und liegt '
-              '${p['recoversIn'] ?? 3} Jahre brach.',
-        if ((p['loot'] as int? ?? 0) > 0) '${p['loot']} Taler erbeutet.',
-        if ((p['killed'] as int? ?? 0) > 0) '${p['killed']} Einwohner getötet.',
+          tr('war.plunderDevastated', {'years': p['recoversIn'] ?? 3}),
+        if ((p['loot'] as int? ?? 0) > 0)
+          tr('war.plunderLoot', {'loot': p['loot']}),
+        if ((p['killed'] as int? ?? 0) > 0)
+          tr('war.plunderKilled', {'count': p['killed']}),
       ];
       return _ReportEntry(
         Icons.local_fire_department,
         event.slot == viewerSlot ? Colors.orange : Colors.red,
-        'Plünderung: $name von $victim',
+        tr('war.plunderEntryTitle', {'building': name, 'victim': victim}),
         details.isEmpty
-            ? '$realm plündert bei (${(p['x'] as int) + 1}, '
-                  '${(p['y'] as int) + 1}).'
+            ? tr('war.plunderAt', {
+                'realm': realm,
+                'x': (p['x'] as int) + 1,
+                'y': (p['y'] as int) + 1,
+              })
             : details.join('\n'),
       );
 
     case 'rulerCaptured':
-      final loser = gc.countryNames[p['loserSlot'] as int? ?? 0];
+      final loser = realmName(p['loserSlot'] as int? ?? 0);
       return _ReportEntry(
         Icons.lock,
         event.slot == viewerSlot ? Colors.green : Colors.red,
-        'Herrscher gefangen !',
-        '$realm nimmt ${p['ruler'] ?? 'den Herrscher'} von $loser gefangen '
-            '— der Krieg ist entschieden.',
+        tr('war.rulerCapturedTitle'),
+        tr('war.rulerCapturedBody', {
+          'realm': realm,
+          'ruler': p['ruler'] ?? tr('war.theRuler'),
+          'loser': loser,
+        }),
       );
 
     case 'capitalHeld':
-      final besieged = gc.countryNames[p['loserSlot'] as int? ?? 0];
+      final besieged = realmName(p['loserSlot'] as int? ?? 0);
       final mine = event.slot == viewerSlot;
       return _ReportEntry(
         Icons.flag,
         mine ? Colors.green : Colors.red,
-        mine ? 'Königssitz besetzt !' : 'Dein Königssitz ist besetzt !',
+        mine ? tr('war.capitalSeizedTitle') : tr('war.capitalLostTitle'),
         mine
-            ? 'Deine Armee hält den Königssitz von $besieged — übersteht '
-                  'sie dort die nächste Runde, ist der Krieg gewonnen. '
-                  'Besetzen deine Armeen dabei ALLE festen Plätze des '
-                  'Feindes (jede Stadt, Burg und jeden Palast), wird sein '
-                  'gesamtes Land deinem Reich einverleibt — sonst stellst '
-                  'du Ansprüche nach Punkten.'
-            : '$realm hält deinen Königssitz ! Erobere das Feld in der '
-                  'nächsten Runde zurück — sonst ist der Krieg verloren. '
-                  'Sind dabei ALLE deine Städte, Burgen und Paläste '
-                  'besetzt, wird dein ganzes Land dem Feind einverleibt !',
+            ? tr('war.capitalSeizedBody', {'besieged': besieged})
+            : tr('war.capitalLostBody', {'realm': realm}),
       );
 
     case 'warWon':
-      final loser = gc.countryNames[p['loserSlot'] as int? ?? 0];
+      final loser = realmName(p['loserSlot'] as int? ?? 0);
       return _ReportEntry(
         Icons.emoji_events,
         event.slot == viewerSlot ? Colors.green : Colors.red,
-        'Kriegsende',
+        tr('war.warEndTitle'),
         p['conquered'] == true
-            ? '$realm gewinnt den Krieg und übernimmt das gesamte '
-                  'Reich von $loser !'
-            : '$realm gewinnt den Krieg gegen $loser '
-                  '(Anspruch: ${p['claim']} Punkte).',
+            ? tr('war.warWonConquered', {'realm': realm, 'loser': loser})
+            : tr('war.warWonClaim', {
+                'realm': realm,
+                'loser': loser,
+                'claim': p['claim'],
+              }),
       );
 
     case 'warDraw':
       return _ReportEntry(
         Icons.handshake,
         Colors.blueGrey,
-        'Frieden',
-        'Der Krieg endet unentschieden — alle Truppen kehren heim.',
+        tr('war.peaceTitle'),
+        tr('war.warDrawBody'),
       );
 
     case 'peaceAgreed':
       return _ReportEntry(
         Icons.handshake,
         Colors.green,
-        'Frieden geschlossen',
-        'Beide Seiten beenden den Krieg. Alle Truppen kehren heim — '
-            'das Land bleibt unverändert.',
+        tr('war.peaceAgreedTitle'),
+        tr('war.peaceAgreedBody'),
       );
 
     case 'winterEndsWar':
@@ -335,18 +359,21 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
       return _ReportEntry(
         Icons.ac_unit,
         Colors.blueGrey,
-        'Winter',
-        'Der Krieg musste wegen des hereinbrechenden Winters beendet '
-            'werden.',
+        tr('war.winterTitle'),
+        tr('war.winterBody'),
       );
 
     case 'claimPaidOut':
-      final from = gc.countryNames[p['from'] as int? ?? 0];
+      final from = realmName(p['from'] as int? ?? 0);
       return _ReportEntry(
         Icons.toll,
         event.slot == viewerSlot ? Colors.green : Colors.red,
-        'Kriegsentschädigung',
-        '$realm erhält ${p['amount']} Taler von $from.',
+        tr('war.claimPaidTitle'),
+        tr('war.claimPaidBody', {
+          'realm': realm,
+          'amount': p['amount'],
+          'from': from,
+        }),
       );
 
     case 'realmOverrun':
@@ -355,12 +382,10 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
       return _ReportEntry(
         Icons.public_off,
         mine ? Colors.red : Colors.green,
-        mine ? 'Alles verloren !' : 'Totale Eroberung !',
+        mine ? tr('war.allLostTitle') : tr('war.totalConquestTitle'),
         mine
-            ? 'Du hast dein gesamtes Land verloren — dir bleibt kein '
-                  'einziges Feld mehr.'
-            : '$realm hat sein gesamtes Land verloren — das Reich ist '
-                  'von der Karte getilgt.',
+            ? tr('war.allLostBody')
+            : tr('war.realmOverrunBody', {'realm': realm}),
       );
 
     case 'peaceWish':
@@ -369,66 +394,73 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
       return _ReportEntry(
         Icons.handshake,
         Colors.blueGrey,
-        'Friedenswunsch',
-        '$realm wünscht Frieden.',
+        tr('war.peaceWishTitle'),
+        tr('war.peaceWishBody', {'realm': realm}),
       );
 
     case 'enemyMoved':
       return _ReportEntry(
         Icons.directions_walk,
         Colors.blueGrey,
-        'Feindbewegung',
-        '„${p['unit']}" rückt von (${(p['fromX'] as int) + 1}, '
-            '${(p['fromY'] as int) + 1}) nach (${(p['x'] as int) + 1}, '
-            '${(p['y'] as int) + 1}) vor.',
+        tr('war.enemyMovedTitle'),
+        tr('war.enemyMovedBody', {
+          'unit': p['unit'],
+          'fromX': (p['fromX'] as int) + 1,
+          'fromY': (p['fromY'] as int) + 1,
+          'x': (p['x'] as int) + 1,
+          'y': (p['y'] as int) + 1,
+        }),
       );
 
     case 'enemyHolds':
       return _ReportEntry(
         Icons.shield,
         Colors.blueGrey,
-        'Feindlage',
-        '$realm hält seine Stellungen — keine Bewegung.',
+        tr('war.enemyHoldsTitle'),
+        tr('war.enemyHoldsBody', {'realm': realm}),
       );
 
     case 'forcedMarriage':
       return _ReportEntry(
         Icons.favorite,
         Colors.purple,
-        'Zwangsheirat',
-        '${p['victor']} heiratet ${p['spouse']}.',
+        tr('war.forcedMarriageTitle'),
+        tr('war.forcedMarriageBody', {
+          'victor': p['victor'],
+          'spouse': p['spouse'],
+        }),
       );
 
     case 'forcedAbdication':
       return _ReportEntry(
         Icons.cancel,
         Colors.red,
-        'Abdankung',
-        '${p['name']} muss die Kaiserwürde niederlegen.',
+        tr('war.abdicationTitle'),
+        tr('war.abdicationBody', {'name': p['name']}),
       );
 
     case 'dynastyConverted':
       return _ReportEntry(
         Icons.church,
         Colors.purple,
-        'Bekehrung',
-        'Die Dynastie von $realm wechselt den Glauben.',
+        tr('war.conversionTitle'),
+        tr('war.conversionBody', {'realm': realm}),
       );
 
     case 'execution':
       return _ReportEntry(
         Icons.dangerous,
         Colors.red,
-        'Hinrichtung',
-        '${p['name']} wird hingerichtet.',
+        tr('war.executionTitle'),
+        tr('war.executionBody', {'name': p['name']}),
       );
 
     case 'kurfuerstStripped':
       return _ReportEntry(
         Icons.remove_circle,
         Colors.red,
-        'Kurwürde verloren',
-        '${p['name']} verliert die Kurwürde.',
+        tr('war.electorStrippedTitle'),
+        tr('war.electorStrippedBody', {'name': p['name']}),
       );
   }
   return null;

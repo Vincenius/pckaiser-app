@@ -69,11 +69,8 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Tutorial beenden?'),
-        content: const Text(
-          'Du kehrst zum Hauptmenü zurück. Die '
-          'Übungspartie wird nicht gespeichert.',
-        ),
+        title: Text(tr('tut.quitTitle')),
+        content: Text(tr('tut.quitBody')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -81,7 +78,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Beenden'),
+            child: Text(tr('tut.quitConfirm')),
           ),
         ],
       ),
@@ -107,7 +104,10 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                 const Icon(Icons.school, size: 18),
                 const SizedBox(width: 8),
                 Text(
-                  'Tutorial ${_index + 1}/${tutorialSteps.length}',
+                  tr('tut.chip', {
+                    'step': _index + 1,
+                    'total': tutorialSteps.length,
+                  }),
                   style: theme.textTheme.labelLarge,
                 ),
                 const SizedBox(width: 4),
@@ -138,8 +138,10 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                   // ellipsize instead of pushing the buttons off the card.
                   Expanded(
                     child: Text(
-                      'Tutorial — Schritt ${_index + 1} von '
-                      '${tutorialSteps.length}',
+                      tr('tut.header', {
+                        'step': _index + 1,
+                        'total': tutorialSteps.length,
+                      }),
                       style: theme.textTheme.labelMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -147,13 +149,13 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.expand_more, size: 20),
-                    tooltip: 'Minimieren',
+                    tooltip: tr('tut.minimize'),
                     visualDensity: VisualDensity.compact,
                     onPressed: () => setState(() => _minimized = true),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 20),
-                    tooltip: 'Tutorial beenden',
+                    tooltip: tr('tut.quitTooltip'),
                     visualDensity: VisualDensity.compact,
                     onPressed: _confirmExit,
                   ),
@@ -182,7 +184,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                     ),
                     TextButton(
                       onPressed: _advance,
-                      child: const Text('Überspringen'),
+                      child: Text(tr('tut.skip')),
                     ),
                   ],
                 )
@@ -191,7 +193,7 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                   alignment: Alignment.centerRight,
                   child: FilledButton(
                     onPressed: _isLast ? widget.onFinish : _advance,
-                    child: Text(_isLast ? 'Tutorial abschließen' : 'Weiter'),
+                    child: Text(_isLast ? tr('tut.finish') : tr('tut.next')),
                   ),
                 ),
             ],

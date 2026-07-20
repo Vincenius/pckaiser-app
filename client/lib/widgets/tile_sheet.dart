@@ -69,7 +69,7 @@ Future<void> showTileActionSheet(
                   ),
                   FilledButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('OK'),
+                    child: Text(tr('game.ok')),
                   ),
                 ],
               ),
@@ -106,14 +106,14 @@ Future<void> showTileActionSheet(
   if (buildable || expandable) {
     if (terrain == gc.Terrain.ebene && money >= costOf(gc.Building.kornfeld)) {
       act(
-        'Kornfeld',
+        buildingName(gc.Building.kornfeld),
         '${costOf(gc.Building.kornfeld)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.kornfeld),
       );
     }
     if (money >= costOf(gc.Building.weide)) {
       act(
-        'Weide',
+        buildingName(gc.Building.weide),
         '${costOf(gc.Building.weide)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.weide),
       );
@@ -121,7 +121,7 @@ Future<void> showTileActionSheet(
     if (money >= costOf(gc.Building.dorf)) {
       actions.add(
         ListTile(
-          title: const Text('Dorf'),
+          title: Text(buildingName(gc.Building.dorf)),
           trailing: Text('${costOf(gc.Building.dorf)} T'),
           onTap: () async {
             Navigator.pop(context);
@@ -145,14 +145,14 @@ Future<void> showTileActionSheet(
     }
     if (money >= costOf(gc.Building.burg)) {
       act(
-        'Burg',
+        buildingName(gc.Building.burg),
         '${costOf(gc.Building.burg)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.burg),
       );
     }
     if (money >= costOf(gc.Building.palast)) {
       act(
-        'Palast',
+        buildingName(gc.Building.palast),
         '${costOf(gc.Building.palast)} T',
         gc.Build(slot: slot, x: x, y: y, building: gc.Building.palast),
       );
@@ -165,7 +165,7 @@ Future<void> showTileActionSheet(
       hasMoves &&
       money >= costOf(gc.Building.hafen)) {
     act(
-      'Hafen',
+      buildingName(gc.Building.hafen),
       '${costOf(gc.Building.hafen)} T',
       gc.Build(slot: slot, x: x, y: y, building: gc.Building.hafen),
     );
@@ -177,15 +177,14 @@ Future<void> showTileActionSheet(
     actions.add(
       ListTile(
         leading: const Icon(Icons.sailing),
-        title: const Text('Schiff kaufen'),
+        title: Text(tr('game.buyShip')),
         trailing: Text('${gc.Building.shipCost} T'),
         subtitle: Text(
           !hasMoves
-              ? 'Du hast keine Züge mehr !'
+              ? tr('game.noMovesLeft')
               : money < gc.Building.shipCost
-              ? 'Du hast nicht genügend Taler !'
-              : 'Das Schiff geht hier im Hafen vor Anker — tippe es '
-                    'danach an, um es zu steuern',
+              ? tr('game.notEnoughTaler')
+              : tr('game.buyShipHint'),
         ),
         enabled: hasMoves && money >= gc.Building.shipCost,
         onTap: () async {
@@ -205,18 +204,13 @@ Future<void> showTileActionSheet(
     actions.add(
       ListTile(
         leading: const Icon(Icons.sailing),
-        title: const Text('Schiff steuern'),
-        subtitle: const Text(
-          '1 Zug pro Wasserfeld — ein freies Landfeld '
-          'als Ziel gründet dort ein Dorf',
-        ),
+        title: Text(tr('game.steerShip')),
+        subtitle: Text(tr('game.steerShipHint')),
         enabled: hasMoves,
         onTap: () {
           Navigator.pop(context);
           controller.startTilePick(
-            hint:
-                'Schiff steuern: Wasserfeld antippen (1 Zug pro Feld) '
-                '— ein freies Landfeld wird kolonisiert',
+            hint: tr('game.steerShipPickHint'),
             onPick: (px, py) =>
                 _steerShip(context, controller, slot, shipIndex, px, py),
           );
@@ -234,11 +228,9 @@ Future<void> showTileActionSheet(
       actions.add(
         ListTile(
           leading: const Icon(Icons.flag),
-          title: const Text('Kolonisieren — Dorf gründen'),
+          title: Text(tr('game.colonize')),
           subtitle: Text(
-            hasMoves
-                ? 'Das Schiff wird dabei aufgelöst — die Siedler bleiben'
-                : 'Du hast keine Züge mehr !',
+            hasMoves ? tr('game.colonizeHint') : tr('game.noMovesLeft'),
           ),
           enabled: hasMoves,
           onTap: () async {
@@ -283,8 +275,13 @@ Future<void> showTileActionSheet(
       actions.add(
         ListTile(
           leading: const Icon(Icons.groups_2),
-          title: Text('„${troop.name}" — ${troop.men} Mann'),
-          subtitle: const Text('Info, Verlegen & Bearbeiten'),
+          title: Text(
+            tr('game.troopTileTitle', {
+              'name': troop.name,
+              'men': troop.men,
+            }),
+          ),
+          subtitle: Text(tr('game.troopTileSubtitle')),
           onTap: () {
             Navigator.pop(context);
             showTroopActions(context, controller, i);
@@ -314,21 +311,23 @@ Future<void> showTileActionSheet(
         ListTile(
           leading: const Icon(Icons.visibility),
           title: Text(
-            'Spionage: Armee von '
-            '${gc.countryNames[report.targetSlot]}',
+            tr('game.spiedArmyTitle', {
+              'realm': realmName(report.targetSlot),
+            }),
           ),
           subtitle: Text(
-            '~${men ?? '?'} Mann ${troopClassName(cls)} — '
-            'Stand Anno ${report.year}',
+            tr('game.spiedArmySubtitle', {
+              'men': men ?? '?',
+              'troopClass': troopClassName(cls),
+              'year': report.year,
+            }),
           ),
         ),
       );
     }
   }
 
-  final ownerLine = owner == gc.World.niemand
-      ? 'Niemand'
-      : gc.countryNames[owner];
+  final ownerLine = realmName(owner);
   final town = owner != gc.World.niemand
       ? state.realm(owner).towns.where((t) => t.x == x && t.y == y).toList()
       : const <gc.Town>[];
@@ -343,20 +342,23 @@ Future<void> showTileActionSheet(
           ListTile(
             title: Text(
               '(${x + 1}, ${y + 1}) — ${terrain == gc.Terrain.ebene
-                  ? 'Ebene'
+                  ? tr('game.terrainPlain')
                   : terrain == gc.Terrain.berg
-                  ? 'Berg'
-                  : 'Wasser'}'
+                  ? tr('game.terrainMountain')
+                  : tr('game.terrainWater')}'
               '${building == gc.Building.none ? '' : ' — ${buildingName(building)}'}'
               // A war-plundered field lies fallow until it recovers
               // (engine rule 2026-07-19).
-              '${state.map.isDevastatedAt(x, y, state.year) ? ' (verwüstet bis Anno ${state.map.devastatedUntil[state.map.index(x, y)]})' : ''}',
+              '${state.map.isDevastatedAt(x, y, state.year) ? tr('game.devastatedUntil', {'year': state.map.devastatedUntil[state.map.index(x, y)]}) : ''}',
             ),
             subtitle: Text(
               town.isNotEmpty ? '$ownerLine — ${town.first.name}' : ownerLine,
             ),
             trailing: Text(
-              '${realm.treasury} T\nnoch ${realm.movementPoints} Züge',
+              tr('game.tileHeaderTrailing', {
+                'treasury': realm.treasury,
+                'moves': realm.movementPoints,
+              }),
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.labelMedium,
             ),
@@ -366,10 +368,10 @@ Future<void> showTileActionSheet(
             ListTile(
               title: Text(
                 !hasMoves
-                    ? 'Du hast keine Züge mehr !'
+                    ? tr('game.noMovesLeft')
                     : (buildable || expandable) && money < 100
-                    ? 'Du hast nicht genügend Taler !'
-                    : 'Hier ist keine Aktion möglich',
+                    ? tr('game.notEnoughTaler')
+                    : tr('game.noActionHere'),
               ),
             ),
           ...actions,
@@ -416,10 +418,7 @@ Future<bool> _steerShip(
 
   if (map.ownerAt(x, y) != gc.World.niemand ||
       map.buildingAt(x, y) != gc.Building.none) {
-    toast(
-      'Schiffe fahren nur auf dem Wasser — oder kolonisieren ein '
-      'freies Landfeld !',
-    );
+    toast(tr('game.shipsWaterOnly'));
     return false;
   }
 
@@ -441,15 +440,12 @@ Future<bool> _steerShip(
     }
   }
   if (distance < 0) {
-    toast('Dieses Feld ist über See nicht erreichbar !');
+    toast(tr('game.notReachableBySea'));
     return false;
   }
   final needed = distance + 1; // the voyage plus the founding Zug
   if (realm.movementPoints < needed) {
-    toast(
-      'Fahrt und Dorfgründung kosten $needed Züge — so viele hast '
-      'du nicht mehr !',
-    );
+    toast(tr('game.voyageCostsMoves', {'moves': needed}));
     return false;
   }
 
@@ -486,7 +482,7 @@ Future<String?> _askTownName(BuildContext context) {
   return showDialog<String>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Wie soll dein Dorf heißen?'),
+      title: Text(tr('game.askTownName')),
       content: TextField(
         controller: controller,
         autofocus: true,
@@ -499,7 +495,7 @@ Future<String?> _askTownName(BuildContext context) {
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, controller.text.trim()),
-          child: const Text('OK'),
+          child: Text(tr('game.ok')),
         ),
       ],
     ),

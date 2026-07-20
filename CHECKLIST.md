@@ -33,7 +33,7 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Flame map (single rasterized Picture, color-blind-safe borders + captions), tile sheet, HUD, event feed + recap
 - [x] Undo stack, hidden-info views, menus, war panel + settlement UI, setup flow, hot-seat handoff, save slots
 - [x] Accessibility baseline (48dp targets, semantics); interactive tutorial (`client/lib/tutorial/`)
-- [ ] Localization: full §23 string-table import (basic en/de toggle exists)
+- [x] Localization: full de/en UI translation (menus, events, war, tutorial, engine messages, realm exonyms); Options sub-menu language picker, device-language default (2026-07-20)
 
 > Not yet run on a device/emulator (no Android toolchain here). Logic is test-covered; rendering/gestures need a visual pass.
 

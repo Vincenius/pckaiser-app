@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../l10n/strings.dart';
+
 /// Play Store listing for the Android build. Opened from [UpdateRequiredBanner]
 /// so a seat blocked by a newer match build can update in one tap. The id
 /// matches the Android `applicationId` (`client/android/app/build.gradle.kts`).
@@ -34,12 +36,13 @@ class UpdateRequiredBanner extends StatelessWidget {
           ListTile(
             leading: Icon(Icons.system_update, color: onError),
             title: Text(
-              'App-Update erforderlich',
+              tr('setup.updateRequiredTitle'),
               style: TextStyle(color: onError),
             ),
             subtitle: Text(
-              'Diese Partie läuft auf Version ${serverVersion ?? '?'}. Bitte '
-              'aktualisiere die App, um deinen Zug zu machen.',
+              tr('setup.updateRequiredBody', {
+                'version': serverVersion ?? '?',
+              }),
               style: TextStyle(color: onError),
             ),
           ),
@@ -55,7 +58,7 @@ class UpdateRequiredBanner extends StatelessWidget {
                     mode: LaunchMode.externalApplication,
                   ),
                   icon: const Icon(Icons.shop),
-                  label: const Text('Im Play Store aktualisieren'),
+                  label: Text(tr('setup.updatePlayStore')),
                 ),
               ),
             ),

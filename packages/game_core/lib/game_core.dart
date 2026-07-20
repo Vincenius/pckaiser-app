@@ -11,6 +11,7 @@ export 'src/actions/player_action.dart';
 export 'src/ai/ai_tuning.dart';
 export 'src/ai/ai_turn.dart';
 export 'src/data/tables.dart';
+export 'src/l10n/messages.dart';
 export 'src/map/map_generator.dart';
 export 'src/rng/rng.dart';
 export 'src/rules/costs.dart';

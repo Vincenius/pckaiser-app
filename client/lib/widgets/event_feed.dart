@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/labels.dart';
 import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 
@@ -63,171 +64,296 @@ const _worldTypes = {
 
 /// Human-readable line for an event. Falls back to the type name so new
 /// event types never break the feed.
+/// Death causes stored in `personDied` payloads: the code 'age' or a
+/// disease name from the engine's fixed list — mapped at render time so
+/// the stored (language-neutral / German) value localizes both ways.
+String _deathCause(String cause) => switch (cause) {
+  'age' => appLocale.value == 'de' ? 'Altersschwäche' : 'old age',
+  _ => _diseaseName(cause),
+};
+
+/// The engine's four §18 disease names are stored in event payloads;
+/// English forms are mapped here at render time.
+String _diseaseName(String name) => appLocale.value == 'de'
+    ? name
+    : switch (name) {
+        'Pest' => 'Plague',
+        'Cholera' => 'Cholera',
+        'Typhus' => 'Typhus',
+        'Ruhr' => 'Dysentery',
+        _ => name,
+      };
+
 String describeEvent(gc.GameEvent e) {
   final p = e.payload;
-  final realm = e.slot >= 1 && e.slot <= 30 ? gc.countryNames[e.slot] : 'Welt';
+  final realm = e.slot >= 1 && e.slot <= 30 ? realmName(e.slot) : worldLabel();
   return switch (e.type) {
-    'turnUpkeep' =>
-      '$realm: Steuern ${p['tax']} T, Ernte '
-          '${p['grainYield']}/${p['livestockYield']}, Sold ${p['wages']} T',
-    'tileClaimed' => '$realm beansprucht (${p['x']}, ${p['y']})',
-    'shipBought' =>
-      '$realm kauft ein Schiff im Hafen '
-          '(${p['x']}, ${p['y']})',
-    'shipColonized' => '$realm kolonisiert (${p['x']}, ${p['y']}) per Schiff',
-    'buildingBuilt' => '$realm baut auf (${p['x']}, ${p['y']})',
-    'townFounded' => '$realm gründet ${p['name']}',
-    'townPromoted' =>
-      'Dem Ort ${p['name']} wurde das '
-          '${p['building'] == gc.Building.markt ? 'Marktrecht' : 'Stadtrecht'} verliehen',
-    'townDied' => '${p['name']} ist verlassen',
-    'goodsSold' => '$realm verkauft ${p['amount']} für ${p['proceeds']} T',
-    'shipsSent' =>
-      '$realm sendet Handelsschiffe aus — Einsatz ${p['invested']} T',
-    'shipsReturned' =>
-      '$realm: Handelsschiffe kehren zurück — Erlös ${p['returned']} T '
-          '(Einsatz ${p['invested']} T)',
-    'moneySent' =>
-      '$realm schickt ${p['amount']} T an ${gc.countryNames[p['targetSlot'] as int]}',
-    'capitalRelocated' =>
-      '$realm verlegt den Sitz nach (${(p['x'] as int) + 1}, ${(p['y'] as int) + 1})',
-    'capitalReseated' =>
-      '$realm bestimmt nach dem Verlust einen neuen Sitz bei '
-          '(${(p['x'] as int) + 1}, ${(p['y'] as int) + 1})',
-    'capitalLost' =>
-      '$realm hat seinen Sitz verloren — ein neuer muss bestimmt werden !',
-    'wedding' => '${p['a']} von $realm heiratet ${p['b']}',
-    'marriageRejected' =>
+    'turnUpkeep' => tr('ev.turnUpkeep', {
+      'realm': realm,
+      'tax': p['tax'],
+      'grainYield': p['grainYield'],
+      'livestockYield': p['livestockYield'],
+      'wages': p['wages'],
+    }),
+    'tileClaimed' => tr('ev.tileClaimed', {
+      'realm': realm,
+      'x': p['x'],
+      'y': p['y'],
+    }),
+    'shipBought' => tr('ev.shipBought', {
+      'realm': realm,
+      'x': p['x'],
+      'y': p['y'],
+    }),
+    'shipColonized' => tr('ev.shipColonized', {
+      'realm': realm,
+      'x': p['x'],
+      'y': p['y'],
+    }),
+    'buildingBuilt' => tr('ev.buildingBuilt', {
+      'realm': realm,
+      'x': p['x'],
+      'y': p['y'],
+    }),
+    'townFounded' => tr('ev.townFounded', {'realm': realm, 'name': p['name']}),
+    'townPromoted' => tr(
+      p['building'] == gc.Building.markt
+          ? 'ev.townPromotedMarket'
+          : 'ev.townPromotedTown',
+      {'name': p['name']},
+    ),
+    'townDied' => tr('ev.townDied', {'name': p['name']}),
+    'goodsSold' => tr('ev.goodsSold', {
+      'realm': realm,
+      'amount': p['amount'],
+      'proceeds': p['proceeds'],
+    }),
+    'shipsSent' => tr('ev.shipsSent', {
+      'realm': realm,
+      'invested': p['invested'],
+    }),
+    'shipsReturned' => tr('ev.shipsReturned', {
+      'realm': realm,
+      'returned': p['returned'],
+      'invested': p['invested'],
+    }),
+    'moneySent' => tr('ev.moneySent', {
+      'realm': realm,
+      'amount': p['amount'],
+      'target': realmName(p['targetSlot'] as int),
+    }),
+    'capitalRelocated' => tr('ev.capitalRelocated', {
+      'realm': realm,
+      'x': (p['x'] as int) + 1,
+      'y': (p['y'] as int) + 1,
+    }),
+    'capitalReseated' => tr('ev.capitalReseated', {
+      'realm': realm,
+      'x': (p['x'] as int) + 1,
+      'y': (p['y'] as int) + 1,
+    }),
+    'capitalLost' => tr('ev.capitalLost', {'realm': realm}),
+    'wedding' => tr('ev.wedding', {'realm': realm, 'a': p['a'], 'b': p['b']}),
+    'marriageRejected' => tr(
       p['reason'] == 'invalid'
-          ? '$realm: die Heirat ist nicht mehr möglich '
-                '(einer der Partner ist inzwischen gebunden) !'
-          : '$realm: der Heiratsantrag wurde abgelehnt !',
-    'divorce' =>
-      'Die Ehe von ${p['a']} und ${p['b']} wird geschieden (Religion)',
-    'birth' => '${p['parent']} von $realm feiert die Geburt von ${p['child']}',
-    'personDied' =>
-      '${p['name']} von $realm ist im Alter von ${p['age']} '
-          'Jahren verstorben (${p['cause']})',
-    'succession' => '$realm: Die Weisen erwählen ${p['heir']} zum Erben',
-    'titlePromoted' => '$realm: neuer Titel ${p['title']}',
-    'troopsRecruited' => '$realm bildet ${p['men']} Rekruten aus',
-    'soeldnerHired' => '$realm wirbt ${p['men']} Söldner an',
-    'warDeclared' =>
-      '$realm erklärt ${gc.countryNames[p['targetSlot'] as int]} den Krieg!',
-    'battle' =>
-      'Schlacht: ${p['attackerUnit']} (−${p['attackerLosses']}) '
-          'vs ${p['defenderUnit']} (−${p['defenderLosses']})',
-    'rulerCaptured' =>
-      '$realm nimmt den Herrscher von '
-          '${gc.countryNames[p['loserSlot'] as int]} gefangen!',
-    'capitalHeld' =>
-      '$realm besetzt den Königssitz von '
-          '${gc.countryNames[p['loserSlot'] as int]} !',
-    'warWon' =>
-      p['conquered'] == true
-          ? '$realm gewinnt den Krieg und übernimmt das gesamte Reich von '
-                '${gc.countryNames[p['loserSlot'] as int]} !'
-          : '$realm gewinnt den Krieg gegen '
-                '${gc.countryNames[p['loserSlot'] as int]}',
-    'warDraw' => 'Der Krieg endet unentschieden',
-    'peaceAgreed' => 'Friedensschluss — der Krieg endet ohne Gebietsänderungen',
-    'winterEndsWar' =>
-      'Der Krieg musste wegen des hereinbrechenden Winters beendet werden',
-    'peaceWish' => '$realm wünscht ein Ende des Krieges',
-    'tileConquered' =>
-      '$realm erobert (${p['x']}, ${p['y']}) von '
-          '${gc.countryNames[p['from'] as int]}',
-    'plunder' =>
-      '$realm plündert (${p['x']}, ${p['y']}) — Opfer: '
-          '${gc.countryNames[p['victim'] as int]}',
-    'claimPaidOut' =>
-      '$realm erhält ${p['amount']} T Kriegsentschädigung '
-          'von ${gc.countryNames[p['from'] as int]}',
-    'realmOverrun' => '$realm hat sein gesamtes Land verloren !',
-    'humansDefeated' =>
-      'Keine menschliche Dynastie hält mehr die Macht — das Spiel ist aus',
-    'playerLeft' =>
-      '$realm: der Spieler hat die Partie verlassen — der Computer übernimmt',
-    'playerKicked' =>
-      '$realm: der Spieler wurde wegen Inaktivität ersetzt — '
-          'der Computer übernimmt',
-    'forcedMarriage' => '${p['victor']} erzwingt die Heirat mit ${p['spouse']}',
-    'forcedAbdication' => '${p['name']} muss abdanken !',
-    'execution' => '${p['name']} wird hingerichtet !!!',
-    'realmsMerged' =>
-      '$realm übernimmt ${gc.countryNames[p['sourceSlot'] as int]}',
-    'crowned' =>
-      '${p['name']} von $realm wird ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'}',
-    'electionStarted' =>
-      '${p['office'] == 'kaiser' ? 'Kaiserwahl' : 'Sultanswahl'} — die Wahl beginnt',
-    'electionTie' => 'Die Wahl endet unentschieden — Stichwahl !',
-    'interregnum' => 'Interregnum — der Thron bleibt unbesetzt',
-    'tributeCollected' =>
-      '$realm plündert den '
-          '${p['office'] == 'sultan' ? 'Sultansschatz' : 'Kronschatz'}: '
-          '+${p['amount']} T',
-    'newKurfuerst' => '${p['name']} wird Kurfürst',
-    'kurfuerstStripped' => '${p['name']} verliert die Kurfürstenwürde',
-    'officeHolderDied' => 'Der Amtsinhaber ist verstorben',
-    'assassination' =>
-      '${p['victim']} von $realm wird hinterhältig ermordet !!!',
-    'assassinationSucceeded' =>
-      'Deine Attentäter haben ${p['victim']} in '
-          '${gc.countryNames[p['targetSlot'] as int? ?? 0]} ermordet',
-    'assassinationFailed' =>
-      'Anschlag auf ${p['victim']} vereitelt — '
-          'Auftraggeber: ${gc.countryNames[p['sponsorSlot'] as int]}',
-    'assassinsDispatched' =>
-      '$realm entsendet ${p['agents']} Attentäter '
-          'nach ${gc.countryNames[p['targetSlot'] as int]}',
-    'intelGathered' =>
-      '$realm: Spionagebericht über '
-          '${gc.countryNames[p['targetSlot'] as int]} liegt vor',
-    'missionFailed' =>
+          ? 'ev.marriageRejectedInvalid'
+          : 'ev.marriageRejected',
+      {'realm': realm},
+    ),
+    'divorce' => tr('ev.divorce', {'a': p['a'], 'b': p['b']}),
+    'birth' => tr('ev.birth', {
+      'realm': realm,
+      'parent': p['parent'],
+      'child': p['child'],
+    }),
+    'personDied' => tr('ev.personDied', {
+      'realm': realm,
+      'name': p['name'],
+      'age': p['age'],
+      'cause': _deathCause(p['cause'] as String? ?? '?'),
+    }),
+    'succession' => tr('ev.succession', {'realm': realm, 'heir': p['heir']}),
+    // Old events carry only the stored (German) 'title'; newer ones also
+    // the language-neutral 'titleClass' — prefer the localized lookup.
+    'titlePromoted' => tr('ev.titlePromoted', {
+      'realm': realm,
+      'title': p['titleClass'] != null
+          ? titleName(p['titleClass'] as int)
+          : p['title'],
+    }),
+    'troopsRecruited' => tr('ev.troopsRecruited', {
+      'realm': realm,
+      'men': p['men'],
+    }),
+    'soeldnerHired' => tr('ev.soeldnerHired', {
+      'realm': realm,
+      'men': p['men'],
+    }),
+    'warDeclared' => tr('ev.warDeclared', {
+      'realm': realm,
+      'target': realmName(p['targetSlot'] as int),
+    }),
+    'battle' => tr('ev.battle', {
+      'attackerUnit': p['attackerUnit'],
+      'attackerLosses': p['attackerLosses'],
+      'defenderUnit': p['defenderUnit'],
+      'defenderLosses': p['defenderLosses'],
+    }),
+    'rulerCaptured' => tr('ev.rulerCaptured', {
+      'realm': realm,
+      'loser': realmName(p['loserSlot'] as int),
+    }),
+    'capitalHeld' => tr('ev.capitalHeld', {
+      'realm': realm,
+      'loser': realmName(p['loserSlot'] as int),
+    }),
+    'warWon' => tr(p['conquered'] == true ? 'ev.warWonConquered' : 'ev.warWon', {
+      'realm': realm,
+      'loser': realmName(p['loserSlot'] as int),
+    }),
+    'warDraw' => tr('ev.warDraw'),
+    'peaceAgreed' => tr('ev.peaceAgreed'),
+    'winterEndsWar' => tr('ev.winterEndsWar'),
+    'peaceWish' => tr('ev.peaceWish', {'realm': realm}),
+    'tileConquered' => tr('ev.tileConquered', {
+      'realm': realm,
+      'x': p['x'],
+      'y': p['y'],
+      'from': realmName(p['from'] as int),
+    }),
+    'plunder' => tr('ev.plunder', {
+      'realm': realm,
+      'x': p['x'],
+      'y': p['y'],
+      'victim': realmName(p['victim'] as int),
+    }),
+    'claimPaidOut' => tr('ev.claimPaidOut', {
+      'realm': realm,
+      'amount': p['amount'],
+      'from': realmName(p['from'] as int),
+    }),
+    'realmOverrun' => tr('ev.realmOverrun', {'realm': realm}),
+    'humansDefeated' => tr('ev.humansDefeated'),
+    'playerLeft' => tr('ev.playerLeft', {'realm': realm}),
+    'playerKicked' => tr('ev.playerKicked', {'realm': realm}),
+    'forcedMarriage' => tr('ev.forcedMarriage', {
+      'victor': p['victor'],
+      'spouse': p['spouse'],
+    }),
+    'forcedAbdication' => tr('ev.forcedAbdication', {'name': p['name']}),
+    'execution' => tr('ev.execution', {'name': p['name']}),
+    'realmsMerged' => tr('ev.realmsMerged', {
+      'realm': realm,
+      'source': realmName(p['sourceSlot'] as int),
+    }),
+    'crowned' => tr('ev.crowned', {
+      'realm': realm,
+      'name': p['name'],
+      'office': _officeName(p['office']),
+    }),
+    'electionStarted' => tr(
+      p['office'] == 'kaiser'
+          ? 'ev.electionStartedKaiser'
+          : 'ev.electionStartedSultan',
+    ),
+    'electionTie' => tr('ev.electionTie'),
+    'interregnum' => tr('ev.interregnum'),
+    'tributeCollected' => tr(
+      p['office'] == 'sultan'
+          ? 'ev.tributeCollectedSultan'
+          : 'ev.tributeCollectedKaiser',
+      {'realm': realm, 'amount': p['amount']},
+    ),
+    'newKurfuerst' => tr('ev.newKurfuerst', {'name': p['name']}),
+    'kurfuerstStripped' => tr('ev.kurfuerstStripped', {'name': p['name']}),
+    'officeHolderDied' => tr('ev.officeHolderDied'),
+    'assassination' => tr('ev.assassination', {
+      'realm': realm,
+      'victim': p['victim'],
+    }),
+    'assassinationSucceeded' => tr('ev.assassinationSucceeded', {
+      'victim': p['victim'],
+      'target': realmName(p['targetSlot'] as int? ?? 0),
+    }),
+    'assassinationFailed' => tr('ev.assassinationFailed', {
+      'victim': p['victim'],
+      'sponsor': realmName(p['sponsorSlot'] as int),
+    }),
+    'assassinsDispatched' => tr('ev.assassinsDispatched', {
+      'realm': realm,
+      'agents': p['agents'],
+      'target': realmName(p['targetSlot'] as int),
+    }),
+    'intelGathered' => tr('ev.intelGathered', {
+      'realm': realm,
+      'target': realmName(p['targetSlot'] as int),
+    }),
+    'missionFailed' => tr(
       (p['caught'] as int? ?? 0) > 0
-          ? 'Spione in ${gc.countryNames[p['targetSlot'] as int]} '
-                'gefangengenommen — einer gesteht unter Folter, aus '
-                '$realm geschickt worden zu sein !!!'
-          : '$realm: Spionagemission in '
-                '${gc.countryNames[p['targetSlot'] as int]} gescheitert',
-    'religionChanged' =>
-      '$realm wechselt die Religion'
-          '${(p['popularityLost'] as int? ?? 0) > 0 ? ' (−${p['popularityLost']} Beliebtheit)' : ''}',
-    'dynastyConverted' => '$realm: die Dynastie konvertiert',
-    'dynastyExtinct' => '$realm: die Dynastie ist erloschen',
-    'realmInherited' =>
-      'Durch Erbfolge fällt '
-          '${((p['slots'] as List?) ?? const []).map((s) => gc.countryNames[s as int]).join(', ')} '
-          'an ${p['heir']} von $realm',
-    'islamicSuccessionCrisis' =>
-      '$realm: Erbfolgekrise — ${p['heir']} setzt sich durch'
-          '${p['human'] == true ? '; der Spieler verliert die Kontrolle über das Reich !' : ''}',
-    'internalStrife' =>
-      '$realm: Volksaufstand — ${p['newRuler']} ergreift die Macht'
-          '${p['human'] == true ? '; der Spieler verliert die Kontrolle über das Reich !' : ''}',
-    'seatLost' =>
-      'Durch Erbfolge fällt $realm an ein fremdes Herrscherhaus'
-          '${p['heir'] != null ? ' (${p['heir']})' : ''} — '
-          'der Spieler verliert die Kontrolle über das Reich !',
-    'bankruptcy' =>
-      '$realm ist bankrott (${p['debt']} T Schulden) !'
-          '${p['human'] == true ? ' Der Spieler verliert das Reich an ein neues Herrscherhaus !' : ''}',
-    'debtWarning' =>
-      '$realm steckt tief in Schulden (${p['debt']} T) — noch '
-          '${p['turnsLeft']} ${(p['turnsLeft'] as int) == 1 ? 'Zug' : 'Züge'} '
-          'bis zum Staatsbankrott !',
-    'merchantFounder' => 'Der Kaufmann ${p['name']} gründet eine neue Dynastie',
-    'totalExtinction' => 'Alle Dynastien sind erloschen — das Land verfällt',
-    'earthquake' => 'Ein verheerendes Erdbeben verwüstet das Reich',
-    'disease' => 'Die ${p['name']} geht um!',
-    'reformation' => 'Die Reformation! ',
-    'ottomanInvasion' => 'Eine riesige Reiterhorde dringt in das Reich ein!',
-    'buildingDemolished' => '$realm reißt (${p['x']}, ${p['y']}) ab',
-    'gameWon' => '$realm ist der alleinige Herrscher des ganzen Landes!',
-    'gameDraw' => 'Alle Dynastien sind erloschen — das Land bleibt herrenlos',
+          ? 'ev.missionFailedCaught'
+          : 'ev.missionFailed',
+      {'realm': realm, 'target': realmName(p['targetSlot'] as int)},
+    ),
+    'religionChanged' => (p['popularityLost'] as int? ?? 0) > 0
+        ? tr('ev.religionChangedPopularity', {
+            'realm': realm,
+            'popularityLost': p['popularityLost'],
+          })
+        : tr('ev.religionChanged', {'realm': realm}),
+    'dynastyConverted' => tr('ev.dynastyConverted', {'realm': realm}),
+    'dynastyExtinct' => tr('ev.dynastyExtinct', {'realm': realm}),
+    'realmInherited' => tr('ev.realmInherited', {
+      'realm': realm,
+      'heir': p['heir'],
+      'realms': ((p['slots'] as List?) ?? const [])
+          .map((s) => realmName(s as int))
+          .join(', '),
+    }),
+    'islamicSuccessionCrisis' => tr(
+      p['human'] == true
+          ? 'ev.islamicSuccessionCrisisHuman'
+          : 'ev.islamicSuccessionCrisis',
+      {'realm': realm, 'heir': p['heir']},
+    ),
+    'internalStrife' => tr(
+      p['human'] == true ? 'ev.internalStrifeHuman' : 'ev.internalStrife',
+      {'realm': realm, 'newRuler': p['newRuler']},
+    ),
+    'seatLost' => tr(p['heir'] != null ? 'ev.seatLostHeir' : 'ev.seatLost', {
+      'realm': realm,
+      'heir': p['heir'],
+    }),
+    'bankruptcy' => tr(
+      p['human'] == true ? 'ev.bankruptcyHuman' : 'ev.bankruptcy',
+      {'realm': realm, 'debt': p['debt']},
+    ),
+    'debtWarning' => tr(
+      (p['turnsLeft'] as int) == 1 ? 'ev.debtWarningOne' : 'ev.debtWarning',
+      {'realm': realm, 'debt': p['debt'], 'turnsLeft': p['turnsLeft']},
+    ),
+    'merchantFounder' => tr('ev.merchantFounder', {'name': p['name']}),
+    'totalExtinction' => tr('ev.totalExtinction'),
+    'earthquake' => tr('ev.earthquake'),
+    'disease' => tr('ev.disease', {
+      'name': _diseaseName(p['name'] as String? ?? '?'),
+    }),
+    'reformation' => tr('ev.reformation'),
+    'ottomanInvasion' => tr('ev.ottomanInvasion'),
+    'buildingDemolished' => tr('ev.buildingDemolished', {
+      'realm': realm,
+      'x': p['x'],
+      'y': p['y'],
+    }),
+    'gameWon' => tr('ev.gameWon', {'realm': realm}),
+    'gameDraw' => tr('ev.gameDraw'),
     _ => '$realm: ${e.type}',
   };
 }
+
+/// Localized office noun ('Kaiser'/'Sultan') inserted as `{office}` into
+/// coronation templates — the noun is identical in German and English.
+String _officeName(Object? office) =>
+    tr(office == 'kaiser' ? 'ev.officeKaiser' : 'ev.officeSultan');
 
 /// Scrolling event feed with filters (my realm / wars / dynasty / world).
 Future<void> showEventFeed(
@@ -284,13 +410,14 @@ bool _isRelevant(gc.GameEvent e, int slot) {
 class _EventFeedSheetState extends State<_EventFeedSheet> {
   String _filter = 'relevant';
 
+  // (filter value, label key) — labels are translated at build time.
   static const _filters = [
-    ('relevant', 'Wichtig'),
-    ('mine', 'Mein Reich'),
-    ('wars', 'Kriege'),
-    ('dynasty', 'Dynastie'),
-    ('world', 'Welt'),
-    ('all', 'Alles'),
+    ('relevant', 'ev.filterRelevant'),
+    ('mine', 'ev.filterMine'),
+    ('wars', 'ev.filterWars'),
+    ('dynasty', 'ev.filterDynasty'),
+    ('world', 'ev.filterWorld'),
+    ('all', 'ev.filterAll'),
   ];
 
   bool _matches(gc.GameEvent e, int slot) => switch (_filter) {
@@ -343,7 +470,7 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: ChoiceChip(
-                          label: Text(label),
+                          label: Text(tr(label)),
                           selected: _filter == value,
                           onSelected: (_) => setState(() => _filter = value),
                         ),
@@ -354,7 +481,7 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
             ),
             Expanded(
               child: visible.isEmpty
-                  ? const Center(child: Text('Keine Ereignisse.'))
+                  ? Center(child: Text(tr('ev.noEvents')))
                   : ListView(
                       children: [
                         for (final year in years) ...[
@@ -363,7 +490,7 @@ class _EventFeedSheetState extends State<_EventFeedSheet> {
                             child: Row(
                               children: [
                                 Text(
-                                  'Anno $year',
+                                  tr('ev.anno', {'year': year}),
                                   style: theme.textTheme.titleSmall?.copyWith(
                                     color: theme.colorScheme.primary,
                                   ),
@@ -594,152 +721,193 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
     'assassination' => (
       Icons.dangerous,
       Colors.red,
-      'Attentat !!!',
-      '${p['victim']} wurde von gedungenen Mördern ermordet !',
+      tr('ev.dramaAssassinationTitle'),
+      tr('ev.dramaAssassinationBody', {'victim': p['victim']}),
     ),
     'assassinationSucceeded' => (
       Icons.dangerous,
       Colors.green,
-      'Attentat erfolgreich !',
-      'Deine Attentäter haben ${p['victim']} in '
-          '${gc.countryNames[p['targetSlot'] as int? ?? 0]} ermordet — '
-          'niemand ahnt, wer den Auftrag gab.',
+      tr('ev.dramaAssassinationSucceededTitle'),
+      tr('ev.dramaAssassinationSucceededBody', {
+        'victim': p['victim'],
+        'target': realmName(p['targetSlot'] as int? ?? 0),
+      }),
     ),
     'assassinationFailed' when e.slot == slot => (
       Icons.report,
       Colors.orange,
-      'Attentat vereitelt !',
-      'Ein Anschlag auf ${p['victim']} ist fehlgeschlagen !'
-          '${(p['caught'] as int? ?? 0) > 0 ? '\nDie gefassten Attentäter gestehen unter Folter: der Auftrag kam aus ${gc.countryNames[p['sponsorSlot'] as int]} !' : ''}',
+      tr('ev.dramaAssassinationFoiledTitle'),
+      (p['caught'] as int? ?? 0) > 0
+          ? tr('ev.dramaAssassinationFoiledBodyCaught', {
+              'victim': p['victim'],
+              'sponsor': realmName(p['sponsorSlot'] as int),
+            })
+          : tr('ev.dramaAssassinationFoiledBody', {'victim': p['victim']}),
     ),
     'assassinationFailed' => (
       Icons.report,
       Colors.orange,
-      'Anschlag fehlgeschlagen',
-      'Deine Attentäter haben ${p['victim']} nicht erwischt'
-          '${(p['caught'] as int? ?? 0) > 0 ? ' — und wurden gefasst ! Dein Auftrag ist nun bekannt !' : '.'}',
+      tr('ev.dramaAssassinationFailedTitle'),
+      tr(
+        (p['caught'] as int? ?? 0) > 0
+            ? 'ev.dramaAssassinationFailedBodyCaught'
+            : 'ev.dramaAssassinationFailedBody',
+        {'victim': p['victim']},
+      ),
     ),
     'crowned' when e.slot == slot => (
       Icons.emoji_events,
       Colors.amber,
-      p['office'] == 'kaiser' ? 'Du bist Kaiser !' : 'Du bist Sultan !',
-      '${p['name']} wird '
-          '${p['acclaimed'] == true ? 'ohne Gegenstimme ' : ''}'
-          'zum ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'} gekrönt !',
+      tr('ev.dramaCrownedYouTitle', {'office': _officeName(p['office'])}),
+      tr(
+        p['acclaimed'] == true
+            ? 'ev.dramaCrownedYouBodyAcclaimed'
+            : 'ev.dramaCrownedYouBody',
+        {'name': p['name'], 'office': _officeName(p['office'])},
+      ),
     ),
     'crowned' => (
       Icons.emoji_events,
       Colors.amber,
-      p['office'] == 'kaiser' ? 'Ein neuer Kaiser !' : 'Ein neuer Sultan !',
-      '${p['name']} von ${gc.countryNames[e.slot]} wird '
-          '${p['acclaimed'] == true ? 'ohne Gegenstimme ' : ''}'
-          'zum ${p['office'] == 'kaiser' ? 'Kaiser' : 'Sultan'} gekrönt !',
+      tr('ev.dramaCrownedOtherTitle', {'office': _officeName(p['office'])}),
+      tr(
+        p['acclaimed'] == true
+            ? 'ev.dramaCrownedOtherBodyAcclaimed'
+            : 'ev.dramaCrownedOtherBody',
+        {
+          'name': p['name'],
+          'realm': realmName(e.slot),
+          'office': _officeName(p['office']),
+        },
+      ),
     ),
     'realmInherited' => (
       Icons.account_balance,
       Colors.amber,
-      'Erbschaft !',
-      'Nach dem Tod von ${p['deceased']} fällt '
-          '${((p['slots'] as List?) ?? const []).map((s) => gc.countryNames[s as int]).join(', ')} '
-          'durch Erbfolge an ${p['heir']} — das Reich gehört nun '
-          'deinem Haus, du führst es ab sofort mit !',
+      tr('ev.dramaInheritanceTitle'),
+      tr('ev.dramaInheritanceBody', {
+        'deceased': p['deceased'],
+        'heir': p['heir'],
+        'realms': ((p['slots'] as List?) ?? const [])
+            .map((s) => realmName(s as int))
+            .join(', '),
+      }),
     ),
     'realmOverrun' when e.slot == slot => (
       Icons.public_off,
       Colors.red,
-      'Reich verloren !',
-      'Dein Reich wurde im Krieg vollständig überrannt — du hast all '
-          'dein Land verloren !',
+      tr('ev.dramaRealmLostTitle'),
+      tr('ev.dramaRealmOverrunYouBody'),
     ),
     'realmOverrun' => (
       Icons.public_off,
       Colors.red,
-      'Ein Reich ist gefallen !',
-      '${gc.countryNames[e.slot]} wurde im Krieg vollständig überrannt '
-          'und hat sein gesamtes Land verloren !',
+      tr('ev.dramaRealmFallenTitle'),
+      tr('ev.dramaRealmOverrunOtherBody', {'realm': realmName(e.slot)}),
     ),
     'rulerCaptured' => (
       Icons.lock,
       Colors.red,
-      'Herrscher gefangen !',
-      '${gc.countryNames[e.slot]} nimmt den Herrscher von '
-          '${gc.countryNames[p['loserSlot'] as int]}'
-          '${p['ruler'] == null ? '' : ' (${p['ruler']})'} gefangen !',
+      tr('ev.dramaRulerCapturedTitle'),
+      tr(
+        p['ruler'] == null
+            ? 'ev.dramaRulerCapturedBody'
+            : 'ev.dramaRulerCapturedBodyNamed',
+        {
+          'realm': realmName(e.slot),
+          'loser': realmName(p['loserSlot'] as int),
+          'ruler': p['ruler'],
+        },
+      ),
     ),
     'internalStrife' when e.slot == slot => (
       Icons.local_fire_department,
       Colors.red,
-      'Reich verloren !',
-      'Volksaufstand in ${gc.countryNames[e.slot]}: die Zustimmung deines '
-          'Volkes ist unter 20 gefallen — ${p['newRuler']} ergreift die '
-          'Macht ! Du hast die Kontrolle über das Reich verloren; der '
-          'Computer regiert es fortan.',
+      tr('ev.dramaRealmLostTitle'),
+      tr('ev.dramaInternalStrifeYouBody', {
+        'realm': realmName(e.slot),
+        'newRuler': p['newRuler'],
+      }),
     ),
     'internalStrife' => (
       Icons.local_fire_department,
       Colors.red,
-      'Volksaufstand !',
-      '${gc.countryNames[e.slot]}: die Zustimmung fiel unter 20 — '
-          '${p['newRuler']} entthront den Spieler und ergreift die Macht !',
+      tr('ev.dramaInternalStrifeTitle'),
+      tr('ev.dramaInternalStrifeOtherBody', {
+        'realm': realmName(e.slot),
+        'newRuler': p['newRuler'],
+      }),
     ),
     'bankruptcy' when e.slot == slot => (
       Icons.money_off,
       Colors.red,
-      'Reich verloren !',
-      'Dein Reich ${gc.countryNames[e.slot]} ist bankrott '
-          '(${p['debt']} T Schulden) — die Gläubiger übergeben es einem '
-          'neuen Herrscherhaus. Du hast die Kontrolle über das Reich '
-          'verloren.',
+      tr('ev.dramaRealmLostTitle'),
+      tr('ev.dramaBankruptcyYouBody', {
+        'realm': realmName(e.slot),
+        'debt': p['debt'],
+      }),
     ),
     'bankruptcy' => (
       Icons.money_off,
       Colors.red,
-      'Staatsbankrott !',
-      '${gc.countryNames[e.slot]} ist bankrott (${p['debt']} T Schulden) — '
-          'der Spieler verliert das Reich an ein neues Herrscherhaus !',
+      tr('ev.dramaBankruptcyTitle'),
+      tr('ev.dramaBankruptcyOtherBody', {
+        'realm': realmName(e.slot),
+        'debt': p['debt'],
+      }),
     ),
     'islamicSuccessionCrisis' when e.slot == slot => (
       Icons.account_balance,
       Colors.red,
-      'Reich verloren !',
-      'Erbfolgekrise in ${gc.countryNames[e.slot]}: ${p['heir']} kann als '
-          'Frau kein muslimisches Reich führen — das Reich fällt unter '
-          'Computer-Kontrolle. Du hast die Kontrolle verloren.',
+      tr('ev.dramaRealmLostTitle'),
+      tr('ev.dramaIslamicCrisisYouBody', {
+        'realm': realmName(e.slot),
+        'heir': p['heir'],
+      }),
     ),
     'islamicSuccessionCrisis' => (
       Icons.account_balance,
       Colors.red,
-      'Erbfolgekrise !',
-      '${gc.countryNames[e.slot]}: ${p['heir']} setzt sich durch — der '
-          'Spieler verliert die Kontrolle über das Reich !',
+      tr('ev.dramaIslamicCrisisTitle'),
+      tr('ev.dramaIslamicCrisisOtherBody', {
+        'realm': realmName(e.slot),
+        'heir': p['heir'],
+      }),
     ),
     'seatLost' when e.slot == slot => (
       Icons.account_balance,
       Colors.red,
-      'Reich verloren !',
-      'Durch Erbfolge ist ${gc.countryNames[e.slot]} an ein fremdes '
-          'Herrscherhaus gefallen'
-          '${p['heir'] == null ? '' : ' (${p['heir']})'} — du hast die '
-          'Kontrolle über das Reich verloren.',
+      tr('ev.dramaRealmLostTitle'),
+      tr(
+        p['heir'] == null
+            ? 'ev.dramaSeatLostYouBody'
+            : 'ev.dramaSeatLostYouBodyHeir',
+        {'realm': realmName(e.slot), 'heir': p['heir']},
+      ),
     ),
     'seatLost' => (
       Icons.account_balance,
       Colors.red,
-      'Reich durch Erbfolge verloren !',
-      'Durch Erbfolge fällt ${gc.countryNames[e.slot]} an ein fremdes '
-          'Herrscherhaus'
-          '${p['heir'] == null ? '' : ' (${p['heir']})'} — der Spieler '
-          'verliert die Kontrolle über das Reich !',
+      tr('ev.dramaSeatLostOtherTitle'),
+      tr(
+        p['heir'] == null
+            ? 'ev.dramaSeatLostOtherBody'
+            : 'ev.dramaSeatLostOtherBodyHeir',
+        {'realm': realmName(e.slot), 'heir': p['heir']},
+      ),
     ),
     'playerKicked' => (
       Icons.person_off,
       Colors.blueGrey,
-      'Spieler ersetzt',
-      'Der Spieler von ${gc.countryNames[e.slot]} wurde wegen '
-          'Inaktivität aus der Partie entfernt — der Computer übernimmt '
-          'das Reich.',
+      tr('ev.dramaPlayerKickedTitle'),
+      tr('ev.dramaPlayerKickedBody', {'realm': realmName(e.slot)}),
     ),
-    _ => (Icons.campaign, Colors.blueGrey, 'Nachricht', describeEvent(e)),
+    _ => (
+      Icons.campaign,
+      Colors.blueGrey,
+      tr('ev.dramaDefaultTitle'),
+      describeEvent(e),
+    ),
   };
 }
 
@@ -763,7 +931,7 @@ Future<void> _showDramaDialog(
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Weiter'),
+          child: Text(tr('ev.continue')),
         ),
       ],
     ),
@@ -872,7 +1040,7 @@ Future<void> showRecapCard(
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('OK'),
+          child: Text(tr('ev.ok')),
         ),
       ],
     ),

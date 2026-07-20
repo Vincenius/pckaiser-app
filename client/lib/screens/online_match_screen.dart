@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:game_core/game_core.dart' as gc;
 
-import '../l10n/strings.dart' show formatTimestamp;
+import '../l10n/labels.dart' show realmName;
+import '../l10n/strings.dart' show formatTimestamp, tr;
 import '../services/api_client.dart';
 import '../services/online_game_session.dart';
 import '../services/online_service.dart';
@@ -229,10 +230,10 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final view = _view;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Online-Partie'),
+        title: Text(tr('online.matchTitle')),
         actions: [
           IconButton(
-            tooltip: 'Aktualisieren',
+            tooltip: tr('online.refresh'),
             onPressed: _refresh,
             icon: const Icon(Icons.refresh),
           ),
@@ -241,8 +242,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               tooltip:
                   view['status'] == 'waiting' &&
                       view['creator_id'] == widget.service.playerId
-                  ? 'Partie löschen'
-                  : 'Partie verlassen',
+                  ? tr('online.deleteGame')
+                  : tr('online.leaveGame'),
               onPressed: _leave,
               icon: Icon(
                 view['status'] == 'waiting' &&
@@ -273,27 +274,31 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     required int? awaitedSlot,
     required Map? warJson,
   }) {
-    if (yourTurn) return 'Du bist am Zug !';
+    if (yourTurn) return tr('onlineYourTurn');
     final phase = warJson?['phase'];
     if (awaitedName != null) {
-      if (awaitedSlot == null) return '$awaitedName ist am Zug …';
+      if (awaitedSlot == null) return '$awaitedName ${tr('onlineIsPlaying')}';
       final attacker = warJson?['attackerSlot'] as int?;
       final defender = warJson?['defenderSlot'] as int?;
       if (phase == 'rounds' &&
           (awaitedSlot == attacker || awaitedSlot == defender)) {
         final enemy = awaitedSlot == attacker ? defender : attacker;
-        return '$awaitedName (${gc.countryNames[awaitedSlot]}) kämpft '
-            'gegen ${gc.countryNames[enemy!]} …';
+        return tr('online.isFighting', {
+          'name': awaitedName,
+          'realm': realmName(awaitedSlot),
+          'enemy': realmName(enemy!),
+        });
       }
-      return '$awaitedName (${gc.countryNames[awaitedSlot]}) ist am Zug …';
+      return '$awaitedName (${realmName(awaitedSlot)}) '
+          '${tr('onlineIsPlaying')}';
     }
     if (phase == 'preparation') {
       final scheduledMs = warJson?['scheduledStartMs'] as int?;
       return scheduledMs != null && scheduledMs > 0
-          ? '⚔️ Krieg vereinbart — Beginn: ${formatWarStartTime(scheduledMs)}'
-          : '⚔️ Krieg steht bevor — Beginn nach Ablauf der Frist';
+          ? '${tr('onlineWarScheduledPrefix')}${formatWarStartTime(scheduledMs)}'
+          : tr('onlineWarPending');
     }
-    return 'Die Partie läuft …';
+    return tr('onlineInProgress');
   }
 
   Widget _body(ThemeData theme, Map<String, dynamic> view) {
@@ -355,7 +360,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       for (final s in controlled) {
         rows.add((
           slot: s,
-          realm: gc.countryNames[s],
+          realm: realmName(s),
           name: name,
           playerId: p['player_id'] as String?,
           idleTurns: p['idle_turns'] as int? ?? 0,
@@ -385,7 +390,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               _ => Icons.emoji_events,
             }),
             title: Text(switch (status) {
-              'waiting' => 'Wartet auf Spieler (${players.length} beigetreten)',
+              'waiting' => tr('online.waitingJoined', {'n': players.length}),
               'active' => _activeTitle(
                   yourTurn: yourTurn,
                   awaitedName: awaitedName,
@@ -394,13 +399,13 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
                 ),
               _ =>
                 view['winner'] == widget.service.playerId
-                    ? 'Sieg ! Die Partie ist beendet.'
-                    : 'Die Partie ist beendet.',
+                    ? tr('online.victoryFinished')
+                    : tr('online.gameFinished'),
             }),
             subtitle: view['turn_deadline'] == null
                 ? null
                 : Text(
-                    '${warPreparing ? 'Kriegsbeginn' : 'Zugfrist'}: '
+                    '${warPreparing ? tr('online.warStartLabel') : tr('online.turnDeadlineLabel')}: '
                     '${formatTimestamp(view['turn_deadline'] as String)}',
                   ),
           ),
@@ -411,9 +416,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           ),
         if (status == 'waiting') ...[
           const SizedBox(height: 8),
-          const Text(
-            'Teile den Raum-Code, damit deine Mitspieler beitreten können:',
-          ),
+          Text(tr('online.shareRoomCode')),
           const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -426,7 +429,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
                 ),
               ),
               IconButton(
-                tooltip: 'Raum-Code kopieren',
+                tooltip: tr('online.copyRoomCode'),
                 icon: const Icon(Icons.copy, size: 18),
                 onPressed: () {
                   Clipboard.setData(
@@ -435,7 +438,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
                     ),
                   );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Raum-Code kopiert')),
+                    SnackBar(content: Text(tr('online.roomCodeCopied'))),
                   );
                 },
               ),
@@ -444,7 +447,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         ],
         const SizedBox(height: 8),
         Text(
-          started ? 'Zugreihenfolge' : 'Spieler',
+          started ? tr('online.turnOrder') : tr('online.players'),
           style: theme.textTheme.titleSmall,
         ),
         // After the start each realm carries its 1-based position in the
@@ -458,19 +461,19 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
             ),
             title: Text(
               '${r.name != null ? '${r.name} — ' : ''}'
-              '${r.realm}${r.isYou ? ' (du)' : ''}',
+              '${r.realm}${r.isYou ? tr('online.youSuffix') : ''}',
             ),
             subtitle: started
                 ? Text(
-                    'Zug ${i + 1}'
-                    '${r.idleTurns >= 3 ? ' · ${r.idleTurns} Züge inaktiv' : ''}',
+                    '${tr('online.turnNumber', {'n': i + 1})}'
+                    '${r.idleTurns >= 3 ? ' · ${tr('online.idleTurns', {'n': r.idleTurns})}' : ''}',
                   )
                 : null,
             trailing:
                 iAmCreator && !r.isYou && r.idleTurns >= 3 && r.playerId != null
                 ? TextButton.icon(
                     icon: const Icon(Icons.person_off, size: 18),
-                    label: const Text('Rauswerfen'),
+                    label: Text(tr('online.kick')),
                     onPressed: () => _kick(r.playerId!, r.name ?? r.realm),
                   )
                 : null,
@@ -481,7 +484,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
             leading: const Icon(Icons.person_off, size: 18),
             title: Text(
               '${r.name != null ? '${r.name} — ' : ''}'
-              'ausgeschieden${r.isYou ? ' (du)' : ''}',
+              '${tr('online.eliminated')}'
+              '${r.isYou ? tr('online.youSuffix') : ''}',
             ),
           ),
         const SizedBox(height: 16),
@@ -492,27 +496,26 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           FilledButton.icon(
             onPressed: _start,
             icon: const Icon(Icons.flag),
-            label: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Spiel starten'),
+            label: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(tr('online.startGame')),
             ),
           ),
           if (players.length == 1)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
               child: Text(
-                'Du kannst auch allein gegen die 29 Computer-Reiche '
-                'starten — danach kann niemand mehr beitreten.',
+                tr('online.soloStartHint'),
                 textAlign: TextAlign.center,
               ),
             ),
         ],
         if (status == 'waiting' &&
             view['creator_id'] != widget.service.playerId)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
             child: Text(
-              'Warte, bis der Gastgeber das Spiel startet …',
+              tr('online.waitForHost'),
               textAlign: TextAlign.center,
             ),
           ),
@@ -520,9 +523,9 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           FilledButton.icon(
             onPressed: _play,
             icon: const Icon(Icons.play_arrow),
-            label: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Zug spielen'),
+            label: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(tr('online.playTurn')),
             ),
           ),
         // Off-turn: let the seat study the board and their own realm(s)
@@ -543,8 +546,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
                 warPreparing && _iAmWarParticipant(view)
-                    ? 'Kriegsvorbereitung: Truppen aufstellen'
-                    : 'Reich & Karte ansehen',
+                    ? tr('online.warPrepDeploy')
+                    : tr('online.viewRealmAndMap'),
               ),
             ),
           ),
@@ -586,7 +589,8 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       if (p['player_id'] == view['awaited_player_id']) {
         final name = p['display_name'] as String?;
         if (name != null && awaitedSlot != null) {
-          waitingFor = '$name (${gc.countryNames[awaitedSlot]}) ist am Zug …';
+          waitingFor =
+              '$name (${realmName(awaitedSlot)}) ${tr('onlineIsPlaying')}';
         }
       }
     }
@@ -616,24 +620,21 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(deletes ? 'Partie löschen?' : 'Partie verlassen?'),
+        title: Text(deletes ? tr('online.deleteGameQ') : tr('online.leaveGameQ')),
         content: Text(switch (status) {
-          'waiting' when deletes =>
-            'Die wartende Partie wird für alle Spieler gelöscht.',
-          'waiting' => 'Dein Platz wird wieder frei.',
-          'active' =>
-            'Dein Reich wird ab sofort vom Computer weitergespielt — '
-                'eine Rückkehr ist nicht möglich.',
-          _ => 'Die beendete Partie verschwindet aus deiner Liste.',
+          'waiting' when deletes => tr('online.deleteWaitingBody'),
+          'waiting' => tr('online.leaveWaitingBody'),
+          'active' => tr('online.leaveActiveBody'),
+          _ => tr('online.removeFinishedBody'),
         }),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
+            child: Text(tr('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(deletes ? 'Löschen' : 'Verlassen'),
+            child: Text(tr(deletes ? 'delete' : 'online.leave')),
           ),
         ],
       ),
@@ -657,19 +658,16 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Spieler rauswerfen?'),
-        content: Text(
-          '$label hat mehrere Züge in Folge nicht gespielt. Das Reich '
-          'wird ab sofort vom Computer weitergeführt.',
-        ),
+        title: Text(tr('online.kickPlayerQ')),
+        content: Text(tr('online.kickPlayerBody', {'name': label})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
+            child: Text(tr('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Rauswerfen'),
+            child: Text(tr('online.kick')),
           ),
         ],
       ),

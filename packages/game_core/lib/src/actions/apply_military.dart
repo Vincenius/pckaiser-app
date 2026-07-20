@@ -3,6 +3,7 @@
 /// [ActionException] on invalid input, return the emitted events.
 library;
 
+import '../l10n/messages.dart';
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
 import '../rules/movement.dart' show warPathStep;
@@ -18,7 +19,7 @@ import 'player_action.dart';
 
 Troop unitAt(Realm realm, int index) {
   if (index < 0 || index >= realm.troops.length) {
-    throw ActionException('Diese Truppe gibt es nicht !');
+    throw ActionException(coreMessage('noSuchTroop'));
   }
   return realm.troops[index];
 }
@@ -56,26 +57,26 @@ void _requireLevy(Realm realm, int men) {
   final left = levyLeft(realm);
   if (men > left) {
     throw ActionException(left <= 0
-        ? 'Deine Bevölkerung gibt dieses Jahr keine weiteren Rekruten her !'
-        : 'Deine Bevölkerung gibt dieses Jahr nur noch $left Rekruten her !');
+        ? coreMessage('noRecruitsThisYear')
+        : coreMessage('fewRecruitsThisYear', {'left': left}));
   }
 }
 
 List<GameEvent> applyRecruitTroops(
     GameState state, Realm realm, RecruitTroops action, Rng rng) {
   _requireNotAtWar(state, realm);
-  if (action.men <= 0) throw ActionException('Das geht nicht !!!');
+  if (action.men <= 0) throw ActionException(coreMessage('notPossible'));
   if (action.troopClass < TroopClass.infanterie ||
       action.troopClass > TroopClass.artillerie) {
-    throw ActionException('Unbekannte Truppengattung !');
+    throw ActionException(coreMessage('unknownTroopClass'));
   }
   if (realm.armySize + action.men > realm.troopCapacity) {
-    throw ActionException('Nicht genügend Quartiere in deinen Orten !');
+    throw ActionException(coreMessage('notEnoughQuarters'));
   }
   _requireLevy(realm, action.men);
   final cost = recruitCost(action.men, action.troopClass);
   if (realm.treasury < cost) {
-    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   final (px, py) = _stationAt(state, realm, action.x, action.y);
   realm.treasury -= cost;
@@ -110,8 +111,7 @@ List<GameEvent> applyRecruitTroops(
   if (x == null || y == null) return (realm.capitalX, realm.capitalY);
   if (!state.map.inBounds(x, y) || state.map.ownerAt(x, y) != realm.slot) {
     // Original: "Sie müssen Ihre Truppen auf Ihrem Territorium stationieren!"
-    throw ActionException(
-        'Du musst deine Truppen auf deinem Territorium stationieren !');
+    throw ActionException(coreMessage('stationOnOwnTerritory'));
   }
   return (x, y);
 }
@@ -119,10 +119,10 @@ List<GameEvent> applyRecruitTroops(
 List<GameEvent> applyHireSoeldner(
     GameState state, Realm realm, HireSoeldner action) {
   _requireNotAtWar(state, realm);
-  if (action.men <= 0) throw ActionException('Das geht nicht !!!');
+  if (action.men <= 0) throw ActionException(coreMessage('notPossible'));
   final cost = soeldnerCost(action.men);
   if (realm.treasury < cost) {
-    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   final (px, py) = _stationAt(state, realm, action.x, action.y);
   realm.treasury -= cost;
@@ -154,19 +154,19 @@ List<GameEvent> applyReinforceTroop(
     GameState state, Realm realm, ReinforceTroop action, Rng rng) {
   _requireNotAtWar(state, realm);
   final troop = unitAt(realm, action.unitIndex);
-  if (action.men <= 0) throw ActionException('Das geht nicht !!!');
+  if (action.men <= 0) throw ActionException(coreMessage('notPossible'));
   // Söldner ignore garrison capacity and the levy; the price split lives
   // in [reinforceCost] (keyed on garrisonCounted, never on quality — a
   // drilled regular shares the Söldner quality value).
   if (troop.garrisonCounted) {
     if (realm.armySize + action.men > realm.troopCapacity) {
-      throw ActionException('Nicht genügend Quartiere in deinen Orten !');
+      throw ActionException(coreMessage('notEnoughQuarters'));
     }
     _requireLevy(realm, action.men);
   }
   final cost = reinforceCost(troop, action.men);
   if (realm.treasury < cost) {
-    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   final oldMen = troop.men;
   realm.treasury -= cost;
@@ -199,14 +199,14 @@ List<GameEvent> applyDrillTroop(
   // Söldner (and event units) are not garrison-counted — only the realm's
   // own regulars drill, whatever quality they have reached.
   if (!troop.garrisonCounted) {
-    throw ActionException('Nur reguläre Truppen lassen sich ausbilden !');
+    throw ActionException(coreMessage('onlyRegularsTrain'));
   }
   if (troop.quality >= Troop.drillCap) {
-    throw ActionException('Diese Truppe ist bereits voll ausgebildet !');
+    throw ActionException(coreMessage('troopFullyDrilled'));
   }
   final cost = drillCost(troop);
   if (realm.treasury < cost) {
-    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   realm.treasury -= cost;
   troop.quality++;
@@ -222,18 +222,18 @@ List<GameEvent> applyTrainTroop(
   // Garrison-counted = the realm's own regulars (drilled quality stays
   // retrainable); Söldner/event units are excluded.
   if (!troop.garrisonCounted) {
-    throw ActionException('Nur reguläre Truppen lassen sich ausbilden !');
+    throw ActionException(coreMessage('onlyRegularsTrain'));
   }
   if (action.troopClass < TroopClass.infanterie ||
       action.troopClass > TroopClass.artillerie) {
-    throw ActionException('Unbekannte Truppengattung !');
+    throw ActionException(coreMessage('unknownTroopClass'));
   }
   if (action.troopClass == troop.troopClass) {
-    throw ActionException('Diese Ausbildung hat die Truppe schon !');
+    throw ActionException(coreMessage('troopAlreadyTrained'));
   }
   final cost = retrainCost(troop, action.troopClass);
   if (realm.treasury < cost) {
-    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   realm.treasury -= cost;
   troop.troopClass = action.troopClass;
@@ -248,7 +248,7 @@ List<GameEvent> applyRenameTroop(
   final troop = unitAt(realm, action.unitIndex);
   final name = clampName(action.name);
   if (name.isEmpty) {
-    throw ActionException('Die Truppe braucht einen Namen !');
+    throw ActionException(coreMessage('troopNeedsName'));
   }
   troop.name = name;
   return const [];
@@ -264,7 +264,7 @@ List<GameEvent> applySetTroopStance(
   final troop = unitAt(realm, action.unitIndex);
   if (action.stance != TroopStance.holdPosition &&
       action.stance != TroopStance.attack) {
-    throw ActionException('Unbekannte Truppenhaltung !');
+    throw ActionException(coreMessage('unknownTroopStance'));
   }
   troop.stance = action.stance;
   return const [];
@@ -279,7 +279,7 @@ List<GameEvent> applySetTroopStance(
 void _requireNotAtWar(GameState state, Realm realm) {
   final war = state.activeWar;
   if (war != null && war.isParticipant(realm.slot)) {
-    throw ActionException('Nicht mitten im Krieg !');
+    throw ActionException(coreMessage('notDuringWar'));
   }
 }
 
@@ -287,12 +287,12 @@ List<GameEvent> applyMergeTroops(
     GameState state, Realm realm, MergeTroops action) {
   _requireNotAtWar(state, realm);
   if (action.fromIndex == action.toIndex) {
-    throw ActionException('Wähle zwei verschiedene Truppen !');
+    throw ActionException(coreMessage('chooseTwoDifferentTroops'));
   }
   final from = unitAt(realm, action.fromIndex);
   final to = unitAt(realm, action.toIndex);
   if (!canMergeTroops(from, to)) {
-    throw ActionException('Nur gleichartige Truppen können vereinigt werden !');
+    throw ActionException(coreMessage('onlySameKindMerge'));
   }
   to.men += from.men;
   realm.troops.remove(from);
@@ -317,8 +317,7 @@ List<GameEvent> applyMoveTroop(GameState state, Realm realm, MoveTroop action) {
   if (!map.inBounds(action.x, action.y) ||
       map.ownerAt(action.x, action.y) != realm.slot) {
     // Original: "Sie müssen Ihre Truppen auf Ihrem Territorium stationieren!"
-    throw ActionException(
-        'Du musst deine Truppen auf deinem Territorium stationieren !');
+    throw ActionException(coreMessage('stationOnOwnTerritory'));
   }
   // Relocating troops is free — only building consumes Züge.
   map.troopMarker[map.index(troop.x, troop.y)] = 0;
@@ -334,16 +333,16 @@ List<GameEvent> applyMoveTroop(GameState state, Realm realm, MoveTroop action) {
 /// — the gates exist exactly once.
 String? warDeclarationBlocker(GameState state, Realm realm) {
   if (state.year < state.warStartYear) {
-    return 'Kriege sind erst ab dem Jahr ${state.warStartYear} erlaubt !';
+    return coreMessage('warTooEarly', {'year': state.warStartYear});
   }
   if (realm.warThisYear) {
-    return 'Du hast dieses Jahr schon einmal Krieg geführt !';
+    return coreMessage('warAlreadyThisYear');
   }
   if (realm.troops.where((t) => t.men > 0).isEmpty) {
-    return 'Du hast nicht genug Truppen !';
+    return coreMessage('notEnoughTroops');
   }
   if (state.activeWar != null) {
-    return 'Es tobt bereits ein anderer Krieg !';
+    return coreMessage('anotherWarActive');
   }
   return null;
 }
@@ -358,19 +357,19 @@ String? declareWarBlocker(GameState state, Realm realm, int targetSlot) {
       targetSlot < 1 ||
       targetSlot > World.realmCount ||
       state.realm(targetSlot).isVacant) {
-    return 'Ungültiges Kriegsziel !';
+    return coreMessage('invalidWarTarget');
   }
   // [DEVIATION] No war against a slot your own ruler already holds
   // (ruler aliasing, §19) — merging is the intended path.
   if (state.realm(targetSlot).rulerId == realm.rulerId) {
-    return 'Dieses Reich gehört bereits deinem Herrscher !';
+    return coreMessage('realmAlreadyYourRulers');
   }
   // Human-vs-human wars are allowed: war input alternates between the two
   // human sides (war.actingSlot, hot-seat handoff locally, the war clock
   // online).
   // [DEVIATION] Wars only against realms with a shared border.
   if (!state.map.realmNeighbors(realm.slot).contains(targetSlot)) {
-    return 'Du hast keine gemeinsame Grenze !';
+    return coreMessage('noSharedBorder');
   }
   return null;
 }
@@ -405,10 +404,10 @@ List<GameEvent> applyDeclareWar(
 ActiveWar _warFor(GameState state, int slot, {WarPhase? phase}) {
   final war = state.activeWar;
   if (war == null || !war.isParticipant(slot)) {
-    throw ActionException('Du führst keinen Krieg !');
+    throw ActionException(coreMessage('notAtWar'));
   }
   if (phase != null && war.phase != phase) {
-    throw ActionException('Falsche Kriegsphase !');
+    throw ActionException(coreMessage('wrongWarPhase'));
   }
   // Human-vs-human rounds run sequentially (attacker first): only the
   // acting side may issue LIVE war input. AI sides are exempt — their
@@ -421,7 +420,7 @@ ActiveWar _warFor(GameState state, int slot, {WarPhase? phase}) {
   if (war.phase == WarPhase.rounds &&
       warSideIsHuman(state, war, slot) &&
       warActingSlot(state) != slot) {
-    throw ActionException('Dein Gegner ist gerade am Zug !');
+    throw ActionException(coreMessage('opponentActing'));
   }
   return war;
 }
@@ -438,21 +437,20 @@ ActiveWar _warFor(GameState state, int slot, {WarPhase? phase}) {
 String? warStepBlocker(
     GameState state, int slot, int enemySlot, int x, int y, int nx, int ny) {
   final map = state.map;
-  if (!map.inBounds(nx, ny)) return 'Unpassierbar !';
+  if (!map.inBounds(nx, ny)) return coreMessage('impassable');
   if (map.isWaterAt(nx, ny)) {
     final harborOwner = map.ownerAt(nx, ny);
     final embarking = (harborOwner == slot || harborOwner == enemySlot) &&
         map.buildingAt(nx, ny) == Building.hafen;
     if (!embarking && !map.isWaterAt(x, y)) {
-      return 'Truppen gehen nur über einen eigenen oder feindlichen '
-          'Hafen an Bord !';
+      return coreMessage('embarkViaHarborOnly');
     }
   }
   final tileOwner = map.ownerAt(nx, ny);
   if (tileOwner != slot &&
       tileOwner != enemySlot &&
       tileOwner != World.niemand) {
-    return 'Durch fremde Reiche darf man im Krieg nicht ziehen !';
+    return coreMessage('noWarTransitForeignRealms');
   }
   return null;
 }
@@ -462,14 +460,13 @@ List<GameEvent> applyWarMove(
   final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
   final troop = unitAt(realm, action.unitIndex);
   if (action.dx.abs() + action.dy.abs() != 1) {
-    throw ActionException('Nur ein Feld pro Zug — gerade, nicht diagonal !');
+    throw ActionException(coreMessage('oneTilePerMove'));
   }
   final moves = war.movesLeft[realm.slot];
   if (moves == null ||
       action.unitIndex >= moves.length ||
       moves[action.unitIndex] < 1) {
-    throw ActionException(
-        'Diese Truppe kann in dieser Runde nicht weiter ziehen !');
+    throw ActionException(coreMessage('troopCannotMoveThisRound'));
   }
   final nx = troop.x + action.dx;
   final ny = troop.y + action.dy;
@@ -533,10 +530,10 @@ List<GameEvent> applyWarMarch(
   final troop = unitAt(realm, action.unitIndex);
   final map = state.map;
   if (!map.inBounds(action.x, action.y)) {
-    throw ActionException('Das Feld liegt außerhalb der Karte !');
+    throw ActionException(coreMessage('tileOffMap'));
   }
   if (troop.x == action.x && troop.y == action.y) {
-    throw ActionException('Da steht die Truppe doch schon !');
+    throw ActionException(coreMessage('troopAlreadyThere'));
   }
   // Own land, the enemy's, and neutral unowned tiles are passable in war
   // (mirrors [applyWarMove]); only third realms block the march.
@@ -575,7 +572,7 @@ List<GameEvent> applyWarMarch(
     }
     if (step == null) {
       if (events.isEmpty) {
-        throw ActionException('Unpassierbar !');
+        throw ActionException(coreMessage('impassable'));
       }
       break; // combat reshaped the situation — stop where we stand
     }
@@ -619,23 +616,19 @@ List<GameEvent> applyWarNavalTransport(
   if (moves == null ||
       action.unitIndex >= moves.length ||
       moves[action.unitIndex] < 1) {
-    throw ActionException(
-        'Diese Truppe kann in dieser Runde nicht weiter ziehen !');
+    throw ActionException(coreMessage('troopCannotMoveThisRound'));
   }
   final map = state.map;
   final enemySlot = war.opponentOf(realm.slot);
   if (!map.canNavalTransport(realm.slot, troop.x, troop.y, action.x, action.y,
       harborOwners: {realm.slot, enemySlot})) {
-    throw ActionException(
-        'Keine Seeverbindung von einem eigenen oder feindlichen Hafen '
-        'zu diesem Ziel !');
+    throw ActionException(coreMessage('noSeaRouteToTarget'));
   }
   final tileOwner = map.ownerAt(action.x, action.y);
   if (tileOwner != realm.slot &&
       tileOwner != enemySlot &&
       tileOwner != World.niemand) {
-    throw ActionException(
-        'Du kannst nur an eigener, feindlicher oder neutraler Küste landen !');
+    throw ActionException(coreMessage('landOnOwnEnemyNeutralCoast'));
   }
   // A sea voyage spends the unit's whole round, success or not.
   moves[action.unitIndex] = 0;
@@ -674,15 +667,15 @@ List<GameEvent> applyWarPlunder(
   final map = state.map;
   if (!map.inBounds(action.x, action.y) ||
       map.buildingAt(action.x, action.y) == Building.none) {
-    throw ActionException('Hier steht doch gar nichts !');
+    throw ActionException(coreMessage('nothingHere'));
   }
   if (map.ownerAt(action.x, action.y) == realm.slot) {
-    throw ActionException('Wollen sie wirklich ihr eigenes Land plündern !');
+    throw ActionException(coreMessage('plunderOwnLand'));
   }
   // Plunder only hits the war opponent — not any foreign realm a unit
   // could walk to during someone else's war.
   if (map.ownerAt(action.x, action.y) != war.opponentOf(realm.slot)) {
-    throw ActionException('Das gehört nicht deinem Kriegsgegner !');
+    throw ActionException(coreMessage('notYourWarEnemy'));
   }
   // Your troops must have reached the tile. §11.5: every ARMY plunders
   // once per war round — one of the tile's not-yet-spent units carries
@@ -690,7 +683,7 @@ List<GameEvent> applyWarPlunder(
   final unitsHere =
       realm.troops.where((t) => t.x == action.x && t.y == action.y).toList();
   if (unitsHere.isEmpty) {
-    throw ActionException('Keine Truppen auf diesem Feld !');
+    throw ActionException(coreMessage('noTroopsOnTile'));
   }
   // The STRONGEST unspent unit carries the plunder — its strength bounds
   // the haul (plunderTile, 2026-07-19), so a weak splinter must not
@@ -701,7 +694,7 @@ List<GameEvent> applyWarPlunder(
     if (unit == null || troopStrength(t) > troopStrength(unit)) unit = t;
   }
   if (unit == null) {
-    throw ActionException('Diese Armee hat diese Runde schon geplündert !');
+    throw ActionException(coreMessage('armyAlreadyPlundered'));
   }
   unit.plunderedThisRound = true;
   // The carrying unit also bounds the haul: loot, kills and razed
@@ -745,21 +738,20 @@ List<GameEvent> applySettlementAnnex(
     GameState state, Realm realm, SettlementAnnex action) {
   final war = _warFor(state, realm.slot, phase: WarPhase.settlement);
   if (war.winnerSlot != realm.slot) {
-    throw ActionException('Nur der Sieger stellt Ansprüche !');
+    throw ActionException(coreMessage('onlyVictorClaims'));
   }
   final map = state.map;
   final loserSlot = war.opponentOf(realm.slot);
   if (!map.inBounds(action.x, action.y) ||
       map.ownerAt(action.x, action.y) != loserSlot) {
-    throw ActionException('Das gehört nicht deinem Feind !');
+    throw ActionException(coreMessage('notYourEnemy'));
   }
   final value = settlementTileValue(state, map.buildingAt(action.x, action.y));
   if (value > war.remainingClaim) {
-    throw ActionException('So viel steht dir nicht zu !');
+    throw ActionException(coreMessage('claimTooMuch'));
   }
   if (!map.bordersSlot(action.x, action.y, realm.slot)) {
-    throw ActionException(
-        'Du kannst dir nur Felder aneignen, die direkt an dein Land grenzen !');
+    throw ActionException(coreMessage('annexOnlyBordering'));
   }
   final events = <GameEvent>[];
   transferTile(state, action.x, action.y, realm.slot, events);
@@ -787,7 +779,7 @@ List<GameEvent> applySettlementTakeAll(
     GameState state, Realm realm, SettlementTakeAll action, Rng rng) {
   final war = _warFor(state, realm.slot, phase: WarPhase.settlement);
   if (war.winnerSlot != realm.slot) {
-    throw ActionException('Nur der Sieger stellt Ansprüche !');
+    throw ActionException(coreMessage('onlyVictorClaims'));
   }
   final events = <GameEvent>[];
   annexAffordableTiles(state, events);
@@ -799,7 +791,7 @@ List<GameEvent> applySettlementFinish(
     GameState state, Realm realm, SettlementFinish action, Rng rng) {
   final war = _warFor(state, realm.slot, phase: WarPhase.settlement);
   if (war.winnerSlot != realm.slot) {
-    throw ActionException('Nur der Sieger stellt Ansprüche !');
+    throw ActionException(coreMessage('onlyVictorClaims'));
   }
   final events = <GameEvent>[];
   finishSettlement(state, rng, events);
@@ -809,18 +801,18 @@ List<GameEvent> applySettlementFinish(
 List<GameEvent> applySpyMission(
     GameState state, Realm realm, SpyMission action, Rng rng) {
   if (action.agents < 1 || action.agents > maxAgentsPerMission) {
-    throw ActionException('So viele Spione würden zu sehr auffallen');
+    throw ActionException(coreMessage('tooManySpies'));
   }
   if (action.targetSlot == realm.slot ||
       action.targetSlot < 1 ||
       action.targetSlot > World.realmCount ||
       state.realm(action.targetSlot).isVacant) {
-    throw ActionException('Ungültiges Ziel !');
+    throw ActionException(coreMessage('invalidTarget'));
   }
   final cost = action.agents *
       (action.spyKind == SpyKind.economy ? economySpyCost : militarySpyCost);
   if (realm.treasury < cost) {
-    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   realm.treasury -= cost;
   final target = state.realm(action.targetSlot);
@@ -832,17 +824,17 @@ List<GameEvent> applySpyMission(
 List<GameEvent> applyOrderAssassination(
     GameState state, Realm realm, OrderAssassination action) {
   if (action.agents < 1 || action.agents > maxAgentsPerMission) {
-    throw ActionException('So viele Spione würden zu sehr auffallen');
+    throw ActionException(coreMessage('tooManySpies'));
   }
   if (action.targetSlot == realm.slot ||
       action.targetSlot < 1 ||
       action.targetSlot > World.realmCount ||
       state.realm(action.targetSlot).isVacant) {
-    throw ActionException('Ungültiges Ziel !');
+    throw ActionException(coreMessage('invalidTarget'));
   }
   final cost = action.agents * assassinCost;
   if (realm.treasury < cost) {
-    throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+    throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   realm.treasury -= cost;
   queueAssassination(state, realm.slot, action.targetSlot, action.agents);
@@ -859,21 +851,20 @@ List<GameEvent> applyOrderAssassination(
 
 List<GameEvent> applyAdjustGuards(
     GameState state, Realm realm, AdjustGuards action) {
-  if (action.delta == 0) throw ActionException('Das geht nicht !!!');
+  if (action.delta == 0) throw ActionException(coreMessage('notPossible'));
   if (action.delta > 0) {
     if (realm.guardLevel + action.delta > guardCap) {
-      throw ActionException(
-          'Das ist keine Spionageabwehr, sondern eine Armee !!!');
+      throw ActionException(coreMessage('guardsNotArmy'));
     }
     final cost = action.delta * guardCost;
     if (realm.treasury < cost) {
-      throw ActionException('Du hast nicht genügend Taler ! ($cost benötigt)');
+      throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
     }
     realm.treasury -= cost;
     realm.guardLevel += action.delta;
   } else {
     if (realm.guardLevel + action.delta < 0) {
-      throw ActionException('So viele Wachen hast du nicht !');
+      throw ActionException(coreMessage('notSoManyGuards'));
     }
     realm.guardLevel += action.delta; // dismissing is free
   }

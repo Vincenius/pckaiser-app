@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' hide World;
 
+import '../l10n/strings.dart';
 import '../services/save_service.dart';
 import '../widgets/advanced_options.dart';
 import '../widgets/empire_card.dart';
@@ -33,7 +34,7 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  final _slotName = TextEditingController(text: 'Partie 1');
+  final _slotName = TextEditingController(text: tr('setup.defaultSlotName'));
   final _reformation = TextEditingController(text: '$defaultReformationYear');
   final _ottoman = TextEditingController(text: '$defaultOttomanYear');
   final _warStart = TextEditingController(text: '$defaultWarStartYear');
@@ -62,21 +63,21 @@ class _SetupScreenState extends State<SetupScreen> {
     );
     if (yearError != null) return yearError;
     if (_slotName.text.trim().isEmpty) {
-      return 'Bitte dem Spielstand einen Namen geben';
+      return tr('setup.errorSlotName');
     }
     for (final p in _players) {
       if (p.name.text.trim().isEmpty) {
-        return 'Jeder Gründer braucht einen Namen';
+        return tr('setup.errorFounderName');
       }
       // With a random country the Dorf may stay empty — it falls back to
       // the drawn realm's historical first village.
       if (p.countrySlot != null && p.dorf.text.trim().isEmpty) {
-        return 'Jedes erste Dorf braucht einen Namen';
+        return tr('setup.errorDorfName');
       }
     }
     final chosen = _players.map((p) => p.countrySlot).whereType<int>();
     if (chosen.length != chosen.toSet().length) {
-      return 'Zwei Spieler haben dasselbe Land gewählt';
+      return tr('setup.errorDuplicateCountry');
     }
     return null;
   }
@@ -109,19 +110,18 @@ class _SetupScreenState extends State<SetupScreen> {
       final overwrite = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Spielstand überschreiben ?'),
+          title: Text(tr('setup.overwriteTitle')),
           content: Text(
-            'Es gibt bereits einen Spielstand namens '
-            '"${_slotName.text.trim()}". Neues Spiel darüber speichern ?',
+            tr('setup.overwriteBody', {'name': _slotName.text.trim()}),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Abbrechen'),
+              child: Text(tr('cancel')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Überschreiben'),
+              child: Text(tr('setup.overwrite')),
             ),
           ],
         ),
@@ -171,23 +171,23 @@ class _SetupScreenState extends State<SetupScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Neues Spiel')),
+      appBar: AppBar(title: Text(tr('newGame'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           TextField(
             controller: _slotName,
             maxLength: maxNameLength,
-            decoration: const InputDecoration(
-              labelText: 'Name des Spielstands',
+            decoration: InputDecoration(
+              labelText: tr('setup.slotNameLabel'),
               counterText: '',
             ),
           ),
           const SizedBox(height: 24),
           Text(
             _players.length == 1
-                ? 'Spieler'
-                : 'Spieler (${_players.length}/16)',
+                ? tr('setup.playersHeading')
+                : tr('setup.playersHeadingCount', {'count': _players.length}),
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -198,7 +198,7 @@ class _SetupScreenState extends State<SetupScreen> {
               onPressed: () =>
                   setState(() => _players.add(_PlayerDraft(_nextFreeSlot()))),
               icon: const Icon(Icons.person_add),
-              label: const Text('Spieler hinzufügen'),
+              label: Text(tr('setup.addPlayer')),
             ),
           const SizedBox(height: 24),
           AdvancedOptionsCard(
@@ -228,9 +228,9 @@ class _SetupScreenState extends State<SetupScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.play_arrow),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text('Spiel starten'),
+          label: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(tr('setup.startGame')),
           ),
         ),
       ),
@@ -243,25 +243,25 @@ class _SetupScreenState extends State<SetupScreen> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: EmpireCard(
         name: p.name,
-        nameLabel: 'Name des Gründers',
+        nameLabel: tr('setup.founderNameLabel'),
         nameMaxLength: maxNameLength,
         dorf: p.dorf,
         gender: p.gender,
         onGenderChanged: (v) => setState(() => p.gender = v),
         countrySlot: p.countrySlot,
         onCountryChanged: (v) => setState(() => p.countrySlot = v),
-        randomDorfHint: 'Leer = Dorf des zugelosten Landes',
+        randomDorfHint: tr('setup.randomDorfHint'),
         header: Row(
           children: [
             Text(
-              'Spieler ${i + 1}',
+              tr('setup.playerN', {'n': i + 1}),
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const Spacer(),
             if (_players.length > 1)
               IconButton(
                 icon: const Icon(Icons.close),
-                tooltip: 'Spieler entfernen',
+                tooltip: tr('setup.removePlayer'),
                 onPressed: () =>
                     setState(() => _removedPlayers.add(_players.removeAt(i))),
               ),

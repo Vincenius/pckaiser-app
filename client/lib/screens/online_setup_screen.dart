@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/strings.dart' show tr;
 import '../services/match_setup.dart';
 import '../widgets/advanced_options.dart';
 import '../widgets/empire_card.dart';
@@ -78,15 +79,15 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   String? _validate() {
     if (widget.mode == OnlineSetupMode.joinByCode &&
         _roomCode.text.trim().length != 5) {
-      return 'Bitte den 5-stelligen Raum-Code eingeben';
+      return tr('online.enterRoomCode');
     }
     if (_founder.text.trim().isEmpty) {
-      return 'Der Herrscher braucht einen Namen';
+      return tr('online.rulerNeedsName');
     }
     // Unlike the local setup there is no empty-Dorf fallback: the server
     // requires a name even for a random country.
     if (_dorf.text.trim().isEmpty) {
-      return 'Das erste Dorf braucht einen Namen';
+      return tr('online.dorfNeedsName');
     }
     if (_isHost) {
       return validateEventYears(
@@ -137,7 +138,9 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isHost ? 'Neue Online-Partie' : 'Partie beitreten'),
+        title: Text(
+          _isHost ? tr('online.newOnlineGame') : tr('online.joinGame'),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -154,25 +157,25 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
                       newValue.copyWith(text: newValue.text.toUpperCase()),
                 ),
               ],
-              decoration: const InputDecoration(
-                labelText: 'Raum-Code',
-                hintText: 'z. B. KQXBE',
+              decoration: InputDecoration(
+                labelText: tr('online.roomCode'),
+                hintText: tr('online.roomCodeHint'),
                 counterText: '',
               ),
             ),
             const SizedBox(height: 24),
           ],
           if (_isHost) ...[
-            Text('Partie', style: theme.textTheme.titleMedium),
+            Text(tr('online.matchSection'), style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             _matchCard(theme),
             const SizedBox(height: 24),
           ],
-          Text('Dein Reich', style: theme.textTheme.titleMedium),
+          Text(tr('online.yourRealm'), style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           EmpireCard(
             name: _founder,
-            nameLabel: 'Name des Herrschers',
+            nameLabel: tr('online.rulerName'),
             nameMaxLength: 20,
             dorf: _dorf,
             gender: _gender,
@@ -206,7 +209,7 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
           icon: Icon(_isHost ? Icons.add : Icons.login),
           label: Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(_isHost ? 'Partie erstellen' : 'Beitreten'),
+            child: Text(_isHost ? tr('online.createGame') : tr('online.join')),
           ),
         ),
       ),
@@ -224,15 +227,21 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
           children: [
             Row(
               children: [
-                const Expanded(child: Text('Zug-Zeitlimit')),
+                Expanded(child: Text(tr('online.turnTimeLimit'))),
                 DropdownButton<int?>(
                   value: _timeoutHours,
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Aus')),
-                    DropdownMenuItem(value: 12, child: Text('12 h')),
-                    DropdownMenuItem(value: 24, child: Text('24 h')),
-                    DropdownMenuItem(value: 48, child: Text('48 h')),
-                    DropdownMenuItem(value: 168, child: Text('7 Tage')),
+                  items: [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(tr('online.off')),
+                    ),
+                    const DropdownMenuItem(value: 12, child: Text('12 h')),
+                    const DropdownMenuItem(value: 24, child: Text('24 h')),
+                    const DropdownMenuItem(value: 48, child: Text('48 h')),
+                    DropdownMenuItem(
+                      value: 168,
+                      child: Text(tr('online.sevenDays')),
+                    ),
                   ],
                   onChanged: (v) => setState(() => _timeoutHours = v),
                 ),
@@ -241,7 +250,7 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Expanded(child: Text('Sichtbarkeit')),
+                Expanded(child: Text(tr('online.visibility'))),
                 // Scale down on narrow screens instead of overflowing
                 // (same pattern as the recruit sheet's class picker).
                 Flexible(
@@ -250,9 +259,15 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerRight,
                     child: SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(value: false, label: Text('Privat')),
-                        ButtonSegment(value: true, label: Text('Öffentlich')),
+                      segments: [
+                        ButtonSegment(
+                          value: false,
+                          label: Text(tr('online.private')),
+                        ),
+                        ButtonSegment(
+                          value: true,
+                          label: Text(tr('online.public')),
+                        ),
                       ],
                       selected: {_isPublic},
                       onSelectionChanged: (s) =>
@@ -266,9 +281,8 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 _isPublic
-                    ? 'Jeder kann diese Partie in der Liste sehen und '
-                          'beitreten.'
-                    : 'Nur Spieler mit dem Raum-Code können beitreten.',
+                    ? tr('online.publicHint')
+                    : tr('online.privateHint'),
                 style: theme.textTheme.bodySmall,
               ),
             ),
@@ -283,7 +297,7 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          const Expanded(child: Text('Zugzeit im Krieg')),
+          Expanded(child: Text(tr('online.warTurnTime'))),
           DropdownButton<int>(
             value: _warRoundMinutes,
             items: const [

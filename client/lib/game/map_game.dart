@@ -21,6 +21,7 @@ import 'package:flutter/painting.dart'
         TextStyle;
 import 'package:game_core/game_core.dart' as gc;
 
+import '../l10n/labels.dart';
 import 'realm_palette.dart';
 
 /// World-space size of one map tile (the source sprites are 32×32 px).
@@ -407,7 +408,7 @@ class MapGame extends FlameGame with ScaleDetector {
       }
       final painter = TextPainter(
         text: TextSpan(
-          text: gc.countryNames[realm.slot],
+          text: realmName(realm.slot),
           style: const TextStyle(
             color: Color(0xFFFFFFFF),
             fontSize: tileSize * 0.38,

@@ -4,6 +4,7 @@ import 'package:game_core/game_core.dart' as gc;
 
 import '../game/map_game.dart';
 import '../game/realm_palette.dart';
+import '../l10n/labels.dart';
 import '../l10n/strings.dart';
 import '../services/game_session.dart';
 import '../services/local_game_session.dart';
@@ -108,7 +109,7 @@ class _GameScreenState extends State<GameScreen> {
         // screen on the spinner forever.
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Spiel konnte nicht geladen werden: $e')),
+          SnackBar(content: Text(tr('game.loadFailed', {'error': e}))),
         );
         Navigator.of(context).maybePop();
       },
@@ -218,9 +219,8 @@ class _GameScreenState extends State<GameScreen> {
           .any((t) => t.x == x && t.y == y);
       _toast(
         enemyHere
-            ? 'Wähle zuerst eine deiner Truppen — dann tippe die '
-                  'feindliche Armee an, um sie anzugreifen !'
-            : 'Wähle zuerst eine deiner Truppen !',
+            ? tr('game.selectTroopFirstEnemy')
+            : tr('game.selectTroopFirst'),
       );
       return;
     }
@@ -531,7 +531,7 @@ class _GameScreenState extends State<GameScreen> {
                 '${tr('treasury')}: ${realm.treasury} Taler, '
                 '${tr('moves')}: ${realm.movementPoints}, '
                 '${tr('popularity')}: ${realm.popularity}'
-                '${lowPopularity ? ' — gefährlich niedrig' : ''}',
+                '${lowPopularity ? ' — ${tr('game.dangerouslyLow')}' : ''}',
             child: ExcludeSemantics(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -544,7 +544,7 @@ class _GameScreenState extends State<GameScreen> {
                   const SizedBox(height: 2),
                   Tooltip(
                     message: lowPopularity
-                        ? 'Beliebtheit gefährlich niedrig!'
+                        ? tr('game.popularityDangerLow')
                         : tr('popularity'),
                     child: line(
                       lowPopularity ? Icons.heart_broken : Icons.favorite,
@@ -567,12 +567,11 @@ class _GameScreenState extends State<GameScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Spiel verlassen?'),
+        title: Text(tr('game.leaveGameQuestion')),
         content: Text(
           _controller?.isOnline == true
-              ? 'Die Partie läuft auf dem Server weiter — du kannst '
-                    'jederzeit zurückkehren.'
-              : 'Der letzte abgeschlossene Zug ist gespeichert.',
+              ? tr('game.leaveGameOnlineBody')
+              : tr('game.leaveGameLocalBody'),
         ),
         actions: [
           TextButton(
@@ -581,7 +580,7 @@ class _GameScreenState extends State<GameScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Spiel verlassen'),
+            child: Text(tr('game.leaveGame')),
           ),
         ],
       ),
@@ -597,7 +596,7 @@ class _GameScreenState extends State<GameScreen> {
   /// stats), undo, and end turn. Taler and Züge live in the top-right
   /// [_resourceChip].
   Widget _statusRow(GameController controller) {
-    final realmName = gc.countryNames[controller.currentSlot];
+    final realmLabel = realmName(controller.currentSlot);
     final theme = Theme.of(context);
     return Material(
       color: theme.colorScheme.surfaceContainerHigh,
@@ -612,7 +611,7 @@ class _GameScreenState extends State<GameScreen> {
               onPressed: _confirmLeaveGame,
               icon: const Icon(Icons.logout),
               color: theme.colorScheme.error,
-              tooltip: 'Spiel verlassen',
+              tooltip: tr('game.leaveGame'),
               visualDensity: VisualDensity.compact,
             ),
             Flexible(
@@ -639,7 +638,10 @@ class _GameScreenState extends State<GameScreen> {
                       // year ellipsizes too instead of overflowing.
                       Flexible(
                         child: Text(
-                          'Anno ${controller.state.year} — $realmName',
+                          tr('game.annoRealm', {
+                            'year': controller.state.year,
+                            'realm': realmLabel,
+                          }),
                           style: theme.textTheme.titleSmall,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -746,7 +748,7 @@ class _GameScreenState extends State<GameScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Krieg !',
+                tr('game.warTitle'),
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
@@ -755,24 +757,15 @@ class _GameScreenState extends State<GameScreen> {
         // Long briefing — must scroll on small screens / large text scale.
         content: SingleChildScrollView(
           child: Text(
-            '${gc.countryNames[war.attackerSlot]} ist mit Armeen in dein '
-            'Land eingefallen !\n\n'
-            'Tippe eine deiner Truppen an (Schild auf farbigem Wappen) '
-            'und dann ein Ziel auf der Karte: feindliche Armeen werden '
-            'angegriffen. Einmal pro Runde kannst du auf feindlichem '
-            'Boden plündern.\n\n'
-            'Der Krieg endet, wenn beide Seiten Frieden wünschen '
-            '(ohne Gebietsänderungen), spätestens im Winter — oder '
-            'wenn eine Armee den gegnerischen Königssitz (Fahne) über '
-            'eine volle Runde hält: ihr Herrscher wird gefangen '
-            'genommen, und der Sieger wählt, welche Felder er '
-            'übernimmt.',
+            tr('game.warBriefing', {
+              'attacker': realmName(war.attackerSlot),
+            }),
           ),
         ),
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Zu den Waffen !'),
+            child: Text(tr('game.toArms')),
           ),
         ],
       ),
@@ -799,7 +792,7 @@ class _GameScreenState extends State<GameScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             Text(
-              '${gc.countryNames[slot]}'
+              '${realmName(slot)}'
               '${ruler == null ? '' : ' — ${ruler.name}'}',
               style: Theme.of(context).textTheme.headlineSmall,
             ),
@@ -827,24 +820,16 @@ class _GameScreenState extends State<GameScreen> {
   /// Plain-language reason for the defeat screen, keyed off the
   /// `humansDefeated` event's `reason` payload (set by `advanceUntilHuman`).
   String _defeatReasonText(String? reason) {
-    const tail =
-        'Keine menschliche Dynastie hält mehr die Macht — '
-        'eure Herrschaft ist Geschichte.';
+    final tail = tr('game.defeatTail');
     final cause = switch (reason) {
-      'internalStrife' =>
-        'Ein Volksaufstand hat deine Dynastie entthront (Popularität unter 20).',
-      'bankruptcy' =>
-        'Dein Reich ist bankrott gegangen und einem neuen Herrscherhaus zugefallen.',
-      'islamicSuccessionCrisis' =>
-        'Eine Thronfolgekrise hat dein Reich unter fremde (computergesteuerte) Kontrolle gebracht.',
-      'realmInherited' =>
-        'Beim Tod deines Herrschers ging dein Reich durch Erbfolge an ein '
-            'fremdes Herrscherhaus über.',
-      'rulerCaptured' =>
-        'Dein Herrscher wurde im Krieg gefangen genommen und das Reich erobert.',
-      'realmOverrun' => 'Dein Reich wurde im Krieg vollständig überrannt.',
+      'internalStrife' => tr('game.defeatInternalStrife'),
+      'bankruptcy' => tr('game.defeatBankruptcy'),
+      'islamicSuccessionCrisis' => tr('game.defeatSuccessionCrisis'),
+      'realmInherited' => tr('game.defeatRealmInherited'),
+      'rulerCaptured' => tr('game.defeatRulerCaptured'),
+      'realmOverrun' => tr('game.defeatRealmOverrun'),
       'dynastyExtinct' ||
-      'totalExtinction' => 'Deine Dynastie ist ausgestorben.',
+      'totalExtinction' => tr('game.defeatDynastyExtinct'),
       _ => null,
     };
     return cause == null ? tail : '$cause\n\n$tail';
@@ -884,15 +869,15 @@ class _GameScreenState extends State<GameScreen> {
                 defeat
                     ? _defeatReasonText(event.payload['reason'] as String?)
                     : draw
-                    ? 'Alle Dynastien sind erloschen — das Land bleibt herrenlos.'
-                    : '${gc.countryNames[slot]} ist der alleinige Herrscher des ganzen Landes!',
+                    ? tr('game.drawBody')
+                    : tr('game.victoryBody', {'realm': realmName(slot)}),
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: () => Navigator.of(context).maybePop(),
-                child: const Text('Zurück zum Hauptmenü'),
+                child: Text(tr('game.backToMainMenu')),
               ),
             ],
           ),

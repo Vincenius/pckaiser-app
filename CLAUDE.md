@@ -11,6 +11,7 @@ PCKaiser mobile clone (Flutter + Flame, Android/iOS). V1 = local hot-seat; V2 = 
 - Hidden information is part of the domain model: `visibleStateFor(state, slot)` filters every view (local hot-seat AND server); espionage reveals fuzzed intel.
 - Modern UX deviations (event feed, in-turn undo, named save slots, accessibility, online turn timers) are specified in PROJECT_REQUIREMENTS.md.
 - Interactive tutorial (`client/lib/tutorial/`): a real fixed-seed game with a scripted overlay, completes within the first turn, never saved. **Whenever gameplay rules, prices, menu names or UI flows change, update `tutorial_steps.dart` in the same change.**
+- Bilingual UI (de/en, since 2026-07-20): **never hardcode user-visible strings.** Client text goes through `tr('<area>.<key>')` (`client/lib/l10n/strings.dart` + `parts/*_strings.dart`, `{param}` placeholders); building/troop/realm display names through `l10n/labels.dart` (`realmName(slot)`, not `gc.countryNames[slot]`). Engine-produced messages (ActionException, reason strings) use `coreMessage(key)` from `game_core`'s de/en catalog (`src/l10n/messages.dart`); strings stored in game state (unit/person/town names) stay language-neutral. Language: Options sub-menu, default = device language.
 
 ## Files
 - `ORIGINAL_GAME.md` — traced spec of the original; source of truth for all rules (§-references).

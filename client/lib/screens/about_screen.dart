@@ -54,7 +54,7 @@ class AboutScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Version $appVersion',
+                      tr('setup.version', {'version': appVersion}),
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -108,7 +108,7 @@ class AboutScreen extends StatelessWidget {
                         mode: LaunchMode.externalApplication,
                       ),
                       icon: const Icon(Icons.code),
-                      label: const Text('GitHub — Quellcode'),
+                      label: Text(tr('setup.githubSource')),
                     ),
                     const SizedBox(height: 8),
                     FilledButton.tonalIcon(
@@ -117,7 +117,7 @@ class AboutScreen extends StatelessWidget {
                         mode: LaunchMode.externalApplication,
                       ),
                       icon: const Icon(Icons.forum),
-                      label: const Text('Discord — Community'),
+                      label: Text(tr('setup.discordCommunity')),
                     ),
                   ],
                 ),

@@ -6,6 +6,29 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-20 — Full English translation + language option
+
+The app is now fully bilingual (user request). Mechanics: the string
+table in `client/lib/l10n/strings.dart` gained `{param}` placeholder
+substitution and merges per-area part files
+(`l10n/parts/{menus,events,war,game,online,setup,misc,tutorial}_strings.dart`
+— key prefixes `menus.`, `ev.`, `war.`, `game.`, `online.`, `setup.`,
+`dec.`, `tut.`); every hardcoded German literal in screens/widgets/
+tutorial was converted to `tr()` keys. `l10n/labels.dart` localizes
+building/troop names and adds `realmName(slot)` (English exonyms for
+`countryNames` — Bayern→Bavaria …) and `worldLabel()`. Engine messages
+(`ActionException`, war-block reason strings) moved to a de/en catalog in
+`game_core/src/l10n/messages.dart` (`coreMessage(key)`, global
+`messageLocale` set by the client — presentation only, rules stay
+deterministic); strings stored IN STATE (unit/person/town names,
+'Söldner', 'Bogenschützen') stay language-neutral by design. Language
+selection: new Options sub-menu (gear icon, home screen top-right) with
+Device language / Deutsch / English, persisted via the new
+`SettingsService` (`settings.json`, documents dir); the default follows
+the device language — German devices get German, all others English.
+Server wire format unchanged (`error: message` — online actions are
+validated locally first, so players see localized errors).
+
 ## 2026-07-19 — War panel docked at the bottom, menu-style actions
 
 The red war panel no longer floats over the map (top-center max-width

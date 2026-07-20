@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:game_core/game_core.dart' show World, cityNames, countryNames;
+import 'package:game_core/game_core.dart' show World, cityNames;
+
+import '../l10n/labels.dart';
+import '../l10n/strings.dart';
 
 /// One player's empire choices — founder name, gender, Land (including
 /// "Zufällig") and first Dorf. Shared by the local setup's player cards and
@@ -79,9 +82,9 @@ class EmpireCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text('Männlich')),
-                      ButtonSegment(value: 1, label: Text('Weiblich')),
+                    segments: [
+                      ButtonSegment(value: 0, label: Text(tr('game.male'))),
+                      ButtonSegment(value: 1, label: Text(tr('game.female'))),
                     ],
                     selected: {gender},
                     onSelectionChanged: (s) => onGenderChanged(s.first),
@@ -95,16 +98,18 @@ class EmpireCard extends StatelessWidget {
                 Expanded(
                   child: DropdownButtonFormField<int?>(
                     initialValue: countrySlot,
-                    decoration: const InputDecoration(labelText: 'Land'),
+                    decoration: InputDecoration(
+                      labelText: tr('game.landLabel'),
+                    ),
                     items: [
-                      const DropdownMenuItem(
+                      DropdownMenuItem(
                         value: null,
-                        child: Text('Zufällig'),
+                        child: Text(tr('game.random')),
                       ),
                       for (var slot = 1; slot <= World.realmCount; slot++)
                         DropdownMenuItem(
                           value: slot,
-                          child: Text(countryNames[slot]),
+                          child: Text(realmName(slot)),
                         ),
                     ],
                     onChanged: _countryChanged,
@@ -116,7 +121,7 @@ class EmpireCard extends StatelessWidget {
                     controller: dorf,
                     maxLength: nameMaxLength,
                     decoration: InputDecoration(
-                      labelText: 'Erstes Dorf',
+                      labelText: tr('game.firstVillage'),
                       helperText: countrySlot == null ? randomDorfHint : null,
                       counterText: '',
                     ),

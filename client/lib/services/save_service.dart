@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:game_core/game_core.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../l10n/labels.dart';
+
 /// Summary shown in the load-game list without deserializing the full state.
 class SaveSlotInfo {
   SaveSlotInfo({
@@ -103,7 +105,7 @@ class SaveService {
     final playerNames = [
       for (final d in humans)
         state.person(state.realm(d.index).rulerId)?.name ??
-            countryNames[d.index],
+            realmName(d.index),
     ];
     final doc = {
       'meta': SaveSlotInfo(
