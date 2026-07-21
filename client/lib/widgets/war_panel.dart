@@ -283,10 +283,11 @@ class _WarPanelState extends State<WarPanel> {
       );
     }
 
-    // Docked full-width above the status row — an extension of the bottom
-    // menu block, so the map above stays completely unobstructed.
+    // Docked full-width above the status row — it REPLACES the hidden
+    // category bar during a war, so it wears that bar's neutral surface
+    // color instead of the old alarm red.
     return Material(
-      color: theme.colorScheme.errorContainer,
+      color: theme.colorScheme.surfaceContainerHighest,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -813,7 +814,8 @@ class _WarPanelState extends State<WarPanel> {
 
   /// One bottom-bar-style action tile (icon over label, quarter width).
   /// Disabled tiles dim like the locked category-bar items; [emphasized]
-  /// fills the tile with the error color for the primary round-end action.
+  /// fills the tile with the primary color for the round-end action —
+  /// matching the regular "Zug beenden" button instead of alarm red.
   Widget _actionItem(
     ThemeData theme, {
     required IconData icon,
@@ -823,8 +825,8 @@ class _WarPanelState extends State<WarPanel> {
     bool emphasized = false,
   }) {
     final fg = emphasized
-        ? theme.colorScheme.onError
-        : theme.colorScheme.onErrorContainer;
+        ? theme.colorScheme.onPrimary
+        : theme.colorScheme.onSurface;
     Widget tile = InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: onTap,
@@ -850,7 +852,7 @@ class _WarPanelState extends State<WarPanel> {
     );
     if (emphasized) {
       tile = Material(
-        color: theme.colorScheme.error,
+        color: theme.colorScheme.primary,
         borderRadius: BorderRadius.circular(8),
         child: tile,
       );

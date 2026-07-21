@@ -9,6 +9,13 @@ const Map<String, String> menusDe = {
   'menus.sendMoneySubtitle': 'Taler an ein anderes Land überweisen',
   'menus.taler': 'Taler',
   'menus.mergeWith': 'Reiche zusammenlegen: {realm}',
+  'menus.transferRealm': 'Reich übertragen',
+  'menus.transferRealmSubtitle':
+      'Das gesamte Reich einem fremden Herrscher übergeben',
+  'menus.transferConfirm': 'Reich an {realm} übertragen ?',
+  'menus.transferConfirmBody':
+      'Land, Städte, Truppen, Schiffe, Schatz und Dynastie gehen an den '
+      'fremden Herrscher über. Das kann nicht rückgängig gemacht werden !',
   'menus.notMidWar': 'Nicht mitten im Krieg !',
   'menus.yields': 'bringt {amount} T',
   'menus.investDetail':
@@ -194,6 +201,12 @@ const Map<String, String> menusEn = {
   'menus.sendMoneySubtitle': 'Transfer Taler to another realm',
   'menus.taler': 'Taler',
   'menus.mergeWith': 'Merge realms: {realm}',
+  'menus.transferRealm': 'Transfer realm',
+  'menus.transferRealmSubtitle': 'Hand the entire realm to a foreign ruler',
+  'menus.transferConfirm': 'Transfer the realm to {realm}?',
+  'menus.transferConfirmBody':
+      'Land, towns, troops, ships, treasury and dynasty pass to the foreign '
+      'ruler. This cannot be undone!',
   'menus.notMidWar': 'Not in the midst of war!',
   'menus.yields': 'yields {amount} T',
   'menus.investDetail': 'Stake {amount} T — the returns arrive next turn',

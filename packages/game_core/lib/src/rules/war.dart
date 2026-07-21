@@ -234,6 +234,17 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 ///  - the loser loses 35–65% of what the winner's strength reaches
 ///    (a remnant under 5 men is wiped — no endless 1-man tail fights);
 ///  - the winner loses 10–25% of the loser's reach and always survives.
+///
+/// `[BALANCE 2026-07-21, user-designed]` Two size-vs-numbers correctives
+/// on top (win/lose is untouched — only the casualty conversion):
+///  - LAST STAND: the winner's 10–25% share scales with the strength
+///    ratio (`min(2, √(winnerEff/loserEff))`) — an outmatched unit sells
+///    itself dearly, so clearing many small units costs a doomstack real
+///    men (a 100-man unit falling to a 500 stack takes ~34 along, not
+///    ~17);
+///  - OVERKILL CAP: below 2× reach the loser keeps ≥ 20% of its men (a
+///    beaten army routs before it is annihilated — it can retreat and
+///    regroup next round); at ≥ 2× reach the full wipe applies as before.
 List<GameEvent> resolveCombat(
     GameState state, int slotA, Troop a, int slotB, Troop b, Rng rng) {
   bool fortified(Troop t) => switch (state.map.buildingAt(t.x, t.y)) {
@@ -285,9 +296,16 @@ List<GameEvent> resolveCombat(
   // still reaches. The winner always keeps ≥ 1 man — so exactly one side
   // can ever be wiped, never both.
   final loserShare = 0.35 + 0.3 * rng.nextReal();
-  final winnerShare = 0.10 + 0.15 * rng.nextReal();
-  var lossesLoser =
-      math.max(1, (winnerEff * loserShare / powerPerMan(loser)).round());
+  // Last stand: the outmatched loser sells itself dearly (see doc above).
+  final overmatch = math.min(2.0, math.sqrt(winnerEff / loserEff));
+  final winnerShare = (0.10 + 0.15 * rng.nextReal()) * overmatch;
+  final reach = winnerEff / powerPerMan(loser);
+  var lossesLoser = math.max(1, (reach * loserShare).round());
+  // Overkill cap: under 2× reach a beaten army routs instead of dying to
+  // the last man — it keeps at least 20% of its men.
+  if (reach < 2 * loser.men) {
+    lossesLoser = math.min(lossesLoser, (loser.men * 0.8).round());
+  }
   // A remnant under 5 men is wiped — no endless 1-man tail fights.
   if (loser.men - lossesLoser < 5) lossesLoser = loser.men;
   final lossesWinner = math.min(winner.men - 1,

@@ -6,6 +6,72 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-21 — Combat: last-stand casualties + overkill cap (user-designed)
+
+- Simulation finding (76k engine battles): unit SIZE dominated too hard —
+  a 100-man unit falling to a 500 stack took only ~17.5 men along (trade
+  5.7:1), a 500 doomstack cleared five 100-man units for ~88 men (Ø
+  412/500 left), and any ≥ 1.67× win wiped the loser in 27% of clashes.
+  Splitting an army was near-pure waste; small units died without hurting.
+- Two correctives in `resolveCombat` (war.dart), casualty conversion only
+  — WHO WINS is untouched (5/3 fortune determinism, fort break-evens at
+  exactly 1.15×/1.25×, RSP odds, anti-chaff all verified unchanged):
+  1. LAST STAND: the winner's 10–25% casualty share scales with
+     `min(2, √(winnerEff/loserEff))` — the outmatched side sells itself
+     dearly. 100 vs 500 now trades ~34 (2.9:1); the doomstack pays ~166
+     men for five 100-man units (Ø 334/500 left).
+  2. OVERKILL CAP: below 2× reach the loser routs at 80% losses instead
+     of dying to the last man (167 vs 100 wipes: 27% → ~6%); at ≥ 2×
+     reach the full wipe applies as before. The < 5-men-remnant wipe
+     stays, so chaff still dies outright.
+- Rejected alternatives (simulated): higher flat winner share (bloodies
+  equal fights too), `men^0.9` sublinear strength (breaks the documented
+  5/3 determinism AND weakens small units further).
+- `combat_balance_test.dart`: chaff bound 5 → 7 (last stand doubles the
+  chaff's reach, still strength-bounded), two new tests pin both
+  mechanics. Sim scripts kept out of the repo (scratchpad). 409 tests
+  green. Tutorial has no combat-math text — nothing to update there.
+
+## 2026-07-21 — "Reich übertragen": voluntary handover to a foreign ruler (user request)
+
+- New `TransferRealm` action (Handel sheet): give the whole realm to a
+  FOREIGN ruler. Engine (`realm_merge.dart`): `transferRealm` reuses the
+  §6.2 merge bookkeeping (`mergeRealms` grew an `emitEvent` flag) — tiles,
+  towns, troops, ships, treasury, pending voyages and the dynasty's court
+  move, the seat is vacated and stops being a human seat; on top the
+  abdicating ruler forfeits the Kaiser crown and any Kurfürst seat unless
+  they still rule another realm (aliasing). `transferableSlots` = every
+  differently-controlled realm with a ruler and ≥ 1 tile — deliberately NO
+  adjacency gate (political act, not territorial). Same no-mid-war gate as
+  the merge; refusal message `cannotTransferRealm` (de/en).
+- Client: Handel-menu entry → target picker → explicit confirm dialog
+  (irreversible — the seat is gone); new public `realmTransferred` event
+  (feed line, headline, popup when a human realm changes hands via the
+  `human` payload flag). Deviations table updated in
+  PROJECT_REQUIREMENTS.md; engine covered by `transfer_realm_test.dart`.
+  Tutorial untouched — the trade step only opens the Handel menu.
+
+## 2026-07-21 — War panel replaces the category bar; live language switch on home (user requests)
+
+- **Category bar hidden during a war** (`game_screen.dart`): while
+  `activeWar != null` the normal bottom menu is not rendered — the docked
+  war panel IS the bottom menu. Nothing is lost: the info menu stays
+  reachable via the realm name in the status row, "Zug beenden" was
+  already disabled mid-war, and the engine rejects the war-relevant menu
+  actions anyway. This also retires the old dimmed/"locked" look during
+  hot-seat war pauses (bar simply hidden).
+- **War panel recolored** (`war_panel.dart`): the round panel wore
+  `errorContainer` red; now that it stands in for the category bar it
+  uses that bar's `surfaceContainerHighest`, tiles use `onSurface`, and
+  the emphasized "Runde beenden" tile is `primary` (matching the regular
+  "Zug beenden" button) instead of `error`.
+- **Home screen didn't switch language live** (`main.dart`): `home:
+  const HomeScreen()` — the const instance is canonicalized, so the
+  locale-triggered `ValueListenableBuilder` rebuild saw an identical
+  widget and skipped the subtree; the main menu stayed in the old
+  language until a navigation or restart. Dropped the `const` so the
+  rebuild reaches the home screen (state is preserved — no remount).
+
 ## 2026-07-20 — v0.2.0 review round (war rework + l10n follow-up)
 
 `appVersion` → 0.2.0. Fixes from the diff review of the war/combat rework

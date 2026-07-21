@@ -42,7 +42,11 @@ class PcKaiserApp extends StatelessWidget {
           // Accessibility: generous minimum touch targets.
           materialTapTargetSize: MaterialTapTargetSize.padded,
         ),
-        home: const HomeScreen(),
+        // NOT const: a const HomeScreen is canonicalized to one identical
+        // instance, so Flutter skips its rebuild when the locale changes
+        // and the home screen keeps showing the old language until the
+        // next navigation.
+        home: HomeScreen(),
       ),
     );
   }

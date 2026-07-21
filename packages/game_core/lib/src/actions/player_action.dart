@@ -34,6 +34,7 @@ sealed class PlayerAction {
         MarryCommoner.kind => MarryCommoner.fromJson(json),
         ResolveDecision.kind => ResolveDecision.fromJson(json),
         MergeRealms.kind => MergeRealms.fromJson(json),
+        TransferRealm.kind => TransferRealm.fromJson(json),
         RecruitTroops.kind => RecruitTroops.fromJson(json),
         HireSoeldner.kind => HireSoeldner.fromJson(json),
         ReinforceTroop.kind => ReinforceTroop.fromJson(json),
@@ -270,6 +271,31 @@ class MergeRealms extends PlayerAction {
   @override
   Map<String, dynamic> toJson() =>
       {'type': kind, 'slot': slot, 'sourceSlot': sourceSlot};
+}
+
+/// "Reich übertragen" [DESIGNED, deviation]: voluntarily hand this whole
+/// realm — land, towns, troops, ships, treasury and the dynasty's court —
+/// to a FOREIGN ruler. The target absorbs everything ([transferRealm]);
+/// the acting seat is vacated, ending the player's part in the game unless
+/// they control another realm.
+class TransferRealm extends PlayerAction {
+  TransferRealm({required super.slot, required this.targetSlot});
+
+  factory TransferRealm.fromJson(Map<String, dynamic> json) => TransferRealm(
+        slot: json['slot'] as int,
+        targetSlot: json['targetSlot'] as int,
+      );
+
+  static const kind = 'transferRealm';
+
+  final int targetSlot;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'targetSlot': targetSlot};
 }
 
 /// Buy a colony ship at an own Hafen: 700 T + 1 Zug, the ship

@@ -448,7 +448,11 @@ class _GameScreenState extends State<GameScreen> {
                     !controller.handoffPending)
                   WarPanel(controller: controller),
                 _statusRow(controller),
-                _actionBar(controller),
+                // The category bar is hidden during a war: the war panel
+                // replaces it as THE bottom menu (the info menu stays
+                // reachable via the realm name in the status row).
+                if (controller.state.activeWar == null)
+                  _actionBar(controller),
               ],
             ),
           ),

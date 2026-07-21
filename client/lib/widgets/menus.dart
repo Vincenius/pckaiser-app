@@ -149,6 +149,74 @@ void showCommerceMenu(BuildContext context, GameController controller) {
                 );
               },
             ),
+          if (gc.transferableSlots(controller.state, slot).isNotEmpty)
+            ListTile(
+              title: Text(tr('menus.transferRealm')),
+              // No transferring mid-war (engine gate, mirrored).
+              subtitle: (state.activeWar?.isParticipant(slot) ?? false)
+                  ? Text(tr('menus.notMidWar'))
+                  : Text(tr('menus.transferRealmSubtitle')),
+              enabled: !(state.activeWar?.isParticipant(slot) ?? false),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _transferRealmSheet(context, controller);
+              },
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Target picker + confirmation for "Reich übertragen" — hands the whole
+/// realm to a foreign ruler, so the confirm dialog spells out what leaves
+/// with it. Irreversible by nature (the seat is vacated).
+void _transferRealmSheet(BuildContext context, GameController controller) {
+  final state = controller.state;
+  final slot = controller.currentSlot;
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final target in gc.transferableSlots(state, slot))
+            ListTile(
+              title: Text(realmName(target)),
+              // No transferring mid-war (engine gate, mirrored).
+              subtitle: _mergeAtWar(state, slot, target)
+                  ? Text(tr('menus.notMidWar'))
+                  : null,
+              enabled: !_mergeAtWar(state, slot, target),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final sure = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text(
+                      tr('menus.transferConfirm', {'realm': realmName(target)}),
+                    ),
+                    content: Text(tr('menus.transferConfirmBody')),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: Text(tr('cancel')),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: Text(tr('menus.ok')),
+                      ),
+                    ],
+                  ),
+                );
+                if (sure != true || !context.mounted) return;
+                await _tryAction(
+                  context,
+                  controller,
+                  gc.TransferRealm(slot: slot, targetSlot: target),
+                );
+              },
+            ),
         ],
       ),
     ),

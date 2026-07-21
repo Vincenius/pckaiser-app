@@ -226,6 +226,10 @@ String describeEvent(gc.GameEvent e) {
       'realm': realm,
       'source': realmName(p['sourceSlot'] as int),
     }),
+    'realmTransferred' => tr('ev.realmTransferred', {
+      'realm': realm,
+      'source': realmName(p['sourceSlot'] as int),
+    }),
     'crowned' => tr('ev.crowned', {
       'realm': realm,
       'name': p['name'],
@@ -579,6 +583,9 @@ bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
   // the victim themselves above all.
   'realmOverrun' => e.payload['human'] == true,
   'rulerCaptured' => e.payload['loserHuman'] == true,
+  // A human player voluntarily handing their whole realm to a foreign
+  // ruler reshapes the map — the whole table should be told.
+  'realmTransferred' => e.payload['human'] == true,
   // A human player losing CONTROL of a realm without losing the land —
   // popularity coup, foreclosure, succession crisis, inheritance to a
   // foreign house. Reported gap (2026-07-13): a player's realm silently
@@ -607,6 +614,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'assassinationFailed' ||
   'totalExtinction' ||
   'realmInherited' ||
+  'realmTransferred' ||
   'playerKicked' => true,
   'realmOverrun' => e.slot == slot,
   // Caught foreign spies confessed the sponsor — big news for the realm
@@ -662,6 +670,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'debtWarning' => (Icons.warning_amber, Colors.orange),
   'internalStrife' => (Icons.local_fire_department, Colors.red),
   'realmsMerged' => (Icons.merge_type, Colors.green),
+  'realmTransferred' => (Icons.card_giftcard, Colors.green),
   'dynastyExtinct' ||
   'totalExtinction' => (Icons.heart_broken, Colors.blueGrey),
   'realmInherited' => (Icons.account_balance, Colors.amber),

@@ -75,8 +75,11 @@ void main() {
       final payload = clash(unit('Heer', 1000), unit('Chaff', 10), seed);
       expect(payload['defenderDestroyed'], isTrue,
           reason: 'a 100× outmatched unit is routed outright (seed $seed)');
-      expect(payload['attackerLosses'], lessThanOrEqualTo(5),
-          reason: 'chaff must not strip 10–25% off a giant (seed $seed)');
+      // 2026-07-21: the last-stand scaling doubles the chaff's reach (its
+      // share runs up to 50% of its strength) — still bounded by its own
+      // tiny strength, never a percentage of the giant.
+      expect(payload['attackerLosses'], lessThanOrEqualTo(7),
+          reason: 'chaff must not strip percentages off a giant (seed $seed)');
     }
   });
 
@@ -271,6 +274,50 @@ void main() {
       expect(artWins, greaterThan(100),
           reason: 'artillery cracks an equal-strength Burg more often '
               'than not ($artWins/200)');
+    });
+
+    test('2026-07-21 letztes Gefecht: der Unterlegene verkauft sich teuer',
+        () {
+      // 100 men falling to a 500 stack take ~34 along (last-stand scaling,
+      // ×√(strength ratio) capped at ×2) — before, only ~17.5. Averaged
+      // over many seeds; individual clashes stay within the share band.
+      var stackLosses = 0;
+      const n = 200;
+      for (var seed = 0; seed < n; seed++) {
+        final payload = clash(unit('Heer', 500), unit('Trupp', 100), seed);
+        expect(payload['attackerWon'], isTrue, reason: 'seed $seed');
+        stackLosses += payload['attackerLosses'] as int;
+      }
+      expect(stackLosses / n, greaterThan(25),
+          reason: 'a doomstack must pay real men per cleared unit');
+      expect(stackLosses / n, lessThan(45),
+          reason: 'the outmatched side must not out-trade its strength');
+    });
+
+    test('2026-07-21 Overkill-Deckel: unter 2× Reichweite flieht der Rest',
+        () {
+      // 167 vs 100 (the 5/3 deterministic win): the loser routs with ≥ 20%
+      // of its men unless the winner's reach hits 2× — a full wipe is now
+      // the rare high-fortune case, not the default.
+      var wipes = 0;
+      var routed = 0; // capped at 80 losses — the unit keeps ≥ 20%
+      const n = 200;
+      for (var seed = 0; seed < n; seed++) {
+        final payload = clash(unit('Gross', 167), unit('Klein', 100), seed);
+        expect(payload['attackerWon'], isTrue, reason: 'seed $seed');
+        if (payload['defenderDestroyed'] == true) {
+          wipes++;
+        } else if ((payload['defenderLosses'] as int) <= 80) {
+          routed++;
+        }
+        // The remaining case (losses > 80 without a wipe) is the winner's
+        // high-fortune ≥ 2× reach, where the cap intentionally lifts.
+      }
+      expect(wipes, lessThan(n ~/ 4),
+          reason: 'full wipes must be the exception ($wipes/$n)');
+      expect(routed, greaterThan(n ~/ 2),
+          reason: 'most beaten units rout with ≥ 20% of their men '
+              '($routed/$n)');
     });
 
     test('Schere-Stein-Papier: Inf > Kav > Art > Inf (×1.15)', () {

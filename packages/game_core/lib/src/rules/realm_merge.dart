@@ -17,7 +17,7 @@ import '../state/realm.dart';
 /// [INTERPRETATION: the treasury moves too — the spec lists "Reichtümer"
 /// only implicitly.]
 void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
-    List<GameEvent> events) {
+    List<GameEvent> events, {bool emitEvent = true}) {
   final target = state.realm(targetSlot);
   final source = state.realm(sourceSlot);
 
@@ -92,13 +92,89 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
   sourceDynasty.status = DynastyStatus.ai;
   sourceDynasty.humanPlayer = null;
 
+  if (emitEvent) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: targetSlot,
+      type: 'realmsMerged',
+      visibility: EventVisibility.public,
+      payload: {'sourceSlot': sourceSlot},
+    ));
+  }
+}
+
+/// "Reich übertragen" [DESIGNED, deviation — the original has no voluntary
+/// handover]: hand the entire realm — land, towns, troops, ships, treasury
+/// and the dynasty's court — to a FOREIGN ruler. Mechanically a
+/// [mergeRealms] into the foreign slot (same bookkeeping, the source seat
+/// is vacated and stops being a human seat); on top of that the abdicating
+/// ruler forfeits the Kaiser crown and any Kurfürst seat — unless they
+/// still rule another realm (ruler aliasing, §19/§20.7). A cleared crown
+/// triggers a fresh election through the regular offices phase (§17.3).
+void transferRealm(GameState state, int targetSlot, int sourceSlot, Rng rng,
+    List<GameEvent> events) {
+  final formerRulerId = state.realm(sourceSlot).rulerId;
+  final wasHuman = state.dynasty(sourceSlot).status == DynastyStatus.human;
+  mergeRealms(state, targetSlot, sourceSlot, rng, events, emitEvent: false);
   events.add(GameEvent(
     year: state.year,
     slot: targetSlot,
-    type: 'realmsMerged',
+    type: 'realmTransferred',
     visibility: EventVisibility.public,
-    payload: {'sourceSlot': sourceSlot},
+    payload: {'sourceSlot': sourceSlot, 'human': wasHuman},
   ));
+
+  if (formerRulerId == null) return;
+  if (state.realms.any((r) => r.rulerId == formerRulerId)) return;
+  final name = state.persons[formerRulerId]?.name ?? '';
+  if (state.kaiserId == formerRulerId) {
+    state.kaiserId = null;
+    events.add(GameEvent(
+      year: state.year,
+      slot: sourceSlot,
+      type: 'forcedAbdication',
+      visibility: EventVisibility.public,
+      payload: {'name': name},
+    ));
+  }
+  if (state.kurfuerstenIds.remove(formerRulerId)) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: sourceSlot,
+      type: 'kurfuerstStripped',
+      visibility: EventVisibility.public,
+      payload: {'name': name},
+    ));
+  }
+}
+
+/// Targets for "Reich übertragen": every realm under DIFFERENT control
+/// that still has a ruler and ≥ 1 tile — the complement of
+/// [mergeableSlots]' same-control gate (own seats consolidate via merge,
+/// never via transfer). [DESIGNED] No adjacency gate: the handover is a
+/// political act, not a territorial one.
+List<int> transferableSlots(GameState state, int slot) {
+  final rulerId = state.realm(slot).rulerId;
+  if (rulerId == null) return const [];
+  final dynasty = state.dynasty(slot);
+
+  bool sameController(Realm other) {
+    if (dynasty.status == DynastyStatus.human) {
+      final otherDynasty = state.dynasty(other.slot);
+      return otherDynasty.status == DynastyStatus.human &&
+          otherDynasty.humanPlayer == dynasty.humanPlayer;
+    }
+    return other.rulerId == rulerId;
+  }
+
+  return [
+    for (final realm in state.realms)
+      if (realm.slot != slot &&
+          realm.rulerId != null &&
+          !sameController(realm) &&
+          realm.tileCount.fold(0, (a, b) => a + b) > 0)
+        realm.slot,
+  ];
 }
 
 /// Slots that own ≥ 1 tile, share a border with [slot], and are under the SAME

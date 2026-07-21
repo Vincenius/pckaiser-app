@@ -71,6 +71,7 @@ List<GameEvent> applyActionInPlace(
     MarryCommoner() => _marryCommoner(state, realm, action, rng),
     ResolveDecision() => _resolveDecision(state, realm, action, rng),
     MergeRealms() => _mergeRealms(state, realm, action, rng),
+    TransferRealm() => _transferRealm(state, realm, action, rng),
     RecruitTroops() => applyRecruitTroops(state, realm, action, rng),
     HireSoeldner() => applyHireSoeldner(state, realm, action),
     ReinforceTroop() => applyReinforceTroop(state, realm, action, rng),
@@ -437,6 +438,25 @@ List<GameEvent> _mergeRealms(
   final events = <GameEvent>[];
   // action.sourceSlot is the target (absorbs); realm.slot is the source (vacated).
   mergeRealms(state, action.sourceSlot, realm.slot, rng, events);
+  return events;
+}
+
+/// "Reich übertragen" [DESIGNED, deviation]: hand the whole realm to a
+/// FOREIGN ruler. Same war gate as the merge (transferred troops would
+/// bypass the no-reinforcement-at-war rule); the acting slot is always the
+/// source and gets vacated.
+List<GameEvent> _transferRealm(
+    GameState state, Realm realm, TransferRealm action, Rng rng) {
+  final war = state.activeWar;
+  if (war != null &&
+      (war.isParticipant(realm.slot) || war.isParticipant(action.targetSlot))) {
+    throw ActionException(coreMessage('notDuringWar'));
+  }
+  if (!transferableSlots(state, realm.slot).contains(action.targetSlot)) {
+    throw ActionException(coreMessage('cannotTransferRealm'));
+  }
+  final events = <GameEvent>[];
+  transferRealm(state, action.targetSlot, realm.slot, rng, events);
   return events;
 }
 
