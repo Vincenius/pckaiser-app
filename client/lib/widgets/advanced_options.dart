@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:game_core/game_core.dart' show AiDifficulty, minEventYear;
+import 'package:game_core/game_core.dart'
+    show AiDifficulty, MapSize, minEventYear;
 
 import '../l10n/strings.dart';
 import 'ai_difficulty_picker.dart';
+import 'map_size_picker.dart';
 
 /// Validates the three event-year fields of [AdvancedOptionsCard]; returns
 /// the localized error message or null. Shared by the local and the online
@@ -37,6 +39,10 @@ class AdvancedOptionsCard extends StatelessWidget {
     required this.reformation,
     required this.ottoman,
     required this.warStart,
+    required this.mapSize,
+    required this.onMapSizeChanged,
+    required this.realmCount,
+    required this.onRealmCountChanged,
     required this.aiDifficulty,
     required this.onAiDifficultyChanged,
     required this.genderEqualSuccession,
@@ -49,6 +55,13 @@ class AdvancedOptionsCard extends StatelessWidget {
   final TextEditingController reformation;
   final TextEditingController ottoman;
   final TextEditingController warStart;
+  final MapSize mapSize;
+
+  /// Callers reset their realm count to the new size's default (see
+  /// [MapSizePicker.onMapSizeChanged]).
+  final ValueChanged<MapSize> onMapSizeChanged;
+  final int realmCount;
+  final ValueChanged<int> onRealmCountChanged;
   final AiDifficulty aiDifficulty;
   final ValueChanged<AiDifficulty> onAiDifficultyChanged;
   final bool genderEqualSuccession;
@@ -75,6 +88,13 @@ class AdvancedOptionsCard extends StatelessWidget {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           ...extras,
+          MapSizePicker(
+            mapSize: mapSize,
+            onMapSizeChanged: onMapSizeChanged,
+            realmCount: realmCount,
+            onRealmCountChanged: onRealmCountChanged,
+          ),
+          const SizedBox(height: 16),
           AiDifficultyPicker(
             label: tr('setup.aiStrengthLabel'),
             value: aiDifficulty,

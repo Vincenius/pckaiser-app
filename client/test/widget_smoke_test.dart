@@ -125,6 +125,56 @@ void main() {
     expect(dorf.text, 'Entenhausen');
   });
 
+  testWidgets(
+      'shrinking the map resets a country pick beyond the new realm count', (
+    tester,
+  ) async {
+    final dir = Directory.systemTemp.createTempSync('saves');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    await tester.pumpWidget(
+      MaterialApp(home: SetupScreen(saves: SaveService(dir))),
+    );
+
+    // Pick slot 13, the first beyond Klein's 12 realms (countryNames is
+    // slot-indexed with the [0] "Niemand" sentinel, cityNames 0-based).
+    await tester.tap(find.byIcon(Icons.arrow_drop_down).first);
+    await tester.pumpAndSettle();
+    // The menu list is lazy: drag until the item is built, then make sure
+    // it is fully on screen before tapping.
+    await tester.scrollUntilVisible(
+      find.text(countryNames[13]),
+      60,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text(countryNames[13]).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(countryNames[13]).last);
+    await tester.pumpAndSettle();
+    expect(find.text(countryNames[13]), findsOneWidget);
+    expect(find.text(cityNames[12]), findsOneWidget); // Dorf auto-fill
+
+    // Open the advanced options and switch to the small map.
+    await tester.scrollUntilVisible(
+      find.text('Erweiterte Optionen'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Erweiterte Optionen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kartengröße'), findsOneWidget);
+    await tester.ensureVisible(find.text('Klein'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Klein'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reiche: 12'), findsOneWidget);
+
+    // The out-of-range pick fell back to "Zufällig", the auto-filled
+    // Dorf was cleared with it.
+    expect(find.text(countryNames[13]), findsNothing);
+    expect(find.text(cityNames[12]), findsNothing);
+  });
+
   testWidgets('joining by code asks for the room code on the same screen', (
     tester,
   ) async {

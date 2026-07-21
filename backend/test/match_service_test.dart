@@ -1436,6 +1436,54 @@ void main() {
       expect(state2.aiDifficulty, AiDifficulty.mittel,
           reason: 'an unvalidated online settings payload must not crash');
     });
+
+    test('map size and realm count reach the game state (out of range → '
+        'clamped, never a 500)', () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await createStarted(
+        a.id,
+        MatchSettings(seed: 42, mapSize: 'klein', realmCount: 10),
+        setupFor('Solo', 1),
+      );
+      final state =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(state.map.width, MapSize.klein.width);
+      expect(state.map.height, MapSize.klein.height);
+      expect(state.realmCount, 10);
+
+      // Out-of-range realm count and an unknown size degrade gracefully.
+      final b = await service.registerPlayer(displayName: 'Solo2');
+      final match2 = await createStarted(
+        b.id,
+        MatchSettings.fromJson(
+            {'seed': 43, 'map_size': 'winzig', 'realm_count': 99}),
+        setupFor('Solo2', 1),
+      );
+      final state2 =
+          GameState.fromJson((await store.match(match2.id))!.stateJson!);
+      expect(state2.map.width, MapSize.gross.width);
+      expect(state2.realmCount, MapSize.gross.maxRealmCount);
+    });
+
+    test('joining a small match rejects a country beyond the realms in play',
+        () async {
+      final host = await service.registerPlayer(displayName: 'Host');
+      final match = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 42, mapSize: 'klein'),
+        setup: setupFor('Host', 1),
+      );
+      final joiner = await service.registerPlayer(displayName: 'Gast');
+      await expectLater(
+        service.joinMatch(
+          matchId: match.id,
+          playerId: joiner.id,
+          setup: setupFor('Gast', 13), // klein plays slots 1–12
+        ),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 400)),
+      );
+    });
   });
 }
 

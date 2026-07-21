@@ -46,7 +46,7 @@ ActionResult applyAction(GameState state, PlayerAction action, Rng rng) {
 /// WITHOUT appending them to `state.events` (the caller does both).
 List<GameEvent> applyActionInPlace(
     GameState state, PlayerAction action, Rng rng) {
-  if (action.slot < 1 || action.slot > World.realmCount) {
+  if (action.slot < 1 || action.slot > state.realmCount) {
     throw ActionException(coreMessage('invalidRealm', {'slot': action.slot}));
   }
   final realm = state.realm(action.slot);
@@ -546,7 +546,7 @@ List<GameEvent> _investShips(
 /// "Geld schicken" (§6.2): transfer Taler to another living realm.
 List<GameEvent> _sendMoney(GameState state, Realm realm, SendMoney action) {
   if (action.targetSlot < 1 ||
-      action.targetSlot > World.realmCount ||
+      action.targetSlot > state.realmCount ||
       action.targetSlot == realm.slot) {
     throw ActionException(coreMessage('invalidTargetRealm'));
   }

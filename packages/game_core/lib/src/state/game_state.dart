@@ -50,8 +50,8 @@ class GameState {
     Map<int, int>? recapBaselines,
     this.humanLossReason,
     this.aiTurnActed = false,
-  })  : assert(realms.length == World.realmCount),
-        assert(dynasties.length == World.realmCount),
+  })  : assert(realms.length == dynasties.length),
+        assert(realms.isNotEmpty && realms.length <= World.realmCount),
         kurfuerstenIds = kurfuerstenIds ?? [],
         kaiserChronicle = kaiserChronicle ?? [],
         sultanChronicle = sultanChronicle ?? [],
@@ -226,15 +226,18 @@ class GameState {
 
   final List<AssassinationOrder> assassinationOrders;
 
-  /// Active player slot (1–30).
+  /// Active player slot (1–[realmCount]).
   int currentPlayer;
 
   final WorldMap map;
 
-  /// Exactly 30 realms, list index = slot − 1; use [realm] for slot access.
+  /// One realm per slot in play (original: 30, smaller map sizes fewer —
+  /// chosen at setup, fixed for the game), list index = slot − 1; use
+  /// [realm] for slot access.
   final List<Realm> realms;
 
-  /// Exactly 30 dynasties, list index = slot − 1; use [dynasty].
+  /// One dynasty per slot in play (same length as [realms]), list index =
+  /// slot − 1; use [dynasty].
   final List<Dynasty> dynasties;
 
   /// Current RNG seed. Updated after every entry point that rolled dice;
@@ -281,6 +284,11 @@ class GameState {
   /// checks it so a resumed save never runs the same AI action phase twice
   /// (double spend, second assassination roll). Reset by `completeTurn`.
   bool aiTurnActed;
+
+  /// Realm slots in play (slots are 1–[realmCount]; original world: 30).
+  /// Fixed at setup — derived from the realms list, so old saves (always
+  /// 30) need no migration.
+  int get realmCount => realms.length;
 
   /// Realm for a 1-based slot index.
   Realm realm(int slot) => realms[slot - 1];

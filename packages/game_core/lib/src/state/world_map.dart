@@ -1,6 +1,7 @@
 import 'constants.dart';
 
-/// The 80×44 tile map (ORIGINAL_GAME.md §3.1).
+/// The tile map (ORIGINAL_GAME.md §3.1) — 80×44 in the original; smaller
+/// map sizes shrink the grid (see `MapSize`).
 ///
 /// Stored as four parallel flat lists indexed `y * width + x` — compact in
 /// JSON and cheap to copy.
@@ -11,17 +12,22 @@ class WorldMap {
     required this.building,
     required this.troopMarker,
     List<int>? devastatedUntil,
+    this.width = World.mapWidth,
+    this.height = World.mapHeight,
   })  : devastatedUntil =
             devastatedUntil ?? List.filled(terrain.length, 0, growable: false),
-        assert(terrain.length == World.mapWidth * World.mapHeight),
+        assert(terrain.length == width * height),
         assert(owner.length == terrain.length),
         assert(building.length == terrain.length),
         assert(troopMarker.length == terrain.length);
 
   /// All tiles open water (terrain 2), unowned, no building.
-  factory WorldMap.water() {
-    const size = World.mapWidth * World.mapHeight;
+  factory WorldMap.water(
+      {int width = World.mapWidth, int height = World.mapHeight}) {
+    final size = width * height;
     return WorldMap(
+      width: width,
+      height: height,
       terrain: List.filled(size, Terrain.water, growable: false),
       owner: List.filled(size, World.niemand, growable: false),
       building: List.filled(size, Building.none, growable: false),
@@ -43,6 +49,10 @@ class WorldMap {
         // Additive field (2026-07-19) — older saves have no devastation.
         devastatedUntil:
             (json['devastatedUntil'] as List?)?.cast<int>().toList(),
+        // Additive fields (2026-07-21, map sizes) — older saves are always
+        // the original 80×44 world.
+        width: json['width'] as int? ?? World.mapWidth,
+        height: json['height'] as int? ?? World.mapHeight,
       );
 
   final List<int> terrain;
@@ -61,8 +71,9 @@ class WorldMap {
   bool isDevastatedAt(int x, int y, int year) =>
       devastatedUntil[index(x, y)] > year;
 
-  int get width => World.mapWidth;
-  int get height => World.mapHeight;
+  /// Grid dimensions — fixed per game at setup (see `MapSize`).
+  final int width;
+  final int height;
 
   bool inBounds(int x, int y) => x >= 0 && x < width && y >= 0 && y < height;
 
@@ -246,6 +257,8 @@ class WorldMap {
   }
 
   WorldMap copy() => WorldMap(
+        width: width,
+        height: height,
         terrain: List.of(terrain, growable: false),
         owner: List.of(owner, growable: false),
         building: List.of(building, growable: false),
@@ -254,6 +267,8 @@ class WorldMap {
       );
 
   Map<String, dynamic> toJson() => {
+        'width': width,
+        'height': height,
         'terrain': terrain,
         'owner': owner,
         'building': building,

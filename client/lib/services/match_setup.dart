@@ -1,6 +1,7 @@
 import 'package:game_core/game_core.dart'
     show
         AiDifficulty,
+        MapSize,
         defaultOttomanYear,
         defaultReformationYear,
         defaultWarStartYear;
@@ -24,7 +25,9 @@ class MatchSetup {
     this.genderEqualSuccession = true,
     this.suggestChildNames = true,
     this.aiDifficulty = AiDifficulty.mittel,
-  });
+    this.mapSize = MapSize.gross,
+    int? realmCount,
+  }) : realmCount = realmCount ?? mapSize.defaultRealmCount;
 
   final String founderName;
   final int gender;
@@ -40,6 +43,8 @@ class MatchSetup {
   final bool genderEqualSuccession;
   final bool suggestChildNames;
   final AiDifficulty aiDifficulty;
+  final MapSize mapSize;
+  final int realmCount;
 
   /// Per-seat setup sent on create AND join.
   Map<String, dynamic> setupJson() => {
@@ -60,5 +65,7 @@ class MatchSetup {
     'gender_equal_succession': genderEqualSuccession,
     'suggest_child_names': suggestChildNames,
     'ai_difficulty': aiDifficulty.name,
+    'map_size': mapSize.name,
+    'realm_count': realmCount,
   };
 }

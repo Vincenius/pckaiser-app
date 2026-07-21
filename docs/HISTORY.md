@@ -6,6 +6,32 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-21 — Map sizes + configurable realm count (user request)
+
+- New advanced setup option "Kartengröße" (local + online host): Groß =
+  original 80×44 (default), Mittel 64×36, Klein 48×28; realm count
+  selectable per size (Groß 10–30/30, Mittel 8–24/20, Klein 6–16/12 as
+  min–max/default). `MapSize` enum in `game_core` holds the geometry,
+  generator scaling (land patches/lakes by area) and realm ranges.
+- Engine: `WorldMap` carries instance `width`/`height` (additive JSON,
+  default 80×44 for old saves — no schema bump); `GameState.realmCount`
+  is derived from the realms list; every former `World.realmCount` user
+  (turn rotation, action target validation, backend view/action checks)
+  now reads the state. `World.realmCount` (30) remains as the slot-table
+  maximum. On Groß the generator and start placement are RNG-identical
+  to before.
+- Client: `MapSizePicker` (segments + realm slider) in the shared
+  AdvancedOptionsCard; shrinking the count resets out-of-range country
+  picks to "Zufällig" and caps players at min(16, realms); map camera/
+  tap bounds read the state's map size. Online: `map_size`/`realm_count`
+  in match settings (additive; server normalizes unknown sizes to gross
+  and clamps the count — never a 500), seat/join validation against the
+  match's realm count. Kurfürsten stay at 7 seats (vacant below 7
+  eligible rulers, as §17.2 already allows).
+- 419 core + 43 backend + 37 client tests green (new: per-size generator
+  invariants, small-world setup/roundtrip, backend clamp + join
+  rejection).
+
 ## 2026-07-21 — Combat: last-stand casualties + overkill cap (user-designed)
 
 - Simulation finding (76k engine battles): unit SIZE dominated too hard —

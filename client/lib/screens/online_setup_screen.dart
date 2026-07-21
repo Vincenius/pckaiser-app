@@ -62,8 +62,20 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   var _genderEqualSuccession = true;
   var _suggestChildNames = true;
   var _aiDifficulty = gc.AiDifficulty.mittel;
+  var _mapSize = gc.MapSize.gross;
+  var _realmCount = gc.MapSize.gross.defaultRealmCount;
 
   bool get _isHost => widget.mode == OnlineSetupMode.host;
+
+  /// A new map size resets the realm count to its default; an own country
+  /// pick beyond the new count falls back to "Zufällig".
+  void _applyMapSize(gc.MapSize size) {
+    setState(() {
+      _mapSize = size;
+      _realmCount = size.defaultRealmCount;
+      if ((_slot ?? 0) > _realmCount) _slot = null;
+    });
+  }
 
   @override
   void dispose() {
@@ -128,6 +140,8 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
           genderEqualSuccession: _genderEqualSuccession,
           suggestChildNames: _suggestChildNames,
           aiDifficulty: _aiDifficulty,
+          mapSize: _mapSize,
+          realmCount: _realmCount,
         ),
       ),
     );
@@ -182,6 +196,9 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
             onGenderChanged: (v) => setState(() => _gender = v),
             countrySlot: _slot,
             onCountryChanged: (v) => setState(() => _slot = v),
+            // Joiners don't know the host's realm count — they see the
+            // full list; the server validates the pick on join.
+            maxSlot: _isHost ? _realmCount : gc.World.realmCount,
           ),
           if (_isHost) ...[
             const SizedBox(height: 24),
@@ -189,6 +206,10 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
               reformation: _reformation,
               ottoman: _ottoman,
               warStart: _warStart,
+              mapSize: _mapSize,
+              onMapSizeChanged: _applyMapSize,
+              realmCount: _realmCount,
+              onRealmCountChanged: (v) => setState(() => _realmCount = v),
               aiDifficulty: _aiDifficulty,
               onAiDifficultyChanged: (v) => setState(() => _aiDifficulty = v),
               genderEqualSuccession: _genderEqualSuccession,

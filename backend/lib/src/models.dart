@@ -123,6 +123,8 @@ class MatchSettings {
     this.genderEqualSuccession = true,
     this.suggestChildNames = true,
     this.aiDifficulty = 'mittel',
+    this.mapSize = 'gross',
+    this.realmCount,
     this.isPublic = false,
     int? seed,
   }) : seed = seed ?? Random.secure().nextInt(1 << 31);
@@ -143,6 +145,13 @@ class MatchSettings {
           'leicht' || 'mittel' || 'schwer' => json['ai_difficulty'] as String,
           _ => 'mittel',
         },
+        // Additive (2026-07-21, map sizes): older matches and clients are
+        // always the original large world. Normalized like ai_difficulty.
+        mapSize: switch (json['map_size']) {
+          'klein' || 'mittel' || 'gross' => json['map_size'] as String,
+          _ => 'gross',
+        },
+        realmCount: json['realm_count'] as int?,
         isPublic: json['is_public'] as bool? ?? false,
         seed: json['seed'] as int?,
       );
@@ -173,6 +182,15 @@ class MatchSettings {
   /// safely falls back to 'mittel'.
   final String aiDifficulty;
 
+  /// World size ('klein' | 'mittel' | 'gross') — raw string like
+  /// [aiDifficulty]; parsed via `MapSize.fromName` when the world is built.
+  final String mapSize;
+
+  /// Realm slots in play; null = the size's default. Clamped into the
+  /// size's valid range by the service when seating/starting (never
+  /// trusted raw — an out-of-range value must not 500 the match start).
+  final int? realmCount;
+
   /// Public match: listed in the lobby's open-games list so anyone can
   /// join, not only those who know the room code. Default private.
   final bool isPublic;
@@ -192,6 +210,8 @@ class MatchSettings {
         'gender_equal_succession': genderEqualSuccession,
         'suggest_child_names': suggestChildNames,
         'ai_difficulty': aiDifficulty,
+        'map_size': mapSize,
+        if (realmCount != null) 'realm_count': realmCount,
         'is_public': isPublic,
         if (includeSeed) 'seed': seed,
       };

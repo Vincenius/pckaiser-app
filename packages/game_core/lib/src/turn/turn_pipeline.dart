@@ -9,7 +9,6 @@ import '../rules/offices.dart';
 import '../rules/population.dart';
 import '../rules/titles.dart';
 import '../rules/victory.dart';
-import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
@@ -242,10 +241,10 @@ int _firstLivingSlot(GameState state) {
   throw StateError('no living realms');
 }
 
-/// Next non-vacant slot after [current], wrapping past slot 30.
+/// Next non-vacant slot after [current], wrapping past the last slot.
 int _nextLivingSlot(GameState state, int current) {
-  for (var i = 1; i <= World.realmCount; i++) {
-    final slot = (current + i - 1) % World.realmCount + 1;
+  for (var i = 1; i <= state.realmCount; i++) {
+    final slot = (current + i - 1) % state.realmCount + 1;
     final realm = state.realm(slot);
     if (!realm.isVacant) return slot;
   }

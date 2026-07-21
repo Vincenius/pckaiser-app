@@ -204,6 +204,100 @@ void main() {
       expect(again.toJson(), state.toJson());
     });
 
+    for (final size in [MapSize.klein, MapSize.mittel]) {
+      test('${size.name} maps build a smaller world with fewer realms', () {
+        final state = newGame(GameSetup(
+          humans: [
+            HumanPlayerSetup(
+                founderName: 'Vincent',
+                gender: 0,
+                countrySlot: size.defaultRealmCount, // highest slot in play
+                dorfName: 'Wien'),
+          ],
+          reformationYear: 1020,
+          ottomanYear: 1040,
+          mapSize: size,
+          seed: 2026,
+        ));
+        expect(state.map.width, size.width);
+        expect(state.map.height, size.height);
+        expect(state.realmCount, size.defaultRealmCount);
+        expect(state.realms, hasLength(size.defaultRealmCount));
+        expect(state.dynasties, hasLength(size.defaultRealmCount));
+        // Every realm owns its full 5-tile cross, none overlap.
+        final ownedTotal =
+            state.map.owner.where((o) => o != World.niemand).length;
+        expect(ownedTotal, size.defaultRealmCount * 5);
+        // The world survives a JSON roundtrip with its size intact.
+        final loaded = GameState.fromJson(state.toJson());
+        expect(loaded.map.width, size.width);
+        expect(loaded.map.height, size.height);
+        expect(loaded.realmCount, size.defaultRealmCount);
+        expect(loaded.toJson(), state.toJson());
+      });
+    }
+
+    test('an explicit realm count within the size range is honored', () {
+      final state = newGame(GameSetup(
+        humans: [],
+        reformationYear: 1020,
+        ottomanYear: 1040,
+        mapSize: MapSize.klein,
+        realmCount: 8,
+        seed: 7,
+      ));
+      expect(state.realmCount, 8);
+    });
+
+    test('rejects realm counts outside the size range and too many humans',
+        () {
+      GameSetup make({int? realmCount, int humanCount = 0}) => GameSetup(
+            humans: [
+              for (var i = 0; i < humanCount; i++)
+                HumanPlayerSetup(
+                    founderName: 'H$i',
+                    gender: 0,
+                    countrySlot: null,
+                    dorfName: 'D$i'),
+            ],
+            reformationYear: 1020,
+            ottomanYear: 1040,
+            mapSize: MapSize.klein,
+            realmCount: realmCount,
+            seed: 1,
+          );
+      expect(() => make(realmCount: 5), throwsArgumentError);
+      expect(() => make(realmCount: 17), throwsArgumentError);
+      // 7 humans don't fit into 6 realms.
+      expect(() => make(realmCount: 6, humanCount: 7), throwsArgumentError);
+      expect(make(realmCount: 6, humanCount: 6), isA<GameSetup>());
+    });
+
+    test('rejects a chosen country beyond the realms in play', () {
+      expect(
+        () => newGame(GameSetup(
+          humans: [
+            HumanPlayerSetup(
+                founderName: 'X', gender: 0, countrySlot: 13, dorfName: 'D'),
+          ],
+          reformationYear: 1020,
+          ottomanYear: 1040,
+          mapSize: MapSize.klein, // 12 realms by default
+          seed: 1,
+        )),
+        throwsArgumentError,
+      );
+    });
+
+    test('maps without width/height in JSON load as the original 80×44', () {
+      final json = newGame(sampleSetup()).map.toJson()
+        ..remove('width')
+        ..remove('height');
+      final map = WorldMap.fromJson(json);
+      expect(map.width, 80);
+      expect(map.height, 44);
+    });
+
     test('rejects setup years before 1011 (§5) and bad slots', () {
       expect(
         () => GameSetup(

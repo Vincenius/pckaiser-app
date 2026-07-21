@@ -47,12 +47,42 @@ class _SetupScreenState extends State<SetupScreen> {
   bool _genderEqualSuccession = true;
   bool _suggestChildNames = true;
   AiDifficulty _aiDifficulty = AiDifficulty.mittel;
+  MapSize _mapSize = MapSize.gross;
+  int _realmCount = MapSize.gross.defaultRealmCount;
+
+  /// Human players are capped by the seats in play (and the original's 16).
+  int get _maxPlayers => _realmCount < 16 ? _realmCount : 16;
 
   int _nextFreeSlot() {
-    for (var slot = 1; slot <= 30; slot++) {
+    for (var slot = 1; slot <= _realmCount; slot++) {
       if (!_players.any((p) => p.countrySlot == slot)) return slot;
     }
     return 1;
+  }
+
+  /// A new map size resets the realm count to its default; player-chosen
+  /// countries beyond the new count fall back to "Zufällig" (clearing an
+  /// auto-filled Dorf like a manual switch to Zufällig would).
+  void _applyMapSize(MapSize size) {
+    setState(() {
+      _mapSize = size;
+      _setRealmCount(size.defaultRealmCount);
+    });
+  }
+
+  void _applyRealmCount(int count) {
+    setState(() => _setRealmCount(count));
+  }
+
+  void _setRealmCount(int count) {
+    _realmCount = count;
+    for (final p in _players) {
+      final slot = p.countrySlot;
+      if (slot == null || slot <= count) continue;
+      p.countrySlot = null;
+      final dorf = p.dorf.text.trim();
+      if (dorf.isEmpty || cityNames.contains(dorf)) p.dorf.text = '';
+    }
   }
 
   String? _validate() {
@@ -64,6 +94,15 @@ class _SetupScreenState extends State<SetupScreen> {
     if (yearError != null) return yearError;
     if (_slotName.text.trim().isEmpty) {
       return tr('setup.errorSlotName');
+    }
+    if (_players.length > _maxPlayers) {
+      return tr('setup.errorTooManyPlayers', {
+        'players': _players.length,
+        'realms': _realmCount,
+      });
+    }
+    if (_players.any((p) => (p.countrySlot ?? 0) > _realmCount)) {
+      return tr('setup.errorCountryOutOfRange', {'realms': _realmCount});
     }
     for (final p in _players) {
       if (p.name.text.trim().isEmpty) {
@@ -149,6 +188,8 @@ class _SetupScreenState extends State<SetupScreen> {
       genderEqualSuccession: _genderEqualSuccession,
       suggestChildNames: _suggestChildNames,
       aiDifficulty: _aiDifficulty,
+      mapSize: _mapSize,
+      realmCount: _realmCount,
       seed: DateTime.now().microsecondsSinceEpoch & 0xFFFFFFFF,
     );
     if (!mounted) return;
@@ -187,13 +228,16 @@ class _SetupScreenState extends State<SetupScreen> {
           Text(
             _players.length == 1
                 ? tr('setup.playersHeading')
-                : tr('setup.playersHeadingCount', {'count': _players.length}),
+                : tr('setup.playersHeadingCount', {
+                    'count': _players.length,
+                    'max': _maxPlayers,
+                  }),
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
           for (var i = 0; i < _players.length; i++) _playerCard(i),
           const SizedBox(height: 8),
-          if (_players.length < 16)
+          if (_players.length < _maxPlayers)
             OutlinedButton.icon(
               onPressed: () =>
                   setState(() => _players.add(_PlayerDraft(_nextFreeSlot()))),
@@ -205,6 +249,10 @@ class _SetupScreenState extends State<SetupScreen> {
             reformation: _reformation,
             ottoman: _ottoman,
             warStart: _warStart,
+            mapSize: _mapSize,
+            onMapSizeChanged: _applyMapSize,
+            realmCount: _realmCount,
+            onRealmCountChanged: _applyRealmCount,
             aiDifficulty: _aiDifficulty,
             onAiDifficultyChanged: (v) => setState(() => _aiDifficulty = v),
             genderEqualSuccession: _genderEqualSuccession,
@@ -250,6 +298,7 @@ class _SetupScreenState extends State<SetupScreen> {
         onGenderChanged: (v) => setState(() => p.gender = v),
         countrySlot: p.countrySlot,
         onCountryChanged: (v) => setState(() => p.countrySlot = v),
+        maxSlot: _realmCount,
         randomDorfHint: tr('setup.randomDorfHint'),
         header: Row(
           children: [

@@ -23,6 +23,7 @@ class EmpireCard extends StatelessWidget {
     required this.onGenderChanged,
     required this.countrySlot,
     required this.onCountryChanged,
+    this.maxSlot = World.realmCount,
     this.randomDorfHint,
     this.header,
   });
@@ -34,9 +35,14 @@ class EmpireCard extends StatelessWidget {
   final int gender;
   final ValueChanged<int> onGenderChanged;
 
-  /// Realm slot 1–30, or null = "Zufällig".
+  /// Realm slot 1–[maxSlot], or null = "Zufällig".
   final int? countrySlot;
   final ValueChanged<int?> onCountryChanged;
+
+  /// Highest selectable realm slot — the game's realm count (local setup:
+  /// the configured value; online joiners see the full 1–30 list, the
+  /// server validates against the match settings).
+  final int maxSlot;
 
   /// Helper text under the Dorf field while "Zufällig" is selected (local
   /// setup: an empty Dorf falls back to the drawn realm's village; online
@@ -97,6 +103,12 @@ class EmpireCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<int?>(
+                    // The FormField owns its selection state; the key
+                    // rebuilds it whenever the parent-managed value or the
+                    // slot range changes (map-size shrink resets picks
+                    // beyond the new realm count — without the key the
+                    // stale internal value would not even be in `items`).
+                    key: ValueKey('land-$countrySlot-$maxSlot'),
                     initialValue: countrySlot,
                     decoration: InputDecoration(
                       labelText: tr('game.landLabel'),
@@ -106,7 +118,7 @@ class EmpireCard extends StatelessWidget {
                         value: null,
                         child: Text(tr('game.random')),
                       ),
-                      for (var slot = 1; slot <= World.realmCount; slot++)
+                      for (var slot = 1; slot <= maxSlot; slot++)
                         DropdownMenuItem(
                           value: slot,
                           child: Text(realmName(slot)),

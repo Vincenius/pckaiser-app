@@ -6,7 +6,7 @@ PCKaiser mobile clone (Flutter + Flame, Android/iOS). V1 = local hot-seat; V2 = 
 - Touch-only input, pinch-zoom map. Auto-save after every completed turn.
 - First 10 in-game years: no random deaths or eliminations; deliberate assassinations still resolve.
 - ONE pure-Dart rules engine (`packages/game_core`) shared by client and the future Dart-shelf server; only persistence/orchestration differ. Logic is pure: `(state, action, rng) → state`, RNG injected.
-- World = 30 realms (original layout), up to 16 human.
+- World = up to 30 realms, up to 16 human. Setup option "Kartengröße" (since 2026-07-21): Groß 80×44 (default, 10–30 realms, def. 30), Mittel 64×36 (8–24, def. 20), Klein 48×28 (6–16, def. 12) — `MapSize` in game_core; realm count = `state.realmCount` (realms list length), never the `World.realmCount` constant (that is the 30-slot table maximum).
 - Updates never break running games (`game_core/src/state/versioning.dart`): JSON changes additive (new field + `fromJson` default); reshapes bump `currentSchemaVersion` + migration. **Gameplay rules are NOT versioned — every game always plays the latest rules.** A rule/balance change ships as a new `appVersion` (in `versioning.dart`, mirrored in each `pubspec.yaml`); in an online match a seat on an older build must update before its next turn (server returns 426; the match view flags `update_required`). See ARCHITECTURE.md "Versioning & compatibility".
 - Hidden information is part of the domain model: `visibleStateFor(state, slot)` filters every view (local hot-seat AND server); espionage reveals fuzzed intel.
 - Modern UX deviations (event feed, in-turn undo, named save slots, accessibility, online turn timers) are specified in PROJECT_REQUIREMENTS.md.

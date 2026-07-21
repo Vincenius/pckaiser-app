@@ -1,15 +1,17 @@
 import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
-GameState aiOnlyGame({int seed = 2026}) => startGame(
-        newGame(GameSetup(
-          humans: const [],
-          reformationYear: 1020,
-          ottomanYear: 1040,
-          seed: seed,
-        )),
-        Rng(seed))
-    .state;
+GameState aiOnlyGame({int seed = 2026, MapSize mapSize = MapSize.gross}) =>
+    startGame(
+            newGame(GameSetup(
+              humans: const [],
+              reformationYear: 1020,
+              ottomanYear: 1040,
+              mapSize: mapSize,
+              seed: seed,
+            )),
+            Rng(seed))
+        .state;
 
 void expectInvariants(GameState state) {
   for (final realm in state.realms) {
@@ -241,6 +243,40 @@ void main() {
       expectInvariants(state);
 
       // The end state still serializes losslessly.
+      final json = state.toJson();
+      expect(GameState.fromJson(json).toJson(), json);
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('a klein world (12 AI realms) survives 200 years headless', () {
+      var state = aiOnlyGame(seed: 4242, mapSize: MapSize.klein);
+      expect(state.realmCount, MapSize.klein.defaultRealmCount);
+      var year = state.year;
+      var safety = 0;
+      var won = false;
+      while (state.year < 1200 && safety++ < 200 * 40) {
+        final slot = state.currentPlayer;
+        if (!state.realm(slot).isVacant &&
+            state.dynasty(slot).status == DynastyStatus.ai) {
+          state = runAiTurn(state, slot, Rng(state.rngSeed)).state;
+        }
+        if (state.activeWar != null) {
+          fail('an AI war was left unresolved');
+        }
+        state = completeTurn(state, Rng(state.rngSeed)).state;
+        if (state.events.isNotEmpty && state.events.last.type == 'gameWon') {
+          won = true;
+          break;
+        }
+        if (state.year > year) {
+          year = state.year;
+          if (year % 50 == 0) expectInvariants(state);
+        }
+        expect(state.pendingDecisions, isEmpty);
+      }
+      // Fewer realms consolidate faster, so an early victory is fine.
+      expect(won || state.year >= 1050, isTrue,
+          reason: 'simulation must run deep (or end by victory)');
+      expectInvariants(state);
       final json = state.toJson();
       expect(GameState.fromJson(json).toJson(), json);
     }, timeout: const Timeout(Duration(minutes: 3)));

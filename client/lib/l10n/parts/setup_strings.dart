@@ -6,7 +6,7 @@ const Map<String, String> setupDe = {
   'setup.defaultSlotName': 'Partie 1',
   'setup.slotNameLabel': 'Name des Spielstands',
   'setup.playersHeading': 'Spieler',
-  'setup.playersHeadingCount': 'Spieler ({count}/16)',
+  'setup.playersHeadingCount': 'Spieler ({count}/{max})',
   'setup.playerN': 'Spieler {n}',
   'setup.addPlayer': 'Spieler hinzufügen',
   'setup.removePlayer': 'Spieler entfernen',
@@ -25,7 +25,21 @@ const Map<String, String> setupDe = {
   'setup.overwrite': 'Überschreiben',
   // Advanced options card (local + online setup)
   'setup.advancedOptions': 'Erweiterte Optionen',
-  'setup.advancedOptionsSubtitle': 'Ereignis-Jahre, KI-Stärke, Regeln',
+  'setup.advancedOptionsSubtitle':
+      'Kartengröße, Ereignis-Jahre, KI-Stärke, Regeln',
+  'setup.mapSizeLabel': 'Kartengröße',
+  'setup.mapSizeSmall': 'Klein',
+  'setup.mapSizeMedium': 'Mittel',
+  'setup.mapSizeLarge': 'Groß',
+  'setup.mapSizeHint': '{width} × {height} Felder',
+  'setup.realmCountLabel': 'Reiche: {count}',
+  'setup.realmCountHint':
+      'Reiche insgesamt ({min}–{max}) — nicht von Spielern '
+      'besetzte Reiche übernimmt die KI.',
+  'setup.errorTooManyPlayers':
+      'Zu viele Spieler: {players} Spieler, aber nur {realms} Reiche',
+  'setup.errorCountryOutOfRange':
+      'Ein gewähltes Land liegt außerhalb der {realms} Reiche',
   'setup.aiStrengthLabel': 'Stärke der KI-Gegner',
   'setup.reformationYearLabel': 'Jahr der Reformation',
   'setup.ottomanInvasionLabel': 'Osmanen-Invasion',
@@ -77,7 +91,7 @@ const Map<String, String> setupEn = {
   'setup.defaultSlotName': 'Game 1',
   'setup.slotNameLabel': 'Save name',
   'setup.playersHeading': 'Players',
-  'setup.playersHeadingCount': 'Players ({count}/16)',
+  'setup.playersHeadingCount': 'Players ({count}/{max})',
   'setup.playerN': 'Player {n}',
   'setup.addPlayer': 'Add player',
   'setup.removePlayer': 'Remove player',
@@ -96,7 +110,21 @@ const Map<String, String> setupEn = {
   'setup.overwrite': 'Overwrite',
   // Advanced options card (local + online setup)
   'setup.advancedOptions': 'Advanced options',
-  'setup.advancedOptionsSubtitle': 'Event years, AI strength, rules',
+  'setup.advancedOptionsSubtitle':
+      'Map size, event years, AI strength, rules',
+  'setup.mapSizeLabel': 'Map size',
+  'setup.mapSizeSmall': 'Small',
+  'setup.mapSizeMedium': 'Medium',
+  'setup.mapSizeLarge': 'Large',
+  'setup.mapSizeHint': '{width} × {height} tiles',
+  'setup.realmCountLabel': 'Realms: {count}',
+  'setup.realmCountHint':
+      'Total realms ({min}–{max}) — realms not taken by '
+      'players are run by the AI.',
+  'setup.errorTooManyPlayers':
+      'Too many players: {players} players but only {realms} realms',
+  'setup.errorCountryOutOfRange':
+      'A chosen realm lies outside the {realms} realms in play',
   'setup.aiStrengthLabel': 'AI opponent strength',
   'setup.reformationYearLabel': 'Year of the Reformation',
   'setup.ottomanInvasionLabel': 'Ottoman invasion',

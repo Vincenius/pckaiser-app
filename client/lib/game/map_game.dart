@@ -96,8 +96,8 @@ class MapGame extends FlameGame with ScaleDetector {
     }
     camera.viewfinder.anchor = Anchor.center;
     camera.viewfinder.position = Vector2(
-      gc.World.mapWidth * tileSize / 2,
-      gc.World.mapHeight * tileSize / 2,
+      _state.map.width * tileSize / 2,
+      _state.map.height * tileSize / 2,
     );
     camera.viewfinder.zoom = 0.5;
     world.add(_MapLayer(this));
@@ -468,8 +468,8 @@ class MapGame extends FlameGame with ScaleDetector {
     final zoom = camera.viewfinder.zoom;
     final halfW = size.x / (2 * zoom);
     final halfH = size.y / (2 * zoom);
-    const mapW = gc.World.mapWidth * tileSize;
-    const mapH = gc.World.mapHeight * tileSize;
+    final mapW = _state.map.width * tileSize;
+    final mapH = _state.map.height * tileSize;
     double axis(double value, double half, double max) =>
         2 * half >= max ? max / 2 : value.clamp(half, max - half);
     final p = camera.viewfinder.position;
@@ -486,8 +486,8 @@ class _MapLayer extends PositionComponent with TapCallbacks {
   _MapLayer(this.game)
     : super(
         size: Vector2(
-          gc.World.mapWidth * tileSize,
-          gc.World.mapHeight * tileSize,
+          game._state.map.width * tileSize,
+          game._state.map.height * tileSize,
         ),
       );
 
@@ -537,7 +537,8 @@ class _MapLayer extends PositionComponent with TapCallbacks {
   void onTapUp(TapUpEvent event) {
     final x = (event.localPosition.x / tileSize).floor();
     final y = (event.localPosition.y / tileSize).floor();
-    if (x >= 0 && x < gc.World.mapWidth && y >= 0 && y < gc.World.mapHeight) {
+    final map = game._state.map;
+    if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
       game.onTileTap?.call(x, y);
     }
   }

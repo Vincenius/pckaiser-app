@@ -39,9 +39,9 @@ void runWorldEvents(GameState state, Rng rng, List<GameEvent> events) {
 void _maybeEarthquake(GameState state, Rng rng, List<GameEvent> events) {
   if (state.year < firstEarthquakeYear) return;
   if (rng.nextInt(10) != 0) return;
-  final ex = rng.nextInt(World.mapWidth);
-  final ey = rng.nextInt(World.mapHeight);
   final map = state.map;
+  final ex = rng.nextInt(map.width);
+  final ey = rng.nextInt(map.height);
   final affected = <int>{};
 
   for (var y = math.max(0, ey - 10);

@@ -40,6 +40,7 @@ export 'src/state/election.dart';
 export 'src/state/game_event.dart';
 export 'src/state/game_state.dart';
 export 'src/state/intel_report.dart';
+export 'src/state/map_size.dart';
 export 'src/state/pending_decision.dart';
 export 'src/state/pending_ship_return.dart';
 export 'src/state/person.dart';

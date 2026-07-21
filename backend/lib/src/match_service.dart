@@ -23,6 +23,15 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+/// The realm count a match's world is (or will be) built with: the host's
+/// choice clamped into the map size's valid range — settings come off the
+/// wire, and an out-of-range value must degrade, never 500 the start.
+int realmCountFor(MatchSettings settings) {
+  final size = MapSize.fromName(settings.mapSize);
+  final count = settings.realmCount ?? size.defaultRealmCount;
+  return count.clamp(size.minRealmCount, size.maxRealmCount);
+}
+
 class MatchService {
   MatchService(this._store, this._push, {DateTime Function()? clock})
       : _clock = clock ?? (() => DateTime.now().toUtc());
@@ -146,7 +155,10 @@ class MatchService {
       if (match.playerById(playerId) != null) {
         throw ApiException(400, 'player already joined');
       }
-      if (match.players.length >= 16) {
+      // Human seats are capped by the realms in play (and the original's
+      // 16 — realmCountFor never exceeds 30, small maps allow fewer).
+      final realmCount = realmCountFor(match.settings);
+      if (match.players.length >= (realmCount < 16 ? realmCount : 16)) {
         throw ApiException(400, 'match is full');
       }
       _seat(match, playerId, setup);
@@ -358,11 +370,12 @@ class MatchService {
     if (gender != 0 && gender != 1) {
       throw ApiException(400, 'gender must be 0 or 1');
     }
+    final realmCount = realmCountFor(match.settings);
     final taken = {for (final p in match.players) p.slot};
     var slot = requestedSlot;
     if (slot != null) {
-      if (slot < 1 || slot > World.realmCount) {
-        throw ApiException(400, 'country_slot must be 1–30');
+      if (slot < 1 || slot > realmCount) {
+        throw ApiException(400, 'country_slot must be 1–$realmCount');
       }
       if (taken.contains(slot)) {
         throw ApiException(400, 'country_slot already taken');
@@ -371,7 +384,7 @@ class MatchService {
       // First free slot after a random offset — uniform enough and
       // deterministic to test with a seeded settings RNG is overkill.
       final free = [
-        for (var s = 1; s <= World.realmCount; s++)
+        for (var s = 1; s <= realmCount; s++)
           if (!taken.contains(s)) s,
       ];
       free.shuffle();
@@ -408,6 +421,8 @@ class MatchService {
       genderEqualSuccession: match.settings.genderEqualSuccession,
       suggestChildNames: match.settings.suggestChildNames,
       aiDifficulty: AiDifficulty.fromName(match.settings.aiDifficulty),
+      mapSize: MapSize.fromName(match.settings.mapSize),
+      realmCount: realmCountFor(match.settings),
       seed: match.settings.seed,
     );
     var state = newGame(setup);
@@ -511,7 +526,7 @@ class MatchService {
   List<int> _controlledSlots(GameState? state, int turnOrder, int homeSlot) {
     if (state == null) return [homeSlot];
     return [
-      for (var s = 1; s <= World.realmCount; s++)
+      for (var s = 1; s <= state.realmCount; s++)
         if (state.dynasty(s).status == DynastyStatus.human &&
             state.dynasty(s).humanPlayer == turnOrder)
           s,
@@ -682,7 +697,7 @@ class MatchService {
       // only their home slot: control follows the ruler, so a player can
       // come to play several realms (conquest, inheritance).
       if (action.slot < 1 ||
-          action.slot > World.realmCount ||
+          action.slot > state.realmCount ||
           state.dynasty(action.slot).humanPlayer != seat.turnOrder) {
         throw ApiException(403, 'action acts for a foreign realm');
       }

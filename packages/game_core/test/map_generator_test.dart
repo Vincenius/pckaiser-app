@@ -56,5 +56,41 @@ void main() {
       expect(berg / land, lessThan(0.30));
       expect(berg, greaterThan(0));
     });
+
+    test('default size is gross and matches an explicit gross', () {
+      final implicit = generateMap(Rng(2026));
+      final explicit = generateMap(Rng(2026), size: MapSize.gross);
+      expect(implicit.width, 80);
+      expect(implicit.height, 44);
+      expect(implicit.terrain, explicit.terrain);
+    });
+
+    for (final size in MapSize.values) {
+      test('${size.name} maps have the right grid and plausible land', () {
+        for (final seed in [1, 42, 2026]) {
+          final map = generateMap(Rng(seed), size: size);
+          expect(map.width, size.width);
+          expect(map.height, size.height);
+          expect(map.terrain, hasLength(size.width * size.height));
+          // Patch/lake counts are scaled by area, so the land share stays
+          // in the same band on every size.
+          final land = map.terrain.where(Terrain.isLand).length;
+          final fraction = land / map.terrain.length;
+          expect(fraction, greaterThan(0.30),
+              reason: '${size.name} seed $seed too watery');
+          expect(fraction, lessThan(0.95),
+              reason: '${size.name} seed $seed too dry');
+          // Shoreline pass holds on every grid.
+          for (var y = 0; y < map.height; y++) {
+            for (var x = 0; x < map.width; x++) {
+              if (map.isLandAt(x, y)) continue;
+              expect(map.terrainAt(x, y),
+                  Terrain.water + landNeighborMask(map, x, y),
+                  reason: '${size.name} shoreline mismatch at ($x, $y)');
+            }
+          }
+        }
+      });
+    }
   });
 }

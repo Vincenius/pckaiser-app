@@ -355,7 +355,7 @@ String? declareWarBlocker(GameState state, Realm realm, int targetSlot) {
   if (general != null) return general;
   if (targetSlot == realm.slot ||
       targetSlot < 1 ||
-      targetSlot > World.realmCount ||
+      targetSlot > state.realmCount ||
       state.realm(targetSlot).isVacant) {
     return coreMessage('invalidWarTarget');
   }
@@ -786,7 +786,7 @@ List<GameEvent> applySpyMission(
   }
   if (action.targetSlot == realm.slot ||
       action.targetSlot < 1 ||
-      action.targetSlot > World.realmCount ||
+      action.targetSlot > state.realmCount ||
       state.realm(action.targetSlot).isVacant) {
     throw ActionException(coreMessage('invalidTarget'));
   }
@@ -809,7 +809,7 @@ List<GameEvent> applyOrderAssassination(
   }
   if (action.targetSlot == realm.slot ||
       action.targetSlot < 1 ||
-      action.targetSlot > World.realmCount ||
+      action.targetSlot > state.realmCount ||
       state.realm(action.targetSlot).isVacant) {
     throw ActionException(coreMessage('invalidTarget'));
   }

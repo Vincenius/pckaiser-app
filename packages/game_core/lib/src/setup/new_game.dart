@@ -5,6 +5,7 @@ import '../state/ai_difficulty.dart';
 import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_state.dart';
+import '../state/map_size.dart';
 import '../state/person.dart';
 import '../state/realm.dart';
 import '../state/town.dart';
@@ -54,11 +55,24 @@ class GameSetup {
     this.genderEqualSuccession = true,
     this.suggestChildNames = true,
     this.aiDifficulty = AiDifficulty.mittel,
-  }) {
+    this.mapSize = MapSize.gross,
+    int? realmCount,
+  }) : realmCount = realmCount ?? mapSize.defaultRealmCount {
+    if (this.realmCount < mapSize.minRealmCount ||
+        this.realmCount > mapSize.maxRealmCount) {
+      throw ArgumentError('realm count ${this.realmCount} out of range '
+          '${mapSize.minRealmCount}–${mapSize.maxRealmCount} '
+          'for map size ${mapSize.name}');
+    }
     // 1–16 humans for real games; 0 is allowed for headless simulations
     // (e.g. the full-AI smoke test).
     if (humans.length > 16) {
       throw ArgumentError('at most 16 human players, got ${humans.length}');
+    }
+    if (humans.length > this.realmCount) {
+      throw ArgumentError(
+          '${humans.length} human players need ${humans.length} realms, '
+          'but only ${this.realmCount} are in play');
     }
     // "Das ist zu früh !!!" — each year validated independently (§5).
     if (reformationYear < minEventYear) {
@@ -73,6 +87,14 @@ class GameSetup {
   final int reformationYear;
   final int ottomanYear;
   final int seed;
+
+  /// World size (default: the original 80×44 map).
+  final MapSize mapSize;
+
+  /// Realm slots in play (slots 1..realmCount; humans on their chosen
+  /// slots, AI everywhere else). Defaults to [MapSize.defaultRealmCount];
+  /// validated against the size's min/max range.
+  final int realmCount;
 
   /// First year war declarations are allowed (§11.1; original 1010).
   final int warStartYear;
@@ -92,23 +114,25 @@ class GameSetup {
   final AiDifficulty aiDifficulty;
 }
 
-/// Creates a fresh game world (ORIGINAL_GAME.md §5): random map, 30
-/// dynasties (humans on their chosen country slots, AI everywhere else),
-/// each with a founder, a 5-tile starting cross and 1,000 Taler.
+/// Creates a fresh game world (ORIGINAL_GAME.md §5): random map,
+/// `setup.realmCount` dynasties (humans on their chosen country slots, AI
+/// everywhere else), each with a founder, a 5-tile starting cross and
+/// 1,000 Taler.
 ///
 /// All starting dynasties are Catholic — at year 999 the Reformation and
 /// Ottoman years are always in the future (§15.2).
 GameState newGame(GameSetup setup) {
   final rng = Rng(setup.seed);
-  final map = generateMap(rng);
+  final map = generateMap(rng, size: setup.mapSize);
   final componentSize = _landComponentSizes(map);
 
   final humanBySlot = <int, int>{};
   for (var i = 0; i < setup.humans.length; i++) {
     final slot = setup.humans[i].countrySlot;
     if (slot == null) continue; // "Zufällig" — drawn below.
-    if (slot < 1 || slot > World.realmCount) {
-      throw ArgumentError('country slot $slot out of range 1–30');
+    if (slot < 1 || slot > setup.realmCount) {
+      throw ArgumentError(
+          'country slot $slot out of range 1–${setup.realmCount}');
     }
     if (humanBySlot.containsKey(slot)) {
       throw ArgumentError('country slot $slot picked twice');
@@ -116,10 +140,10 @@ GameState newGame(GameSetup setup) {
     humanBySlot[slot] = i;
   }
   // Draw the "Zufällig" countries from the slots nobody picked — from the
-  // injected RNG, so a seed reproduces the draw (never underflows: at most
-  // 16 humans for 30 slots).
+  // injected RNG, so a seed reproduces the draw (never underflows: the
+  // GameSetup constructor guarantees humans ≤ realmCount).
   final freeSlots = [
-    for (var slot = 1; slot <= World.realmCount; slot++)
+    for (var slot = 1; slot <= setup.realmCount; slot++)
       if (!humanBySlot.containsKey(slot)) slot,
   ];
   for (var i = 0; i < setup.humans.length; i++) {
@@ -132,7 +156,7 @@ GameState newGame(GameSetup setup) {
   final persons = <int, Person>{};
   var nextPersonId = 1;
 
-  for (var slot = 1; slot <= World.realmCount; slot++) {
+  for (var slot = 1; slot <= setup.realmCount; slot++) {
     final humanIndex = humanBySlot[slot];
     final human = humanIndex == null ? null : setup.humans[humanIndex];
 
@@ -279,8 +303,10 @@ void _placeStartingCross(
       // instead of hanging.
       throw StateError('no valid starting position for slot ${realm.slot}');
     }
-    x = rng.nextInt(78) + 1;
-    y = rng.nextInt(42) + 1;
+    // Interior tiles only (the original's 78×42 on the 80×44 grid) — the
+    // starting cross needs all four neighbors in bounds.
+    x = rng.nextInt(map.width - 2) + 1;
+    y = rng.nextInt(map.height - 2) + 1;
     if (!map.isLandAt(x, y) || map.ownerAt(x, y) != World.niemand) continue;
     if (componentSize[map.index(x, y)] < minComponent) continue; // island
 
