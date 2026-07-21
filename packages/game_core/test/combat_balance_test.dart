@@ -1,11 +1,12 @@
 import 'package:game_core/game_core.dart';
 import 'package:test/test.dart';
 
-/// 2026-07-08 combat balancing: casualties scale with the winner's
-/// superiority instead of being flat shares of each side's own size.
-/// Before, a 10-man unit stripped 10–25% off ANY army it touched (chaff
-/// spam multiplied damage) and the [0.5, 1.5) fortune band let a 3× weaker
-/// side win on luck — small units regularly beat and out-damaged big ones.
+/// 2026-07-21 combat model (user-designed): a SYMMETRIC strength exchange.
+/// Each side loses its own men scaled by the enemy's share of the combined
+/// effective strength, so two equal-quality units lose the SAME absolute
+/// number regardless of size (1000 vs 100 → both ~91). Size is irrelevant;
+/// only strength (men × quality), fortification and Schere-Stein-Papier
+/// tilt the trade. These tests pin that philosophy down.
 void main() {
   late GameState state;
   late int openX, openY;
@@ -70,44 +71,39 @@ void main() {
     return events.single.payload;
   }
 
-  test('a huge unit crushes chaff near-bloodlessly and wipes it', () {
+  test('gleiche Qualität: der Riese blutet so stark wie der Zwerg', () {
+    // Symmetric exchange: 1000 vs 10 equal quality — the giant loses about
+    // as many men as the chaff it destroys (~its size), NOT a percentage of
+    // its own 1000. Size is irrelevant to the trade.
     for (var seed = 0; seed < 50; seed++) {
       final payload = clash(unit('Heer', 1000), unit('Chaff', 10), seed);
       expect(payload['defenderDestroyed'], isTrue,
-          reason: 'a 100× outmatched unit is routed outright (seed $seed)');
-      // 2026-07-21: the last-stand scaling doubles the chaff's reach (its
-      // share runs up to 50% of its strength) — still bounded by its own
-      // tiny strength, never a percentage of the giant.
-      expect(payload['attackerLosses'], lessThanOrEqualTo(7),
-          reason: 'chaff must not strip percentages off a giant (seed $seed)');
+          reason: 'the tiny unit is worn down to nothing (seed $seed)');
+      expect(payload['attackerLosses'], greaterThanOrEqualTo(5),
+          reason: 'even a giant bleeds ~the chaff\'s size (seed $seed)');
+      expect(payload['attackerLosses'], lessThanOrEqualTo(20),
+          reason: 'losses track the enemy\'s size, not the giant\'s '
+              '(seed $seed)');
     }
   });
 
-  test('a ≥ 5/3× stronger equal-quality force wins every clash', () {
-    for (var seed = 0; seed < 50; seed++) {
+  test('gleiche Qualität: der Größere gewinnt, verliert aber ähnlich viel', () {
+    // 200 vs 100 same quality: the bigger force wins every clash (a 2×
+    // strength gap can\'t flip inside the fortune band), but — size being
+    // irrelevant to the exchange — it loses roughly as many men as the
+    // loser. No cheap win.
+    for (var seed = 0; seed < 100; seed++) {
       final payload = clash(unit('Gross', 200), unit('Klein', 100), seed);
-      expect(payload['attackerDestroyed'], isFalse,
-          reason: 'the bigger force can no longer lose on luck (seed $seed)');
-      expect(payload['attackerLosses'],
-          lessThan(payload['defenderLosses'] as int),
-          reason: 'the outnumbered loser bleeds more (seed $seed)');
-    }
-  });
-
-  test('an upset winner bloodies a bigger army, it does not shred it', () {
-    // 100 vs 150 regulars: the smaller side CAN still win inside the
-    // [0.75, 1.25) fortune band — but its kills stay within its own reach
-    // (≈ its effective headcount), never the old 35–65% of the giant.
-    for (var seed = 0; seed < 200; seed++) {
-      final payload = clash(unit('Klein', 100), unit('Gross', 150), seed);
-      if (payload['defenderDestroyed'] == true ||
-          (payload['defenderLosses'] as int) >
-              (payload['attackerLosses'] as int)) {
-        // The 100-man side won this clash.
-        expect(payload['defenderLosses'], lessThanOrEqualTo(125),
-            reason: '100 winners cannot cut down more men than their own '
-                'effective strength reaches (seed $seed)');
-      }
+      expect(payload['attackerWon'], isTrue, reason: 'seed $seed');
+      expect(payload['attackerDestroyed'], isFalse, reason: 'seed $seed');
+      final att = payload['attackerLosses'] as int;
+      final def = payload['defenderLosses'] as int;
+      expect(att, greaterThanOrEqualTo((def * 0.5).floor()),
+          reason: 'the winner pays real men — comparable losses '
+              '($att vs $def, seed $seed)');
+      expect(att, lessThanOrEqualTo((def * 1.8).ceil()),
+          reason: 'neither side\'s losses run away from the other '
+              '($att vs $def, seed $seed)');
     }
   });
 
@@ -177,8 +173,8 @@ void main() {
     test('Stärke entscheidet: die ausgebildete Einheit schlägt den 3×-Mob',
         () {
       // 100 men quality 5 (strength 50) vs 300 regulars (strength 30): the
-      // 5/3 strength edge wins every clash inside the fortune band, and
-      // the veterans' losses stay small (10–25% of the mob's reach).
+      // 5/3 strength edge wins every clash inside the fortune band, and the
+      // mob (lower per-man strength) bleeds far more men than the veterans.
       for (var seed = 0; seed < 100; seed++) {
         final payload = clash(unit('Veteranen', 100, quality: 5),
             unit('Aufgebot', 300), seed);
@@ -186,18 +182,21 @@ void main() {
         expect(payload['defenderLosses'],
             greaterThan(payload['attackerLosses'] as int),
             reason: 'strength superiority carries the clash (seed $seed)');
-        expect(payload['attackerLosses'], lessThanOrEqualTo(20),
-            reason: 'the drilled unit keeps its order (seed $seed)');
       }
     });
 
-    test('2× Stärke gewinnt jede Schlacht und blutet den Verlierer aus', () {
+    test('2× Stärke gewinnt jede Schlacht, zahlt aber ähnlich viele Männer',
+        () {
+      // Symmetric exchange: 200 vs 100 equal quality — the winner\'s losses
+      // are on the same order as the loser\'s (no cheap 2× win).
       for (var seed = 0; seed < 100; seed++) {
         final payload = clash(unit('Gross', 200), unit('Klein', 100), seed);
         expect(payload['attackerDestroyed'], isFalse, reason: 'seed $seed');
-        expect(payload['defenderLosses'],
-            greaterThan(payload['attackerLosses'] as int),
-            reason: 'the weaker force bleeds more (seed $seed)');
+        expect(
+            payload['attackerLosses'],
+            greaterThanOrEqualTo(
+                ((payload['defenderLosses'] as int) * 0.5).floor()),
+            reason: 'the winner pays real men (seed $seed)');
       }
     });
 
@@ -276,11 +275,10 @@ void main() {
               'than not ($artWins/200)');
     });
 
-    test('2026-07-21 letztes Gefecht: der Unterlegene verkauft sich teuer',
-        () {
-      // 100 men falling to a 500 stack take ~34 along (last-stand scaling,
-      // ×√(strength ratio) capped at ×2) — before, only ~17.5. Averaged
-      // over many seeds; individual clashes stay within the share band.
+    test('2026-07-21 Doomstack zahlt voll drauf: kein Größen-Rabatt', () {
+      // 500 vs 100 equal quality: the stack loses about as many men as the
+      // 100-unit it clears — size does not shield it (the whole point of
+      // the symmetric model). Under the old reach model this was only ~34.
       var stackLosses = 0;
       const n = 200;
       for (var seed = 0; seed < n; seed++) {
@@ -288,36 +286,25 @@ void main() {
         expect(payload['attackerWon'], isTrue, reason: 'seed $seed');
         stackLosses += payload['attackerLosses'] as int;
       }
-      expect(stackLosses / n, greaterThan(25),
-          reason: 'a doomstack must pay real men per cleared unit');
-      expect(stackLosses / n, lessThan(45),
-          reason: 'the outmatched side must not out-trade its strength');
+      expect(stackLosses / n, greaterThan(60),
+          reason: 'a doomstack bleeds ~as much as the unit it clears '
+              '(${stackLosses / n})');
     });
 
-    test('2026-07-21 Overkill-Deckel: unter 2× Reichweite flieht der Rest',
-        () {
-      // 167 vs 100 (the 5/3 deterministic win): the loser routs with ≥ 20%
-      // of its men unless the winner's reach hits 2× — a full wipe is now
-      // the rare high-fortune case, not the default.
-      var wipes = 0;
-      var routed = 0; // capped at 80 losses — the unit keeps ≥ 20%
+    test('2026-07-21 knapper Sieg vernichtet den Verlierer nicht sofort', () {
+      // 167 vs 100 equal quality (the 5/3 deterministic win): the loser is
+      // decimated but usually SURVIVES the clash — both sides lose a similar
+      // count, so a beaten unit can rout and regroup rather than being wiped.
+      var survived = 0;
       const n = 200;
       for (var seed = 0; seed < n; seed++) {
         final payload = clash(unit('Gross', 167), unit('Klein', 100), seed);
         expect(payload['attackerWon'], isTrue, reason: 'seed $seed');
-        if (payload['defenderDestroyed'] == true) {
-          wipes++;
-        } else if ((payload['defenderLosses'] as int) <= 80) {
-          routed++;
-        }
-        // The remaining case (losses > 80 without a wipe) is the winner's
-        // high-fortune ≥ 2× reach, where the cap intentionally lifts.
+        if (payload['defenderDestroyed'] != true) survived++;
       }
-      expect(wipes, lessThan(n ~/ 4),
-          reason: 'full wipes must be the exception ($wipes/$n)');
-      expect(routed, greaterThan(n ~/ 2),
-          reason: 'most beaten units rout with ≥ 20% of their men '
-              '($routed/$n)');
+      expect(survived, greaterThan(n ~/ 2),
+          reason: 'a beaten unit usually routs rather than being wiped '
+              '($survived/$n)');
     });
 
     test('Schere-Stein-Papier: Inf > Kav > Art > Inf (×1.15)', () {

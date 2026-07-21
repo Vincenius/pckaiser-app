@@ -213,38 +213,28 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 /// [DEVIATION from §11.3] The original's formula made tile defense
 /// MULTIPLY the occupant's own losses (a Burg tripled your casualties)
 /// and open ground meant zero casualties ever — wars degenerated into
-/// walking races to the capital. Every encounter here is DECIDED: the
-/// side with the higher effective strength wins the clash.
+/// walking races to the capital.
 ///
-/// `[BALANCE 2026-07-19, user-designed]` A unit's STRENGTH — men ×
-/// per-man power (§10.1), exactly the number the client displays — is the
-/// ONE base factor in combat. On top of it only these modifiers:
+/// `[BALANCE 2026-07-21, user-designed]` A SYMMETRIC strength exchange:
+/// size is irrelevant, only strength decides. A unit's effective strength
+/// is men × per-man power (§10.1, exactly the number the client displays)
+/// times these modifiers:
 ///  - fortification: +15% on an own Burg tile, +25% on a Palast;
 ///  - Artillerie besieges: a fortified ENEMY keeps only half its
 ///    fortification bonus against the guns, and the guns fire ×1.1 at it;
 ///  - Schere-Stein-Papier, ×1.15 against the countered class:
 ///    Infanterie schlägt Kavallerie, Kavallerie schlägt Artillerie,
 ///    Artillerie schlägt Infanterie;
-///  - one shared fortune roll, [0.75, 1.25) vs its mirror — a ≥ 5/3×
-///    effective advantage therefore wins EVERY clash.
+///  - one shared fortune roll, [0.75, 1.25) vs its mirror.
 ///
-/// Casualties follow the OPPONENT's effective strength (converted into
-/// men via the casualty side's per-man power) — never a share of a unit's
-/// own size, so chaff cannot strip fixed percentages off a giant:
-///  - the loser loses 35–65% of what the winner's strength reaches
-///    (a remnant under 5 men is wiped — no endless 1-man tail fights);
-///  - the winner loses 10–25% of the loser's reach and always survives.
-///
-/// `[BALANCE 2026-07-21, user-designed]` Two size-vs-numbers correctives
-/// on top (win/lose is untouched — only the casualty conversion):
-///  - LAST STAND: the winner's 10–25% share scales with the strength
-///    ratio (`min(2, √(winnerEff/loserEff))`) — an outmatched unit sells
-///    itself dearly, so clearing many small units costs a doomstack real
-///    men (a 100-man unit falling to a 500 stack takes ~34 along, not
-///    ~17);
-///  - OVERKILL CAP: below 2× reach the loser keeps ≥ 20% of its men (a
-///    beaten army routs before it is annihilated — it can retreat and
-///    regroup next round); at ≥ 2× reach the full wipe applies as before.
+/// Casualties: each side loses its OWN men scaled by the ENEMY's share of
+/// the combined strength — `men × enemyEff / (ownEff + enemyEff)`. So two
+/// EQUAL-QUALITY units always lose the same absolute number of men — a
+/// 1000-stack and a 100-unit both lose ~91 — no matter their sizes; only
+/// quality, fortification and Schere-Stein-Papier tilt the trade, never
+/// raw headcount. The side ahead on effective strength counts the battle
+/// as won. A remnant under 5 men is wiped; if both sides would be wiped
+/// the stronger keeps one man, so exactly one side can ever fall.
 List<GameEvent> resolveCombat(
     GameState state, int slotA, Troop a, int slotB, Troop b, Rng rng) {
   bool fortified(Troop t) => switch (state.map.buildingAt(t.x, t.y)) {
@@ -286,33 +276,27 @@ List<GameEvent> resolveCombat(
   final effB =
       troopStrength(b) * fortFactor(b, a) * attackFactor(b, a) * fortuneB;
   final aWins = effA >= effB;
-  final winner = aWins ? a : b;
-  final loser = aWins ? b : a;
-  final winnerEff = aWins ? effA : effB;
-  final loserEff = aWins ? effB : effA;
+  final total = effA + effB;
 
-  // The loser's casualties are what the WINNER's strength cuts down (its
-  // reach in loser-quality men), the winner's what the loser's strength
-  // still reaches. The winner always keeps ≥ 1 man — so exactly one side
-  // can ever be wiped, never both.
-  final loserShare = 0.35 + 0.3 * rng.nextReal();
-  // Last stand: the outmatched loser sells itself dearly (see doc above).
-  final overmatch = math.min(2.0, math.sqrt(winnerEff / loserEff));
-  final winnerShare = (0.10 + 0.15 * rng.nextReal()) * overmatch;
-  final reach = winnerEff / powerPerMan(loser);
-  var lossesLoser = math.max(1, (reach * loserShare).round());
-  // Overkill cap: under 2× reach a beaten army routs instead of dying to
-  // the last man — it keeps at least 20% of its men.
-  if (reach < 2 * loser.men) {
-    lossesLoser = math.min(lossesLoser, (loser.men * 0.8).round());
-  }
+  // Symmetric strength exchange: each side loses its OWN men scaled by the
+  // ENEMY's share of the combined effective strength, so two equal-quality
+  // units lose the same absolute number regardless of size (1000 vs 100 →
+  // both ~91). No headcount is a factor beyond each unit's own size.
+  var lossesA = math.min(a.men, (a.men * effB / total).round());
+  var lossesB = math.min(b.men, (b.men * effA / total).round());
   // A remnant under 5 men is wiped — no endless 1-man tail fights.
-  if (loser.men - lossesLoser < 5) lossesLoser = loser.men;
-  final lossesWinner = math.min(winner.men - 1,
-      (loserEff * winnerShare / powerPerMan(winner)).round());
-
-  final lossesA = aWins ? lossesWinner : lossesLoser;
-  final lossesB = aWins ? lossesLoser : lossesWinner;
+  if (a.men - lossesA < 5) lossesA = a.men;
+  if (b.men - lossesB < 5) lossesB = b.men;
+  // Exactly one side can ever be wiped, never both: if both remnants fell,
+  // the effectively stronger side keeps one man (the mover/defender callers
+  // rely on this to tell annihilation from a held tile).
+  if (lossesA >= a.men && lossesB >= b.men) {
+    if (aWins) {
+      lossesA = a.men - 1;
+    } else {
+      lossesB = b.men - 1;
+    }
+  }
 
   final destroyedA = lossesA >= a.men;
   final destroyedB = lossesB >= b.men;

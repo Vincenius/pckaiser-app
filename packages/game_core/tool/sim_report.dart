@@ -29,6 +29,25 @@ void main(List<String> args) {
   tally(start.events);
   var total = start.events.length;
   var safety = 0;
+
+  // Sample every living realm's own regular units once per game-year, so the
+  // troop-composition report reflects the WHOLE run (many realms alive), not
+  // just the consolidated end state (a handful of survivors).
+  final units = <(int men, int quality, int cls)>[];
+  var lastSampledYear = -1;
+  void sampleTroops() {
+    if (state.year == lastSampledYear) return;
+    lastSampledYear = state.year;
+    for (final r in state.realms) {
+      if (r.isVacant) continue;
+      for (final t in r.troops) {
+        if (!t.garrisonCounted) continue; // own regulars only
+        units.add((t.men, t.quality, t.troopClass));
+      }
+    }
+  }
+
+  sampleTroops();
   while (state.year < 1200 && safety++ < 8000) {
     final slot = state.currentPlayer;
     if (!state.realm(slot).isVacant &&
@@ -42,6 +61,7 @@ void main(List<String> args) {
     state = result.state;
     tally(result.events);
     total += result.events.length;
+    sampleTroops();
     if (result.events.any((e) => e.type == 'gameWon')) break;
   }
   print('final year: ${state.year}, events: $total '
@@ -75,4 +95,47 @@ void main(List<String> args) {
   }
   final living = state.realms.where((r) => !r.isVacant).length;
   print('living realms: $living');
+
+  // Troop composition sampled yearly across all living realms — the balance
+  // signal: does the AI field cheap hordes (many men, quality 1), expensive
+  // elites (few men, high quality), or a healthy mix of both?
+  print('\n--- troop composition (${units.length} yearly unit samples) ---');
+  if (units.isNotEmpty) {
+    double strengthOf((int men, int quality, int cls) u) =>
+        u.$1 * (3 * u.$3 + u.$2) / 10;
+    final totalMen = units.fold(0, (a, u) => a + u.$1);
+    final totalStr = units.fold(0.0, (a, u) => a + strengthOf(u));
+    final avgMen = totalMen / units.length;
+    final avgQ = units.fold(0, (a, u) => a + u.$2) / units.length;
+    final maxQ = units.fold(0, (a, u) => u.$2 > a ? u.$2 : a);
+    final maxMen = units.fold(0, (a, u) => u.$1 > a ? u.$1 : a);
+    print('  avg men/unit: ${avgMen.toStringAsFixed(0)}, '
+        'avg quality: ${avgQ.toStringAsFixed(1)}, '
+        'max quality: $maxQ, max men: $maxMen');
+    print('  total men: $totalMen, total strength: ${totalStr.toStringAsFixed(0)}');
+
+    void histogram(String label, List<(String, bool Function((int, int, int)))> buckets) {
+      final line = StringBuffer('  $label: ');
+      for (final (name, pred) in buckets) {
+        final n = units.where(pred).length;
+        line.write('$name=$n  ');
+      }
+      print(line.toString().trimRight());
+    }
+
+    histogram('quality', [
+      ('Q1(roh)', (u) => u.$2 == 1),
+      ('Q2-4', (u) => u.$2 >= 2 && u.$2 <= 4),
+      ('Q5-9', (u) => u.$2 >= 5 && u.$2 <= 9),
+      ('Q10-19', (u) => u.$2 >= 10 && u.$2 <= 19),
+      ('Q20+', (u) => u.$2 >= 20),
+    ]);
+    histogram('size', [
+      ('<50', (u) => u.$1 < 50),
+      ('50-199', (u) => u.$1 >= 50 && u.$1 < 200),
+      ('200-499', (u) => u.$1 >= 200 && u.$1 < 500),
+      ('500-999', (u) => u.$1 >= 500 && u.$1 < 1000),
+      ('1000+', (u) => u.$1 >= 1000),
+    ]);
+  }
 }
