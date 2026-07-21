@@ -176,12 +176,16 @@ class _OnlineScreenState extends State<OnlineScreen> {
 
   /// Opens the full-screen setup (same design as the local new-game
   /// screen) and pops back with the player's choices — no dialog.
-  Future<OnlineSetupResult?> _askSetup(OnlineSetupMode mode) {
+  Future<OnlineSetupResult?> _askSetup(OnlineSetupMode mode, {String? matchId}) {
     return Navigator.of(context).push<OnlineSetupResult>(
       MaterialPageRoute(
         builder: (_) => OnlineSetupScreen(
           mode: mode,
           displayName: _service?.displayName,
+          // Lets the setup screen grey out countries already taken in the
+          // match (public join: known id; by-code: looked up once entered).
+          api: mode == OnlineSetupMode.host ? null : _service?.api,
+          matchId: matchId,
         ),
       ),
     );
@@ -226,7 +230,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
 
   /// Join a public game straight from the open-games list (no code needed).
   Future<void> _joinPublic(String id) async {
-    final result = await _askSetup(OnlineSetupMode.joinPublic);
+    final result = await _askSetup(OnlineSetupMode.joinPublic, matchId: id);
     if (result == null) return;
     await _join(id, result.setup);
   }

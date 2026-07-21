@@ -145,6 +145,22 @@ void main() {
       expect(seat.slot, inInclusiveRange(1, 30));
     });
 
+    test('openSlots reports taken countries and the realm count', () async {
+      final (a, b) = await twoPlayers();
+      final match = await service.createMatch(
+        playerId: a.id,
+        settings: MatchSettings(seed: 42, mapSize: 'klein'),
+        setup: setupFor('Anna', 3),
+      );
+      await service.joinMatch(
+          matchId: match.id, playerId: b.id, setup: setupFor('Berta', 5));
+      // Anyone may ask — no membership required (it only lists free realms).
+      final slots = await service.openSlots(match.id);
+      expect(slots['status'], 'waiting');
+      expect(slots['realm_count'], MapSize.klein.defaultRealmCount);
+      expect((slots['taken_slots'] as List).toSet(), {3, 5});
+    });
+
     test('outsiders may not view a match', () async {
       final (a, b) = await twoPlayers();
       final match = await createStarted(

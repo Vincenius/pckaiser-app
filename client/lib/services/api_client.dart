@@ -74,6 +74,12 @@ class ApiClient {
           ))['list']
           as List<dynamic>;
 
+  /// Country slots already taken in a (waiting) match, so a joiner can see
+  /// which realms are still free before committing. Best-effort UX hint —
+  /// the join call validates authoritatively.
+  Future<Map<String, dynamic>> openSlots(String matchId) =>
+      _request('GET', '/api/v1/matches/$matchId/openslots');
+
   /// Starts a waiting match — creator only.
   Future<Map<String, dynamic>> startMatch({
     required String matchId,

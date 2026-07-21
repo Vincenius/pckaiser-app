@@ -24,6 +24,7 @@ class EmpireCard extends StatelessWidget {
     required this.countrySlot,
     required this.onCountryChanged,
     this.maxSlot = World.realmCount,
+    this.takenSlots = const {},
     this.randomDorfHint,
     this.header,
   });
@@ -43,6 +44,10 @@ class EmpireCard extends StatelessWidget {
   /// the configured value; online joiners see the full 1–30 list, the
   /// server validates against the match settings).
   final int maxSlot;
+
+  /// Realm slots already claimed by other players (online join) — shown
+  /// greyed out and unselectable. Empty for local setup and hosting.
+  final Set<int> takenSlots;
 
   /// Helper text under the Dorf field while "Zufällig" is selected (local
   /// setup: an empty Dorf falls back to the drawn realm's village; online
@@ -119,10 +124,24 @@ class EmpireCard extends StatelessWidget {
                         child: Text(tr('game.random')),
                       ),
                       for (var slot = 1; slot <= maxSlot; slot++)
-                        DropdownMenuItem(
-                          value: slot,
-                          child: Text(realmName(slot)),
-                        ),
+                        if (takenSlots.contains(slot))
+                          // Already claimed by another player — greyed and
+                          // unselectable (the server still validates on join).
+                          DropdownMenuItem(
+                            value: slot,
+                            enabled: false,
+                            child: Text(
+                              tr('game.landTaken', {'name': realmName(slot)}),
+                              style: TextStyle(
+                                color: Theme.of(context).disabledColor,
+                              ),
+                            ),
+                          )
+                        else
+                          DropdownMenuItem(
+                            value: slot,
+                            child: Text(realmName(slot)),
+                          ),
                     ],
                     onChanged: _countryChanged,
                   ),

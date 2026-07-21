@@ -31,6 +31,7 @@ class Api {
       ..post('/api/v1/matches/<id>/start', _startMatch)
       ..post('/api/v1/matches/<id>/leave', _leaveMatch)
       ..post('/api/v1/matches/<id>/kick', _kickPlayer)
+      ..get('/api/v1/matches/<id>/openslots', _openSlots)
       ..get('/api/v1/matches/<id>', _getMatch)
       ..post('/api/v1/matches/<id>/turn', _submitTurn);
     return router.call;
@@ -132,6 +133,9 @@ class Api {
         );
         return _service.view(id, requesterId);
       });
+
+  Future<Response> _openSlots(Request request, String id) =>
+      _guard(() => _service.openSlots(id));
 
   Future<Response> _getMatch(Request request, String id) => _guard(() {
         final playerId = request.url.queryParameters['player_id'];

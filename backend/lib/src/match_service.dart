@@ -611,6 +611,20 @@ class MatchService {
     return result;
   }
 
+  /// The country slots already claimed in a waiting match — lets a joiner's
+  /// setup screen grey out taken realms (and cap the list at the match's
+  /// realm count) before it even tries to join. Purely a UX hint: the join
+  /// call still validates authoritatively. Open to anyone, since it reveals
+  /// only which of the map's realms are still free, nothing about the game.
+  Future<Map<String, dynamic>> openSlots(String matchId) async {
+    final match = await _requireMatch(matchId);
+    return {
+      'status': match.status.name,
+      'realm_count': realmCountFor(match.settings),
+      'taken_slots': [for (final p in match.players) p.slot],
+    };
+  }
+
   // --- Turn submission ---------------------------------------------------
 
   /// `POST /matches/:id/turn` — either `{action: {...}}` (in-turn action,

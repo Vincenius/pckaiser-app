@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:game_core/game_core.dart' as gc;
 
 import '../l10n/strings.dart' show tr;
+import '../services/api_client.dart';
 import '../services/match_setup.dart';
 import '../widgets/advanced_options.dart';
 import '../widgets/empire_card.dart';
@@ -34,12 +35,27 @@ class OnlineSetupResult {
 /// (sections, cards, pinned primary button) instead of the former dialog.
 /// Pops with an [OnlineSetupResult]; the lobby performs the API calls.
 class OnlineSetupScreen extends StatefulWidget {
-  const OnlineSetupScreen({super.key, required this.mode, this.displayName});
+  const OnlineSetupScreen({
+    super.key,
+    required this.mode,
+    this.displayName,
+    this.api,
+    this.matchId,
+  });
 
   final OnlineSetupMode mode;
 
   /// Pre-fills the founder name with the player's online name.
   final String? displayName;
+
+  /// Client used to look up which countries are already taken so the
+  /// EmpireCard can grey them out (both join modes; null when hosting).
+  final ApiClient? api;
+
+  /// The match being joined from the public list — its taken slots are
+  /// fetched as soon as the screen opens. Null for [OnlineSetupMode.joinByCode]
+  /// (the code is entered here, so the lookup fires once it is complete).
+  final String? matchId;
 
   @override
   State<OnlineSetupScreen> createState() => _OnlineSetupScreenState();
@@ -65,22 +81,100 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   var _mapSize = gc.MapSize.gross;
   var _realmCount = gc.MapSize.gross.defaultRealmCount;
 
+  /// Countries already claimed by other players in the match being joined,
+  /// and that match's realm count — both filled from an [openSlots] lookup
+  /// so the EmpireCard can grey out taken realms. A stale response from an
+  /// earlier room code must not overwrite a newer one, hence [_slotsGen].
+  Set<int> _takenSlots = const {};
+  int? _remoteRealmCount;
+  int _slotsGen = 0;
+
   bool get _isHost => widget.mode == OnlineSetupMode.host;
+
+  @override
+  void initState() {
+    super.initState();
+    // Public join: the match id is known up front, so fetch immediately.
+    if (widget.mode == OnlineSetupMode.joinPublic && widget.matchId != null) {
+      _fetchOpenSlots(widget.matchId!);
+    }
+    // Join by code: the code is typed here — look up once it is complete.
+    if (widget.mode == OnlineSetupMode.joinByCode) {
+      _roomCode.addListener(_onRoomCodeChanged);
+    }
+  }
+
+  void _onRoomCodeChanged() {
+    final code = _roomCode.text.trim();
+    if (code.length == 5) {
+      _fetchOpenSlots(code);
+    } else if (_takenSlots.isNotEmpty || _remoteRealmCount != null) {
+      // An incomplete code can't identify a match — drop any stale hints.
+      _slotsGen++;
+      setState(() {
+        _takenSlots = const {};
+        _remoteRealmCount = null;
+      });
+    }
+  }
+
+  Future<void> _fetchOpenSlots(String id) async {
+    final api = widget.api;
+    if (api == null) return;
+    final gen = ++_slotsGen;
+    try {
+      final data = await api.openSlots(id);
+      // Ignore a response the user has already moved past (newer code typed).
+      if (!mounted || gen != _slotsGen) return;
+      // Only a waiting match can still be joined; anything else has no free
+      // seats to offer, so keep the plain full list.
+      if (data['status'] != 'waiting') return;
+      setState(() {
+        _takenSlots = {
+          for (final s in (data['taken_slots'] as List).cast<int>()) s,
+        };
+        _remoteRealmCount = data['realm_count'] as int?;
+        // A pre-selected country that turns out taken (or beyond the match's
+        // realm count) falls back to "Zufällig" so the dropdown never holds
+        // a greyed-out or out-of-range value.
+        if (_slot != null &&
+            (_takenSlots.contains(_slot) ||
+                (_remoteRealmCount != null && _slot! > _remoteRealmCount!))) {
+          _slot = null;
+        }
+      });
+    } on Object {
+      // Best-effort hint: on any failure keep the full list — the join call
+      // still reports a taken country with a clear error.
+    }
+  }
 
   /// A new map size resets the realm count to its default; an own country
   /// pick beyond the new count falls back to "Zufällig".
   void _applyMapSize(gc.MapSize size) {
     setState(() {
       _mapSize = size;
-      _realmCount = size.defaultRealmCount;
-      if ((_slot ?? 0) > _realmCount) _slot = null;
+      _setRealmCount(size.defaultRealmCount);
     });
+  }
+
+  /// Lowering the realm count below the host's own country pick drops it back
+  /// to "Zufällig" — otherwise the EmpireCard dropdown would hold a value
+  /// outside its (now shorter) item list.
+  void _applyRealmCount(int count) {
+    setState(() => _setRealmCount(count));
+  }
+
+  void _setRealmCount(int count) {
+    _realmCount = count;
+    if ((_slot ?? 0) > count) _slot = null;
   }
 
   @override
   void dispose() {
     _founder.dispose();
     _dorf.dispose();
+    _roomCode.removeListener(_onRoomCodeChanged);
     _roomCode.dispose();
     _reformation.dispose();
     _ottoman.dispose();
@@ -196,9 +290,13 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
             onGenderChanged: (v) => setState(() => _gender = v),
             countrySlot: _slot,
             onCountryChanged: (v) => setState(() => _slot = v),
-            // Joiners don't know the host's realm count — they see the
-            // full list; the server validates the pick on join.
-            maxSlot: _isHost ? _realmCount : gc.World.realmCount,
+            // Hosts use the configured count; joiners fall back to the full
+            // list until the openSlots lookup returns the match's real count.
+            maxSlot: _isHost
+                ? _realmCount
+                : (_remoteRealmCount ?? gc.World.realmCount),
+            // Countries other players already claimed — greyed out.
+            takenSlots: _takenSlots,
           ),
           if (_isHost) ...[
             const SizedBox(height: 24),
@@ -209,7 +307,7 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
               mapSize: _mapSize,
               onMapSizeChanged: _applyMapSize,
               realmCount: _realmCount,
-              onRealmCountChanged: (v) => setState(() => _realmCount = v),
+              onRealmCountChanged: _applyRealmCount,
               aiDifficulty: _aiDifficulty,
               onAiDifficultyChanged: (v) => setState(() => _aiDifficulty = v),
               genderEqualSuccession: _genderEqualSuccession,

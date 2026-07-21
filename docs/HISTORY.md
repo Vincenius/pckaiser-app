@@ -6,6 +6,22 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-21 — Grey out taken countries when joining online (user request)
+
+- Joining an online match and picking an already-used country showed a
+  server error only after the fact. The country dropdown now greys out
+  taken realms up front. New best-effort lookup `GET /matches/:id/openslots`
+  (`MatchService.openSlots`, open to anyone — reveals only which realms are
+  free) returns `{status, realm_count, taken_slots}`.
+- Client: `OnlineSetupScreen` fetches it — for a public join by the known
+  match id on open, for a by-code join once the 5-letter code is complete
+  (guarded against stale responses). `EmpireCard` gains `takenSlots`
+  (greyed, unselectable, "(belegt)"/"(taken)" via `game.landTaken`); a
+  pre-selected pick that turns out taken/out-of-range falls back to
+  "Zufällig". Joiners' list is now also capped at the match's real realm
+  count once known (was the full 1–30). The join call still validates
+  authoritatively; on any lookup failure the plain full list is kept.
+
 ## 2026-07-21 — Map sizes + configurable realm count (user request)
 
 - New advanced setup option "Kartengröße" (local + online host): Groß =

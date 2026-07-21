@@ -123,6 +123,7 @@ const Map<String, String> gameDe = {
   'game.female': 'Weiblich',
   'game.landLabel': 'Land',
   'game.random': 'Zufällig',
+  'game.landTaken': '{name} (belegt)',
   'game.firstVillage': 'Erstes Dorf',
 };
 
@@ -246,5 +247,6 @@ const Map<String, String> gameEn = {
   'game.female': 'Female',
   'game.landLabel': 'Realm',
   'game.random': 'Random',
+  'game.landTaken': '{name} (taken)',
   'game.firstVillage': 'First village',
 };
