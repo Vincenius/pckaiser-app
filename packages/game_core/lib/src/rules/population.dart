@@ -98,8 +98,11 @@ FoodReport runFoodAndPopulation(
   var devastatedLivestock = 0;
   final map = state.map;
   for (var i = 0; i < map.terrain.length; i++) {
-    if (map.owner[i] != realm.slot) continue;
+    // Cheapest reject first: almost every tile is intact (0 = never
+    // devastated), so this one comparison skips the owner/building reads
+    // for the whole map in the common no-recent-war case.
     if (map.devastatedUntil[i] <= state.year) continue;
+    if (map.owner[i] != realm.slot) continue;
     if (map.building[i] == Building.kornfeld) devastatedGrain++;
     if (map.building[i] == Building.weide) devastatedLivestock++;
   }

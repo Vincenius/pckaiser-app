@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:game_core/game_core.dart' as gc;
 
 import 'parts/events_strings.dart';
 import 'parts/game_strings.dart';
@@ -200,11 +201,10 @@ const Map<String, String> _coreDe = {
 /// Optional [params] replace `{name}`-style placeholders in the template:
 /// `tr('deleteSlotQuestion', {'name': slot.name})`.
 String tr(String key, [Map<String, Object?>? params]) {
-  var s = _table[appLocale.value]?[key] ?? _table['en']![key] ?? key;
-  if (params != null) {
-    params.forEach((k, v) => s = s.replaceAll('{$k}', '$v'));
-  }
-  return s;
+  final template = _table[appLocale.value]?[key] ?? _table['en']![key] ?? key;
+  // Shared placeholder substitution with the engine's coreMessage, so UI and
+  // engine-produced strings format identically.
+  return gc.formatTemplate(template, params);
 }
 
 /// Server timestamps (ISO 8601, UTC) rendered in the device's timezone

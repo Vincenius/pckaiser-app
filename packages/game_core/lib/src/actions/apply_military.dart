@@ -663,40 +663,21 @@ List<GameEvent> applyWarNavalTransport(
 
 List<GameEvent> applyWarPlunder(
     GameState state, Realm realm, WarPlunder action, Rng rng) {
-  final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
-  final map = state.map;
-  if (!map.inBounds(action.x, action.y) ||
-      map.buildingAt(action.x, action.y) == Building.none) {
-    throw ActionException(coreMessage('nothingHere'));
+  // THE shared gate — same predicate the war panel enables its button on.
+  final block = warPlunderBlocker(state, realm.slot, action.x, action.y);
+  if (block != null) {
+    throw ActionException(coreMessage(block));
   }
-  if (map.ownerAt(action.x, action.y) == realm.slot) {
-    throw ActionException(coreMessage('plunderOwnLand'));
-  }
-  // Plunder only hits the war opponent — not any foreign realm a unit
-  // could walk to during someone else's war.
-  if (map.ownerAt(action.x, action.y) != war.opponentOf(realm.slot)) {
-    throw ActionException(coreMessage('notYourWarEnemy'));
-  }
-  // Your troops must have reached the tile. §11.5: every ARMY plunders
-  // once per war round — one of the tile's not-yet-spent units carries
-  // this plunder.
-  final unitsHere =
-      realm.troops.where((t) => t.x == action.x && t.y == action.y).toList();
-  if (unitsHere.isEmpty) {
-    throw ActionException(coreMessage('noTroopsOnTile'));
-  }
-  // The STRONGEST unspent unit carries the plunder — its strength bounds
-  // the haul (plunderTile, 2026-07-19), so a weak splinter must not
-  // shadow a full army standing on the same tile.
+  // §11.5: every ARMY plunders once per war round — the STRONGEST unspent
+  // unit on the tile carries it (its strength bounds the haul, plunderTile
+  // 2026-07-19), so a weak splinter cannot shadow a full army. The blocker
+  // guaranteed such a unit exists.
   Troop? unit;
-  for (final t in unitsHere) {
-    if (t.plunderedThisRound) continue;
+  for (final t in realm.troops) {
+    if (t.x != action.x || t.y != action.y || t.plunderedThisRound) continue;
     if (unit == null || troopStrength(t) > troopStrength(unit)) unit = t;
   }
-  if (unit == null) {
-    throw ActionException(coreMessage('armyAlreadyPlundered'));
-  }
-  unit.plunderedThisRound = true;
+  unit!.plunderedThisRound = true;
   // The carrying unit also bounds the haul: loot, kills and razed
   // quarters scale with ITS strength (see plunderTile, 2026-07-19).
   return plunderTile(state, realm.slot, action.x, action.y, unit, rng);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../app_version.dart';
+import '../l10n/strings.dart' show appLocale;
 
 /// Error from the server's `{data, error}` envelope (or transport).
 class ApiError implements Exception {
@@ -127,7 +128,13 @@ class ApiClient {
   }) => _request(
     'POST',
     '/api/v1/matches/$matchId/turn',
-    body: {'player_id': playerId, 'app_version': appVersion, 'action': action},
+    body: {
+      'player_id': playerId,
+      'app_version': appVersion,
+      // So the server renders any rejection in this player's language.
+      'locale': appLocale.value,
+      'action': action,
+    },
   );
 
   Future<Map<String, dynamic>> endTurn({
@@ -136,7 +143,12 @@ class ApiClient {
   }) => _request(
     'POST',
     '/api/v1/matches/$matchId/turn',
-    body: {'player_id': playerId, 'app_version': appVersion, 'end_turn': true},
+    body: {
+      'player_id': playerId,
+      'app_version': appVersion,
+      'locale': appLocale.value,
+      'end_turn': true,
+    },
   );
 
   Future<Map<String, dynamic>> _request(

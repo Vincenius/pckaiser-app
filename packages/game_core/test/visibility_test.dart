@@ -90,33 +90,40 @@ void main() {
       expect(markerOf(third, 2), 0);
     });
 
-    test('reveals the opponent troop list to a combatant during war', () {
+    test('reveals the opponent troop CLASS to a combatant, not its strength',
+        () {
       for (final slot in [1, 2]) {
         final realm = state.realm(slot);
         realm.troops.add(Troop(
             name: 'Heer$slot',
             men: 42,
-            troopClass: TroopClass.infanterie,
-            quality: TroopQuality.regular,
-            // A regular army: armySize is derived from garrison-counted
-            // units, so the combatant view below must expose it too.
+            troopClass: TroopClass.kavallerie,
+            quality: TroopQuality.soeldner,
             garrisonCounted: true,
             x: realm.capitalX,
             y: realm.capitalY));
       }
 
-      // Peacetime: the enemy army is hidden.
+      // Peacetime: the enemy army is hidden entirely.
       expect(visibleStateFor(state, 1).realm(2).troops, isEmpty);
       expect(visibleStateFor(state, 1).realm(2).armySize, 0,
           reason: 'a redacted troop list also hides the derived army size');
 
-      // At war: realm 1 sees realm 2's units (and vice versa), but a
-      // bystander still sees nothing.
+      // At war: realm 1 sees realm 2's units on the map — class, name and
+      // position are battlefield-observable — but men and drill quality stay
+      // hidden (only espionage reveals strength), so the derived army size
+      // reads 0. A bystander still sees nothing.
       state.activeWar = ActiveWar(attackerSlot: 2, defenderSlot: 1);
       final atWar = visibleStateFor(state, 1).realm(2);
-      expect(atWar.troops.single.men, 42);
-      expect(atWar.troops.single.name, 'Heer2');
-      expect(atWar.armySize, 42);
+      final enemyUnit = atWar.troops.single;
+      expect(enemyUnit.troopClass, TroopClass.kavallerie);
+      expect(enemyUnit.name, 'Heer2');
+      expect(enemyUnit.x, state.realm(2).capitalX);
+      expect(enemyUnit.men, 0, reason: 'enemy strength stays hidden at war');
+      expect(enemyUnit.quality, 0,
+          reason: 'enemy drill quality stays hidden at war');
+      expect(atWar.armySize, 0,
+          reason: 'derived army size is hidden with the men count');
       expect(visibleStateFor(state, 3).realm(2).troops, isEmpty,
           reason: 'an uninvolved third party still cannot see the army');
     });

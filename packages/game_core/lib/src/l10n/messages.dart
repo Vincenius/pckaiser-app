@@ -9,9 +9,12 @@
 /// stay EXACTLY as the engine used to throw them.
 library;
 
-/// Presentation-only message locale ('de' or 'en'). The client sets it;
-/// the engine's deterministic rules never read it except when FORMATTING
-/// messages via [coreMessage].
+/// Presentation-only message locale ('de' or 'en'). The client sets it from
+/// its UI language; the online server sets it per turn submission to the
+/// submitting seat's language (synchronously, right before it applies the
+/// action) so a rejection reads in that player's tongue. The engine's
+/// deterministic rules never read it except when FORMATTING messages via
+/// [coreMessage].
 String messageLocale = 'de';
 
 const Map<String, Map<String, String>> _messages = {
@@ -246,11 +249,18 @@ const Map<String, Map<String, String>> _messages = {
 /// key itself, so an unknown key can never crash message formatting.
 String coreMessage(String key, [Map<String, Object?>? params]) {
   final catalog = _messages[messageLocale] ?? _messages['de']!;
-  var text = catalog[key] ?? _messages['de']![key] ?? key;
-  if (params != null) {
-    params.forEach((name, value) {
-      text = text.replaceAll('{$name}', '$value');
-    });
-  }
+  final text = catalog[key] ?? _messages['de']![key] ?? key;
+  return formatTemplate(text, params);
+}
+
+/// Substitutes `{name}` placeholders in [template] from [params]. Shared by
+/// the engine's [coreMessage] and the client's `tr()` so both catalogs
+/// format identically.
+String formatTemplate(String template, [Map<String, Object?>? params]) {
+  if (params == null) return template;
+  var text = template;
+  params.forEach((name, value) {
+    text = text.replaceAll('{$name}', '$value');
+  });
   return text;
 }

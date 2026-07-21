@@ -64,26 +64,6 @@ const _worldTypes = {
 
 /// Human-readable line for an event. Falls back to the type name so new
 /// event types never break the feed.
-/// Death causes stored in `personDied` payloads: the code 'age' or a
-/// disease name from the engine's fixed list — mapped at render time so
-/// the stored (language-neutral / German) value localizes both ways.
-String _deathCause(String cause) => switch (cause) {
-  'age' => appLocale.value == 'de' ? 'Altersschwäche' : 'old age',
-  _ => _diseaseName(cause),
-};
-
-/// The engine's four §18 disease names are stored in event payloads;
-/// English forms are mapped here at render time.
-String _diseaseName(String name) => appLocale.value == 'de'
-    ? name
-    : switch (name) {
-        'Pest' => 'Plague',
-        'Cholera' => 'Cholera',
-        'Typhus' => 'Typhus',
-        'Ruhr' => 'Dysentery',
-        _ => name,
-      };
-
 String describeEvent(gc.GameEvent e) {
   final p = e.payload;
   final realm = e.slot >= 1 && e.slot <= 30 ? realmName(e.slot) : worldLabel();
@@ -170,7 +150,7 @@ String describeEvent(gc.GameEvent e) {
       'realm': realm,
       'name': p['name'],
       'age': p['age'],
-      'cause': _deathCause(p['cause'] as String? ?? '?'),
+      'cause': deathCauseName(p['cause'] as String? ?? '?'),
     }),
     'succession' => tr('ev.succession', {'realm': realm, 'heir': p['heir']}),
     // Old events carry only the stored (German) 'title'; newer ones also
@@ -335,7 +315,7 @@ String describeEvent(gc.GameEvent e) {
     'totalExtinction' => tr('ev.totalExtinction'),
     'earthquake' => tr('ev.earthquake'),
     'disease' => tr('ev.disease', {
-      'name': _diseaseName(p['name'] as String? ?? '?'),
+      'name': diseaseName(p['name'] as String? ?? '?'),
     }),
     'reformation' => tr('ev.reformation'),
     'ottomanInvasion' => tr('ev.ottomanInvasion'),

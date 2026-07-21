@@ -604,6 +604,7 @@ class MatchService {
     required String matchId,
     required String playerId,
     String? clientAppVersion,
+    String? clientLocale,
     Map<String, dynamic>? actionJson,
     bool endTurn = false,
   }) {
@@ -613,6 +614,7 @@ class MatchService {
               matchId: matchId,
               playerId: playerId,
               clientAppVersion: clientAppVersion,
+              clientLocale: clientLocale,
               actionJson: actionJson,
               endTurn: endTurn,
             ));
@@ -622,6 +624,7 @@ class MatchService {
     required String matchId,
     required String playerId,
     String? clientAppVersion,
+    String? clientLocale,
     Map<String, dynamic>? actionJson,
     bool endTurn = false,
   }) async {
@@ -643,6 +646,12 @@ class MatchService {
           'Diese Partie läuft auf App-Version $appVersion. Bitte '
           'aktualisiere die App, um deinen Zug zu machen.');
     }
+    // Format any engine rejection (ActionException, via coreMessage) in THIS
+    // seat's language, not the server's default. messageLocale is a
+    // presentation-only global; the apply block below is fully synchronous
+    // (no await between here and where the exception is thrown and its
+    // message rendered), so a concurrent match's submission cannot race it.
+    messageLocale = clientLocale ?? 'de';
     var state = _load(match);
     final awaited = _awaitedPlayerId(match, state);
     // Events emitted by THIS submission — returned to the caller so the

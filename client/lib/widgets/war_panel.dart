@@ -301,7 +301,7 @@ class _WarPanelState extends State<WarPanel> {
                 selectedTroop != null &&
                 selected != null)
               _stanceToggle(context, slot, selected, selectedTroop),
-            _actions(context, war, slot, selectedTroop, enemySlot),
+            _actions(context, war, slot, selectedTroop),
           ],
         ],
       ),
@@ -668,30 +668,23 @@ class _WarPanelState extends State<WarPanel> {
     gc.ActiveWar war,
     int slot,
     gc.Troop? selectedTroop,
-    int enemySlot,
   ) {
     final state = controller.state;
-    // Only the war opponent may be plundered (engine gate). §11.5: each
-    // ARMY plunders once per round — the gate follows the selected unit.
-    final plunderVictimOk =
-        selectedTroop != null &&
-        state.map.ownerAt(selectedTroop.x, selectedTroop.y) == enemySlot;
-    final canPlunder =
-        selectedTroop != null &&
-        !selectedTroop.plunderedThisRound &&
-        plunderVictimOk &&
-        state.map.buildingAt(selectedTroop.x, selectedTroop.y) !=
-            gc.Building.none;
+    // Plunder is TILE-scoped in the engine (`warPlunderBlocker`): the
+    // strongest not-yet-spent army on the tile carries it and must meet the
+    // minimum strength. Gate the button on that same predicate so it never
+    // greys out a plunder the engine would allow (a second unspent army) nor
+    // offers one it then rejects (an under-strength lone unit).
+    final plunderBlock = selectedTroop == null
+        ? null
+        : gc.warPlunderBlocker(
+            state, slot, selectedTroop.x, selectedTroop.y);
+    final canPlunder = selectedTroop != null && plunderBlock == null;
     final plunderHint = selectedTroop == null
         ? tr('war.plunderNeedUnit')
-        : selectedTroop.plunderedThisRound
-        ? tr('war.plunderAlreadyDone')
-        : !plunderVictimOk
-        ? tr('war.plunderNotEnemyLand')
-        : state.map.buildingAt(selectedTroop.x, selectedTroop.y) ==
-              gc.Building.none
-        ? tr('war.plunderNothingHere')
-        : tr('war.plunderHint');
+        : plunderBlock == null
+        ? tr('war.plunderHint')
+        : gc.coreMessage(plunderBlock);
 
     final theme = Theme.of(context);
     // Four equal-width icon+label tiles in the style of the category bar
@@ -773,11 +766,12 @@ class _WarPanelState extends State<WarPanel> {
           _actionItem(
             theme,
             icon: Icons.skip_next,
-            // A human-vs-human attacker hands the round to the defender —
-            // only the defender's button really ends the round.
-            label:
-                slot == war.attackerSlot &&
-                    state.dynasty(enemySlot).status == gc.DynastyStatus.human
+            // In a both-human war the side that opens the round hands over to
+            // the other; only the second side's tap really ends the round.
+            // Read the engine's predicate so the label tracks the alternating
+            // initiative (and delegation) instead of a stale attacker-first
+            // assumption.
+            label: gc.willHandOverRound(state, slot)
                 ? tr('war.handOver')
                 : tr('war.endRound'),
             emphasized: true,

@@ -241,6 +241,11 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
           : realmName(defenderSlot);
       final attackerDestroyed = p['attackerDestroyed'] == true;
       final defenderDestroyed = p['defenderDestroyed'] == true;
+      // Every clash is decided by strength (`attackerWon`); the destroyed
+      // flags only say whether the loser was wiped out or retreated intact.
+      // Deriving the winner from the flags alone mislabels a battle whose
+      // loser survives (both flags false) — read the explicit result.
+      final attackerWon = p['attackerWon'] == true;
       final lines = [
         tr(attackerDestroyed ? 'war.battleLossDestroyed' : 'war.battleLoss', {
           'realm': attacker,
@@ -252,16 +257,17 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
           'unit': p['defenderUnit'],
           'losses': p['defenderLosses'],
         }),
-        if (attackerDestroyed)
-          tr('war.attackRepelled')
-        else if (defenderDestroyed)
+        if (defenderDestroyed)
           tr('war.attackSucceeded')
+        else if (attackerDestroyed)
+          tr('war.attackRepelled')
+        else if (attackerWon)
+          tr('war.attackPrevailed')
         else
-          tr('war.defendersHold'),
+          tr('war.defenderPrevailed'),
       ];
-      final won = event.slot == viewerSlot
-          ? defenderDestroyed && !attackerDestroyed
-          : attackerDestroyed && !defenderDestroyed;
+      final won =
+          event.slot == viewerSlot ? attackerWon : !attackerWon;
       return _ReportEntry(
         Icons.gavel,
         won ? Colors.green : Colors.red,
@@ -278,7 +284,8 @@ _ReportEntry? _entryFor(gc.GameEvent event, int viewerSlot) {
       final victim = realmName(p['victim'] as int? ?? 0);
       final details = <String>[
         if (p['destroyed'] == true)
-          tr('war.plunderDevastated', {'years': p['recoversIn'] ?? 3}),
+          tr('war.plunderDevastated',
+              {'years': p['recoversIn'] ?? gc.fieldDevastationYears}),
         if ((p['loot'] as int? ?? 0) > 0)
           tr('war.plunderLoot', {'loot': p['loot']}),
         if ((p['killed'] as int? ?? 0) > 0)

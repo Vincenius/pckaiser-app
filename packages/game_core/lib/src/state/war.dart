@@ -50,6 +50,7 @@ class ActiveWar {
     this.remainingClaim = 0,
     this.heldCapitalSlot,
     this.actingSlot,
+    this.roundHandedOver = false,
     this.attackerMenLost = 0,
     this.defenderMenLost = 0,
     this.battles = 0,
@@ -100,6 +101,9 @@ class ActiveWar {
         // Additive field — pre-HvH saves derive the acting side from the
         // dynasty statuses (warActingSlot falls back to the first human).
         actingSlot: json['actingSlot'] as int?,
+        // Additive field — pre-2026-07-20 saves default to "not yet handed
+        // over" (the handover then re-derives from the first finisher).
+        roundHandedOver: json['roundHandedOver'] as bool? ?? false,
         // Additive fields — older saves start their war tally at zero.
         attackerMenLost: json['attackerMenLost'] as int? ?? 0,
         defenderMenLost: json['defenderMenLost'] as int? ?? 0,
@@ -158,6 +162,15 @@ class ActiveWar {
   /// sides never await input. Read through `warActingSlot`, which also
   /// covers pre-HvH saves.
   int? actingSlot;
+
+  /// Whether the opening side of the CURRENT war round has already handed
+  /// over to the other human side (`handWarRoundOver`). Reset to false at
+  /// every round start; set true on the one handover a round allows, so the
+  /// SECOND side finishing ends the round. Keying the handover off this
+  /// flag — rather than recomputing the opener from the round-parity
+  /// [warRoundOrder] — keeps it consistent with the persisted `actingSlot`
+  /// even for saves migrated across the initiative-alternation change.
+  bool roundHandedOver;
 
   /// Cumulative war tally for the end-of-war overview: men lost per side,
   /// battle count, plunder loot and conquered tiles per side. Incremented
@@ -254,6 +267,7 @@ class ActiveWar {
         remainingClaim: remainingClaim,
         heldCapitalSlot: heldCapitalSlot,
         actingSlot: actingSlot,
+        roundHandedOver: roundHandedOver,
         attackerMenLost: attackerMenLost,
         defenderMenLost: defenderMenLost,
         battles: battles,
@@ -289,6 +303,7 @@ class ActiveWar {
         'remainingClaim': remainingClaim,
         'heldCapitalSlot': heldCapitalSlot,
         'actingSlot': actingSlot,
+        'roundHandedOver': roundHandedOver,
         'attackerMenLost': attackerMenLost,
         'defenderMenLost': defenderMenLost,
         'battles': battles,

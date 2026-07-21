@@ -228,7 +228,7 @@ class MapGame extends FlameGame with ScaleDetector {
     _picture = recorder.endRecording();
   }
 
-  /// Class letters (I/K/A) on a troop badge's lower edge — the Gattung is
+  /// Class letters (e.g. I/K/A, localized) on a troop badge's lower edge — the Gattung is
   /// battlefield-observable (user rule 2026-07-19: the Schere-Stein-Papier
   /// counters need visible classes to play against). Drawn for every army
   /// whose unit list the visible state carries: the viewer's own troops
@@ -242,14 +242,13 @@ class MapGame extends FlameGame with ScaleDetector {
     int x,
     int y,
   ) {
-    const letters = ['I', 'K', 'A'];
     final classes = <int>{
       for (final t in _state.realm(troopOwner).troops)
         if (t.x == x && t.y == y) t.troopClass,
     };
     if (classes.isEmpty) return;
     final text = [
-      for (final c in classes.toList()..sort()) letters[c],
+      for (final c in classes.toList()..sort()) troopClassInitial(c),
     ].join();
     final painter = TextPainter(
       text: TextSpan(

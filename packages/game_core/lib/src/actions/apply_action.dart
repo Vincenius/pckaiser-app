@@ -399,6 +399,10 @@ List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {
   final idx = map.index(action.x, action.y);
   map.building[idx] = Building.none;
   map.owner[idx] = World.niemand;
+  // Clearing the tile also lifts any lingering war devastation — a field
+  // built fresh here later must not inherit the razed field's fallow timer
+  // (a rebuilt Kornfeld/Weide would otherwise yield nothing for years).
+  map.devastatedUntil[idx] = 0;
   realm.tileCount[building]--;
 
   return [

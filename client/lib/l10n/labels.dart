@@ -56,6 +56,29 @@ String troopClassName(int troopClass) {
   return names[troopClass.clamp(0, names.length - 1)];
 }
 
+/// The single-letter badge for a troop class (map glyphs), derived from its
+/// localized name so it tracks the active language — 'K'avallerie in German,
+/// 'C'avalry in English — instead of a hardcoded German-initial table.
+String troopClassInitial(int troopClass) =>
+    troopClassName(troopClass).substring(0, 1).toUpperCase();
+
+/// English names for the engine's §18 disease values (stored German in the
+/// `personDied`/`disease` payloads). Unlisted names keep the German original.
+const Map<String, String> _diseaseNamesEn = {
+  'Pest': 'Plague',
+  'Ruhr': 'Dysentery',
+};
+
+/// Display name for a stored §18 disease value (German in game state).
+String diseaseName(String name) =>
+    appLocale.value == 'de' ? name : (_diseaseNamesEn[name] ?? name);
+
+/// Display name for a stored death cause (`personDied` payload): the code
+/// 'age' or one of the engine's §18 disease names.
+String deathCauseName(String cause) => cause == 'age'
+    ? (appLocale.value == 'de' ? 'Altersschwäche' : 'old age')
+    : diseaseName(cause);
+
 /// English exonyms for `gc.countryNames` (same indices, §22.3). Names
 /// without an established English form keep the German original.
 const List<String> _countryNamesEn = [

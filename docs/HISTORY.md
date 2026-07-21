@@ -6,6 +6,48 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-20 — v0.2.0 review round (war rework + l10n follow-up)
+
+`appVersion` → 0.2.0. Fixes from the diff review of the war/combat rework
+and the bilingual layer:
+
+- **Capital tie-break could never seal** (`war.dart capitalOccupier`): the
+  both-occupy score tie-break keyed off the alternating `warRoundOrder`, so
+  the reported occupier flipped every round and `endWarRound`'s two-round
+  seal never fired. Tie-break is now stable — real score difference decides,
+  an exact tie stays on the already-armed `heldCapitalSlot` (else attacker).
+- **Troopless side could win winter arbitration**: `warScore` regained its
+  `troops.isEmpty → 0` guard, so banked battle bonuses can't win a war for a
+  side whose army was annihilated.
+- **AI never conceded lost wars**: the `_aiWantsPeace` "decided" gate was a
+  stale `>= 1000` from before the score rework; replaced with the named
+  `warDecidedScore = 500`, calibrated to the new tile-value scale.
+- **Enemy-harbor squatting scored +700**: `warScore` now counts only held
+  LAND, so a unit parked on an enemy Hafen water tile scores nothing.
+- **Round handover after upgrade**: handover keys off a new persisted
+  `ActiveWar.roundHandedOver` flag (additive) instead of recomputing the
+  opener from `warRoundOrder`, so it stays in step with `actingSlot`. New
+  pure predicate `willHandOverRound` drives the war-panel button label
+  (was hardcoded attacker-first → inverted on odd rounds).
+- **Plunder button vs engine**: new shared `warPlunderBlocker` gate used by
+  both `applyWarPlunder` and the war panel (tile-scoped: strongest unspent
+  unit meeting `minPlunderStrength`).
+- **War report mislabeled survived-loser battles**: reads the payload's
+  `attackerWon` (added `war.attackPrevailed`/`defenderPrevailed`, dropped
+  `war.defendersHold`).
+- **Devastation survived demolish+rebuild**: `_demolish` clears
+  `devastatedUntil`.
+- **Enemy troop strength leaked in `visibleStateFor`**: war opponents now
+  receive class/name/position only (`_battlefieldTroop`); men and quality
+  are zeroed — hidden in the domain model, not just the UI.
+- **Online errors always German**: the server sets `messageLocale` per turn
+  submission from the client's `locale`, so rejections render in the
+  submitting seat's language.
+- l10n/cleanup: map troop glyphs derive initials from `troopClassName`
+  (`troopClassInitial`); death-cause/disease names moved to `labels.dart`;
+  shared `formatTemplate` for `tr()`+`coreMessage`; `_bordersTerritory`
+  folded into `WorldMap.bordersSlot`; concurrent settings/push init.
+
 ## 2026-07-20 — Full English translation + language option
 
 The app is now fully bilingual (user request). Mechanics: the string

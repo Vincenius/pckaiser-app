@@ -2,6 +2,7 @@ import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
+import '../state/troop.dart';
 
 /// All realm slots the human player seated at [viewerSlot] currently
 /// controls, [viewerSlot] included — control follows the ruler (§15.4), so
@@ -151,8 +152,10 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
 /// trade voyages and intel reports are simply omitted (the rebuilt realm
 /// defaults them empty).
 ///
-/// [keepTroops] retains the unit list and army size: set for the OPPONENT in
-/// a war the viewer fights, so combatants can see each other's armies.
+/// [keepTroops] retains the unit list for the OPPONENT in a war the viewer
+/// fights, so combatants see each other's armies on the map — but each unit
+/// is reduced to its BATTLEFIELD-observable face ([_battlefieldTroop]): its
+/// men and drill quality are stripped, revealed only by espionage.
 Realm _redactRealm(Realm realm, {bool keepTroops = false}) => Realm(
       slot: realm.slot,
       titleClass: realm.titleClass,
@@ -161,9 +164,10 @@ Realm _redactRealm(Realm realm, {bool keepTroops = false}) => Realm(
       tileCount: List.of(realm.tileCount),
       rulerId: realm.rulerId,
       popularity: 0,
-      // armySize is derived from the troop list: kept units keep it, a
-      // redacted list reads as 0 — hidden by construction.
-      troops: keepTroops ? [for (final t in realm.troops) t.copy()] : null,
+      // A war opponent's units are kept but zeroed to class + position; every
+      // other foreign realm's list is omitted (reads as army size 0 anyway).
+      troops:
+          keepTroops ? [for (final t in realm.troops) _battlefieldTroop(t)] : null,
       towns: [
         for (final town in realm.towns)
           town.copy()
@@ -171,4 +175,23 @@ Realm _redactRealm(Realm realm, {bool keepTroops = false}) => Realm(
             ..garrison = 0
             ..troopCapacity = 0
       ],
+    );
+
+/// A war opponent's unit as seen from the battlefield: class, name and
+/// position are observable (the Gattung drives the Schere-Stein-Papier
+/// counters), but men and drill quality are hidden — only espionage
+/// (fuzzed [IntelReport]s) reveals army strength. Zeroing them here keeps
+/// the hidden-information rule IN THE DOMAIN MODEL, so a modified client (or
+/// anyone inspecting the wire payload) cannot read the enemy's true strength
+/// — not merely in what each widget chooses to draw.
+Troop _battlefieldTroop(Troop t) => Troop(
+      name: t.name,
+      men: 0,
+      troopClass: t.troopClass,
+      quality: 0,
+      garrisonCounted: t.garrisonCounted,
+      x: t.x,
+      y: t.y,
+      id: t.id,
+      stance: t.stance,
     );

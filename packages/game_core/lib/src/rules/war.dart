@@ -100,6 +100,7 @@ void beginWarRounds(GameState state, Rng rng) {
   if (war == null || war.phase != WarPhase.preparation) return;
   war.phase = WarPhase.rounds;
   war.actingSlot = _firstHumanSide(state, war);
+  war.roundHandedOver = false;
   _rollWarMoves(state, war, rng);
 }
 
@@ -164,21 +165,35 @@ int? warActingSlot(GameState state) {
   return _firstHumanSide(state, war);
 }
 
-/// Human-vs-human round handover: the side that OPENED this round
-/// ([warRoundOrder]) finishing their half passes the input to the other
-/// human side instead of ending the round. Returns true when the handover
-/// happened (the caller must NOT advance the round then). All other
-/// constellations — AI opponent, the second side finishing — return
-/// false: the round really ends.
-bool handWarRoundOver(GameState state, int slot) {
+/// Whether [slot] ending its war-round half right now would HAND OVER to
+/// the other side instead of ending the round — true only in a both-human
+/// war whose one per-round handover has not happened yet. The pure
+/// predicate behind [handWarRoundOver]; the war panel labels its end-round
+/// button ("hand over" vs "end round") off it, so the label can never
+/// contradict what the tap does (including on delegated sides, where
+/// [warSideIsHuman] is false and the round simply ends).
+bool willHandOverRound(GameState state, int slot) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return false;
-  if (slot != warRoundOrder(war).first) return false;
-  if (!warSideIsHuman(state, war, war.defenderSlot) ||
-      !warSideIsHuman(state, war, war.attackerSlot)) {
-    return false;
-  }
+  if (war.roundHandedOver) return false;
+  return warSideIsHuman(state, war, war.attackerSlot) &&
+      warSideIsHuman(state, war, war.defenderSlot);
+}
+
+/// Human-vs-human round handover: in a war where BOTH sides are live
+/// humans, the FIRST side to finish its half passes the input to the other
+/// instead of ending the round (`war.roundHandedOver`). Returns true when
+/// the handover happened (the caller must NOT advance the round then). All
+/// other constellations — an AI/delegated opponent, or the second side
+/// finishing once the handover already occurred — return false: the round
+/// really ends. Keying on `roundHandedOver` (rather than recomputing the
+/// opener from [warRoundOrder]) keeps this in step with `war.actingSlot`,
+/// including for saves migrated across the initiative-alternation change.
+bool handWarRoundOver(GameState state, int slot) {
+  if (!willHandOverRound(state, slot)) return false;
+  final war = state.activeWar!;
   war.actingSlot = war.opponentOf(slot);
+  war.roundHandedOver = true;
   return true;
 }
 
@@ -588,9 +603,13 @@ void applyConvertOrDie(GameState state, Person capturedRuler, int religion,
 
 /// The war side holding the enemy's (still enemy-owned) capital tile with
 /// at least one unit, or null. When both sides stand on each other's
-/// capital the higher war score wins (tie: whoever opened this round —
-/// they moved first, [warRoundOrder]). Surfaced to the war UI ("end the
-/// round to seal the victory").
+/// capital the higher war score wins. The tie-break must be STABLE across
+/// rounds — `endWarRound` seals a capture only when the same side occupies
+/// at two consecutive round ends, so a tie-break that flipped each round
+/// (e.g. off the alternating [warRoundOrder]) could never seal. On an exact
+/// score tie we therefore keep the already-armed side (`heldCapitalSlot`),
+/// falling back to the attacker (who opened the war). Surfaced to the war
+/// UI ("end the round to seal the victory").
 int? capitalOccupier(GameState state, ActiveWar war) {
   bool occupies(int slot) {
     final enemy = state.realm(war.opponentOf(slot));
@@ -605,9 +624,20 @@ int? capitalOccupier(GameState state, ActiveWar war) {
   final attacker = occupies(war.attackerSlot);
   final defender = occupies(war.defenderSlot);
   if (attacker && defender) {
-    final first = warRoundOrder(war).first;
-    final second = war.opponentOf(first);
-    return warScore(state, second) > warScore(state, first) ? second : first;
+    final attackerScore = warScore(state, war.attackerSlot);
+    final defenderScore = warScore(state, war.defenderSlot);
+    if (attackerScore != defenderScore) {
+      return attackerScore > defenderScore
+          ? war.attackerSlot
+          : war.defenderSlot;
+    }
+    // Exact tie: stay on the side that already armed the capture so it can
+    // seal; before any capture is armed, the attacker decides.
+    if (war.heldCapitalSlot == war.attackerSlot ||
+        war.heldCapitalSlot == war.defenderSlot) {
+      return war.heldCapitalSlot;
+    }
+    return war.attackerSlot;
   }
   if (attacker) return war.attackerSlot;
   if (defender) return war.defenderSlot;
@@ -705,7 +735,7 @@ int? _cheapestBorderingLoserTile(
   for (var y = 0; y < map.height; y++) {
     for (var x = 0; x < map.width; x++) {
       if (map.ownerAt(x, y) != loserSlot) continue;
-      if (!_bordersTerritory(state, winnerSlot, x, y)) continue;
+      if (!map.bordersSlot(x, y, winnerSlot)) continue;
       final value = settlementTileValue(state, map.buildingAt(x, y));
       if (cheapest == null || value < cheapest) cheapest = value;
     }
@@ -938,6 +968,7 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   // initiative order — the round counter was just advanced, so
   // [warRoundOrder] already reflects the alternation.
   war.actingSlot = _firstHumanSide(state, war);
+  war.roundHandedOver = false;
   _rollWarMoves(state, war, rng);
 }
 
@@ -1008,7 +1039,7 @@ bool _aiWantsPeace(GameState state, ActiveWar war, int slot) {
 
   // AI defender: home AND the war is decided.
   final attacker = state.realm(war.attackerSlot);
-  final decided = warScore(state, war.attackerSlot) >= 1000 ||
+  final decided = warScore(state, war.attackerSlot) >= warDecidedScore ||
       realm.troops.length > 2 * attacker.troops.length ||
       attacker.troops.isEmpty;
   return allHome && decided;
@@ -1021,6 +1052,15 @@ const int warScoreBattleBonus = 250;
 
 /// War-score bonus for standing on the enemy capital (§11.2, unchanged).
 const int warScoreCapitalBonus = 3000;
+
+/// War score at which an AI defender treats the war as decided against it
+/// and will accept peace (2026-07-20). Calibrated to the reworked
+/// [warScore] scale — a held village (`Building.value` Dorf = 1000), a
+/// couple of occupied fields plus a won battle, or two won battles. The
+/// old gate was a hardcoded `>= 1000` that predated the score rework (when
+/// scores ran two orders of magnitude larger) and effectively never
+/// tripped afterwards, so AI defenders stopped conceding lost wars.
+const int warDecidedScore = 500;
 
 /// §11.2 war score for a side, `[REWORKED 2026-07-19, user-designed]`:
 /// "you get what you hold" — Σ `Building.value` over the DISTINCT enemy
@@ -1039,10 +1079,19 @@ int warScore(GameState state, int slot) {
   final realm = state.realm(slot);
   final enemy = state.realm(enemySlot);
 
+  // A side with no troops left holds no ground and cannot fight on: its war
+  // is lost regardless of battles won earlier, so it scores nothing (it must
+  // never win the winter arbitration off stale battle bonuses).
+  if (realm.troops.isEmpty) return 0;
+
   var score = war.battlesWonBy(slot) * warScoreBattleBonus;
   final occupied = <int>{};
   for (final troop in realm.troops) {
     if (state.map.ownerAt(troop.x, troop.y) != enemySlot) continue;
+    // Only held LAND counts. A unit parked on an enemy Hafen's water tile
+    // (reachable in one step via the enemy-harbor embark rule) is squatting
+    // at sea, not holding ground — it must not score the harbor's value.
+    if (!state.map.isLandAt(troop.x, troop.y)) continue;
     if (!occupied.add(state.map.index(troop.x, troop.y))) continue;
     score += Building.value[state.map.buildingAt(troop.x, troop.y)];
     if (troop.x == enemy.capitalX && troop.y == enemy.capitalY) {
@@ -1136,7 +1185,7 @@ void annexAffordableTiles(GameState state, List<GameEvent> events) {
   // Seed: every loser tile on the winner's border, in reading order.
   for (var i = 0; i < map.terrain.length; i++) {
     if (map.owner[i] != loserSlot) continue;
-    if (_bordersTerritory(state, winnerSlot, i % map.width, i ~/ map.width)) {
+    if (map.bordersSlot(i % map.width, i ~/ map.width, winnerSlot)) {
       queued[i] = true;
       queue.add(i);
     }
@@ -1166,16 +1215,6 @@ void annexAffordableTiles(GameState state, List<GameEvent> events) {
 void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {
   annexAffordableTiles(state, events);
   finishSettlement(state, rng, events);
-}
-
-bool _bordersTerritory(GameState state, int slot, int x, int y) {
-  for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
-    if (state.map.inBounds(x + dx, y + dy) &&
-        state.map.ownerAt(x + dx, y + dy) == slot) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /// Ends the settlement ("F" — fertig): the unspent claim converts 1:1 into
@@ -1354,6 +1393,40 @@ const int plunderKillsPerStrength = 5;
 /// How long a plundered Kornfeld/Weide lies fallow (2026-07-19): the
 /// plunder year plus two more; it yields again in year + 3.
 const int fieldDevastationYears = 3;
+
+/// Why [slot] cannot plunder the enemy tile ([x],[y]) this war round, as a
+/// `coreMessage` key, or null when a plunder there would succeed. THE shared
+/// gate: `applyWarPlunder` throws it and the war panel greys/hints its
+/// plunder button off it, so the button can never block a plunder the engine
+/// would allow (a second unspent army on the tile) nor offer one it then
+/// rejects (an under-strength lone unit). Mirrors the tile-scoped rule — the
+/// STRONGEST not-yet-spent unit on the tile carries the plunder and must
+/// meet [minPlunderStrength].
+String? warPlunderBlocker(GameState state, int slot, int x, int y) {
+  final war = state.activeWar;
+  if (war == null || war.phase != WarPhase.rounds || !war.isParticipant(slot)) {
+    return 'notYourWarEnemy';
+  }
+  final map = state.map;
+  if (!map.inBounds(x, y) || map.buildingAt(x, y) == Building.none) {
+    return 'nothingHere';
+  }
+  if (map.ownerAt(x, y) == slot) return 'plunderOwnLand';
+  if (map.ownerAt(x, y) != war.opponentOf(slot)) return 'notYourWarEnemy';
+  Troop? unit;
+  for (final t in state.realm(slot).troops) {
+    if (t.x != x || t.y != y || t.plunderedThisRound) continue;
+    if (unit == null || troopStrength(t) > troopStrength(unit)) unit = t;
+  }
+  if (unit == null) {
+    // Distinguish "no unit reached the tile" from "all present units spent".
+    final anyHere =
+        state.realm(slot).troops.any((t) => t.x == x && t.y == y);
+    return anyHere ? 'armyAlreadyPlundered' : 'noTroopsOnTile';
+  }
+  if (troopStrength(unit) < minPlunderStrength) return 'troopTooWeakToPlunder';
+  return null;
+}
 
 /// §11.5 plunder during war rounds, once per ARMY per round (the per-unit
 /// flag lives on [Troop.plunderedThisRound], checked in `applyWarPlunder`).

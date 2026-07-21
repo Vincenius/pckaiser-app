@@ -152,6 +152,8 @@ class Api {
           playerId: _requireString(body, 'player_id'),
           // The client always sends its build; a stale one is rejected (426).
           clientAppVersion: _requireString(body, 'app_version'),
+          // Optional UI language so a rejection reads in the player's tongue.
+          clientLocale: body['locale'] as String?,
           actionJson: (body['action'] as Map?)?.cast<String, dynamic>(),
           endTurn: body['end_turn'] == true,
         );
