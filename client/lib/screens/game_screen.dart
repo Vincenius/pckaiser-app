@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flame/game.dart' show GameWidget;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:game_core/game_core.dart' as gc;
 
 import '../game/map_game.dart';
@@ -100,6 +101,9 @@ class _GameScreenState extends State<GameScreen> {
         if (widget.tutorial) controller.confirmHandoff();
         final game = MapGame(initial: controller.visibleState);
         game.onTileTap = (x, y) => _onTileTap(controller, x, y);
+        game.onLongPressTile = (x, y) => _onLongPressTile(controller, x, y);
+        game.onBoxDrag = (x, y) => _onBoxDrag(controller, x, y);
+        game.onBoxDragEnd = () => _onBoxSelectDone(controller);
         // Assign the field now (not only in the setState below) so
         // _syncDragMode's _applyDragMode can wire the map immediately — a
         // save resumed mid-settlement must arm annex mode right away.
@@ -151,11 +155,11 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _onTileTap(GameController controller, int x, int y) async {
     if (controller.handoffPending || controller.gameOver) return;
-    // Field-cultivation mode: a tap toggles a single field in/out of the
-    // drag-selection (a drag paints; a tap fine-tunes) — nothing else fires.
+    // Field-cultivation mode: any tap leaves the selection mode — the box
+    // is sized by dragging, confirmed via the sheet that opens on release.
     // (Annex mode taps flow through to the war handler below.)
     if (_dragMode == _DragMode.field) {
-      _toggleField(controller, x, y);
+      _exitFieldMode(controller);
       return;
     }
     // An active tile pick (e.g. stationing a new troop) consumes the tap.
@@ -209,27 +213,24 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  // --- Map drag-select (field cultivation + war annexation) ----------
+  // --- Map box select (field cultivation + war annexation) -----------
 
-  /// Points the map's shared drag-select at the active mode's selection set,
-  /// paint handler and highlight color. Called on enter/exit and on every
-  /// phase change ([_syncDragMode]).
+  /// Points the map's shared box-select at the active mode's selection set
+  /// and highlight color. Called on enter/exit and on every phase change
+  /// ([_syncDragMode]).
   void _applyDragMode(GameController controller) {
     final game = _game;
     if (game == null) return;
     switch (_dragMode) {
       case _DragMode.none:
-        game.dragSelectMode = false;
+        game.clearBox();
+        game.dragSelection = const <int>{};
       case _DragMode.field:
         game.dragSelection = _selectedFields;
-        game.onDragPaint = (x, y) => _paintField(controller, x, y);
         game.dragSelectColor = 0xFF4CAF50; // green
-        game.dragSelectMode = true;
       case _DragMode.annex:
         game.dragSelection = controller.settlementSelection;
-        game.onDragPaint = (x, y) => _paintAnnex(controller, x, y);
         game.dragSelectColor = 0xFFEF6C00; // amber
-        game.dragSelectMode = true;
     }
   }
 
@@ -250,6 +251,17 @@ class _GameScreenState extends State<GameScreen> {
         // Clear directly (not via the notifying setter): _syncDragMode runs
         // inside the controller listener, and re-notifying would recurse.
         controller.settlementSelection.clear();
+        _game?.clearBox();
+      } else {
+        // A committed annex turned the anchor tile into own land: the box
+        // has served its purpose — drop the dashed frame. (While dragging,
+        // the anchor always stays enemy-owned, so this never fires then.)
+        final anchor = _game?.boxAnchor;
+        if (anchor != null &&
+            !_annexSelectable(controller, anchor.$1, anchor.$2)) {
+          _game?.clearBox();
+          controller.settlementSelection.clear();
+        }
       }
     } else if (_dragMode == _DragMode.annex) {
       _dragMode = _DragMode.none;
@@ -259,6 +271,119 @@ class _GameScreenState extends State<GameScreen> {
       _selectedFields.clear();
     }
     _applyDragMode(controller);
+  }
+
+  /// Long-press on a map tile: anchors a selection box there — an enemy
+  /// tile during the winner's open settlement (annex mode, already armed
+  /// by phase), or ANY tile on the peacetime turn (enters field mode; the
+  /// box selects only buildable tiles, so an anchor far from the realm
+  /// simply starts empty and is dropped on release if it stays that way).
+  /// Returns whether the press was consumed; the map layer then swallows
+  /// the accompanying tap so no tile sheet opens on release. A later
+  /// long-press re-anchors a fresh box.
+  bool _onLongPressTile(GameController controller, int x, int y) {
+    final game = _game;
+    if (game == null || controller.handoffPending || controller.gameOver) {
+      return false;
+    }
+    if (_dragMode == _DragMode.annex) {
+      if (!_annexSelectable(controller, x, y)) return false;
+    } else if (_canFieldMode(controller) && !widget.tutorial) {
+      if (_dragMode != _DragMode.field) {
+        controller.cancelTilePick();
+        _dragMode = _DragMode.field;
+        _applyDragMode(controller);
+      }
+    } else {
+      return false;
+    }
+    HapticFeedback.selectionClick();
+    game.boxAnchor = (x, y);
+    game.boxCorner = null;
+    _reselectBox(controller);
+    return true;
+  }
+
+  /// Box drag: the finger moved to ([x],[y]) — resize the box to it and
+  /// reselect the eligible tiles inside.
+  void _onBoxDrag(GameController controller, int x, int y) {
+    final game = _game;
+    if (game == null || game.boxAnchor == null) return;
+    if (game.boxCorner == (x, y)) return;
+    game.boxCorner = (x, y);
+    _reselectBox(controller);
+  }
+
+  /// Recomputes the active selection as every eligible tile inside the
+  /// anchor..corner box. Field mode owns [_selectedFields]; annex mode
+  /// writes the controller's settlement selection (one notify per resize).
+  void _reselectBox(GameController controller) {
+    final game = _game;
+    final anchor = game?.boxAnchor;
+    if (game == null || anchor == null) return;
+    final corner = game.boxCorner ?? anchor;
+    final map = controller.visibleState.map;
+    final x0 = math.min(anchor.$1, corner.$1);
+    final x1 = math.max(anchor.$1, corner.$1);
+    final y0 = math.min(anchor.$2, corner.$2);
+    final y1 = math.max(anchor.$2, corner.$2);
+    final picked = <int>{};
+    if (_dragMode == _DragMode.field) {
+      picked.addAll(_fieldTilesInBox(controller, x0, y0, x1, y1));
+      setState(() => _selectedFields
+        ..clear()
+        ..addAll(picked));
+      return;
+    }
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        if (_annexSelectable(controller, x, y)) picked.add(map.index(x, y));
+      }
+    }
+    controller.setSettlementSelection(picked);
+  }
+
+  /// Field tiles selectable inside a box: empty land the realm owns, plus
+  /// unowned empty land CONNECTED to its territory — directly bordering,
+  /// or through a chain of other selected tiles (the engine claims each
+  /// built border tile, which lets the next one behind it build too, see
+  /// `planFieldCultivation`). Without the chain wave a box dragged into
+  /// free land would only ever offer the first border row.
+  Set<int> _fieldTilesInBox(
+      GameController controller, int x0, int y0, int x1, int y1) {
+    final map = controller.visibleState.map;
+    final slot = controller.currentSlot;
+    final candidates = <int>{};
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        final owner = map.ownerAt(x, y);
+        if ((owner == slot || owner == gc.World.niemand) &&
+            gc.Terrain.isLand(map.terrainAt(x, y)) &&
+            map.buildingAt(x, y) == gc.Building.none) {
+          candidates.add(map.index(x, y));
+        }
+      }
+    }
+    // Wave: own tiles and border-touching unowned tiles seed; each picked
+    // tile carries the selection to its candidate neighbors.
+    final picked = <int>{};
+    final queue = <int>[];
+    for (final i in candidates) {
+      final x = i % map.width;
+      final y = i ~/ map.width;
+      if (map.ownerAt(x, y) == slot || map.bordersSlot(x, y, slot)) {
+        picked.add(i);
+        queue.add(i);
+      }
+    }
+    for (var head = 0; head < queue.length; head++) {
+      final i = queue[head];
+      for (final (nx, ny) in map.neighborsOf(i % map.width, i ~/ map.width)) {
+        final ni = map.index(nx, ny);
+        if (candidates.contains(ni) && picked.add(ni)) queue.add(ni);
+      }
+    }
+    return picked;
   }
 
   /// Whether the field-cultivation drag-select may run right now: only on
@@ -272,45 +397,22 @@ class _GameScreenState extends State<GameScreen> {
       !controller.tilePickActive &&
       !controller.readOnly;
 
-  /// Whether ([x],[y]) is a field the seated realm could cultivate: an
-  /// empty land tile (Ebene or Berg) it owns, or an unowned land tile
-  /// bordering its territory (claimed as part of the build). Terrain that
-  /// a specific field type rejects (Kornfeld off a Berg) is filtered later,
-  /// per type — an ineligible-for-the-chosen-type tile is simply left free.
-  bool _fieldSelectable(GameController controller, int x, int y) {
-    final map = controller.visibleState.map;
-    if (!map.inBounds(x, y)) return false;
-    if (!gc.Terrain.isLand(map.terrainAt(x, y))) return false;
-    if (map.buildingAt(x, y) != gc.Building.none) return false;
-    final slot = controller.currentSlot;
-    final owner = map.ownerAt(x, y);
-    if (owner == slot) return true;
-    return owner == gc.World.niemand && map.bordersSlot(x, y, slot);
-  }
-
-  /// Adds an eligible tile to the selection (drag paint — add only).
-  void _paintField(GameController controller, int x, int y) {
-    if (!_fieldSelectable(controller, x, y)) return;
-    final idx = controller.visibleState.map.index(x, y);
-    if (_selectedFields.add(idx)) setState(() {});
-  }
-
-  /// Toggles an eligible tile (tap fine-tune) — removes it if selected,
-  /// otherwise adds it.
-  void _toggleField(GameController controller, int x, int y) {
-    final idx = controller.visibleState.map.index(x, y);
-    if (_selectedFields.contains(idx)) {
-      setState(() => _selectedFields.remove(idx));
-    } else if (_fieldSelectable(controller, x, y)) {
-      setState(() => _selectedFields.add(idx));
+  /// Finger lifted off the box gesture: field mode opens the batch-build
+  /// sheet (the same bottom sheet as a single-tile tap) over the live
+  /// selection. Building leaves the mode; dismissing keeps the selection —
+  /// drag again to resize, or tap anywhere to cancel. A box that reaches
+  /// no buildable tile (started and released away from the realm) is
+  /// simply dropped. Annex mode confirms via the war panel instead, so
+  /// the lift does nothing there.
+  Future<void> _onBoxSelectDone(GameController controller) async {
+    if (_dragMode != _DragMode.field) return;
+    if (_selectedFields.isEmpty) {
+      _exitFieldMode(controller);
+      return;
     }
-  }
-
-  void _enterFieldMode(GameController controller) {
-    controller.cancelTilePick();
-    _selectedFields.clear();
-    _dragMode = _DragMode.field;
-    setState(() => _applyDragMode(controller));
+    if (!mounted) return;
+    final built = await showFieldBatchSheet(context, controller, _selectedFields);
+    if (built) _exitFieldMode(controller);
   }
 
   void _exitFieldMode(GameController controller) {
@@ -331,59 +433,6 @@ class _GameScreenState extends State<GameScreen> {
     final map = controller.state.map;
     if (!map.inBounds(x, y)) return false;
     return map.ownerAt(x, y) == war.opponentOf(winner);
-  }
-
-  /// Adds an eligible enemy tile to the annex selection (drag paint).
-  void _paintAnnex(GameController controller, int x, int y) {
-    if (!_annexSelectable(controller, x, y)) return;
-    controller.addSettlementTile(controller.state.map.index(x, y));
-  }
-
-  /// Number of selected tiles whose terrain accepts [building].
-  int _validFieldCount(GameController controller, int building) {
-    final map = controller.visibleState.map;
-    return _selectedFields.where((idx) {
-      final terrain = map.terrainAt(idx % map.width, idx ~/ map.width);
-      return building == gc.Building.kornfeld
-          ? terrain == gc.Terrain.ebene
-          : terrain == gc.Terrain.berg || terrain == gc.Terrain.ebene;
-    }).length;
-  }
-
-  /// How many of the selected tiles [building] would actually be built on —
-  /// bounded by valid terrain, the treasury and remaining movement points.
-  int _affordableFieldCount(GameController controller, int building) {
-    final realm = controller.currentRealm;
-    final cost = gc.Building.cost[building]!;
-    final byMoney = cost == 0 ? _selectedFields.length : realm.treasury ~/ cost;
-    return math.min(
-      _validFieldCount(controller, building),
-      math.min(byMoney, realm.movementPoints),
-    );
-  }
-
-  /// Dispatches the batch cultivation for [building] over the whole
-  /// selection: the engine builds every affordable, valid tile and leaves
-  /// the rest free (wrong terrain / out of budget).
-  Future<void> _buildFields(GameController controller, int building) async {
-    final map = controller.visibleState.map;
-    final tiles = [
-      for (final idx in _selectedFields)
-        (x: idx % map.width, y: idx ~/ map.width),
-    ];
-    if (tiles.isEmpty) return;
-    _exitFieldMode(controller);
-    try {
-      await controller.applyUndoable(
-        gc.BuildFields(
-          slot: controller.currentSlot,
-          building: building,
-          tiles: tiles,
-        ),
-      );
-    } on gc.ActionException catch (e) {
-      _toast(e.message);
-    }
   }
 
   /// Mirrors the war state into the map overlay: pulsing ring on the
@@ -662,15 +711,6 @@ class _GameScreenState extends State<GameScreen> {
                           alignment: Alignment.topCenter,
                           child: _tilePickBanner(controller),
                         ),
-                      // Field-cultivation toggle (bottom-left, opposite the
-                      // vitals chip). Hidden in the tutorial so its scripted
-                      // flow is undisturbed.
-                      if (_canFieldMode(controller) && !widget.tutorial)
-                        Positioned(
-                          left: 8,
-                          bottom: 8,
-                          child: _fieldModeButton(controller),
-                        ),
                       // Tutorial card above the status row; kept in the tree
                       // (just hidden) during handoffs so the step survives.
                       // Keyed: the war panel / tile-pick banner are inserted as
@@ -704,17 +744,11 @@ class _GameScreenState extends State<GameScreen> {
                 if (controller.state.activeWar != null &&
                     !controller.handoffPending)
                   WarPanel(controller: controller),
-                // Field-cultivation panel: while drag-selecting fields it
-                // replaces the category bar as the bottom menu (like the
-                // war panel), offering the Kornfeld / Weide batch build.
-                if (_dragMode == _DragMode.field)
-                  _fieldBuildPanel(controller),
                 _statusRow(controller),
                 // The category bar is hidden during a war: the war panel
                 // replaces it as THE bottom menu (the info menu stays
                 // reachable via the realm name in the status row).
-                if (controller.state.activeWar == null &&
-                    _dragMode != _DragMode.field)
+                if (controller.state.activeWar == null)
                   _actionBar(controller),
               ],
             ),
@@ -823,124 +857,6 @@ class _GameScreenState extends State<GameScreen> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  /// Toggle that arms/disarms field-cultivation drag-select (bottom-left
-  /// over the map). Highlighted while active.
-  Widget _fieldModeButton(GameController controller) {
-    final theme = Theme.of(context);
-    final active = _dragMode == _DragMode.field;
-    return Card(
-      margin: EdgeInsets.zero,
-      color: active
-          ? theme.colorScheme.primary
-          : theme.colorScheme.surfaceContainerHigh,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () =>
-            active ? _exitFieldMode(controller) : _enterFieldMode(controller),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.agriculture,
-                size: 18,
-                color: active ? theme.colorScheme.onPrimary : null,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                tr('game.fieldModeShort'),
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: active ? theme.colorScheme.onPrimary : null,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Bottom panel shown while field-cultivation drag-select is armed: a
-  /// hint (or the selected count) plus the Kornfeld / Weide batch-build
-  /// buttons. Each button's label states exactly how many of the selected
-  /// tiles it would build (bounded by terrain, treasury and moves) — the
-  /// rest are left free.
-  Widget _fieldBuildPanel(GameController controller) {
-    final theme = Theme.of(context);
-    final count = _selectedFields.length;
-
-    Widget option(int building) {
-      final buildable = _affordableFieldCount(controller, building);
-      final cost = gc.Building.cost[building]!;
-      final enabled = buildable > 0;
-      return Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: FilledButton(
-            onPressed:
-                enabled ? () => _buildFields(controller, building) : null,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(buildingName(building)),
-                Text(
-                  enabled
-                      ? tr('game.fieldBuildOption', {
-                          'count': buildable,
-                          'cost': buildable * cost,
-                        })
-                      : tr('game.fieldBuildNone'),
-                  style: theme.textTheme.labelSmall,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Material(
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.agriculture, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    count == 0
-                        ? tr('game.fieldSelectHint')
-                        : tr('game.fieldSelectCount', {'count': count}),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => _exitFieldMode(controller),
-                  child: Text(tr('cancel')),
-                ),
-              ],
-            ),
-            if (count > 0)
-              Row(
-                children: [
-                  option(gc.Building.kornfeld),
-                  option(gc.Building.weide),
-                ],
-              ),
-          ],
         ),
       ),
     );

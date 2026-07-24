@@ -6,6 +6,61 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-24 — Box select replaces paint select (user request, app 0.2.2)
+
+Reworked both map multi-selects (field cultivation, settlement annexation)
+from "toggle a mode, then paint tiles under the finger" to a long-press box:
+
+- **Long-press activates.** Holding an eligible tile (~0.3 s, Flame's
+  `onLongTapDown`) anchors the selection box — field mode enters itself on
+  the press (the bottom-left "Felder" toggle button is gone, and with it
+  `game.fieldModeShort`); annex mode was already armed by the settlement
+  phase. Haptic tick on anchor; the accompanying tap-up is swallowed so no
+  tile sheet opens on release.
+- **Drag sizes a box.** While an anchor is set, a one-finger drag moves the
+  opposite corner (`MapGame.boxAnchor`/`boxCorner`, clamped to the map);
+  the selection is recomputed as every eligible tile inside the rectangle.
+  Two-finger pinch still zooms/pans; without an anchor one-finger drags pan
+  normally again (annex mode no longer hijacks the pan). A later
+  long-press re-anchors a fresh box; taps still fine-tune single tiles.
+- **Dashed frame.** The dragged box is outlined with a dashed line
+  (`_drawDashedRect` — Canvas has no native dash); selected tiles keep the
+  translucent fill. After a committed annex turns the anchor into own land,
+  the frame is dropped (`_syncDragMode`).
+- Plumbing: `MapGame.onLongPressTile`/`onBoxDrag` replace `onDragPaint` +
+  `dragSelectMode`; `GameController.setSettlementSelection` bulk-replaces
+  the annex selection with one notify per resize. Hint strings reworded.
+- **Anchor anywhere (same day).** The field-mode long-press no longer
+  requires a buildable tile: a box can be started on ANY tile (a far
+  corner, a built tile) and dragged across the realm — only buildable
+  tiles inside select, and releasing a box that reaches none simply drops
+  the selection instead of opening the sheet. `_fieldSelectable` removed
+  (its logic lives in `_fieldTilesInBox`). Gesture-level widget tests in
+  `map_box_select_test.dart` (MapGame hooks + full GameScreen flow to the
+  opened sheet, incl. the empty-release drop).
+- **Simplified to the normal build sheet (same day).** The custom docked
+  Kornfeld/Weide panel is gone: releasing the finger after sizing the box
+  (or right after the anchoring long-press) opens the SAME bottom sheet as
+  a single-tile tap (`showFieldBatchSheet` in tile_sheet.dart) with
+  "Kornfeld ×N — N·100 T" rows from the engine plan; dismissing keeps the
+  selection for resizing. Any tap on the map while the selection stands
+  exits field mode (no more per-tile tap toggling). New
+  `MapGame.onBoxDragEnd` (fires on scale-end of a box drag or the
+  swallowed tap-up of a no-drag long-press — never on pinch end); strings
+  `fieldSelectHint`/`fieldSelectCount`/`fieldBuildOption`/`fieldBuildNone`
+  replaced by `fieldSheetTitle`.
+- **Claim chains reach into free land (bugfix, same day).** The box only
+  offered unowned tiles DIRECTLY bordering own territory, although the
+  engine claims each built border tile — a batch can walk outward. New
+  engine planner `planFieldCultivation(state, slot, selected, building)`
+  (apply_action.dart, tested): dry-runs the batch as a border-outward wave
+  per `_tryBuildField` (terrain per type, claim chains, budget) and returns
+  the exact build order; the client selects box tiles connected through
+  the selection (wave), shows plan-length button counts, and dispatches
+  the plan — so "baut N" is precisely what builds, and a Kornfeld chain
+  broken by a Berg mid-way is priced honestly. Tap fine-tune may also add
+  a free tile adjacent to the selection (chain-reachable).
+
 ## 2026-07-24 — War march approaches unreachable clicks (app 0.2.2)
 
 Tapping a march target no land path can reach (an island, third-realm

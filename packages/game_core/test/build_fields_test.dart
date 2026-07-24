@@ -154,4 +154,101 @@ void main() {
     expect(decoded.building, Building.weide);
     expect(decoded.tiles, action.tiles);
   });
+
+  /// Finds an owned slot-1 tile with a straight run of [n] unowned tiles
+  /// leading out of the territory (each after the first not bordering
+  /// slot 1 on its own), forces them to empty Ebene, and returns the run —
+  /// the canvas for the claim-chain tests.
+  List<({int x, int y})> unownedChain(int n) {
+    final map = state.map;
+    for (var y = 1; y < map.height - 1; y++) {
+      for (var x = 1; x < map.width - 1; x++) {
+        if (map.ownerAt(x, y) != 1) continue;
+        for (final (dx, dy) in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
+          final run = <({int x, int y})>[];
+          var ok = true;
+          for (var k = 1; k <= n; k++) {
+            final nx = x + dx * k;
+            final ny = y + dy * k;
+            if (!map.inBounds(nx, ny) ||
+                map.ownerAt(nx, ny) != World.niemand ||
+                (k > 1 && map.bordersSlot(nx, ny, 1))) {
+              ok = false;
+              break;
+            }
+            run.add((x: nx, y: ny));
+          }
+          if (!ok) continue;
+          for (final t in run) {
+            final i = map.index(t.x, t.y);
+            map.terrain[i] = Terrain.ebene;
+            map.building[i] = Building.none;
+          }
+          return run;
+        }
+      }
+    }
+    fail('the map has no straight unowned run for this seed');
+  }
+
+  group('planFieldCultivation (claim chains)', () {
+    test('plans a chain into free land near-to-far and the batch builds it',
+        () {
+      final chain = unownedChain(3);
+      final realm = state.realm(1);
+      realm.treasury = 1000;
+      realm.movementPoints = 9;
+      final idx = [for (final t in chain) state.map.index(t.x, t.y)];
+      // Selected far-first: the plan must still come back near-to-far, so
+      // each tile borders (freshly claimed) own territory at its turn.
+      final plan =
+          planFieldCultivation(state, 1, idx.reversed, Building.kornfeld);
+      expect(plan, chain);
+
+      final result = applyAction(
+          state, BuildFields(slot: 1, building: Building.kornfeld, tiles: plan), rng);
+      final map = result.state.map;
+      for (final t in chain) {
+        expect(map.buildingAt(t.x, t.y), Building.kornfeld);
+        expect(map.ownerAt(t.x, t.y), 1, reason: 'claimed on build');
+      }
+      expect(result.events, hasLength(3),
+          reason: 'the plan is exactly what the batch builds');
+    });
+
+    test('the budget cuts the chain', () {
+      final chain = unownedChain(3);
+      state.realm(1).treasury = 250; // two 100 T fields
+      state.realm(1).movementPoints = 9;
+      final plan = planFieldCultivation(state, 1,
+          [for (final t in chain) state.map.index(t.x, t.y)], Building.kornfeld);
+      expect(plan, chain.sublist(0, 2));
+    });
+
+    test('a Berg mid-chain breaks the Kornfeld wave, not the Weide wave', () {
+      final chain = unownedChain(3);
+      final map = state.map;
+      map.terrain[map.index(chain[1].x, chain[1].y)] = Terrain.berg;
+      state.realm(1).treasury = 1000;
+      state.realm(1).movementPoints = 9;
+      final idx = [for (final t in chain) map.index(t.x, t.y)];
+      expect(planFieldCultivation(state, 1, idx, Building.kornfeld), [chain[0]],
+          reason: 'the Berg takes no grain — nothing behind it can claim');
+      expect(planFieldCultivation(state, 1, idx, Building.weide), chain);
+    });
+
+    test('unowned tiles with no connection to the territory are left out',
+        () {
+      final chain = unownedChain(3);
+      state.realm(1).treasury = 1000;
+      state.realm(1).movementPoints = 9;
+      // Only the far two selected: without the border tile nothing seeds.
+      final plan = planFieldCultivation(
+          state,
+          1,
+          [for (final t in chain.sublist(1)) state.map.index(t.x, t.y)],
+          Building.kornfeld);
+      expect(plan, isEmpty);
+    });
+  });
 }

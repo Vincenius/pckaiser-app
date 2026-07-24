@@ -69,9 +69,18 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Adds a tile to the settlement annex selection (drag paint — add only).
+  /// Adds a tile to the settlement annex selection (tap).
   void addSettlementTile(int index) {
     if (settlementSelection.add(index)) notifyListeners();
+  }
+
+  /// Replaces the whole settlement annex selection (box drag resize),
+  /// notifying once.
+  void setSettlementSelection(Iterable<int> tiles) {
+    settlementSelection
+      ..clear()
+      ..addAll(tiles);
+    notifyListeners();
   }
 
   void clearSettlementSelection() {

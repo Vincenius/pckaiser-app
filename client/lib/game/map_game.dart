@@ -48,24 +48,50 @@ class MapGame extends FlameGame with ScaleDetector {
   /// Tile of the currently selected war unit (pulsing ring); null = none.
   (int, int)? selectedTile;
 
-  /// Drag-select mode: while true a one-finger drag paints tiles into
-  /// [dragSelection] (via [onDragPaint]) instead of panning the camera —
-  /// two-finger pinch still zooms/pans so far tiles stay reachable. Shared
-  /// by field cultivation (peacetime) and post-war annexation (settlement);
-  /// the screen owns the active selection set and paint handler.
-  bool dragSelectMode = false;
+  /// Box select (field cultivation / post-war annexation): a LONG-PRESS on
+  /// an eligible tile anchors the box ([onLongPressTile] decides and sets
+  /// [boxAnchor]); while an anchor is set, a one-finger drag moves the
+  /// opposite corner ([boxCorner], via [onBoxDrag]) instead of panning —
+  /// two-finger pinch still zooms/pans. The screen recomputes which tiles
+  /// inside the box are eligible and keeps them in [dragSelection].
+  (int, int)? boxAnchor;
 
-  /// Tile indices (`y * width + x`) currently drag-selected — owned by the
+  /// Opposite corner of the selection box, dragged by the finger; null
+  /// while the box is just the anchor tile.
+  (int, int)? boxCorner;
+
+  /// Long-press on tile ([x],[y]): the screen returns true when it anchors
+  /// a selection box there (the layer then swallows the tap-up of the same
+  /// press so no tile sheet opens on release).
+  bool Function(int x, int y)? onLongPressTile;
+
+  /// Called with the tile under the finger (clamped to the map) while a
+  /// box drag is in progress — the screen resizes the box and reselects.
+  void Function(int x, int y)? onBoxDrag;
+
+  /// Fired when the finger lifts off a box gesture — after sizing the box,
+  /// or right after the anchoring long-press with no drag. The screen
+  /// opens the batch-build sheet on it (field mode).
+  void Function()? onBoxDragEnd;
+
+  /// True while the CURRENT scale gesture resizes the box — so a pinch
+  /// (zoom/pan) ending mid-selection does not count as a box drag end.
+  bool _boxDragging = false;
+
+  /// Tile indices (`y * width + x`) currently box-selected — owned by the
   /// screen (or controller), rendered here as a translucent highlight.
   Set<int> dragSelection = <int>{};
 
-  /// Called with a tile a drag passes over while [dragSelectMode] — the
-  /// screen decides whether it is eligible and updates [dragSelection].
-  void Function(int x, int y)? onDragPaint;
-
-  /// Base ARGB color of the drag-selection highlight (green for fields,
-  /// amber for annexation) — the fill and border derive their alpha from it.
+  /// Base ARGB color of the selected-tile fill (green for fields, amber
+  /// for annexation). The dashed box frame is always white-on-dark so it
+  /// stays visible on same-hued terrain.
   int dragSelectColor = 0xFF4CAF50;
+
+  /// Drops the selection box (mode exit / phase change).
+  void clearBox() {
+    boxAnchor = null;
+    boxCorner = null;
+  }
 
   gc.GameState _state;
   ui.Picture? _picture;
@@ -468,12 +494,21 @@ class MapGame extends FlameGame with ScaleDetector {
   }
 
   @override
+  void onScaleEnd(ScaleEndInfo info) {
+    if (_boxDragging) {
+      _boxDragging = false;
+      onBoxDragEnd?.call();
+    }
+  }
+
+  @override
   void onScaleUpdate(ScaleUpdateInfo info) {
-    // Drag-select mode: a one-finger drag paints the tile under the finger
-    // instead of panning. Two-finger gestures still zoom/pan below so the
-    // player can navigate to reach far tiles.
-    if (dragSelectMode && info.pointerCount < 2) {
-      _paintDragAt(info.eventPosition.widget);
+    // Box select: while an anchor is set, a one-finger drag moves the box
+    // corner under the finger instead of panning. Two-finger gestures
+    // still zoom/pan below so the player can navigate meanwhile.
+    if (boxAnchor != null && info.pointerCount < 2) {
+      _boxDragging = true;
+      _dragBoxAt(info.eventPosition.widget);
       return;
     }
     if (info.pointerCount >= 2) {
@@ -488,17 +523,16 @@ class MapGame extends FlameGame with ScaleDetector {
   }
 
   /// Reports the map tile under a screen point (widget-relative) to
-  /// [onDragPaint] during a drag-select. Mirrors `_MapLayer.onTapUp`:
+  /// [onBoxDrag] during a box drag. Mirrors `_MapLayer.onTapUp`:
   /// `camera.globalToLocal` maps the widget point into world space, then a
-  /// floor by [tileSize] gives the tile.
-  void _paintDragAt(Vector2 widgetPoint) {
+  /// floor by [tileSize] gives the tile — clamped to the map so dragging
+  /// past the edge sizes the box up to the border instead of freezing it.
+  void _dragBoxAt(Vector2 widgetPoint) {
     final world = camera.globalToLocal(widgetPoint);
-    final x = (world.x / tileSize).floor();
-    final y = (world.y / tileSize).floor();
     final map = _state.map;
-    if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
-      onDragPaint?.call(x, y);
-    }
+    final x = (world.x / tileSize).floor().clamp(0, map.width - 1);
+    final y = (world.y / tileSize).floor().clamp(0, map.height - 1);
+    onBoxDrag?.call(x, y);
   }
 
   /// Keeps the visible area inside the map: the camera center may not get
@@ -550,25 +584,73 @@ class _MapLayer extends PositionComponent with TapCallbacks {
     _renderSelection(canvas);
   }
 
-  /// Translucent highlight over every drag-selected tile (fields to
-  /// cultivate, or enemy tiles to annex). Drawn per-frame (not baked into
-  /// the picture) so the selection tracks the finger live.
+  /// Box-selection overlay: a translucent fill on every selected tile
+  /// (the eligible ones inside the box) plus a dashed frame around the
+  /// whole dragged box. Drawn per-frame (not baked into the picture) so
+  /// the selection tracks the finger live.
   void _renderDragSelection(Canvas canvas) {
-    if (game.dragSelection.isEmpty) return;
-    final width = game._state.map.width;
     final base = Color(game.dragSelectColor);
-    final fill = Paint()..color = base.withValues(alpha: 0.33);
-    final border = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = base.withValues(alpha: 0.8);
-    for (final idx in game.dragSelection) {
-      final x = idx % width;
-      final y = idx ~/ width;
-      final cell = Rect.fromLTWH(x * tileSize, y * tileSize, tileSize, tileSize);
-      canvas.drawRect(cell, fill);
-      canvas.drawRect(cell.deflate(1), border);
+    if (game.dragSelection.isNotEmpty) {
+      final width = game._state.map.width;
+      final fill = Paint()..color = base.withValues(alpha: 0.33);
+      for (final idx in game.dragSelection) {
+        final x = idx % width;
+        final y = idx ~/ width;
+        canvas.drawRect(
+          Rect.fromLTWH(x * tileSize, y * tileSize, tileSize, tileSize),
+          fill,
+        );
+      }
     }
+    final anchor = game.boxAnchor;
+    if (anchor == null) return;
+    final corner = game.boxCorner ?? anchor;
+    final left = math.min(anchor.$1, corner.$1) * tileSize;
+    final top = math.min(anchor.$2, corner.$2) * tileSize;
+    final right = (math.max(anchor.$1, corner.$1) + 1) * tileSize;
+    final bottom = (math.max(anchor.$2, corner.$2) + 1) * tileSize;
+    final frame = Rect.fromLTRB(left, top, right, bottom).deflate(1);
+    // White dashes over a wider dark underlay: readable on green land,
+    // bright water and shoreline alike (the mode color alone drowned in
+    // same-hued terrain — the green frame was invisible on grass).
+    _drawDashedRect(
+      canvas,
+      frame,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = const Color(0xB3000000),
+    );
+    _drawDashedRect(
+      canvas,
+      frame,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = const Color(0xFFFFFFFF),
+    );
+  }
+
+  /// Dashed rectangle outline (Canvas has no dash support of its own).
+  void _drawDashedRect(Canvas canvas, Rect rect, Paint paint) {
+    const dash = 6.0;
+    const gap = 4.0;
+    void line(Offset from, Offset to) {
+      final total = (to - from).distance;
+      if (total == 0) return;
+      final dir = (to - from) / total;
+      var at = 0.0;
+      while (at < total) {
+        final end = math.min(at + dash, total);
+        canvas.drawLine(from + dir * at, from + dir * end, paint);
+        at = end + gap;
+      }
+    }
+
+    line(rect.topLeft, rect.topRight);
+    line(rect.topRight, rect.bottomRight);
+    line(rect.bottomRight, rect.bottomLeft);
+    line(rect.bottomLeft, rect.topLeft);
   }
 
   /// Pulsing ring around the selected war unit.
@@ -595,8 +677,35 @@ class _MapLayer extends PositionComponent with TapCallbacks {
     );
   }
 
+  /// True after a long-press anchored a selection box: the tap-up of that
+  /// same press must not also fire [MapGame.onTileTap] (which would open a
+  /// tile sheet over the fresh selection).
+  bool _swallowTap = false;
+
+  @override
+  void onLongTapDown(TapDownEvent event) {
+    final x = (event.localPosition.x / tileSize).floor();
+    final y = (event.localPosition.y / tileSize).floor();
+    final map = game._state.map;
+    if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
+      _swallowTap = game.onLongPressTile?.call(x, y) ?? false;
+    }
+  }
+
+  @override
+  void onTapCancel(TapCancelEvent event) {
+    _swallowTap = false;
+  }
+
   @override
   void onTapUp(TapUpEvent event) {
+    if (_swallowTap) {
+      _swallowTap = false;
+      // Lift right after the anchoring long-press (no drag): the box
+      // gesture is complete — a single-tile box.
+      game.onBoxDragEnd?.call();
+      return;
+    }
     final x = (event.localPosition.x / tileSize).floor();
     final y = (event.localPosition.y / tileSize).floor();
     final map = game._state.map;

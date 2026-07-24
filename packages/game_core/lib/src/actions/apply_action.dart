@@ -455,6 +455,74 @@ bool _tryBuildField(GameState state, Realm realm, int x, int y, int building) {
   return true;
 }
 
+/// Plans which of [selected] tiles (indices `y * width + x`) a
+/// [BuildFields] of [building] would cultivate for [slot], as a DRY RUN
+/// (state never mutated). Returns the tiles in a valid build ORDER: claim
+/// chains resolve outward — building on an unowned border tile claims it,
+/// which lets the wave reach the next unowned tile behind it — so a
+/// selection stretching several tiles into free land builds completely.
+/// Bounded by terrain (Kornfeld only on Ebene), the treasury and the
+/// remaining Züge, exactly per [_tryBuildField]: dispatching the returned
+/// list as a [BuildFields] builds every tile of it. Selected tiles that
+/// are unreachable (connected only through non-selected or wrong-terrain
+/// tiles) or beyond the budget are left out. Drives the client's
+/// drag-select preview counts and the batch it submits.
+List<({int x, int y})> planFieldCultivation(
+    GameState state, int slot, Iterable<int> selected, int building) {
+  if (building != Building.kornfeld && building != Building.weide) {
+    return const [];
+  }
+  final map = state.map;
+  final realm = state.realm(slot);
+  final cost = Building.cost[building]!;
+  bool terrainOk(int t) => building == Building.kornfeld
+      ? t == Terrain.ebene
+      : t == Terrain.berg || t == Terrain.ebene;
+  // Candidates: empty tiles of a valid terrain that are own or claimable
+  // (unowned land) — everything else can never build and never carries a
+  // claim chain either.
+  final sel = <int>{
+    for (final i in selected)
+      if (i >= 0 &&
+          i < map.terrain.length &&
+          map.building[i] == Building.none &&
+          terrainOk(map.terrain[i]) &&
+          (map.owner[i] == slot || map.owner[i] == World.niemand))
+        i,
+  };
+  if (sel.isEmpty) return const [];
+
+  var moves = realm.movementPoints;
+  var treasury = realm.treasury;
+  final planned = <({int x, int y})>[];
+  final queued = <int>{};
+  final queue = <int>[];
+  // Seeds: own tiles and unowned tiles already bordering own territory,
+  // in reading order (deterministic across client and server).
+  for (final i in sel.toList()..sort()) {
+    if (map.owner[i] == slot || map.bordersSlot(i % map.width, i ~/ map.width, slot)) {
+      queued.add(i);
+      queue.add(i);
+    }
+  }
+  for (var head = 0; head < queue.length; head++) {
+    // Every field costs the same — once one is unaffordable, all are.
+    if (moves < 1 || treasury < cost) break;
+    final i = queue[head];
+    moves--;
+    treasury -= cost;
+    planned.add((x: i % map.width, y: i ~/ map.width));
+    // The built (and, if unowned, claimed) tile carries the wave to its
+    // selected neighbors — enqueued only now, so at their turn they
+    // border own territory just as _tryBuildField will see it.
+    for (final (nx, ny) in map.neighborsOf(i % map.width, i ~/ map.width)) {
+      final ni = map.index(nx, ny);
+      if (sel.contains(ni) && queued.add(ni)) queue.add(ni);
+    }
+  }
+  return planned;
+}
+
 /// "(A)breißen" — 100 T, clears the building (§4). Towns cannot be
 /// demolished this way (the original demolishes *fields*).
 List<GameEvent> _demolish(GameState state, Realm realm, Demolish action) {

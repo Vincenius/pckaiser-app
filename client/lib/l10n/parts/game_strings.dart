@@ -77,12 +77,9 @@ const Map<String, String> gameDe = {
   'game.devastatedUntil': ' (verwüstet bis Anno {year})',
   'game.tileHeaderTrailing': '{treasury} T\nnoch {moves} Züge',
   'game.noActionHere': 'Hier ist keine Aktion möglich',
-  // Field-cultivation drag-select.
-  'game.fieldModeShort': 'Felder',
-  'game.fieldSelectHint': 'Ziehe über deine Felder, um sie auszuwählen.',
-  'game.fieldSelectCount': '{count} ausgewählt',
-  'game.fieldBuildOption': 'baut {count} · {cost} T',
-  'game.fieldBuildNone': 'kein passendes Feld',
+  // Field-cultivation box select (long-press a tile, then drag the frame;
+  // releasing opens the batch-build sheet).
+  'game.fieldSheetTitle': '{count} Felder ausgewählt',
   'game.shipsWaterOnly':
       'Schiffe fahren nur auf dem Wasser — oder kolonisieren ein '
       'freies Landfeld !',
@@ -208,12 +205,9 @@ const Map<String, String> gameEn = {
   'game.devastatedUntil': ' (devastated until Anno {year})',
   'game.tileHeaderTrailing': '{treasury} T\n{moves} moves left',
   'game.noActionHere': 'No action is possible here',
-  // Field-cultivation drag-select.
-  'game.fieldModeShort': 'Fields',
-  'game.fieldSelectHint': 'Drag across your fields to select them.',
-  'game.fieldSelectCount': '{count} selected',
-  'game.fieldBuildOption': 'builds {count} · {cost} T',
-  'game.fieldBuildNone': 'no matching field',
+  // Field-cultivation box select (long-press a tile, then drag the frame;
+  // releasing opens the batch-build sheet).
+  'game.fieldSheetTitle': '{count} tiles selected',
   'game.shipsWaterOnly':
       'Ships sail only on water — or colonize a free land tile!',
   'game.notReachableBySea': 'This tile cannot be reached by sea!',
