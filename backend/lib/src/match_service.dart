@@ -1136,10 +1136,16 @@ class MatchService {
     // SECOND answer: the previous state still had a warPlan decision, this
     // one has none). Not gated on a turn timer — without one the war begins
     // at once, so the waiting side (typically the attacker, who chose first)
-    // still learns the other has now chosen (start ⇒ now). Sent before the
-    // awaited-null return below: during a both-live wait nobody is awaited.
+    // still learns the other has now chosen (start ⇒ now). The prep-deadline
+    // SWEEP also consumes unanswered warPlan decisions (force-delegating the
+    // no-show), but there the war has just STARTED — announcing a start time
+    // then would be stale; that path only exists with a turn timer while the
+    // war has left preparation, hence the (prep || no-timer) gate. Sent
+    // before the awaited-null return below: during a both-live wait nobody
+    // is awaited.
     if (notify &&
         state.activeWar != null &&
+        (prep || match.settings.turnTimeoutHours == null) &&
         previous != null &&
         previous.pendingDecisions.any((d) => d.type == 'warPlan') &&
         !state.pendingDecisions.any((d) => d.type == 'warPlan')) {

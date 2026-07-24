@@ -953,6 +953,36 @@ void main() {
       expect(pushes.kinds.where((k) => k == 'warStartSoon').length, 2,
           reason: 'the reminder is deduplicated per start time');
     });
+
+    test('the prep-deadline sweep of a no-show sends no stale "fixed" push',
+        () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      final pushes = _RecordingPushService();
+      service = MatchService(store, pushes, clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      // Anna answers; Berta never does. The deadline sweep force-delegates
+      // Berta and STARTS the war — the warPlan decision vanishes in that
+      // commit too, but a "war start fixed" push now would announce a start
+      // that already happened.
+      await answerPlan(match, a.id, 1, {'auto': false});
+      now = start.add(const Duration(hours: 24, minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      final started =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(started.activeWar!.phase, WarPhase.rounds);
+      expect(pushes.kinds.where((k) => k == 'warStartFixed'), isEmpty,
+          reason: 'the sweep starts the war — no stale appointment push');
+    });
   });
 
   group('timeouts', () {

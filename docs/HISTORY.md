@@ -130,6 +130,14 @@ Four changes to the human-vs-human war preparation window:
   worded per role (the waiting attacker is told the defender has chosen); the
   second answerer (usually the defender) also gets an in-app confirmation of
   the matched appointment (`dec.warStartConfirmed` / `dec.warStartSaved`).
+- **Review fix: no stale "fixed" push from the deadline sweep.** Widening the
+  `WAR_START_FIXED` gate from `prep` to `activeWar != null` also matched the
+  prep-deadline sweep of a no-show (the force also consumes the unanswered
+  warPlan): both sides would get "der Krieg beginnt nach Ablauf der Frist" at
+  the very moment the war had already started. The push is now gated on
+  `prep || no turn timer` — the sweep path always has a timer and has left
+  preparation, so only genuine answer-driven commits notify (regression test
+  in `match_service_test.dart`).
 
 ## 2026-07-21 — Grey out taken countries when joining online (user request)
 
