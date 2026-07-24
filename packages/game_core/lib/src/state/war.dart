@@ -200,15 +200,19 @@ class ActiveWar {
   final Set<int> autoSlots;
 
   /// Proposed duel start times per LIVE side (`warPlan` answer, online
-  /// scheduling): epoch milliseconds UTC on full hours; the sentinel 0
-  /// means "as soon as both have answered". Used only during the
-  /// preparation phase of a both-live war.
+  /// scheduling): epoch milliseconds UTC on full hours. The first offered
+  /// slot is "sofort" — the top of the side's CURRENT hour — so two sides
+  /// only match on it when both answer within the same clock hour (a late
+  /// answer can no longer start the duel at an arbitrary future instant).
+  /// Used only during the preparation phase of a both-live war.
   final Map<int, List<int>> planSlots;
 
   /// The agreed duel start (earliest common `planSlots` entry) once every
-  /// side has answered: epoch milliseconds UTC, 0 = immediately. Null =
-  /// no overlap (or no proposals) — the online fallback deadline (half
-  /// the turn timer) governs the start, exactly as before scheduling.
+  /// side has answered: epoch milliseconds UTC. A "sofort" agreement is
+  /// simply the current-hour instant (already in the past by the time both
+  /// answered → the server deadline fires it at once). Null = no overlap
+  /// (or no proposals) — the online fallback deadline (the full turn timer)
+  /// governs the start, exactly as before scheduling.
   int? scheduledStartMs;
 
   /// War sides that have given at least one interactive input during the

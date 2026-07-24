@@ -835,8 +835,9 @@ List<GameEvent> _resolveDecision(
         war.autoSlots.add(decision.decidingSlot);
       } else {
         // `[DESIGNED 2026-07-08]` Online duel scheduling: a LIVE side may
-        // propose start times ('slots': epoch ms UTC on full hours; the
-        // sentinel 0 = "as soon as both have answered").
+        // propose start times ('slots': epoch ms UTC on full hours). The
+        // first slot is "sofort" — the top of THIS side's current hour — so
+        // two sides only agree on it when both answer within the same hour.
         final slots = (choice['slots'] as List?)?.cast<int>();
         if (slots != null && slots.isNotEmpty) {
           war.planSlots[decision.decidingSlot] = List.of(slots)..sort();
@@ -844,8 +845,8 @@ List<GameEvent> _resolveDecision(
       }
       // Once every side has answered and BOTH play live, the earliest
       // common proposal becomes the agreed start. No overlap (or no
-      // proposals) leaves it null — the caller's fallback deadline (half
-      // the turn timer online) governs, exactly as without scheduling. An
+      // proposals) leaves it null — the caller's fallback deadline (the
+      // full turn timer online) governs, exactly as without scheduling. An
       // agreed time may lie LATER than that fallback: both sides chose it.
       // (The CURRENT decision is consumed after the switch — exclude it.)
       if (!state.pendingDecisions

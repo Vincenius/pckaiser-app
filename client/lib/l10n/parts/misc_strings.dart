@@ -61,9 +61,15 @@ const Map<String, String> miscDe = {
       'deinem Gegner, beginnt der Krieg zum frühesten '
       'gemeinsamen Zeitpunkt — sonst nach Ablauf der '
       'Vorbereitungsfrist. Ohne Auswahl gilt die Frist.',
-  'dec.warStartNow': 'Sofort — sobald beide gewählt haben',
+  'dec.warStartNow': 'Sofort (diese Stunde)',
   'dec.warStartNoProposal': 'Ohne Terminvorschlag',
+  'dec.warStartConfirmed': 'Kriegstermin steht: {time}.',
+  'dec.warStartSaved':
+      'Deine Auswahl ist gespeichert. Sobald dein Gegner gewählt hat, '
+      'siehst du den Termin — gibt es keinen gemeinsamen, beginnt der '
+      'Krieg nach Ablauf der Vorbereitungsfrist.',
   'dec.confirm': 'Bestätigen',
+  'dec.ok': 'OK',
   'dec.yes': 'Ja',
   'dec.no': 'Nein',
   'dec.bribeTitle': 'Bestechung der Kurfürsten',
@@ -130,9 +136,15 @@ const Map<String, String> miscEn = {
       'the war begins at the earliest shared time — otherwise when the '
       'preparation deadline expires. With no selection, the deadline '
       'applies.',
-  'dec.warStartNow': 'Immediately — as soon as both have chosen',
+  'dec.warStartNow': 'Immediately (this hour)',
   'dec.warStartNoProposal': 'No time proposal',
+  'dec.warStartConfirmed': 'War start fixed: {time}.',
+  'dec.warStartSaved':
+      'Your choice is saved. Once your opponent has chosen you will see '
+      'the appointment — if there is no shared one, the war begins when '
+      'the preparation deadline expires.',
   'dec.confirm': 'Confirm',
+  'dec.ok': 'OK',
   'dec.yes': 'Yes',
   'dec.no': 'No',
   'dec.bribeTitle': 'Bribing the Electors',

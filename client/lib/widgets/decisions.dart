@@ -202,6 +202,24 @@ Future<void> _promptDecision(
         'auto': !live,
         if (slots != null && slots.isNotEmpty) 'slots': slots,
       });
+      // Online: confirm the outcome in-app. Whoever answers second (usually
+      // the defender) learns the matched appointment right away; the first
+      // to answer sees their choice was saved while the opponent still owes
+      // theirs. A no-overlap result reads the same as "still waiting" from
+      // here (the opponent's pending answer is hidden) — the wording covers
+      // both, and the server's push carries the final "fixed" word.
+      if (live && controller.isOnline && context.mounted) {
+        final agreedMs = controller.state.activeWar?.scheduledStartMs;
+        await _info(
+          context,
+          tr('dec.warStartTitle'),
+          agreedMs != null && agreedMs > 0
+              ? tr('dec.warStartConfirmed', {
+                  'time': formatWarStartTime(agreedMs),
+                })
+              : tr('dec.warStartSaved'),
+        );
+      }
 
     case 'warDefense':
       final war = state.activeWar;
@@ -398,27 +416,25 @@ String formatWarStartTime(int epochMs) {
 }
 
 /// Online duel scheduling: the live commander ticks the times that suit
-/// them — "sofort" (the 0 sentinel) plus the next full hours, hourly over
-/// the turn timer window (capped at 24 entries; no timer offers 24 h).
-/// Full UTC hours, so both players' proposals land on identical instants
-/// and can match; shown in local time. Returns epoch ms (0 = sofort);
-/// an empty selection proposes nothing — the fallback deadline governs.
+/// them — "sofort" (the top of the CURRENT hour) plus the following full
+/// hours, hourly over the turn timer window (capped at 24 entries; no timer
+/// offers 24 h). Full UTC hours, so both players' proposals land on
+/// identical instants and can match; shown in local time. Because "sofort"
+/// is pinned to the current hour, two sides only agree on it when both
+/// answer within the same hour — a late answer can no longer start the duel
+/// at an arbitrary future instant. Returns epoch ms; an empty selection
+/// proposes nothing — the fallback deadline governs.
 Future<List<int>> _askWarStartSlots(
   BuildContext context,
   int? turnTimeoutHours,
 ) async {
   final now = DateTime.now().toUtc();
-  final firstHour = DateTime.utc(
-    now.year,
-    now.month,
-    now.day,
-    now.hour,
-  ).add(const Duration(hours: 1));
+  final currentHour = DateTime.utc(now.year, now.month, now.day, now.hour);
+  final nowMs = currentHour.millisecondsSinceEpoch;
   final count = turnTimeoutHours == null ? 24 : turnTimeoutHours.clamp(1, 24);
   final offered = [
-    0,
     for (var i = 0; i < count; i++)
-      firstHour.add(Duration(hours: i)).millisecondsSinceEpoch,
+      currentHour.add(Duration(hours: i)).millisecondsSinceEpoch,
   ];
   final picked = <int>{};
   final result = await showDialog<List<int>>(
@@ -441,7 +457,9 @@ Future<List<int>> _askWarStartSlots(
                   dense: true,
                   value: picked.contains(ms),
                   title: Text(
-                    ms == 0 ? tr('dec.warStartNow') : formatWarStartTime(ms),
+                    ms == nowMs
+                        ? tr('dec.warStartNow')
+                        : formatWarStartTime(ms),
                   ),
                   onChanged: (v) => setState(
                     () => v == true ? picked.add(ms) : picked.remove(ms),
@@ -485,6 +503,22 @@ Future<bool> _yesNo(BuildContext context, String title, String message) async {
   );
   return answer ?? false;
 }
+
+/// A single-button information dialog (acknowledge only).
+Future<void> _info(BuildContext context, String title, String message) =>
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr('dec.ok')),
+          ),
+        ],
+      ),
+    );
 
 Future<String> _askText(
   BuildContext context,

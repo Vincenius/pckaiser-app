@@ -587,10 +587,10 @@ void main() {
         playerId: a.id,
         actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
       );
-      // 0.1.13 preparation window: HALF the turn timer (user design).
+      // Preparation window: the FULL turn timer (user design 2026-07-24).
       expect((await store.match(match.id))!.turnDeadline,
-          now.add(const Duration(hours: 12)),
-          reason: 'the preparation window is half the turn timer');
+          now.add(const Duration(hours: 24)),
+          reason: 'the preparation window is the full turn timer');
 
       // Both choose live control — with a timer, the both-live duel WAITS
       // for the deadline (fair start), even though everyone has answered.
@@ -613,10 +613,10 @@ void main() {
       expect(waiting.activeWar!.phase, WarPhase.preparation,
           reason: 'both live → wait for the fair deadline start');
       expect((await store.match(match.id))!.turnDeadline,
-          now.add(const Duration(hours: 12)));
+          now.add(const Duration(hours: 24)));
 
       // The deadline sweep starts the duel; the short war clock takes over.
-      now = now.add(const Duration(hours: 12, minutes: 1));
+      now = now.add(const Duration(hours: 24, minutes: 1));
       expect(await service.sweepExpired(), 1);
       final started =
           GameState.fromJson((await store.match(match.id))!.stateJson!);
@@ -691,7 +691,7 @@ void main() {
       // (not the acting side) is rejected like any off-turn action.
       await answerPlan(match, a.id, 1, {'auto': false});
       await answerPlan(match, b.id, 2, {'auto': false});
-      now = now.add(const Duration(hours: 12, minutes: 1));
+      now = now.add(const Duration(hours: 24, minutes: 1));
       expect(await service.sweepExpired(), 1);
       final started =
           GameState.fromJson((await store.match(match.id))!.stateJson!);
@@ -725,34 +725,34 @@ void main() {
         actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
       );
       expect((await store.match(match.id))!.turnDeadline,
-          start.add(const Duration(hours: 12)),
+          start.add(const Duration(hours: 24)),
           reason: 'fallback until a common slot is agreed');
 
-      // Anna offers 18:00/20:00, Berta 18:00/22:00 — agreement at 18:00,
-      // deliberately LATER than the 12 h fallback: both sides chose it.
-      final slot18 =
-          start.add(const Duration(hours: 18)).millisecondsSinceEpoch;
+      // Anna offers 30:00/32:00, Berta 30:00/34:00 — agreement at 30:00,
+      // deliberately LATER than the 24 h fallback: both sides chose it.
+      final slot30 =
+          start.add(const Duration(hours: 30)).millisecondsSinceEpoch;
       await answerPlan(match, a.id, 1, {
         'auto': false,
         'slots': [
-          slot18,
-          start.add(const Duration(hours: 20)).millisecondsSinceEpoch,
+          slot30,
+          start.add(const Duration(hours: 32)).millisecondsSinceEpoch,
         ],
       });
       await answerPlan(match, b.id, 2, {
         'auto': false,
         'slots': [
-          slot18,
-          start.add(const Duration(hours: 22)).millisecondsSinceEpoch,
+          slot30,
+          start.add(const Duration(hours: 34)).millisecondsSinceEpoch,
         ],
       });
 
       final waiting =
           GameState.fromJson((await store.match(match.id))!.stateJson!);
       expect(waiting.activeWar!.phase, WarPhase.preparation);
-      expect(waiting.activeWar!.scheduledStartMs, slot18);
+      expect(waiting.activeWar!.scheduledStartMs, slot30);
       expect((await store.match(match.id))!.turnDeadline,
-          start.add(const Duration(hours: 18)),
+          start.add(const Duration(hours: 30)),
           reason: 'the deadline IS the appointment');
 
       // The lobby list carries the war-start info: nobody is awaited while
@@ -761,15 +761,15 @@ void main() {
           .singleWhere((m) => m['id'] == match.id);
       expect(listed['war_preparing'], isTrue);
       expect(listed['war_scheduled_at'],
-          start.add(const Duration(hours: 18)).toIso8601String());
+          start.add(const Duration(hours: 30)).toIso8601String());
       expect(listed['awaited_name'], isNull);
 
       // The old fallback instant passes without starting anything.
-      now = start.add(const Duration(hours: 12, minutes: 5));
+      now = start.add(const Duration(hours: 24, minutes: 5));
       expect(await service.sweepExpired(), 0);
 
       // At the appointment the duel starts, both sides live.
-      now = start.add(const Duration(hours: 18, minutes: 1));
+      now = start.add(const Duration(hours: 30, minutes: 1));
       expect(await service.sweepExpired(), 1);
       final started =
           GameState.fromJson((await store.match(match.id))!.stateJson!);
@@ -779,9 +779,12 @@ void main() {
           now.add(const Duration(seconds: 600)));
     });
 
-    test('both pick "sofort" (0): the duel starts with the second answer',
+    test('"sofort" (the current hour) starts the duel on the next sweep',
         () async {
-      var now = DateTime.utc(2026, 1, 1);
+      // The clock sits exactly on a full hour, so the client's "sofort"
+      // slot is this very instant.
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
       service = MatchService(store, LogPushService(), clock: () => now);
       final (a, b) = await twoPlayers();
       final match = await twoHumanMatch(a, b,
@@ -793,23 +796,36 @@ void main() {
         playerId: a.id,
         actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
       );
+      final sofort = start.millisecondsSinceEpoch;
       await answerPlan(match, a.id, 1, {
         'auto': false,
-        'slots': [0],
+        'slots': [sofort],
       });
       final resolved = await answerPlan(match, b.id, 2, {
         'auto': false,
-        'slots': [0],
+        'slots': [sofort],
       });
       final state = GameState.fromJson(
           (resolved['state'] as Map).cast<String, dynamic>());
-      expect(state.activeWar!.phase, WarPhase.rounds,
-          reason: 'both ready right now — no waiting for the deadline');
+      // Both agreed on "sofort" (a current-hour instant): the duel WAITS for
+      // the server deadline, which is that already-current instant — the
+      // sweep fires it at once (prompt, but not in the submit request).
+      expect(state.activeWar!.phase, WarPhase.preparation,
+          reason: 'both live → the sweep starts the past-deadline duel');
+      expect(state.activeWar!.scheduledStartMs, sofort);
+      expect((await store.match(match.id))!.turnDeadline, start);
+
+      now = start.add(const Duration(minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      final started =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(started.activeWar!.phase, WarPhase.rounds);
+      expect(started.activeWar!.autoSlots, isEmpty);
       expect((await store.match(match.id))!.turnDeadline,
           now.add(const Duration(seconds: 600)));
     });
 
-    test('no common slot keeps the half-turn fallback', () async {
+    test('no common slot keeps the full-turn fallback', () async {
       final start = DateTime.utc(2026, 1, 1);
       var now = start;
       service = MatchService(store, LogPushService(), clock: () => now);
@@ -836,8 +852,8 @@ void main() {
       expect(waiting.activeWar!.phase, WarPhase.preparation);
       expect(waiting.activeWar!.scheduledStartMs, isNull);
       expect((await store.match(match.id))!.turnDeadline,
-          start.add(const Duration(hours: 12)),
-          reason: 'no overlap → the fallback stands, exactly as before');
+          start.add(const Duration(hours: 24)),
+          reason: 'no overlap → the full-turn fallback stands');
     });
 
     test(
@@ -855,12 +871,22 @@ void main() {
         playerId: a.id,
         actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
       );
+      final sofort = now.millisecondsSinceEpoch; // now sits on a full hour
       for (final (playerId, slot) in [(a.id, 1), (b.id, 2)]) {
         await answerPlan(match, playerId, slot, {
           'auto': false,
-          'slots': [0],
+          'slots': [sofort],
         });
       }
+      // Both agreed on "sofort" (a current-hour instant): the sweep begins
+      // the rounds at once — the start is no longer in the submit request.
+      now = now.add(const Duration(minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      expect(
+          GameState.fromJson((await store.match(match.id))!.stateJson!)
+              .activeWar!
+              .phase,
+          WarPhase.rounds);
 
       // Anna acted (round end hands over to Berta) — she is "present".
       await service.submit(
@@ -1551,7 +1577,7 @@ class _RecordingPushService implements PushService {
   @override
   Future<void> warStartFixed(
           PlayerRecord player, MatchRecord match, DateTime start,
-          {required bool agreed}) async =>
+          {required bool agreed, bool toAttacker = false}) async =>
       kinds.add('warStartFixed');
 
   @override

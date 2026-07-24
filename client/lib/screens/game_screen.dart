@@ -126,13 +126,28 @@ class _GameScreenState extends State<GameScreen> {
     if (controller.handoffPending || controller.gameOver) return;
     // An active tile pick (e.g. stationing a new troop) consumes the tap.
     if (await controller.resolveTilePick(x, y)) return;
-    // During the war PREPARATION window the map behaves normally — the
-    // attacker's turn continues until both sides chose (war taps only
-    // exist in the rounds/settlement phases).
-    if (controller.state.activeWar != null &&
-        controller.state.activeWar!.phase != gc.WarPhase.preparation) {
+    final war = controller.state.activeWar;
+    // War ROUNDS / settlement: taps drive the duel (select army, march…).
+    if (war != null && war.phase != gc.WarPhase.preparation) {
       await _onWarTileTap(controller, x, y);
       return;
+    }
+    // War PREPARATION window: tapping an own army selects it (tap again to
+    // deselect) so its stance (Angreifen / Position halten) can be set right
+    // from the map, mirroring the WarPanel unit chips. Anything else falls
+    // through to the normal peacetime tile sheet — the turn continues.
+    if (war != null && war.phase == gc.WarPhase.preparation) {
+      final slot = controller.warPrepSlot;
+      if (slot != null) {
+        final troops = controller.state.realm(slot).troops;
+        final tapped = troops.indexWhere((t) => t.x == x && t.y == y);
+        if (tapped >= 0) {
+          controller.selectWarUnit(
+            tapped == controller.selectedWarUnit ? null : tapped,
+          );
+          return;
+        }
+      }
     }
     if (mounted) await showTileActionSheet(context, controller, x, y);
   }

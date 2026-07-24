@@ -6,6 +6,71 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-24 — User bug reports: map bias + a queen's lost lineage (app 0.2.2)
+
+Three reports from a playtester:
+
+- **AI start positions clustered on the left of small maps.** `generateMap`
+  spawned every land patch from an origin in `[0, width-10) × [0, height-10)`
+  and patches only grow right/down, so all land — and therefore every §5
+  starting cross — was pinned to the top-left; on the smaller grids the fixed
+  10-tile margin left a whole strip of the right/bottom permanently water.
+  Fix: centre the spawn window (offset `+2`/`+1`) on `mittel`/`klein`; `gross`
+  is left byte-identical (offset 0) to preserve the RNG-exact original world.
+  The RNG draw order is unchanged (the offset is added AFTER `nextInt`).
+  `map_generator.dart`; regression test asserts land is not lopsided
+  left-vs-right on every size.
+- **A human queen could not name or see her children, and killing her foreign
+  husband defeated her.** Root cause = the §14.2 patrilineal model: a human
+  female ruler married to a foreign (AI) king had her children attached to HIS
+  dynasty, so the `childName` prompt routed to his (AI) slot (never surfacing),
+  the children never appeared in her Dynastie sheet, and her own line was left
+  heirless — so her realm eventually passed to the AI husband (surfacing to her
+  as an immediate defeat after the assassination). **Fix, gated on the
+  gender-equal succession match setting (default on):** under gender-equal a
+  ruling queen keeps her OWN line —
+  - `_birth`: a child spanning a human + non-human house joins the HUMAN
+    parent's dynasty; the naming decision routes to her slot.
+  - `marry`: a human wife marrying a foreign (non-human) husband no longer
+    surrenders her existing children to his house.
+  - `_chooseHeirByPriority`: a married woman's children born into HER dynasty
+    now inherit her realm; the husband's-line children (double-linked for the
+    family display) still don't, so her widower keeps §15.4 rank 3 ahead of the
+    patrilineal son (report 2026-07-10 preserved). With the setting OFF the
+    behaviour collapses exactly to the faithful patrilineal rules (and the
+    `bugfix_v24` defeat-reason test is unchanged). Killing the foreign husband
+    now hands his realm to their child under HER control (or to the queen
+    herself as spouse) instead of eliminating her.
+  `dynasty.dart`; `bugfix_2026_07_24_queen_line_test.dart`.
+
+## 2026-07-24 — Online duel scheduling refinements (user request, app 0.2.2)
+
+Four changes to the human-vs-human war preparation window:
+
+- **"Sofort" is now the current hour, not a timeless sentinel.** The old `0`
+  sentinel ("start as soon as both answered") let the defender start the duel
+  at any future moment by simply delaying their answer. "Sofort" is now a
+  concrete instant = the top of the answering side's current UTC hour, so two
+  sides only agree on it when both answer within the same hour; a late answer
+  starts nothing. Removed the `scheduledStartMs == 0` special-case in
+  `resolveWarPreparation` — a both-live agreement (incl. sofort, a past
+  instant) always waits for the server deadline, which the sweep fires at
+  once when it lies in the past. Touches `apply_action` (comment),
+  `ai_turn.resolveWarPreparation`, `war.dart` docs, client `_askWarStartSlots`
+  + `dec.warStartNow` string.
+- **Auto start = full turn time.** When no proposals overlapped, the fallback
+  duel start (= the preparation window) now runs the FULL turn timer instead
+  of half of it (`_commit` in `match_service.dart`).
+- **Troops selectable on the map during preparation.** `_onTileTap`
+  (`game_screen.dart`) now selects an own army on tap during the prep window
+  (mirroring the WarPanel chips) so its stance can be set straight from the
+  map; non-troop taps still open the normal tile sheet.
+- **Appointment notifications.** The `WAR_START_FIXED` push now fires on the
+  second answer regardless of a turn timer (start ⇒ now without one) and is
+  worded per role (the waiting attacker is told the defender has chosen); the
+  second answerer (usually the defender) also gets an in-app confirmation of
+  the matched appointment (`dec.warStartConfirmed` / `dec.warStartSaved`).
+
 ## 2026-07-21 — Grey out taken countries when joining online (user request)
 
 - Joining an online match and picking an already-used country showed a

@@ -889,11 +889,12 @@ void _fastForwardAiWar(GameState state, Rng rng, List<GameEvent> events) {
 ///  - all answered, NOBODY plays live → begin and fast-forward the whole
 ///    war like an AI-vs-AI war (both sides on the stance autopilot),
 ///  - all answered, BOTH play live → start only when [waitWhenAllManual]
-///    is false (hot-seat / no online timer: both are present), when both
-///    agreed on the "immediately" slot (`war.scheduledStartMs == 0`, the
-///    online duel scheduling), or on [force] (the online deadline — the
-///    agreed start time if the sides found a common slot, otherwise half
-///    the turn timer — keeps the duel start fair).
+///    is false (hot-seat / no online timer: both are present) or on [force]
+///    (the online deadline — the agreed start time if the sides found a
+///    common slot, otherwise the full turn timer — keeps the duel start
+///    fair). A "sofort" agreement is a current-hour instant already in the
+///    past, so the server arms the deadline at it and the sweep fires the
+///    start at once.
 /// [force] (deadline expiry) also defaults every unanswered side to the
 /// autopilot — an absent player is protected, never steamrolled.
 void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
@@ -912,10 +913,10 @@ void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
     return;
   }
   final liveSides = sides.where((s) => warSideIsHuman(state, war, s)).length;
-  if (!force &&
-      waitWhenAllManual &&
-      liveSides == 2 &&
-      war.scheduledStartMs != 0) {
+  if (!force && waitWhenAllManual && liveSides == 2) {
+    // Both live online: the duel starts on the server deadline (the agreed
+    // slot, or the full-turn fallback), never in this request — a "sofort"
+    // agreement is a past current-hour instant the sweep fires immediately.
     return;
   }
   beginWarRounds(state, rng);
