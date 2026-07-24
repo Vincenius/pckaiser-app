@@ -50,6 +50,47 @@ int rollMovementPoints(int titleClass, Rng rng) =>
   return (cur % map.width - x, cur ~/ map.width - y);
 }
 
+/// The passable tile reachable from ([x],[y]) that lies nearest to
+/// ([tx],[ty]) — same land graph as [warPathStep] (water blocks;
+/// [allowedOwners] restricts, start excepted). Ties go to the tile
+/// fewest steps away. Returns null when no reachable tile is nearer than
+/// the start itself. Lets a war march approach a click it cannot reach
+/// (an island, third-realm land) as far as possible instead of refusing.
+(int, int)? closestReachableTile(WorldMap map, int x, int y, int tx, int ty,
+    {Set<int>? allowedOwners}) {
+  final start = map.index(x, y);
+  final seen = List<bool>.filled(map.terrain.length, false);
+  seen[start] = true;
+  final queue = <int>[start];
+  int distTo(int i) =>
+      (i % map.width - tx).abs() + (i ~/ map.width - ty).abs();
+  var best = start;
+  var bestDist = distTo(start);
+  for (var head = 0; head < queue.length; head++) {
+    final cur = queue[head];
+    // BFS visits in step order, so a STRICT improvement keeps the
+    // shallowest tile among equally near ones.
+    final d = distTo(cur);
+    if (d < bestDist) {
+      bestDist = d;
+      best = cur;
+      if (d == 0) break;
+    }
+    for (final (nx, ny) in map.neighborsOf(cur % map.width, cur ~/ map.width)) {
+      if (map.isWaterAt(nx, ny)) continue;
+      final ni = map.index(nx, ny);
+      if (seen[ni]) continue;
+      if (allowedOwners != null && !allowedOwners.contains(map.owner[ni])) {
+        continue;
+      }
+      seen[ni] = true;
+      queue.add(ni);
+    }
+  }
+  if (best == start) return null;
+  return (best % map.width, best ~/ map.width);
+}
+
 /// Greedy fallback step toward ([tx],[ty]) when no full path exists
 /// ([warPathStep] returned null): the direct axes first, then any
 /// passable detour. Keeps a unit inching toward a coastal target the BFS

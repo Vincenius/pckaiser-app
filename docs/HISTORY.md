@@ -6,6 +6,29 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-24 — War march approaches unreachable clicks (app 0.2.2)
+
+Tapping a march target no land path can reach (an island, third-realm
+land, a pocket walled off by water) no longer toasts "impassable" — the
+unit now marches as far as possible toward the click. `[DESIGNED, user
+request]`
+
+- Engine: new `closestReachableTile(map, x, y, tx, ty, allowedOwners)` in
+  `rules/movement.dart` — BFS over the same passable land graph as
+  `warPathStep`, returns the reachable tile nearest (Manhattan) the
+  target, ties to the fewest steps, null when the start is already
+  optimal. `applyWarMarch` retargets an unreachable LAND click to it and
+  throws `impassable` only when there is nowhere nearer to go. Water
+  clicks and units at sea keep the manual-steering fallback unchanged.
+  Tests in `war_march_approach_2026_07_24_test.dart`.
+- Client: `_marchToward` (game_screen.dart) used to try the march first
+  and fall back to the harbor sea-route on failure; since the march no
+  longer fails, the sea-route convenience is now decided BEFORE marching
+  (via `warPathStep` reachability). Priority for an unreachable click:
+  ship via a connecting harbor (directly, or march-to-embark first),
+  otherwise march as close as possible. Behavior for reachable targets is
+  unchanged. No new action, no version bump (ships with 0.2.2).
+
 ## 2026-07-24 — Drag-select war annexation (app 0.2.2)
 
 Extends the field drag-select to the post-war claim settlement: instead of

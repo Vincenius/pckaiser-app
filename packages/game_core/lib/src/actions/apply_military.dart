@@ -6,7 +6,7 @@ library;
 import '../l10n/messages.dart';
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
-import '../rules/movement.dart' show warPathStep;
+import '../rules/movement.dart' show closestReachableTile, warPathStep;
 import '../rules/troops.dart';
 import '../rules/war.dart';
 import '../state/constants.dart';
@@ -515,10 +515,12 @@ List<GameEvent> applyWarMove(
 /// passable LAND path toward the target — every step with the full
 /// [applyWarMove] semantics (combat, capture arming) — until it arrives,
 /// its round moves run out, a defender holds the tile, the unit is
-/// destroyed, or the war ends. Throws only when no step is possible AT ALL
-/// (no passable path, or the unit cannot move this round); once the unit
-/// moved, the march simply ends where it got to. Water crossings stay
-/// manual (single [WarMove] steps / [WarNavalTransport]).
+/// destroyed, or the war ends. A land target the path cannot reach is not
+/// an error: the march retargets to the reachable tile nearest the click
+/// and gets as close as it can. Throws only when no step is possible AT
+/// ALL (nowhere nearer to go, or the unit cannot move this round); once
+/// the unit moved, the march simply ends where it got to. Water crossings
+/// stay manual (single [WarMove] steps / [WarNavalTransport]).
 ///
 /// The unit is tracked by OBJECT identity across the steps: combat
 /// compacts the troop list, so an index (or a name — they repeat) could
@@ -540,6 +542,27 @@ List<GameEvent> applyWarMarch(
   final enemySlot = war.opponentOf(realm.slot);
   final warOwners = {realm.slot, enemySlot, World.niemand};
 
+  // A LAND click with no passable path (an island, third-realm land, a
+  // pocket walled off by water) no longer rejects the march: the unit
+  // approaches instead — the goal is retargeted to the reachable tile
+  // nearest the click `[DESIGNED 2026-07-24, user request]`. Water clicks
+  // keep the manual sea-steering fallback below, and a unit at sea keeps
+  // steering tile by tile.
+  var goalX = action.x;
+  var goalY = action.y;
+  if (!map.isWaterAt(action.x, action.y) &&
+      !map.isWaterAt(troop.x, troop.y) &&
+      warPathStep(map, troop.x, troop.y, action.x, action.y,
+              allowedOwners: warOwners) ==
+          null) {
+    final near = closestReachableTile(map, troop.x, troop.y, action.x, action.y,
+        allowedOwners: warOwners);
+    if (near == null) {
+      throw ActionException(coreMessage('impassable'));
+    }
+    (goalX, goalY) = near;
+  }
+
   final events = <GameEvent>[];
   var guard = 0;
   while (identical(state.activeWar, war) &&
@@ -547,16 +570,16 @@ List<GameEvent> applyWarMarch(
       guard++ < 60) {
     final index = realm.troops.indexOf(troop);
     if (index < 0) break; // destroyed in a step's combat
-    if (troop.x == action.x && troop.y == action.y) break; // arrived
-    var step = warPathStep(map, troop.x, troop.y, action.x, action.y,
+    if (troop.x == goalX && troop.y == goalY) break; // arrived
+    var step = warPathStep(map, troop.x, troop.y, goalX, goalY,
         allowedOwners: warOwners);
     if (step == null) {
       // No land path (water target, unit at sea, island shore): manual
       // straight-line legs — primary axis first, then the secondary —
       // under the same per-step §11.2 rule ([warStepBlocker]) WarMove
       // enforces, so a planned step can never be rejected.
-      final remX = action.x - troop.x;
-      final remY = action.y - troop.y;
+      final remX = goalX - troop.x;
+      final remY = goalY - troop.y;
       final candidates = remX.abs() >= remY.abs()
           ? [(remX.sign, 0), (0, remY.sign)]
           : [(0, remY.sign), (remX.sign, 0)];

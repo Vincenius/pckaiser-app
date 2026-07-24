@@ -459,8 +459,10 @@ class _GameScreenState extends State<GameScreen> {
   /// unit by identity through any combat (the old client-side step loop
   /// tracked units by name + expected position, a workaround for units
   /// having had no stable identity). The client keeps only the sea-route
-  /// convenience: when no path exists, ship via an own harbor — directly,
-  /// or after marching to the nearest connecting harbor coast first.
+  /// convenience: when no land path reaches the tap, ship via a harbor —
+  /// directly, or after marching to the nearest connecting harbor coast
+  /// first. With no sea route either, the engine march still runs and
+  /// gets the unit as close to the tap as the land allows.
   Future<void> _marchToward(
     GameController controller,
     int slot,
@@ -493,11 +495,28 @@ class _GameScreenState extends State<GameScreen> {
         ? {slot, war.opponentOf(slot)}
         : {slot};
 
-    final error = await march(tx, ty);
-    // The convenience sea-route only applies from LAND (at sea the unit is
-    // steered manually) and while no battle happened yet (a fought march
-    // defers it — re-tap to continue next round).
-    if (error != null && report.isEmpty && !map.isWaterAt(fromX, fromY)) {
+    // The engine approaches an unreachable land click as far as it can
+    // instead of failing (2026-07-24), so the sea-route convenience must
+    // be decided BEFORE marching: from land, a click no land path reaches
+    // ships via a connecting harbor when one exists — directly, or after
+    // marching to the nearest connecting harbor coast. Without a sea
+    // route the march runs anyway and simply gets as close as possible.
+    // At sea the unit is steered manually, no convenience routing.
+    final landReachable =
+        map.isWaterAt(fromX, fromY) ||
+        (fromX == tx && fromY == ty) ||
+        gc.warPathStep(
+              map,
+              fromX,
+              fromY,
+              tx,
+              ty,
+              allowedOwners: {...harborOwners, gc.World.niemand},
+            ) !=
+            null;
+
+    var seaRouted = false;
+    if (!landReachable && !map.isWaterAt(fromX, fromY)) {
       if (map.canNavalTransport(
         slot,
         fromX,
@@ -507,6 +526,7 @@ class _GameScreenState extends State<GameScreen> {
         harborOwners: harborOwners,
       )) {
         // Standing next to a harbor that reaches the target → ship across.
+        seaRouted = true;
         final navError = await _navalTransport(
           controller,
           slot,
@@ -527,9 +547,8 @@ class _GameScreenState extends State<GameScreen> {
           ty,
           harborOwners: harborOwners,
         );
-        if (embark == null || (embark.$1 == fromX && embark.$2 == fromY)) {
-          _toast(error);
-        } else {
+        if (embark != null && (embark.$1 != fromX || embark.$2 != fromY)) {
+          seaRouted = true;
           final marchError = await march(embark.$1, embark.$2);
           final troops = controller.state.realm(slot).troops;
           final arrived =
@@ -560,8 +579,10 @@ class _GameScreenState extends State<GameScreen> {
           }
         }
       }
-    } else if (error != null && report.isEmpty) {
-      _toast(error);
+    }
+    if (!seaRouted) {
+      final error = await march(tx, ty);
+      if (error != null && report.isEmpty) _toast(error);
     }
 
     // The march may have ended with the unit destroyed — drop a stale
