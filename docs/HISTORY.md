@@ -6,6 +6,36 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-24 — Drag-select field cultivation (app 0.2.2)
+
+New UX for laying down Kornfelder/Weiden in bulk instead of tapping tile by
+tile. A "Felder" toggle (bottom-left over the map) arms a drag-select mode:
+a one-finger drag paints eligible fields (own/claimable empty land, Ebene or
+Berg) into a highlighted selection — two-finger pinch still zooms/pans so far
+tiles stay reachable, and a tap fine-tunes single tiles. A bottom panel then
+offers **Kornfeld** and **Weide**, each labelled with exactly how many of the
+selected tiles it would build (bounded by terrain, treasury and remaining
+Züge); the rest are left free. So selecting a mix and choosing Kornfeld skips
+every Berg tile, and an over-budget selection builds only what the treasury
+and moves cover.
+
+- Engine: new best-effort batch action `BuildFields(slot, building, tiles)`
+  (`player_action.dart` + `_buildFields`/`_tryBuildField` in
+  `apply_action.dart`). Per tile it re-checks the single-[Build] rules
+  (ownership/claim-on-build, empty, terrain, 1 Zug + Taler) and silently
+  skips what fails; throws only when nothing at all could be built. One
+  action = one online round-trip and one undo step. Precedent:
+  `SettlementAnnexMany`. Tests in `build_fields_test.dart`.
+- Client: `MapGame.fieldSelectMode` guards `onScaleUpdate` so a one-finger
+  drag reports painted tiles via `onFieldPaint` (screen owns the selection
+  set, rendered as a translucent green highlight in `_MapLayer`);
+  `game_screen.dart` holds the mode, eligibility, panel and dispatch. Hidden
+  during war/handoff/tile-pick/off-turn/tutorial; auto-exits if a war starts
+  mid-selection. Strings in `game_strings.dart` (de/en). No version bump —
+  ships within the in-progress 0.2.2; a new action is additive to the action
+  decoder (actions aren't persisted, and online seats already match on
+  `appVersion`).
+
 ## 2026-07-24 — User bug reports: map bias + a queen's lost lineage (app 0.2.2)
 
 Three reports from a playtester:

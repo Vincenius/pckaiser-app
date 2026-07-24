@@ -60,6 +60,7 @@ List<GameEvent> applyActionInPlace(
     MoveShip() => _moveShip(state, realm, action),
     ColonizeShip() => _colonizeShip(state, realm, action, rng),
     Build() => _build(state, realm, action, rng),
+    BuildFields() => _buildFields(state, realm, action),
     Demolish() => _demolish(state, realm, action),
     ChangeReligion() => _changeReligion(state, realm, action),
     CollectTribute() => _collectTribute(state, realm, action),
@@ -374,6 +375,84 @@ List<GameEvent> _build(GameState state, Realm realm, Build action, Rng rng) {
   }
 
   return events;
+}
+
+/// Drag-select batch cultivation ([BuildFields]): lay a Kornfeld or Weide
+/// on every listed tile that can take it, best-effort. Wrong-terrain tiles
+/// (Kornfeld off Ebene) and tiles the treasury / remaining Züge can no
+/// longer pay for are silently skipped — the client offers the batch
+/// pre-filtered, this is the authoritative re-check. Each built field
+/// costs 1 Zug + the field's Taler, exactly like a single [Build].
+List<GameEvent> _buildFields(GameState state, Realm realm, BuildFields action) {
+  final building = action.building;
+  // A fields-only batch: Dorf/Burg/Hafen/… go through the single Build.
+  if (building != Building.kornfeld && building != Building.weide) {
+    throw ActionException(coreMessage('cannotBuildThat'));
+  }
+  final events = <GameEvent>[];
+  for (final t in action.tiles) {
+    if (_tryBuildField(state, realm, t.x, t.y, building)) {
+      events.add(GameEvent(
+        year: state.year,
+        slot: realm.slot,
+        type: 'buildingBuilt',
+        visibility: EventVisibility.public,
+        payload: {'x': t.x, 'y': t.y, 'building': building},
+      ));
+    }
+  }
+  // Nothing built at all: surface the most likely cause so the tap isn't a
+  // silent no-op (the client normally guarantees ≥1 affordable valid tile).
+  if (events.isEmpty) {
+    if (realm.movementPoints < 1) {
+      throw ActionException(coreMessage('noMovesLeft'));
+    }
+    final cost = Building.cost[building]!;
+    if (realm.treasury < cost) {
+      throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
+    }
+    throw ActionException(coreMessage('cannotBuildThat'));
+  }
+  return events;
+}
+
+/// Tries to lay [building] (Kornfeld/Weide only) on ([x],[y]) for [realm].
+/// Returns true and mutates the map on success; false — leaving everything
+/// untouched — when the tile is off-map, not owned/claimable, already
+/// built, the wrong terrain, or unaffordable. Mirrors the per-tile rules
+/// of [_build] so a batch and a single build never diverge.
+bool _tryBuildField(GameState state, Realm realm, int x, int y, int building) {
+  final map = state.map;
+  if (!map.inBounds(x, y)) return false;
+  final owner = map.ownerAt(x, y);
+  final terrain = map.terrainAt(x, y);
+  // Same claim-on-build rule as _build: an unowned land tile bordering own
+  // territory is claimed as part of the cultivation.
+  final claimOnBuild = owner == World.niemand &&
+      Terrain.isLand(terrain) &&
+      map.bordersSlot(x, y, realm.slot);
+  if (owner != realm.slot && !claimOnBuild) return false;
+  if (map.buildingAt(x, y) != Building.none) return false;
+  final terrainOk = switch (building) {
+    Building.kornfeld => terrain == Terrain.ebene,
+    Building.weide => terrain == Terrain.berg || terrain == Terrain.ebene,
+    _ => false,
+  };
+  if (!terrainOk) return false;
+  final cost = Building.cost[building]!;
+  if (realm.movementPoints < 1 || realm.treasury < cost) return false;
+
+  realm.movementPoints--;
+  realm.treasury -= cost;
+  final idx = map.index(x, y);
+  map.building[idx] = building;
+  if (claimOnBuild) {
+    map.owner[idx] = realm.slot;
+  } else {
+    realm.tileCount[Building.none]--;
+  }
+  realm.tileCount[building]++;
+  return true;
 }
 
 /// "(A)breißen" — 100 T, clears the building (§4). Towns cannot be

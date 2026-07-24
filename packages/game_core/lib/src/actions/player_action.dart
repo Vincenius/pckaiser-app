@@ -23,6 +23,7 @@ sealed class PlayerAction {
       switch (json['type'] as String) {
         ClaimTile.kind => ClaimTile.fromJson(json),
         Build.kind => Build.fromJson(json),
+        BuildFields.kind => BuildFields.fromJson(json),
         Demolish.kind => Demolish.fromJson(json),
         ChangeReligion.kind => ChangeReligion.fromJson(json),
         CollectTribute.kind => CollectTribute.fromJson(json),
@@ -135,6 +136,54 @@ class Build extends PlayerAction {
         'y': y,
         'building': building,
         'townName': townName,
+      };
+}
+
+/// Cultivate MANY fields in one stroke (client drag-select). Builds a
+/// Kornfeld or Weide on each listed tile that can take it, in order,
+/// best-effort: tiles of the wrong terrain (Kornfeld only on Ebene) or
+/// that the treasury / remaining movement points can no longer afford are
+/// silently left free — matching the single [Build] rules per tile. One
+/// action = one online round-trip and one undo step for the whole batch.
+class BuildFields extends PlayerAction {
+  BuildFields({
+    required super.slot,
+    required this.building,
+    required this.tiles,
+  });
+
+  factory BuildFields.fromJson(Map<String, dynamic> json) => BuildFields(
+        slot: json['slot'] as int,
+        building: json['building'] as int,
+        tiles: [
+          for (final t in json['tiles'] as List)
+            (
+              x: (t as Map)['x'] as int,
+              y: t['y'] as int,
+            ),
+        ],
+      );
+
+  static const kind = 'buildFields';
+
+  /// Field type to lay down — only Kornfeld or Weide (rejected otherwise).
+  final int building;
+
+  /// Target tiles, applied in this order (a claim on an earlier tile can
+  /// make a later adjacent tile claim-eligible).
+  final List<({int x, int y})> tiles;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'building': building,
+        'tiles': [
+          for (final t in tiles) {'x': t.x, 'y': t.y},
+        ],
       };
 }
 

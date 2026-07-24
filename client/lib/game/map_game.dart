@@ -48,6 +48,21 @@ class MapGame extends FlameGame with ScaleDetector {
   /// Tile of the currently selected war unit (pulsing ring); null = none.
   (int, int)? selectedTile;
 
+  /// Field-cultivation drag-select: while true a one-finger drag paints
+  /// tiles into [selectedFields] (via [onFieldPaint]) instead of panning
+  /// the camera — two-finger pinch still zooms/pans so far tiles stay
+  /// reachable. The screen owns the mode toggle and the selection set.
+  bool fieldSelectMode = false;
+
+  /// Tile indices (`y * width + x`) currently selected for cultivation —
+  /// owned by the screen, rendered here as a translucent highlight.
+  Set<int> selectedFields = <int>{};
+
+  /// Called with a tile a drag passes over while [fieldSelectMode] — the
+  /// screen decides whether it is an eligible field and updates
+  /// [selectedFields].
+  void Function(int x, int y)? onFieldPaint;
+
   gc.GameState _state;
   ui.Picture? _picture;
   final Map<int, ui.Image> _tiles = {};
@@ -450,6 +465,13 @@ class MapGame extends FlameGame with ScaleDetector {
 
   @override
   void onScaleUpdate(ScaleUpdateInfo info) {
+    // Field-select mode: a one-finger drag paints the field under the
+    // finger instead of panning. Two-finger gestures still zoom/pan below
+    // so the player can navigate to reach far tiles.
+    if (fieldSelectMode && info.pointerCount < 2) {
+      _paintFieldAt(info.eventPosition.widget);
+      return;
+    }
     if (info.pointerCount >= 2) {
       // raw.scale is direction-independent (pointer distance), unlike
       // scale.global.y which ignores horizontal pinches (e.g. two thumbs).
@@ -459,6 +481,20 @@ class MapGame extends FlameGame with ScaleDetector {
     camera.viewfinder.position -=
         Vector2(delta.x, delta.y) / camera.viewfinder.zoom;
     _clampCamera();
+  }
+
+  /// Reports the map tile under a screen point (widget-relative) to
+  /// [onFieldPaint] during a field-select drag. Mirrors `_MapLayer.onTapUp`:
+  /// `camera.globalToLocal` maps the widget point into world space, then a
+  /// floor by [tileSize] gives the tile.
+  void _paintFieldAt(Vector2 widgetPoint) {
+    final world = camera.globalToLocal(widgetPoint);
+    final x = (world.x / tileSize).floor();
+    final y = (world.y / tileSize).floor();
+    final map = _state.map;
+    if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
+      onFieldPaint?.call(x, y);
+    }
   }
 
   /// Keeps the visible area inside the map: the camera center may not get
@@ -506,7 +542,28 @@ class _MapLayer extends PositionComponent with TapCallbacks {
   void render(Canvas canvas) {
     final picture = game._picture;
     if (picture != null) canvas.drawPicture(picture);
+    _renderFieldSelection(canvas);
     _renderSelection(canvas);
+  }
+
+  /// Translucent highlight over every tile currently drag-selected for
+  /// cultivation. Drawn per-frame (not baked into the picture) so the
+  /// selection tracks the finger live.
+  void _renderFieldSelection(Canvas canvas) {
+    if (game.selectedFields.isEmpty) return;
+    final width = game._state.map.width;
+    final fill = Paint()..color = const Color(0x554CAF50);
+    final border = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = const Color(0xCC66BB6A);
+    for (final idx in game.selectedFields) {
+      final x = idx % width;
+      final y = idx ~/ width;
+      final cell = Rect.fromLTWH(x * tileSize, y * tileSize, tileSize, tileSize);
+      canvas.drawRect(cell, fill);
+      canvas.drawRect(cell.deflate(1), border);
+    }
   }
 
   /// Pulsing ring around the selected war unit.
