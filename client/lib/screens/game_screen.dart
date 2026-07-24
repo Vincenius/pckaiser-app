@@ -20,6 +20,12 @@ import '../widgets/tile_sheet.dart';
 import '../widgets/war_panel.dart';
 import '../widgets/war_report.dart';
 
+/// Which map drag-select is armed: none, cultivating fields (peacetime),
+/// or annexing enemy tiles in a post-war settlement. The two never overlap
+/// (one is peacetime-only, the other war-settlement-only), so they share
+/// the map's drag-select plumbing.
+enum _DragMode { none, field, annex }
+
 /// The in-game screen: Flame map + HUD + menus, with the hot-seat handoff
 /// blocker and pending-decision prompts layered on top.
 class GameScreen extends StatefulWidget {
@@ -73,10 +79,14 @@ class _GameScreenState extends State<GameScreen> {
   MapGame? _game;
   bool _poppedForRemote = false;
 
-  /// Tiles (index `y * width + x`) drag-selected for batch cultivation.
-  /// Shared by reference with [MapGame.selectedFields] so the map renders
-  /// the highlight from the same set the panel dispatches from.
+  /// Tiles (index `y * width + x`) drag-selected for batch cultivation —
+  /// wired into [MapGame.dragSelection] while [_dragMode] is `field`.
+  /// (Annexation uses the controller's own selection set.)
   final Set<int> _selectedFields = <int>{};
+
+  /// Which map drag-select is currently armed. Field mode is user-toggled;
+  /// annex mode is driven by the war phase (see [_syncDragMode]).
+  _DragMode _dragMode = _DragMode.none;
 
   @override
   void initState() {
@@ -90,20 +100,20 @@ class _GameScreenState extends State<GameScreen> {
         if (widget.tutorial) controller.confirmHandoff();
         final game = MapGame(initial: controller.visibleState);
         game.onTileTap = (x, y) => _onTileTap(controller, x, y);
-        game.selectedFields = _selectedFields;
-        game.onFieldPaint = (x, y) => _paintField(controller, x, y);
+        // Assign the field now (not only in the setState below) so
+        // _syncDragMode's _applyDragMode can wire the map immediately — a
+        // save resumed mid-settlement must arm annex mode right away.
+        _game = game;
         _syncWarOverlay(controller, game);
+        _syncDragMode(controller);
         controller.addListener(() {
           game.updateState(controller.visibleState);
           _syncWarOverlay(controller, game);
-          // A war / handoff / game-end starting mid-selection cancels the
-          // field-cultivation mode (its one-finger drag would otherwise
-          // hijack the war-map interactions). The listener's own setState
-          // below repaints — no nested setState needed here.
-          if (game.fieldSelectMode && !_canFieldMode(controller)) {
-            game.fieldSelectMode = false;
-            _selectedFields.clear();
-          }
+          // Keep the map drag-select in step with the phase: auto-arm annex
+          // mode when the winner's settlement opens, and drop field mode if
+          // a war / handoff starts mid-selection. The listener's own
+          // setState below repaints — no nested setState needed here.
+          _syncDragMode(controller);
           // Online: the turn went to another player — hand back to the
           // waiting lobby (once; guarded against re-entry).
           if (controller.isOnline &&
@@ -143,8 +153,8 @@ class _GameScreenState extends State<GameScreen> {
     if (controller.handoffPending || controller.gameOver) return;
     // Field-cultivation mode: a tap toggles a single field in/out of the
     // drag-selection (a drag paints; a tap fine-tunes) — nothing else fires.
-    final game = _game;
-    if (game != null && game.fieldSelectMode) {
+    // (Annex mode taps flow through to the war handler below.)
+    if (_dragMode == _DragMode.field) {
       _toggleField(controller, x, y);
       return;
     }
@@ -199,7 +209,57 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  // --- Field cultivation (drag-select) --------------------------------
+  // --- Map drag-select (field cultivation + war annexation) ----------
+
+  /// Points the map's shared drag-select at the active mode's selection set,
+  /// paint handler and highlight color. Called on enter/exit and on every
+  /// phase change ([_syncDragMode]).
+  void _applyDragMode(GameController controller) {
+    final game = _game;
+    if (game == null) return;
+    switch (_dragMode) {
+      case _DragMode.none:
+        game.dragSelectMode = false;
+      case _DragMode.field:
+        game.dragSelection = _selectedFields;
+        game.onDragPaint = (x, y) => _paintField(controller, x, y);
+        game.dragSelectColor = 0xFF4CAF50; // green
+        game.dragSelectMode = true;
+      case _DragMode.annex:
+        game.dragSelection = controller.settlementSelection;
+        game.onDragPaint = (x, y) => _paintAnnex(controller, x, y);
+        game.dragSelectColor = 0xFFEF6C00; // amber
+        game.dragSelectMode = true;
+    }
+  }
+
+  /// Keeps [_dragMode] consistent with the game phase: arms annex mode while
+  /// the winner's settlement is open, and drops field mode when a war,
+  /// handoff or off-turn view takes over. Never called with a nested
+  /// setState — the controller listener repaints after it.
+  void _syncDragMode(GameController controller) {
+    final war = controller.state.activeWar;
+    final settling = war != null &&
+        war.phase == gc.WarPhase.settlement &&
+        war.winnerSlot == controller.warHumanSlot &&
+        !controller.handoffPending &&
+        !controller.readOnly;
+    if (settling) {
+      if (_dragMode != _DragMode.annex) {
+        _dragMode = _DragMode.annex;
+        // Clear directly (not via the notifying setter): _syncDragMode runs
+        // inside the controller listener, and re-notifying would recurse.
+        controller.settlementSelection.clear();
+      }
+    } else if (_dragMode == _DragMode.annex) {
+      _dragMode = _DragMode.none;
+      controller.settlementSelection.clear();
+    } else if (_dragMode == _DragMode.field && !_canFieldMode(controller)) {
+      _dragMode = _DragMode.none;
+      _selectedFields.clear();
+    }
+    _applyDragMode(controller);
+  }
 
   /// Whether the field-cultivation drag-select may run right now: only on
   /// the seated player's own peacetime turn, never during a war, handoff,
@@ -249,12 +309,34 @@ class _GameScreenState extends State<GameScreen> {
   void _enterFieldMode(GameController controller) {
     controller.cancelTilePick();
     _selectedFields.clear();
-    setState(() => _game?.fieldSelectMode = true);
+    _dragMode = _DragMode.field;
+    setState(() => _applyDragMode(controller));
   }
 
-  void _exitFieldMode() {
+  void _exitFieldMode(GameController controller) {
     _selectedFields.clear();
-    setState(() => _game?.fieldSelectMode = false);
+    _dragMode = _DragMode.none;
+    setState(() => _applyDragMode(controller));
+  }
+
+  /// Whether ([x],[y]) is an enemy tile the winner may drag-select to annex:
+  /// a tile still owned by the war's loser. Adjacency to the winner's border
+  /// and affordability are resolved later, per confirm — an unreachable or
+  /// unaffordable selected tile is simply left with the loser.
+  bool _annexSelectable(GameController controller, int x, int y) {
+    final war = controller.state.activeWar;
+    if (war == null || war.phase != gc.WarPhase.settlement) return false;
+    final winner = war.winnerSlot;
+    if (winner == null) return false;
+    final map = controller.state.map;
+    if (!map.inBounds(x, y)) return false;
+    return map.ownerAt(x, y) == war.opponentOf(winner);
+  }
+
+  /// Adds an eligible enemy tile to the annex selection (drag paint).
+  void _paintAnnex(GameController controller, int x, int y) {
+    if (!_annexSelectable(controller, x, y)) return;
+    controller.addSettlementTile(controller.state.map.index(x, y));
   }
 
   /// Number of selected tiles whose terrain accepts [building].
@@ -290,7 +372,7 @@ class _GameScreenState extends State<GameScreen> {
         (x: idx % map.width, y: idx ~/ map.width),
     ];
     if (tiles.isEmpty) return;
-    _exitFieldMode();
+    _exitFieldMode(controller);
     try {
       await controller.applyUndoable(
         gc.BuildFields(
@@ -337,12 +419,13 @@ class _GameScreenState extends State<GameScreen> {
 
     if (war.phase == gc.WarPhase.settlement) {
       if (war.winnerSlot != slot) return;
-      try {
-        await controller.applyWarAction(
-          gc.SettlementAnnex(slot: slot, x: x, y: y),
-        );
-      } on gc.ActionException catch (e) {
-        _toast(e.message);
+      // Tap toggles a single enemy tile in/out of the annex selection (a
+      // drag paints); the war panel's "Annektieren" button commits it.
+      final idx = controller.state.map.index(x, y);
+      if (controller.settlementSelection.contains(idx)) {
+        controller.toggleSettlementTile(idx);
+      } else if (_annexSelectable(controller, x, y)) {
+        controller.addSettlementTile(idx);
       }
       return;
     }
@@ -603,12 +686,14 @@ class _GameScreenState extends State<GameScreen> {
                 // Field-cultivation panel: while drag-selecting fields it
                 // replaces the category bar as the bottom menu (like the
                 // war panel), offering the Kornfeld / Weide batch build.
-                if (game.fieldSelectMode) _fieldBuildPanel(controller),
+                if (_dragMode == _DragMode.field)
+                  _fieldBuildPanel(controller),
                 _statusRow(controller),
                 // The category bar is hidden during a war: the war panel
                 // replaces it as THE bottom menu (the info menu stays
                 // reachable via the realm name in the status row).
-                if (controller.state.activeWar == null && !game.fieldSelectMode)
+                if (controller.state.activeWar == null &&
+                    _dragMode != _DragMode.field)
                   _actionBar(controller),
               ],
             ),
@@ -726,7 +811,7 @@ class _GameScreenState extends State<GameScreen> {
   /// over the map). Highlighted while active.
   Widget _fieldModeButton(GameController controller) {
     final theme = Theme.of(context);
-    final active = _game?.fieldSelectMode ?? false;
+    final active = _dragMode == _DragMode.field;
     return Card(
       margin: EdgeInsets.zero,
       color: active
@@ -735,7 +820,7 @@ class _GameScreenState extends State<GameScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () =>
-            active ? _exitFieldMode() : _enterFieldMode(controller),
+            active ? _exitFieldMode(controller) : _enterFieldMode(controller),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(
@@ -822,7 +907,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 ),
                 TextButton(
-                  onPressed: _exitFieldMode,
+                  onPressed: () => _exitFieldMode(controller),
                   child: Text(tr('cancel')),
                 ),
               ],

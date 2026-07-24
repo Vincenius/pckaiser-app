@@ -1212,6 +1212,74 @@ void annexAffordableTiles(GameState state, List<GameEvent> events) {
   }
 }
 
+/// Plans which of [selected] loser tiles the winner would annex in the open
+/// settlement — [annexAffordableTiles]' border-outward wave restricted to
+/// the selected set, as a DRY RUN (state is never mutated). Returns the
+/// tiles in a valid annex ORDER (each one borders winner land at its turn),
+/// affordable within the remaining claim; selected tiles that are
+/// unreachable from the winner's border (reachable only through
+/// non-selected tiles) or unaffordable are left out. Drives the client's
+/// drag-select-to-annex: the returned list is exactly what a
+/// `SettlementAnnexMany` of it will annex — valid, ordered, best-effort.
+List<({int x, int y})> planSettlementAnnexSelection(
+    GameState state, Iterable<int> selected) {
+  final war = state.activeWar;
+  if (war == null ||
+      war.phase != WarPhase.settlement ||
+      war.winnerSlot == null) {
+    return const [];
+  }
+  final winnerSlot = war.winnerSlot!;
+  final loserSlot = war.opponentOf(winnerSlot);
+  final map = state.map;
+  // Only the loser's own tiles can ever be annexed — drop anything else.
+  final sel = <int>{
+    for (final i in selected)
+      if (i >= 0 && i < map.terrain.length && map.owner[i] == loserSlot) i,
+  };
+  if (sel.isEmpty) return const [];
+
+  // Virtual ownership: the wave grows the winner's border as it annexes,
+  // without touching real state (this is a preview + order planner).
+  final owner = List<int>.of(map.owner);
+  bool bordersWinner(int i) {
+    for (final (nx, ny) in map.neighborsOf(i % map.width, i ~/ map.width)) {
+      if (owner[map.index(nx, ny)] == winnerSlot) return true;
+    }
+    return false;
+  }
+
+  var claim = war.remainingClaim;
+  final planned = <({int x, int y})>[];
+  final queued = <int>{};
+  final queue = <int>[];
+  // Seed: selected tiles already bordering the winner, in reading order.
+  for (final i in sel.toList()..sort()) {
+    if (bordersWinner(i)) {
+      queued.add(i);
+      queue.add(i);
+    }
+  }
+  for (var head = 0; head < queue.length; head++) {
+    final i = queue[head];
+    final value = settlementTileValue(state, map.building[i]);
+    if (value > claim) continue; // unaffordable — the wave breaks here
+    claim -= value;
+    owner[i] = winnerSlot;
+    planned.add((x: i % map.width, y: i ~/ map.width));
+    // The annexed tile carries the wave to its selected loser-owned
+    // neighbors — enqueued only now, so they now border winner land.
+    for (final (nx, ny) in map.neighborsOf(i % map.width, i ~/ map.width)) {
+      final ni = map.index(nx, ny);
+      if (!queued.contains(ni) && sel.contains(ni)) {
+        queued.add(ni);
+        queue.add(ni);
+      }
+    }
+  }
+  return planned;
+}
+
 /// §11.2 claim settlement, AI path `[APPROX]`: greedily annex affordable
 /// loser tiles adjacent to own land, then take the remainder in cash.
 void autoSettleClaim(GameState state, Rng rng, List<GameEvent> events) {

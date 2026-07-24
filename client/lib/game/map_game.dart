@@ -48,20 +48,24 @@ class MapGame extends FlameGame with ScaleDetector {
   /// Tile of the currently selected war unit (pulsing ring); null = none.
   (int, int)? selectedTile;
 
-  /// Field-cultivation drag-select: while true a one-finger drag paints
-  /// tiles into [selectedFields] (via [onFieldPaint]) instead of panning
-  /// the camera — two-finger pinch still zooms/pans so far tiles stay
-  /// reachable. The screen owns the mode toggle and the selection set.
-  bool fieldSelectMode = false;
+  /// Drag-select mode: while true a one-finger drag paints tiles into
+  /// [dragSelection] (via [onDragPaint]) instead of panning the camera —
+  /// two-finger pinch still zooms/pans so far tiles stay reachable. Shared
+  /// by field cultivation (peacetime) and post-war annexation (settlement);
+  /// the screen owns the active selection set and paint handler.
+  bool dragSelectMode = false;
 
-  /// Tile indices (`y * width + x`) currently selected for cultivation —
-  /// owned by the screen, rendered here as a translucent highlight.
-  Set<int> selectedFields = <int>{};
+  /// Tile indices (`y * width + x`) currently drag-selected — owned by the
+  /// screen (or controller), rendered here as a translucent highlight.
+  Set<int> dragSelection = <int>{};
 
-  /// Called with a tile a drag passes over while [fieldSelectMode] — the
-  /// screen decides whether it is an eligible field and updates
-  /// [selectedFields].
-  void Function(int x, int y)? onFieldPaint;
+  /// Called with a tile a drag passes over while [dragSelectMode] — the
+  /// screen decides whether it is eligible and updates [dragSelection].
+  void Function(int x, int y)? onDragPaint;
+
+  /// Base ARGB color of the drag-selection highlight (green for fields,
+  /// amber for annexation) — the fill and border derive their alpha from it.
+  int dragSelectColor = 0xFF4CAF50;
 
   gc.GameState _state;
   ui.Picture? _picture;
@@ -465,11 +469,11 @@ class MapGame extends FlameGame with ScaleDetector {
 
   @override
   void onScaleUpdate(ScaleUpdateInfo info) {
-    // Field-select mode: a one-finger drag paints the field under the
-    // finger instead of panning. Two-finger gestures still zoom/pan below
-    // so the player can navigate to reach far tiles.
-    if (fieldSelectMode && info.pointerCount < 2) {
-      _paintFieldAt(info.eventPosition.widget);
+    // Drag-select mode: a one-finger drag paints the tile under the finger
+    // instead of panning. Two-finger gestures still zoom/pan below so the
+    // player can navigate to reach far tiles.
+    if (dragSelectMode && info.pointerCount < 2) {
+      _paintDragAt(info.eventPosition.widget);
       return;
     }
     if (info.pointerCount >= 2) {
@@ -484,16 +488,16 @@ class MapGame extends FlameGame with ScaleDetector {
   }
 
   /// Reports the map tile under a screen point (widget-relative) to
-  /// [onFieldPaint] during a field-select drag. Mirrors `_MapLayer.onTapUp`:
+  /// [onDragPaint] during a drag-select. Mirrors `_MapLayer.onTapUp`:
   /// `camera.globalToLocal` maps the widget point into world space, then a
   /// floor by [tileSize] gives the tile.
-  void _paintFieldAt(Vector2 widgetPoint) {
+  void _paintDragAt(Vector2 widgetPoint) {
     final world = camera.globalToLocal(widgetPoint);
     final x = (world.x / tileSize).floor();
     final y = (world.y / tileSize).floor();
     final map = _state.map;
     if (x >= 0 && x < map.width && y >= 0 && y < map.height) {
-      onFieldPaint?.call(x, y);
+      onDragPaint?.call(x, y);
     }
   }
 
@@ -542,22 +546,23 @@ class _MapLayer extends PositionComponent with TapCallbacks {
   void render(Canvas canvas) {
     final picture = game._picture;
     if (picture != null) canvas.drawPicture(picture);
-    _renderFieldSelection(canvas);
+    _renderDragSelection(canvas);
     _renderSelection(canvas);
   }
 
-  /// Translucent highlight over every tile currently drag-selected for
-  /// cultivation. Drawn per-frame (not baked into the picture) so the
-  /// selection tracks the finger live.
-  void _renderFieldSelection(Canvas canvas) {
-    if (game.selectedFields.isEmpty) return;
+  /// Translucent highlight over every drag-selected tile (fields to
+  /// cultivate, or enemy tiles to annex). Drawn per-frame (not baked into
+  /// the picture) so the selection tracks the finger live.
+  void _renderDragSelection(Canvas canvas) {
+    if (game.dragSelection.isEmpty) return;
     final width = game._state.map.width;
-    final fill = Paint()..color = const Color(0x554CAF50);
+    final base = Color(game.dragSelectColor);
+    final fill = Paint()..color = base.withValues(alpha: 0.33);
     final border = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
-      ..color = const Color(0xCC66BB6A);
-    for (final idx in game.selectedFields) {
+      ..color = base.withValues(alpha: 0.8);
+    for (final idx in game.dragSelection) {
       final x = idx % width;
       final y = idx ~/ width;
       final cell = Rect.fromLTWH(x * tileSize, y * tileSize, tileSize, tileSize);

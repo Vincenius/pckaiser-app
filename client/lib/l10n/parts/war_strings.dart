@@ -104,6 +104,10 @@ const Map<String, String> warDe = {
   'war.takeWholeLand': 'Ganzes Land übernehmen',
   'war.autoAnnex': 'Auto-Annexion',
   'war.doneRemainderTaler': 'Fertig — Rest in Talern',
+  // Drag-select annexation.
+  'war.annexDragHint': 'Ziehe über gegnerische Felder, um sie auszuwählen.',
+  'war.annexSelectionStatus': '{selected} ausgewählt · {plan} annektierbar',
+  'war.annexSelected': 'Annektieren: {count} · {value} T',
   'war.peaceTreatyTitle': 'Friedensschluss',
 
   // --- War report popup ---
@@ -306,6 +310,10 @@ const Map<String, String> warEn = {
   'war.takeWholeLand': 'Take the whole land',
   'war.autoAnnex': 'Auto-annex',
   'war.doneRemainderTaler': 'Done — remainder in Taler',
+  // Drag-select annexation.
+  'war.annexDragHint': 'Drag across enemy tiles to select them.',
+  'war.annexSelectionStatus': '{selected} selected · {plan} annexable',
+  'war.annexSelected': 'Annex: {count} · {value} T',
   'war.peaceTreatyTitle': 'Peace treaty',
 
   // --- War report popup ---

@@ -6,6 +6,36 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-24 — Drag-select war annexation (app 0.2.2)
+
+Extends the field drag-select to the post-war claim settlement: instead of
+tapping enemy tiles one at a time, the winner drags across the loser's land
+to select a region (amber highlight, tap fine-tunes single tiles), then a
+new **"Annektieren"** button in the war panel takes it. The button label
+shows exactly how many tiles will be annexed and their total value; the map
+drag paint and the panel button share one selection set on the controller.
+
+- Engine: `planSettlementAnnexSelection(state, selectedIndices)` in
+  `rules/war.dart` — a pure DRY-RUN of the `annexAffordableTiles` border
+  wave restricted to the selected tiles. Returns the tiles in a valid annex
+  ORDER (each borders winner land at its turn), affordable within
+  `remainingClaim`; selected tiles unreachable from the border (only via
+  non-selected tiles) or unaffordable are left out. The client dispatches
+  the plan as the existing atomic `SettlementAnnexMany` — since the plan is
+  pre-validated and ordered, the batch always succeeds; best-effort behavior
+  falls out of the pre-filtering. No new action, no version bump. Tests in
+  `settlement_annex_selection_test.dart`.
+- Client: `MapGame`'s drag-select was generalized (`fieldSelectMode` →
+  `dragSelectMode`, `selectedFields` → `dragSelection`, `onFieldPaint` →
+  `onDragPaint`, plus a per-mode `dragSelectColor`) so fields and annex reuse
+  the same gesture + highlight. `game_screen.dart` tracks the active mode
+  (`_DragMode { none, field, annex }`); annex mode is armed automatically
+  while the winner's settlement is open (`_syncDragMode`) and taps toggle
+  tiles instead of annexing immediately. The "Annektieren" button, hint and
+  live count live in `war_panel.dart`'s `_settlement`; the selection set is
+  on `GameController`. Strings in `war_strings.dart` (de/en). "Auto-Annexion"
+  and "Fertig" are unchanged.
+
 ## 2026-07-24 — Drag-select field cultivation (app 0.2.2)
 
 New UX for laying down Kornfelder/Weiden in bulk instead of tapping tile by
