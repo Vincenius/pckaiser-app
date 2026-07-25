@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flame/game.dart' show GameWidget;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:game_core/game_core.dart' as gc;
 
 import '../game/map_game.dart';
@@ -17,6 +20,12 @@ import '../widgets/menus.dart';
 import '../widgets/tile_sheet.dart';
 import '../widgets/war_panel.dart';
 import '../widgets/war_report.dart';
+
+/// Which map drag-select is armed: none, cultivating fields (peacetime),
+/// or annexing enemy tiles in a post-war settlement. The two never overlap
+/// (one is peacetime-only, the other war-settlement-only), so they share
+/// the map's drag-select plumbing.
+enum _DragMode { none, field, annex }
 
 /// The in-game screen: Flame map + HUD + menus, with the hot-seat handoff
 /// blocker and pending-decision prompts layered on top.
@@ -71,6 +80,15 @@ class _GameScreenState extends State<GameScreen> {
   MapGame? _game;
   bool _poppedForRemote = false;
 
+  /// Tiles (index `y * width + x`) drag-selected for batch cultivation —
+  /// wired into [MapGame.dragSelection] while [_dragMode] is `field`.
+  /// (Annexation uses the controller's own selection set.)
+  final Set<int> _selectedFields = <int>{};
+
+  /// Which map drag-select is currently armed. Field mode is user-toggled;
+  /// annex mode is driven by the war phase (see [_syncDragMode]).
+  _DragMode _dragMode = _DragMode.none;
+
   @override
   void initState() {
     super.initState();
@@ -83,10 +101,23 @@ class _GameScreenState extends State<GameScreen> {
         if (widget.tutorial) controller.confirmHandoff();
         final game = MapGame(initial: controller.visibleState);
         game.onTileTap = (x, y) => _onTileTap(controller, x, y);
+        game.onLongPressTile = (x, y) => _onLongPressTile(controller, x, y);
+        game.onBoxDrag = (x, y) => _onBoxDrag(controller, x, y);
+        game.onBoxDragEnd = () => _onBoxSelectDone(controller);
+        // Assign the field now (not only in the setState below) so
+        // _syncDragMode's _applyDragMode can wire the map immediately — a
+        // save resumed mid-settlement must arm annex mode right away.
+        _game = game;
         _syncWarOverlay(controller, game);
+        _syncDragMode(controller);
         controller.addListener(() {
           game.updateState(controller.visibleState);
           _syncWarOverlay(controller, game);
+          // Keep the map drag-select in step with the phase: auto-arm annex
+          // mode when the winner's settlement opens, and drop field mode if
+          // a war / handoff starts mid-selection. The listener's own
+          // setState below repaints — no nested setState needed here.
+          _syncDragMode(controller);
           // Online: the turn went to another player — hand back to the
           // waiting lobby (once; guarded against re-entry).
           if (controller.isOnline &&
@@ -124,15 +155,37 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _onTileTap(GameController controller, int x, int y) async {
     if (controller.handoffPending || controller.gameOver) return;
+    // Field-cultivation mode: any tap leaves the selection mode — the box
+    // is sized by dragging, confirmed via the sheet that opens on release.
+    // (Annex mode taps flow through to the war handler below.)
+    if (_dragMode == _DragMode.field) {
+      _exitFieldMode(controller);
+      return;
+    }
     // An active tile pick (e.g. stationing a new troop) consumes the tap.
     if (await controller.resolveTilePick(x, y)) return;
-    // During the war PREPARATION window the map behaves normally — the
-    // attacker's turn continues until both sides chose (war taps only
-    // exist in the rounds/settlement phases).
-    if (controller.state.activeWar != null &&
-        controller.state.activeWar!.phase != gc.WarPhase.preparation) {
+    final war = controller.state.activeWar;
+    // War ROUNDS / settlement: taps drive the duel (select army, march…).
+    if (war != null && war.phase != gc.WarPhase.preparation) {
       await _onWarTileTap(controller, x, y);
       return;
+    }
+    // War PREPARATION window: tapping an own army selects it (tap again to
+    // deselect) so its stance (Angreifen / Position halten) can be set right
+    // from the map, mirroring the WarPanel unit chips. Anything else falls
+    // through to the normal peacetime tile sheet — the turn continues.
+    if (war != null && war.phase == gc.WarPhase.preparation) {
+      final slot = controller.warPrepSlot;
+      if (slot != null) {
+        final troops = controller.state.realm(slot).troops;
+        final tapped = troops.indexWhere((t) => t.x == x && t.y == y);
+        if (tapped >= 0) {
+          controller.selectWarUnit(
+            tapped == controller.selectedWarUnit ? null : tapped,
+          );
+          return;
+        }
+      }
     }
     if (mounted) await showTileActionSheet(context, controller, x, y);
   }
@@ -158,6 +211,228 @@ class _GameScreenState extends State<GameScreen> {
     } on gc.ActionException catch (e) {
       _toast(e.message);
     }
+  }
+
+  // --- Map box select (field cultivation + war annexation) -----------
+
+  /// Points the map's shared box-select at the active mode's selection set
+  /// and highlight color. Called on enter/exit and on every phase change
+  /// ([_syncDragMode]).
+  void _applyDragMode(GameController controller) {
+    final game = _game;
+    if (game == null) return;
+    switch (_dragMode) {
+      case _DragMode.none:
+        game.clearBox();
+        game.dragSelection = const <int>{};
+      case _DragMode.field:
+        game.dragSelection = _selectedFields;
+        game.dragSelectColor = 0xFF4CAF50; // green
+      case _DragMode.annex:
+        game.dragSelection = controller.settlementSelection;
+        game.dragSelectColor = 0xFFEF6C00; // amber
+    }
+  }
+
+  /// Keeps [_dragMode] consistent with the game phase: arms annex mode while
+  /// the winner's settlement is open, and drops field mode when a war,
+  /// handoff or off-turn view takes over. Never called with a nested
+  /// setState — the controller listener repaints after it.
+  void _syncDragMode(GameController controller) {
+    final war = controller.state.activeWar;
+    final settling = war != null &&
+        war.phase == gc.WarPhase.settlement &&
+        war.winnerSlot == controller.warHumanSlot &&
+        !controller.handoffPending &&
+        !controller.readOnly;
+    if (settling) {
+      if (_dragMode != _DragMode.annex) {
+        _dragMode = _DragMode.annex;
+        // Clear directly (not via the notifying setter): _syncDragMode runs
+        // inside the controller listener, and re-notifying would recurse.
+        controller.settlementSelection.clear();
+        _game?.clearBox();
+      } else {
+        // A committed annex turned the anchor tile into own land: the box
+        // has served its purpose — drop the dashed frame. (While dragging,
+        // the anchor always stays enemy-owned, so this never fires then.)
+        final anchor = _game?.boxAnchor;
+        if (anchor != null &&
+            !_annexSelectable(controller, anchor.$1, anchor.$2)) {
+          _game?.clearBox();
+          controller.settlementSelection.clear();
+        }
+      }
+    } else if (_dragMode == _DragMode.annex) {
+      _dragMode = _DragMode.none;
+      controller.settlementSelection.clear();
+    } else if (_dragMode == _DragMode.field && !_canFieldMode(controller)) {
+      _dragMode = _DragMode.none;
+      _selectedFields.clear();
+    }
+    _applyDragMode(controller);
+  }
+
+  /// Long-press on a map tile: anchors a selection box there — an enemy
+  /// tile during the winner's open settlement (annex mode, already armed
+  /// by phase), or ANY tile on the peacetime turn (enters field mode; the
+  /// box selects only buildable tiles, so an anchor far from the realm
+  /// simply starts empty and is dropped on release if it stays that way).
+  /// Returns whether the press was consumed; the map layer then swallows
+  /// the accompanying tap so no tile sheet opens on release. A later
+  /// long-press re-anchors a fresh box.
+  bool _onLongPressTile(GameController controller, int x, int y) {
+    final game = _game;
+    if (game == null || controller.handoffPending || controller.gameOver) {
+      return false;
+    }
+    if (_dragMode == _DragMode.annex) {
+      if (!_annexSelectable(controller, x, y)) return false;
+    } else if (_canFieldMode(controller) && !widget.tutorial) {
+      if (_dragMode != _DragMode.field) {
+        controller.cancelTilePick();
+        _dragMode = _DragMode.field;
+        _applyDragMode(controller);
+      }
+    } else {
+      return false;
+    }
+    HapticFeedback.selectionClick();
+    game.boxAnchor = (x, y);
+    game.boxCorner = null;
+    _reselectBox(controller);
+    return true;
+  }
+
+  /// Box drag: the finger moved to ([x],[y]) — resize the box to it and
+  /// reselect the eligible tiles inside.
+  void _onBoxDrag(GameController controller, int x, int y) {
+    final game = _game;
+    if (game == null || game.boxAnchor == null) return;
+    if (game.boxCorner == (x, y)) return;
+    game.boxCorner = (x, y);
+    _reselectBox(controller);
+  }
+
+  /// Recomputes the active selection as every eligible tile inside the
+  /// anchor..corner box. Field mode owns [_selectedFields]; annex mode
+  /// writes the controller's settlement selection (one notify per resize).
+  void _reselectBox(GameController controller) {
+    final game = _game;
+    final anchor = game?.boxAnchor;
+    if (game == null || anchor == null) return;
+    final corner = game.boxCorner ?? anchor;
+    final map = controller.visibleState.map;
+    final x0 = math.min(anchor.$1, corner.$1);
+    final x1 = math.max(anchor.$1, corner.$1);
+    final y0 = math.min(anchor.$2, corner.$2);
+    final y1 = math.max(anchor.$2, corner.$2);
+    final picked = <int>{};
+    if (_dragMode == _DragMode.field) {
+      picked.addAll(_fieldTilesInBox(controller, x0, y0, x1, y1));
+      setState(() => _selectedFields
+        ..clear()
+        ..addAll(picked));
+      return;
+    }
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        if (_annexSelectable(controller, x, y)) picked.add(map.index(x, y));
+      }
+    }
+    controller.setSettlementSelection(picked);
+  }
+
+  /// Field tiles selectable inside a box: empty land the realm owns, plus
+  /// unowned empty land CONNECTED to its territory — directly bordering,
+  /// or through a chain of other selected tiles (the engine claims each
+  /// built border tile, which lets the next one behind it build too, see
+  /// `planFieldCultivation`). Without the chain wave a box dragged into
+  /// free land would only ever offer the first border row.
+  Set<int> _fieldTilesInBox(
+      GameController controller, int x0, int y0, int x1, int y1) {
+    final map = controller.visibleState.map;
+    final slot = controller.currentSlot;
+    final candidates = <int>{};
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        final owner = map.ownerAt(x, y);
+        if ((owner == slot || owner == gc.World.niemand) &&
+            gc.Terrain.isLand(map.terrainAt(x, y)) &&
+            map.buildingAt(x, y) == gc.Building.none) {
+          candidates.add(map.index(x, y));
+        }
+      }
+    }
+    // Wave: own tiles and border-touching unowned tiles seed; each picked
+    // tile carries the selection to its candidate neighbors.
+    final picked = <int>{};
+    final queue = <int>[];
+    for (final i in candidates) {
+      final x = i % map.width;
+      final y = i ~/ map.width;
+      if (map.ownerAt(x, y) == slot || map.bordersSlot(x, y, slot)) {
+        picked.add(i);
+        queue.add(i);
+      }
+    }
+    for (var head = 0; head < queue.length; head++) {
+      final i = queue[head];
+      for (final (nx, ny) in map.neighborsOf(i % map.width, i ~/ map.width)) {
+        final ni = map.index(nx, ny);
+        if (candidates.contains(ni) && picked.add(ni)) queue.add(ni);
+      }
+    }
+    return picked;
+  }
+
+  /// Whether the field-cultivation drag-select may run right now: only on
+  /// the seated player's own peacetime turn, never during a war, handoff,
+  /// tile pick, off-turn view or after the game ended.
+  bool _canFieldMode(GameController controller) =>
+      controller.state.activeWar == null &&
+      !controller.warPauseActive &&
+      !controller.handoffPending &&
+      !controller.gameOver &&
+      !controller.tilePickActive &&
+      !controller.readOnly;
+
+  /// Finger lifted off the box gesture: field mode opens the batch-build
+  /// sheet (the same bottom sheet as a single-tile tap) over the live
+  /// selection. Building leaves the mode; dismissing keeps the selection —
+  /// drag again to resize, or tap anywhere to cancel. A box that reaches
+  /// no buildable tile (started and released away from the realm) is
+  /// simply dropped. Annex mode confirms via the war panel instead, so
+  /// the lift does nothing there.
+  Future<void> _onBoxSelectDone(GameController controller) async {
+    if (_dragMode != _DragMode.field) return;
+    if (_selectedFields.isEmpty) {
+      _exitFieldMode(controller);
+      return;
+    }
+    if (!mounted) return;
+    final built = await showFieldBatchSheet(context, controller, _selectedFields);
+    if (built) _exitFieldMode(controller);
+  }
+
+  void _exitFieldMode(GameController controller) {
+    _selectedFields.clear();
+    _dragMode = _DragMode.none;
+    setState(() => _applyDragMode(controller));
+  }
+
+  /// Whether ([x],[y]) is an enemy tile the winner may drag-select to annex:
+  /// a tile still owned by the war's loser. Adjacency to the winner's border
+  /// and affordability are resolved later, per confirm — an unreachable or
+  /// unaffordable selected tile is simply left with the loser.
+  bool _annexSelectable(GameController controller, int x, int y) {
+    final war = controller.state.activeWar;
+    if (war == null || war.phase != gc.WarPhase.settlement) return false;
+    final winner = war.winnerSlot;
+    if (winner == null) return false;
+    final map = controller.state.map;
+    if (!map.inBounds(x, y)) return false;
+    return map.ownerAt(x, y) == war.opponentOf(winner);
   }
 
   /// Mirrors the war state into the map overlay: pulsing ring on the
@@ -193,12 +468,13 @@ class _GameScreenState extends State<GameScreen> {
 
     if (war.phase == gc.WarPhase.settlement) {
       if (war.winnerSlot != slot) return;
-      try {
-        await controller.applyWarAction(
-          gc.SettlementAnnex(slot: slot, x: x, y: y),
-        );
-      } on gc.ActionException catch (e) {
-        _toast(e.message);
+      // Tap toggles a single enemy tile in/out of the annex selection (a
+      // drag paints); the war panel's "Annektieren" button commits it.
+      final idx = controller.state.map.index(x, y);
+      if (controller.settlementSelection.contains(idx)) {
+        controller.toggleSettlementTile(idx);
+      } else if (_annexSelectable(controller, x, y)) {
+        controller.addSettlementTile(idx);
       }
       return;
     }
@@ -232,8 +508,10 @@ class _GameScreenState extends State<GameScreen> {
   /// unit by identity through any combat (the old client-side step loop
   /// tracked units by name + expected position, a workaround for units
   /// having had no stable identity). The client keeps only the sea-route
-  /// convenience: when no path exists, ship via an own harbor — directly,
-  /// or after marching to the nearest connecting harbor coast first.
+  /// convenience: when no land path reaches the tap, ship via a harbor —
+  /// directly, or after marching to the nearest connecting harbor coast
+  /// first. With no sea route either, the engine march still runs and
+  /// gets the unit as close to the tap as the land allows.
   Future<void> _marchToward(
     GameController controller,
     int slot,
@@ -266,11 +544,28 @@ class _GameScreenState extends State<GameScreen> {
         ? {slot, war.opponentOf(slot)}
         : {slot};
 
-    final error = await march(tx, ty);
-    // The convenience sea-route only applies from LAND (at sea the unit is
-    // steered manually) and while no battle happened yet (a fought march
-    // defers it — re-tap to continue next round).
-    if (error != null && report.isEmpty && !map.isWaterAt(fromX, fromY)) {
+    // The engine approaches an unreachable land click as far as it can
+    // instead of failing (2026-07-24), so the sea-route convenience must
+    // be decided BEFORE marching: from land, a click no land path reaches
+    // ships via a connecting harbor when one exists — directly, or after
+    // marching to the nearest connecting harbor coast. Without a sea
+    // route the march runs anyway and simply gets as close as possible.
+    // At sea the unit is steered manually, no convenience routing.
+    final landReachable =
+        map.isWaterAt(fromX, fromY) ||
+        (fromX == tx && fromY == ty) ||
+        gc.warPathStep(
+              map,
+              fromX,
+              fromY,
+              tx,
+              ty,
+              allowedOwners: {...harborOwners, gc.World.niemand},
+            ) !=
+            null;
+
+    var seaRouted = false;
+    if (!landReachable && !map.isWaterAt(fromX, fromY)) {
       if (map.canNavalTransport(
         slot,
         fromX,
@@ -280,6 +575,7 @@ class _GameScreenState extends State<GameScreen> {
         harborOwners: harborOwners,
       )) {
         // Standing next to a harbor that reaches the target → ship across.
+        seaRouted = true;
         final navError = await _navalTransport(
           controller,
           slot,
@@ -300,9 +596,8 @@ class _GameScreenState extends State<GameScreen> {
           ty,
           harborOwners: harborOwners,
         );
-        if (embark == null || (embark.$1 == fromX && embark.$2 == fromY)) {
-          _toast(error);
-        } else {
+        if (embark != null && (embark.$1 != fromX || embark.$2 != fromY)) {
+          seaRouted = true;
           final marchError = await march(embark.$1, embark.$2);
           final troops = controller.state.realm(slot).troops;
           final arrived =
@@ -333,8 +628,10 @@ class _GameScreenState extends State<GameScreen> {
           }
         }
       }
-    } else if (error != null && report.isEmpty) {
-      _toast(error);
+    }
+    if (!seaRouted) {
+      final error = await march(tx, ty);
+      if (error != null && report.isEmpty) _toast(error);
     }
 
     // The march may have ended with the unit destroyed — drop a stale

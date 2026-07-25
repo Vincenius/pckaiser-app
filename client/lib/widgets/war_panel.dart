@@ -891,6 +891,18 @@ class _WarPanelState extends State<WarPanel> {
     final coversAll =
         isWinner && loserValue > 0 && loserValue <= war.remainingClaim;
 
+    // Drag-select annexation: the valid, affordable, border-ordered subset
+    // of the tiles the winner has drag-selected (see game_screen) — exactly
+    // what the "Annektieren" button will take. The rest stay with the loser.
+    final selection = controller.settlementSelection;
+    final plan = isWinner
+        ? gc.planSettlementAnnexSelection(state, selection)
+        : const <({int x, int y})>[];
+    var planValue = 0;
+    for (final t in plan) {
+      planValue += gc.settlementTileValue(state, state.map.buildingAt(t.x, t.y));
+    }
+
     final header = Row(
       children: [
         Icon(
@@ -950,13 +962,39 @@ class _WarPanelState extends State<WarPanel> {
                 style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
-              if (isWinner)
+              if (isWinner) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    selection.isEmpty
+                        ? tr('war.annexDragHint')
+                        : tr('war.annexSelectionStatus', {
+                            'selected': selection.length,
+                            'plan': plan.length,
+                          }),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Wrap(
                     spacing: 8,
                     alignment: WrapAlignment.center,
                     children: [
+                      if (selection.isNotEmpty)
+                        FilledButton.icon(
+                          icon: const Icon(Icons.select_all, size: 18),
+                          onPressed: plan.isEmpty
+                              ? null
+                              : () => _annexSelection(context, slot),
+                          label: Text(tr('war.annexSelected', {
+                            'count': plan.length,
+                            'value': planValue,
+                          })),
+                        ),
                       FilledButton.icon(
                         icon: const Icon(Icons.flag, size: 18),
                         onPressed: () => _takeAllLand(context, slot),
@@ -973,11 +1011,36 @@ class _WarPanelState extends State<WarPanel> {
                     ],
                   ),
                 ),
+              ],
             ],
           ],
         ),
       ),
     );
+  }
+
+  /// Annexes the winner's drag-selection: the engine-planned valid, ordered,
+  /// affordable subset (`planSettlementAnnexSelection`) is submitted as one
+  /// `SettlementAnnexMany`; unreachable / unaffordable tiles stay with the
+  /// loser. The settlement stays OPEN afterwards — the winner can keep
+  /// selecting, auto-annex the rest, or press Fertig.
+  Future<void> _annexSelection(BuildContext context, int slot) async {
+    final plan = gc.planSettlementAnnexSelection(
+        controller.state, controller.settlementSelection);
+    if (plan.isEmpty) return;
+    try {
+      await controller.applyWarAction(
+        gc.SettlementAnnexMany(slot: slot, tiles: plan),
+      );
+    } on gc.ActionException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
+    controller.clearSettlementSelection();
   }
 
   /// Auto-annex: takes affordable loser tiles in a wave from the own

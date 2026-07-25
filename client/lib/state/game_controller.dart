@@ -57,6 +57,38 @@ class GameController extends ChangeNotifier {
   /// human war side's troop list); null = nothing selected.
   int? selectedWarUnit;
 
+  /// Tile indices (`y * width + x`) the winner has drag-selected to annex
+  /// in the post-war settlement. Lives on the controller (not the screen)
+  /// so the map's drag paint and the war panel's "Annektieren" button share
+  /// one set; the engine plans a valid, affordable subset on confirm.
+  final Set<int> settlementSelection = <int>{};
+
+  /// Toggles a tile in/out of the settlement annex selection (tap).
+  void toggleSettlementTile(int index) {
+    if (!settlementSelection.remove(index)) settlementSelection.add(index);
+    notifyListeners();
+  }
+
+  /// Adds a tile to the settlement annex selection (tap).
+  void addSettlementTile(int index) {
+    if (settlementSelection.add(index)) notifyListeners();
+  }
+
+  /// Replaces the whole settlement annex selection (box drag resize),
+  /// notifying once.
+  void setSettlementSelection(Iterable<int> tiles) {
+    settlementSelection
+      ..clear()
+      ..addAll(tiles);
+    notifyListeners();
+  }
+
+  void clearSettlementSelection() {
+    if (settlementSelection.isEmpty) return;
+    settlementSelection.clear();
+    notifyListeners();
+  }
+
   /// Hint banner text while a map tile pick is active (e.g. "station the
   /// new troop"); null = no pick pending.
   String? tilePickHint;

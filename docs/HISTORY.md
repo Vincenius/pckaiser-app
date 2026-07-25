@@ -6,6 +6,217 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-24 — Box select replaces paint select (user request, app 0.2.2)
+
+Reworked both map multi-selects (field cultivation, settlement annexation)
+from "toggle a mode, then paint tiles under the finger" to a long-press box:
+
+- **Long-press activates.** Holding an eligible tile (~0.3 s, Flame's
+  `onLongTapDown`) anchors the selection box — field mode enters itself on
+  the press (the bottom-left "Felder" toggle button is gone, and with it
+  `game.fieldModeShort`); annex mode was already armed by the settlement
+  phase. Haptic tick on anchor; the accompanying tap-up is swallowed so no
+  tile sheet opens on release.
+- **Drag sizes a box.** While an anchor is set, a one-finger drag moves the
+  opposite corner (`MapGame.boxAnchor`/`boxCorner`, clamped to the map);
+  the selection is recomputed as every eligible tile inside the rectangle.
+  Two-finger pinch still zooms/pans; without an anchor one-finger drags pan
+  normally again (annex mode no longer hijacks the pan). A later
+  long-press re-anchors a fresh box; taps still fine-tune single tiles.
+- **Dashed frame.** The dragged box is outlined with a dashed line
+  (`_drawDashedRect` — Canvas has no native dash); selected tiles keep the
+  translucent fill. After a committed annex turns the anchor into own land,
+  the frame is dropped (`_syncDragMode`).
+- Plumbing: `MapGame.onLongPressTile`/`onBoxDrag` replace `onDragPaint` +
+  `dragSelectMode`; `GameController.setSettlementSelection` bulk-replaces
+  the annex selection with one notify per resize. Hint strings reworded.
+- **Anchor anywhere (same day).** The field-mode long-press no longer
+  requires a buildable tile: a box can be started on ANY tile (a far
+  corner, a built tile) and dragged across the realm — only buildable
+  tiles inside select, and releasing a box that reaches none simply drops
+  the selection instead of opening the sheet. `_fieldSelectable` removed
+  (its logic lives in `_fieldTilesInBox`). Gesture-level widget tests in
+  `map_box_select_test.dart` (MapGame hooks + full GameScreen flow to the
+  opened sheet, incl. the empty-release drop).
+- **Simplified to the normal build sheet (same day).** The custom docked
+  Kornfeld/Weide panel is gone: releasing the finger after sizing the box
+  (or right after the anchoring long-press) opens the SAME bottom sheet as
+  a single-tile tap (`showFieldBatchSheet` in tile_sheet.dart) with
+  "Kornfeld ×N — N·100 T" rows from the engine plan; dismissing keeps the
+  selection for resizing. Any tap on the map while the selection stands
+  exits field mode (no more per-tile tap toggling). New
+  `MapGame.onBoxDragEnd` (fires on scale-end of a box drag or the
+  swallowed tap-up of a no-drag long-press — never on pinch end); strings
+  `fieldSelectHint`/`fieldSelectCount`/`fieldBuildOption`/`fieldBuildNone`
+  replaced by `fieldSheetTitle`.
+- **Claim chains reach into free land (bugfix, same day).** The box only
+  offered unowned tiles DIRECTLY bordering own territory, although the
+  engine claims each built border tile — a batch can walk outward. New
+  engine planner `planFieldCultivation(state, slot, selected, building)`
+  (apply_action.dart, tested): dry-runs the batch as a border-outward wave
+  per `_tryBuildField` (terrain per type, claim chains, budget) and returns
+  the exact build order; the client selects box tiles connected through
+  the selection (wave), shows plan-length button counts, and dispatches
+  the plan — so "baut N" is precisely what builds, and a Kornfeld chain
+  broken by a Berg mid-way is priced honestly. Tap fine-tune may also add
+  a free tile adjacent to the selection (chain-reachable).
+
+## 2026-07-24 — War march approaches unreachable clicks (app 0.2.2)
+
+Tapping a march target no land path can reach (an island, third-realm
+land, a pocket walled off by water) no longer toasts "impassable" — the
+unit now marches as far as possible toward the click. `[DESIGNED, user
+request]`
+
+- Engine: new `closestReachableTile(map, x, y, tx, ty, allowedOwners)` in
+  `rules/movement.dart` — BFS over the same passable land graph as
+  `warPathStep`, returns the reachable tile nearest (Manhattan) the
+  target, ties to the fewest steps, null when the start is already
+  optimal. `applyWarMarch` retargets an unreachable LAND click to it and
+  throws `impassable` only when there is nowhere nearer to go. Water
+  clicks and units at sea keep the manual-steering fallback unchanged.
+  Tests in `war_march_approach_2026_07_24_test.dart`.
+- Client: `_marchToward` (game_screen.dart) used to try the march first
+  and fall back to the harbor sea-route on failure; since the march no
+  longer fails, the sea-route convenience is now decided BEFORE marching
+  (via `warPathStep` reachability). Priority for an unreachable click:
+  ship via a connecting harbor (directly, or march-to-embark first),
+  otherwise march as close as possible. Behavior for reachable targets is
+  unchanged. No new action, no version bump (ships with 0.2.2).
+
+## 2026-07-24 — Drag-select war annexation (app 0.2.2)
+
+Extends the field drag-select to the post-war claim settlement: instead of
+tapping enemy tiles one at a time, the winner drags across the loser's land
+to select a region (amber highlight, tap fine-tunes single tiles), then a
+new **"Annektieren"** button in the war panel takes it. The button label
+shows exactly how many tiles will be annexed and their total value; the map
+drag paint and the panel button share one selection set on the controller.
+
+- Engine: `planSettlementAnnexSelection(state, selectedIndices)` in
+  `rules/war.dart` — a pure DRY-RUN of the `annexAffordableTiles` border
+  wave restricted to the selected tiles. Returns the tiles in a valid annex
+  ORDER (each borders winner land at its turn), affordable within
+  `remainingClaim`; selected tiles unreachable from the border (only via
+  non-selected tiles) or unaffordable are left out. The client dispatches
+  the plan as the existing atomic `SettlementAnnexMany` — since the plan is
+  pre-validated and ordered, the batch always succeeds; best-effort behavior
+  falls out of the pre-filtering. No new action, no version bump. Tests in
+  `settlement_annex_selection_test.dart`.
+- Client: `MapGame`'s drag-select was generalized (`fieldSelectMode` →
+  `dragSelectMode`, `selectedFields` → `dragSelection`, `onFieldPaint` →
+  `onDragPaint`, plus a per-mode `dragSelectColor`) so fields and annex reuse
+  the same gesture + highlight. `game_screen.dart` tracks the active mode
+  (`_DragMode { none, field, annex }`); annex mode is armed automatically
+  while the winner's settlement is open (`_syncDragMode`) and taps toggle
+  tiles instead of annexing immediately. The "Annektieren" button, hint and
+  live count live in `war_panel.dart`'s `_settlement`; the selection set is
+  on `GameController`. Strings in `war_strings.dart` (de/en). "Auto-Annexion"
+  and "Fertig" are unchanged.
+
+## 2026-07-24 — Drag-select field cultivation (app 0.2.2)
+
+New UX for laying down Kornfelder/Weiden in bulk instead of tapping tile by
+tile. A "Felder" toggle (bottom-left over the map) arms a drag-select mode:
+a one-finger drag paints eligible fields (own/claimable empty land, Ebene or
+Berg) into a highlighted selection — two-finger pinch still zooms/pans so far
+tiles stay reachable, and a tap fine-tunes single tiles. A bottom panel then
+offers **Kornfeld** and **Weide**, each labelled with exactly how many of the
+selected tiles it would build (bounded by terrain, treasury and remaining
+Züge); the rest are left free. So selecting a mix and choosing Kornfeld skips
+every Berg tile, and an over-budget selection builds only what the treasury
+and moves cover.
+
+- Engine: new best-effort batch action `BuildFields(slot, building, tiles)`
+  (`player_action.dart` + `_buildFields`/`_tryBuildField` in
+  `apply_action.dart`). Per tile it re-checks the single-[Build] rules
+  (ownership/claim-on-build, empty, terrain, 1 Zug + Taler) and silently
+  skips what fails; throws only when nothing at all could be built. One
+  action = one online round-trip and one undo step. Precedent:
+  `SettlementAnnexMany`. Tests in `build_fields_test.dart`.
+- Client: `MapGame.fieldSelectMode` guards `onScaleUpdate` so a one-finger
+  drag reports painted tiles via `onFieldPaint` (screen owns the selection
+  set, rendered as a translucent green highlight in `_MapLayer`);
+  `game_screen.dart` holds the mode, eligibility, panel and dispatch. Hidden
+  during war/handoff/tile-pick/off-turn/tutorial; auto-exits if a war starts
+  mid-selection. Strings in `game_strings.dart` (de/en). No version bump —
+  ships within the in-progress 0.2.2; a new action is additive to the action
+  decoder (actions aren't persisted, and online seats already match on
+  `appVersion`).
+
+## 2026-07-24 — User bug reports: map bias + a queen's lost lineage (app 0.2.2)
+
+Three reports from a playtester:
+
+- **AI start positions clustered on the left of small maps.** `generateMap`
+  spawned every land patch from an origin in `[0, width-10) × [0, height-10)`
+  and patches only grow right/down, so all land — and therefore every §5
+  starting cross — was pinned to the top-left; on the smaller grids the fixed
+  10-tile margin left a whole strip of the right/bottom permanently water.
+  Fix: centre the spawn window (offset `+2`/`+1`) on `mittel`/`klein`; `gross`
+  is left byte-identical (offset 0) to preserve the RNG-exact original world.
+  The RNG draw order is unchanged (the offset is added AFTER `nextInt`).
+  `map_generator.dart`; regression test asserts land is not lopsided
+  left-vs-right on every size.
+- **A human queen could not name or see her children, and killing her foreign
+  husband defeated her.** Root cause = the §14.2 patrilineal model: a human
+  female ruler married to a foreign (AI) king had her children attached to HIS
+  dynasty, so the `childName` prompt routed to his (AI) slot (never surfacing),
+  the children never appeared in her Dynastie sheet, and her own line was left
+  heirless — so her realm eventually passed to the AI husband (surfacing to her
+  as an immediate defeat after the assassination). **Fix, gated on the
+  gender-equal succession match setting (default on):** under gender-equal a
+  ruling queen keeps her OWN line —
+  - `_birth`: a child spanning a human + non-human house joins the HUMAN
+    parent's dynasty; the naming decision routes to her slot.
+  - `marry`: a human wife marrying a foreign (non-human) husband no longer
+    surrenders her existing children to his house.
+  - `_chooseHeirByPriority`: a married woman's children born into HER dynasty
+    now inherit her realm; the husband's-line children (double-linked for the
+    family display) still don't, so her widower keeps §15.4 rank 3 ahead of the
+    patrilineal son (report 2026-07-10 preserved). With the setting OFF the
+    behaviour collapses exactly to the faithful patrilineal rules (and the
+    `bugfix_v24` defeat-reason test is unchanged). Killing the foreign husband
+    now hands his realm to their child under HER control (or to the queen
+    herself as spouse) instead of eliminating her.
+  `dynasty.dart`; `bugfix_2026_07_24_queen_line_test.dart`.
+
+## 2026-07-24 — Online duel scheduling refinements (user request, app 0.2.2)
+
+Four changes to the human-vs-human war preparation window:
+
+- **"Sofort" is now the current hour, not a timeless sentinel.** The old `0`
+  sentinel ("start as soon as both answered") let the defender start the duel
+  at any future moment by simply delaying their answer. "Sofort" is now a
+  concrete instant = the top of the answering side's current UTC hour, so two
+  sides only agree on it when both answer within the same hour; a late answer
+  starts nothing. Removed the `scheduledStartMs == 0` special-case in
+  `resolveWarPreparation` — a both-live agreement (incl. sofort, a past
+  instant) always waits for the server deadline, which the sweep fires at
+  once when it lies in the past. Touches `apply_action` (comment),
+  `ai_turn.resolveWarPreparation`, `war.dart` docs, client `_askWarStartSlots`
+  + `dec.warStartNow` string.
+- **Auto start = full turn time.** When no proposals overlapped, the fallback
+  duel start (= the preparation window) now runs the FULL turn timer instead
+  of half of it (`_commit` in `match_service.dart`).
+- **Troops selectable on the map during preparation.** `_onTileTap`
+  (`game_screen.dart`) now selects an own army on tap during the prep window
+  (mirroring the WarPanel chips) so its stance can be set straight from the
+  map; non-troop taps still open the normal tile sheet.
+- **Appointment notifications.** The `WAR_START_FIXED` push now fires on the
+  second answer regardless of a turn timer (start ⇒ now without one) and is
+  worded per role (the waiting attacker is told the defender has chosen); the
+  second answerer (usually the defender) also gets an in-app confirmation of
+  the matched appointment (`dec.warStartConfirmed` / `dec.warStartSaved`).
+- **Review fix: no stale "fixed" push from the deadline sweep.** Widening the
+  `WAR_START_FIXED` gate from `prep` to `activeWar != null` also matched the
+  prep-deadline sweep of a no-show (the force also consumes the unanswered
+  warPlan): both sides would get "der Krieg beginnt nach Ablauf der Frist" at
+  the very moment the war had already started. The push is now gated on
+  `prep || no turn timer` — the sweep path always has a timer and has left
+  preparation, so only genuine answer-driven commits notify (regression test
+  in `match_service_test.dart`).
+
 ## 2026-07-21 — Grey out taken countries when joining online (user request)
 
 - Joining an online match and picking an already-used country showed a

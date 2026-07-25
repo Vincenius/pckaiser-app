@@ -66,6 +66,36 @@ void main() {
     });
 
     for (final size in MapSize.values) {
+      // Regression (2026-07-24): on the smaller grids a fixed spawn margin
+      // pinned all land — and therefore every starting cross — into the
+      // left/top, leaving the right side "quasi komplett frei". Land must
+      // now be spread across both halves so AI opponents don't all cluster
+      // on one side. Averaged over seeds to smooth per-map noise.
+      test('${size.name} land is not lopsided left-vs-right', () {
+        var leftTotal = 0, rightTotal = 0;
+        for (final seed in [1, 42, 2026, 7, 999]) {
+          final map = generateMap(Rng(seed), size: size);
+          final mid = map.width ~/ 2;
+          for (var y = 0; y < map.height; y++) {
+            for (var x = 0; x < map.width; x++) {
+              if (!map.isLandAt(x, y)) continue;
+              if (x < mid) {
+                leftTotal++;
+              } else {
+                rightTotal++;
+              }
+            }
+          }
+        }
+        // Neither half should hold less than 35% of the land (a perfectly
+        // centred world is 50/50; the taper leaves some slack).
+        final share = rightTotal / (leftTotal + rightTotal);
+        expect(share, greaterThan(0.35),
+            reason: '${size.name}: right half too empty ($share)');
+        expect(share, lessThan(0.65),
+            reason: '${size.name}: left half too empty ($share)');
+      });
+
       test('${size.name} maps have the right grid and plausible land', () {
         for (final seed in [1, 42, 2026]) {
           final map = generateMap(Rng(seed), size: size);

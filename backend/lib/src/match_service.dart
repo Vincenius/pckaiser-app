@@ -1089,10 +1089,11 @@ class MatchService {
     final turnTimeout = match.settings.turnTimeoutHours == null
         ? null
         : Duration(hours: match.settings.turnTimeoutHours!);
-    // Clock selection: the war PREPARATION window runs on HALF the turn
-    // timer (user design — the reaction window before the duel; armed even
-    // when nobody is awaited, so a both-live start fires exactly at the
-    // deadline via the sweep). War ROUNDS of a live human-vs-human duel run
+    // Clock selection: the war PREPARATION window runs on the FULL turn
+    // timer (user design 2026-07-24 — the reaction window before the duel,
+    // and the fallback start when no proposals overlapped; armed even when
+    // nobody is awaited, so a both-live start fires exactly at the deadline
+    // via the sweep). War ROUNDS of a live human-vs-human duel run
     // on the short war clock; a human fighting an AI (or a delegated
     // opponent) gets the FULL turn clock instead — "time like a normal
     // turn". null turnTimeoutHours ⇒ no deadline (match waits; the
@@ -1107,7 +1108,7 @@ class MatchService {
     final wasPrep = previous?.activeWar?.phase == WarPhase.preparation;
     if (prep && scheduledMs != null && scheduledMs > 0) {
       // The sides AGREED on a duel start (warPlan slot matching): the
-      // deadline IS the appointment. It may lie later than the half-turn
+      // deadline IS the appointment. It may lie later than the full-turn
       // fallback (both sides chose it) and also works in a match without
       // a turn timer. Idempotent across commits — re-arming to the same
       // instant never moves the start.
@@ -1116,9 +1117,9 @@ class MatchService {
     } else if (!(prep && wasPrep)) {
       final Duration? timeout;
       if (prep) {
-        timeout = turnTimeout == null
-            ? null
-            : Duration(seconds: turnTimeout.inSeconds ~/ 2);
+        // The full turn timer: the "auto" duel start when no proposals
+        // overlapped is a whole turn, not half of one (user design).
+        timeout = turnTimeout;
       } else if (state.activeWar != null && _warIsHumanVsHuman(state)) {
         timeout = Duration(seconds: match.settings.warRoundTimeoutSeconds);
       } else {
@@ -1129,25 +1130,37 @@ class MatchService {
           : _clock().add(timeout);
     }
 
-    // Duel scheduling: the moment BOTH warPlan answers are in while the
-    // preparation still waits (both live), tell both sides when the duel
-    // starts — their agreed slot, or the fallback deadline when no
-    // proposals overlapped. Sent before the awaited-null return below:
-    // during this wait nobody is awaited.
+    // Duel scheduling: the moment BOTH warPlan answers are in, tell both
+    // sides when the duel starts — their agreed slot, or the fallback
+    // deadline when no proposals overlapped. Fires exactly once (on the
+    // SECOND answer: the previous state still had a warPlan decision, this
+    // one has none). Not gated on a turn timer — without one the war begins
+    // at once, so the waiting side (typically the attacker, who chose first)
+    // still learns the other has now chosen (start ⇒ now). The prep-deadline
+    // SWEEP also consumes unanswered warPlan decisions (force-delegating the
+    // no-show), but there the war has just STARTED — announcing a start time
+    // then would be stale; that path only exists with a turn timer while the
+    // war has left preparation, hence the (prep || no-timer) gate. Sent
+    // before the awaited-null return below: during a both-live wait nobody
+    // is awaited.
     if (notify &&
-        prep &&
+        state.activeWar != null &&
+        (prep || match.settings.turnTimeoutHours == null) &&
         previous != null &&
         previous.pendingDecisions.any((d) => d.type == 'warPlan') &&
-        !state.pendingDecisions.any((d) => d.type == 'warPlan') &&
-        match.turnDeadline != null) {
+        !state.pendingDecisions.any((d) => d.type == 'warPlan')) {
       final war = state.activeWar!;
+      final agreed = scheduledMs != null && scheduledMs > 0;
+      final start = agreed
+          ? DateTime.fromMillisecondsSinceEpoch(scheduledMs!, isUtc: true)
+          : (match.turnDeadline ?? _clock());
       for (final slot in [war.attackerSlot, war.defenderSlot]) {
         final id = _playerForSlot(match, state, slot);
         if (id == null) continue;
         final p = await _store.player(id);
         if (p != null) {
-          await _push.warStartFixed(p, match, match.turnDeadline!,
-              agreed: scheduledMs != null && scheduledMs > 0);
+          await _push.warStartFixed(p, match, start,
+              agreed: agreed, toAttacker: slot == war.attackerSlot);
         }
       }
     }

@@ -46,27 +46,33 @@ void main() {
     expect(war.autoSlots, isEmpty);
   });
 
-  test('the "sofort" sentinel (0) starts the duel with the second answer',
+  test('a "sofort" agreement (a current-hour instant) still waits online',
       () {
     final state = _game(humanSlots: const [1, 2]);
     _prepareWar(state, 1, 2);
     final war = startWar(state, 1, 2, Rng(1));
 
+    // "sofort" is the top of the answering side's current hour — a concrete
+    // instant, not a sentinel. Both propose it; it becomes the agreed start.
+    const sofort = 1000;
     answer(state, 1, {
       'auto': false,
-      'slots': [0, 5000],
+      'slots': [sofort, 5000],
     });
     answer(state, 2, {
       'auto': false,
-      'slots': [0],
+      'slots': [sofort],
     });
-    expect(war.scheduledStartMs, 0,
-        reason: '0 sorts before any real instant — "sofort" wins');
+    expect(war.scheduledStartMs, sofort,
+        reason: 'the earliest common instant wins — no special 0 sentinel');
 
-    // Even under the online wait rule the duel begins at once: both
-    // declared themselves ready right now.
+    // Online (both live): the duel no longer starts in this request. The
+    // server arms the deadline at the (already-past "sofort") instant and
+    // the sweep fires it — there is no immediate-start sentinel anymore.
     resolveWarPreparation(state, Rng(1), <GameEvent>[],
         waitWhenAllManual: true);
+    expect(war.phase, WarPhase.preparation);
+    resolveWarPreparation(state, Rng(1), <GameEvent>[], force: true);
     expect(war.phase, WarPhase.rounds);
     expect(war.autoSlots, isEmpty);
   });

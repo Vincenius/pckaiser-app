@@ -60,6 +60,7 @@ List<GameEvent> applyActionInPlace(
     MoveShip() => _moveShip(state, realm, action),
     ColonizeShip() => _colonizeShip(state, realm, action, rng),
     Build() => _build(state, realm, action, rng),
+    BuildFields() => _buildFields(state, realm, action),
     Demolish() => _demolish(state, realm, action),
     ChangeReligion() => _changeReligion(state, realm, action),
     CollectTribute() => _collectTribute(state, realm, action),
@@ -374,6 +375,152 @@ List<GameEvent> _build(GameState state, Realm realm, Build action, Rng rng) {
   }
 
   return events;
+}
+
+/// Drag-select batch cultivation ([BuildFields]): lay a Kornfeld or Weide
+/// on every listed tile that can take it, best-effort. Wrong-terrain tiles
+/// (Kornfeld off Ebene) and tiles the treasury / remaining Züge can no
+/// longer pay for are silently skipped — the client offers the batch
+/// pre-filtered, this is the authoritative re-check. Each built field
+/// costs 1 Zug + the field's Taler, exactly like a single [Build].
+List<GameEvent> _buildFields(GameState state, Realm realm, BuildFields action) {
+  final building = action.building;
+  // A fields-only batch: Dorf/Burg/Hafen/… go through the single Build.
+  if (building != Building.kornfeld && building != Building.weide) {
+    throw ActionException(coreMessage('cannotBuildThat'));
+  }
+  final events = <GameEvent>[];
+  for (final t in action.tiles) {
+    if (_tryBuildField(state, realm, t.x, t.y, building)) {
+      events.add(GameEvent(
+        year: state.year,
+        slot: realm.slot,
+        type: 'buildingBuilt',
+        visibility: EventVisibility.public,
+        payload: {'x': t.x, 'y': t.y, 'building': building},
+      ));
+    }
+  }
+  // Nothing built at all: surface the most likely cause so the tap isn't a
+  // silent no-op (the client normally guarantees ≥1 affordable valid tile).
+  if (events.isEmpty) {
+    if (realm.movementPoints < 1) {
+      throw ActionException(coreMessage('noMovesLeft'));
+    }
+    final cost = Building.cost[building]!;
+    if (realm.treasury < cost) {
+      throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
+    }
+    throw ActionException(coreMessage('cannotBuildThat'));
+  }
+  return events;
+}
+
+/// Tries to lay [building] (Kornfeld/Weide only) on ([x],[y]) for [realm].
+/// Returns true and mutates the map on success; false — leaving everything
+/// untouched — when the tile is off-map, not owned/claimable, already
+/// built, the wrong terrain, or unaffordable. Mirrors the per-tile rules
+/// of [_build] so a batch and a single build never diverge.
+bool _tryBuildField(GameState state, Realm realm, int x, int y, int building) {
+  final map = state.map;
+  if (!map.inBounds(x, y)) return false;
+  final owner = map.ownerAt(x, y);
+  final terrain = map.terrainAt(x, y);
+  // Same claim-on-build rule as _build: an unowned land tile bordering own
+  // territory is claimed as part of the cultivation.
+  final claimOnBuild = owner == World.niemand &&
+      Terrain.isLand(terrain) &&
+      map.bordersSlot(x, y, realm.slot);
+  if (owner != realm.slot && !claimOnBuild) return false;
+  if (map.buildingAt(x, y) != Building.none) return false;
+  final terrainOk = switch (building) {
+    Building.kornfeld => terrain == Terrain.ebene,
+    Building.weide => terrain == Terrain.berg || terrain == Terrain.ebene,
+    _ => false,
+  };
+  if (!terrainOk) return false;
+  final cost = Building.cost[building]!;
+  if (realm.movementPoints < 1 || realm.treasury < cost) return false;
+
+  realm.movementPoints--;
+  realm.treasury -= cost;
+  final idx = map.index(x, y);
+  map.building[idx] = building;
+  if (claimOnBuild) {
+    map.owner[idx] = realm.slot;
+  } else {
+    realm.tileCount[Building.none]--;
+  }
+  realm.tileCount[building]++;
+  return true;
+}
+
+/// Plans which of [selected] tiles (indices `y * width + x`) a
+/// [BuildFields] of [building] would cultivate for [slot], as a DRY RUN
+/// (state never mutated). Returns the tiles in a valid build ORDER: claim
+/// chains resolve outward — building on an unowned border tile claims it,
+/// which lets the wave reach the next unowned tile behind it — so a
+/// selection stretching several tiles into free land builds completely.
+/// Bounded by terrain (Kornfeld only on Ebene), the treasury and the
+/// remaining Züge, exactly per [_tryBuildField]: dispatching the returned
+/// list as a [BuildFields] builds every tile of it. Selected tiles that
+/// are unreachable (connected only through non-selected or wrong-terrain
+/// tiles) or beyond the budget are left out. Drives the client's
+/// drag-select preview counts and the batch it submits.
+List<({int x, int y})> planFieldCultivation(
+    GameState state, int slot, Iterable<int> selected, int building) {
+  if (building != Building.kornfeld && building != Building.weide) {
+    return const [];
+  }
+  final map = state.map;
+  final realm = state.realm(slot);
+  final cost = Building.cost[building]!;
+  bool terrainOk(int t) => building == Building.kornfeld
+      ? t == Terrain.ebene
+      : t == Terrain.berg || t == Terrain.ebene;
+  // Candidates: empty tiles of a valid terrain that are own or claimable
+  // (unowned land) — everything else can never build and never carries a
+  // claim chain either.
+  final sel = <int>{
+    for (final i in selected)
+      if (i >= 0 &&
+          i < map.terrain.length &&
+          map.building[i] == Building.none &&
+          terrainOk(map.terrain[i]) &&
+          (map.owner[i] == slot || map.owner[i] == World.niemand))
+        i,
+  };
+  if (sel.isEmpty) return const [];
+
+  var moves = realm.movementPoints;
+  var treasury = realm.treasury;
+  final planned = <({int x, int y})>[];
+  final queued = <int>{};
+  final queue = <int>[];
+  // Seeds: own tiles and unowned tiles already bordering own territory,
+  // in reading order (deterministic across client and server).
+  for (final i in sel.toList()..sort()) {
+    if (map.owner[i] == slot || map.bordersSlot(i % map.width, i ~/ map.width, slot)) {
+      queued.add(i);
+      queue.add(i);
+    }
+  }
+  for (var head = 0; head < queue.length; head++) {
+    // Every field costs the same — once one is unaffordable, all are.
+    if (moves < 1 || treasury < cost) break;
+    final i = queue[head];
+    moves--;
+    treasury -= cost;
+    planned.add((x: i % map.width, y: i ~/ map.width));
+    // The built (and, if unowned, claimed) tile carries the wave to its
+    // selected neighbors — enqueued only now, so at their turn they
+    // border own territory just as _tryBuildField will see it.
+    for (final (nx, ny) in map.neighborsOf(i % map.width, i ~/ map.width)) {
+      final ni = map.index(nx, ny);
+      if (sel.contains(ni) && queued.add(ni)) queue.add(ni);
+    }
+  }
+  return planned;
 }
 
 /// "(A)breißen" — 100 T, clears the building (§4). Towns cannot be
@@ -835,8 +982,9 @@ List<GameEvent> _resolveDecision(
         war.autoSlots.add(decision.decidingSlot);
       } else {
         // `[DESIGNED 2026-07-08]` Online duel scheduling: a LIVE side may
-        // propose start times ('slots': epoch ms UTC on full hours; the
-        // sentinel 0 = "as soon as both have answered").
+        // propose start times ('slots': epoch ms UTC on full hours). The
+        // first slot is "sofort" — the top of THIS side's current hour — so
+        // two sides only agree on it when both answer within the same hour.
         final slots = (choice['slots'] as List?)?.cast<int>();
         if (slots != null && slots.isNotEmpty) {
           war.planSlots[decision.decidingSlot] = List.of(slots)..sort();
@@ -844,8 +992,8 @@ List<GameEvent> _resolveDecision(
       }
       // Once every side has answered and BOTH play live, the earliest
       // common proposal becomes the agreed start. No overlap (or no
-      // proposals) leaves it null — the caller's fallback deadline (half
-      // the turn timer online) governs, exactly as without scheduling. An
+      // proposals) leaves it null — the caller's fallback deadline (the
+      // full turn timer online) governs, exactly as without scheduling. An
       // agreed time may lie LATER than that fallback: both sides chose it.
       // (The CURRENT decision is consumed after the switch — exclude it.)
       if (!state.pendingDecisions

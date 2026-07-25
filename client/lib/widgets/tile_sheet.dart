@@ -381,6 +381,96 @@ Future<void> showTileActionSheet(
   );
 }
 
+/// Batch-cultivation sheet for a map box selection (long-press + drag):
+/// the same bottom sheet as the single-tile tap, offering Kornfeld/Weide
+/// with the engine-planned build count and total price
+/// (`planFieldCultivation` — the plan is exactly what dispatching builds).
+/// Returns true when a batch was dispatched (the caller then leaves the
+/// selection mode); dismissing keeps the selection alive for resizing.
+Future<bool> showFieldBatchSheet(
+  BuildContext context,
+  GameController controller,
+  Set<int> selectedFields,
+) async {
+  final realm = controller.currentRealm;
+  final slot = controller.currentSlot;
+  List<({int x, int y})> planFor(int building) => gc.planFieldCultivation(
+        controller.state,
+        slot,
+        selectedFields,
+        building,
+      );
+  final plans = {
+    for (final b in [gc.Building.kornfeld, gc.Building.weide])
+      b: planFor(b),
+  };
+  var built = false;
+
+  if (!context.mounted) return false;
+  await showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          ListTile(
+            title: Text(
+              tr('game.fieldSheetTitle', {'count': selectedFields.length}),
+            ),
+            trailing: Text(
+              tr('game.tileHeaderTrailing', {
+                'treasury': realm.treasury,
+                'moves': realm.movementPoints,
+              }),
+              textAlign: TextAlign.right,
+              style: Theme.of(sheetContext).textTheme.labelMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          // Same fallback wording as the single-tile sheet.
+          if (plans.values.every((p) => p.isEmpty))
+            ListTile(
+              title: Text(
+                realm.movementPoints < 1
+                    ? tr('game.noMovesLeft')
+                    : realm.treasury < 100
+                    ? tr('game.notEnoughTaler')
+                    : tr('game.noActionHere'),
+              ),
+            ),
+          for (final MapEntry(key: building, value: plan) in plans.entries)
+            if (plan.isNotEmpty)
+              ListTile(
+                title: Text('${buildingName(building)} ×${plan.length}'),
+                trailing:
+                    Text('${plan.length * gc.Building.cost[building]!} T'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  built = true;
+                  try {
+                    await controller.applyUndoable(
+                      gc.BuildFields(
+                        slot: slot,
+                        building: building,
+                        tiles: plan,
+                      ),
+                    );
+                  } on gc.ActionException catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(content: Text(e.message)));
+                    }
+                  }
+                },
+              ),
+        ],
+      ),
+    ),
+  );
+  return built;
+}
+
 /// Tile-pick handler for "Schiff steuern": a water target sails the ship
 /// there; a FREE land target colonizes it in one flow — the ship sails to
 /// the nearest water tile beside the target and founds the Dorf (the

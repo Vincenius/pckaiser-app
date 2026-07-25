@@ -175,8 +175,17 @@ void marry(GameState state, Person a, Person b, List<GameEvent> events,
   b.spouseId = a.id;
   final husband = a.isMale ? a : b;
   final wife = a.isMale ? b : a;
-  husband.childrenIds.addAll(wife.childrenIds);
-  wife.childrenIds.clear();
+  // §14.2 patrilineal: children follow the father, so the wife's existing
+  // children merge onto the husband. Under gender-equal succession a ruling
+  // queen keeps her line (see _birth), so a human wife marrying a foreign
+  // (non-human) husband does NOT surrender her children to his house.
+  final wifeKeepsLine = state.genderEqualSuccession &&
+      state.dynasty(wife.dynasty).status == DynastyStatus.human &&
+      state.dynasty(husband.dynasty).status != DynastyStatus.human;
+  if (!wifeKeepsLine) {
+    husband.childrenIds.addAll(wife.childrenIds);
+    wife.childrenIds.clear();
+  }
   if (!announce) return;
   events.add(GameEvent(
     year: state.year,
@@ -241,7 +250,26 @@ void divorceIncompatibleCouples(
 /// decision (non-blocking rename).
 void _birth(GameState state, Person parent, Person? partner, Rng rng,
     List<GameEvent> events) {
-  final dynasty = state.dynasty(parent.dynasty);
+  // §14.2 is patrilineal: the child follows the father ([parent], always the
+  // male — see the §14.3 loop). Under gender-equal succession a ruling queen
+  // keeps her OWN line: when the couple spans a human and a non-human house,
+  // the child joins the HUMAN parent's dynasty instead — so she names it (the
+  // `childName` prompt routes to her slot below), sees it in her Dynastie
+  // sheet, and it inherits her realm. Without this a foreign-married queen's
+  // children vanish into the (usually AI) husband's house, leaving her line
+  // heirless and her realm doomed to pass to that house (the reported "I
+  // killed my husband and was immediately defeated" bug). Male-human and
+  // AI-vs-AI couples are unaffected — the father already owns the line.
+  var lineParent = parent;
+  if (state.genderEqualSuccession && partner != null) {
+    final parentHuman =
+        state.dynasty(parent.dynasty).status == DynastyStatus.human;
+    final partnerHuman =
+        state.dynasty(partner.dynasty).status == DynastyStatus.human;
+    if (partnerHuman && !parentHuman) lineParent = partner;
+  }
+  final coParent = identical(lineParent, parent) ? partner : parent;
+  final dynasty = state.dynasty(lineParent.dynasty);
   final gender = rng.nextInt(2);
   final muslim = dynasty.religion == Religion.moslemisch;
   final List<String> names = muslim
@@ -251,13 +279,13 @@ void _birth(GameState state, Person parent, Person? partner, Rng rng,
     id: state.nextPersonId++,
     name: names[rng.nextInt(names.length)],
     age: 0, // original left this uninitialized — deliberate fix
-    dynasty: parent.dynasty,
+    dynasty: lineParent.dynasty,
     gender: gender,
   );
   state.persons[child.id] = child;
   dynasty.memberIds.add(child.id);
-  parent.childrenIds.add(child.id);
-  partner?.childrenIds.add(child.id);
+  lineParent.childrenIds.add(child.id);
+  coParent?.childrenIds.add(child.id);
 
   if (dynasty.status == DynastyStatus.human) {
     // [DESIGNED] A human dynasty names its newborn before the world hears
@@ -270,12 +298,12 @@ void _birth(GameState state, Person parent, Person? partner, Rng rng,
     state.pendingDecisions.add(PendingDecision(
       id: 'childname-${child.id}',
       type: 'childName',
-      decidingSlot: parent.dynasty,
+      decidingSlot: lineParent.dynasty,
       payload: {
         'childId': child.id,
         'suggestedName': child.name,
-        'parent': parent.name,
-        'partner': partner?.name,
+        'parent': lineParent.name,
+        'partner': coParent?.name,
         'gender': gender,
       },
     ));
@@ -284,12 +312,12 @@ void _birth(GameState state, Person parent, Person? partner, Rng rng,
   // AI dynasties have no naming step — announce the birth at once.
   events.add(GameEvent(
     year: state.year,
-    slot: parent.dynasty,
+    slot: lineParent.dynasty,
     type: 'birth',
     visibility: EventVisibility.public,
     payload: {
-      'parent': parent.name,
-      'partner': partner?.name,
+      'parent': lineParent.name,
+      'partner': coParent?.name,
       'child': child.name,
       'gender': gender,
     },
@@ -547,15 +575,33 @@ Person? _chooseHeirByPriority(
   }
 
   final spouse = state.person(deceased.spouseId);
-  // §14.2: the couple's shared children list hangs on the HUSBAND (the
-  // original clears the wife's pointer at the wedding). The clone keeps
-  // the mother-child links for the family display, but succession must
-  // not read them: a married woman's death would otherwise crown a son
-  // ahead of her widower, who per §15.4 is the rightful heir (rank 3)
-  // once her own house holds no male. Filtering here (not at birth)
-  // also fixes running games whose saves carry the double links.
-  final children =
-      !deceased.isMale && spouse != null ? const <int>[] : deceased.childrenIds;
+  // §14.2 (patrilineal): the couple's shared children list hangs on the
+  // HUSBAND (the original clears the wife's pointer at the wedding). The
+  // clone keeps the mother-child links for the family display, but
+  // succession must not read them for a married woman: her death would
+  // otherwise crown a son ahead of her widower, who per §15.4 is the
+  // rightful heir (rank 3) once her own house holds no male. Filtering here
+  // (not at birth) also fixes running games whose saves carry the double
+  // links.
+  //
+  // Under gender-equal succession a ruling queen keeps her OWN line (see
+  // _birth / marry): children born into HER dynasty still inherit her realm,
+  // but the husband's-line children (double-linked for the family display,
+  // yet members of HIS house) never do — so her widower still ranks ahead of
+  // the couple's patrilineal son. With the setting off, every child of a
+  // married woman hangs on the husband, so this collapses to the faithful
+  // §14.2 "no children" behaviour.
+  final List<int> children;
+  if (!deceased.isMale && spouse != null) {
+    children = state.genderEqualSuccession
+        ? [
+            for (final id in deceased.childrenIds)
+              if (state.persons[id]?.dynasty == deceased.dynasty) id
+          ]
+        : const <int>[];
+  } else {
+    children = deceased.childrenIds;
+  }
   final heir = state.genderEqualSuccession
       ? firstAlive(children) ?? firstAlive(dynasty.memberIds) ?? spouse
       : firstAlive(children, male: true) ??
