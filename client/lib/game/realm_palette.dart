@@ -1,16 +1,41 @@
 import 'dart:ui';
 
 import 'package:flutter/painting.dart' show HSLColor;
+import 'package:game_core/game_core.dart' show GameState;
 
 /// Visual identity per realm slot (1–30): a color plus a pattern index —
 /// color is never the only channel (PROJECT_REQUIREMENTS accessibility).
 class RealmPalette {
-  /// 30 well-separated colors that read clearly on the green terrain:
-  /// hues run 170°–430° (mod 360) — blues, purples, reds, oranges,
-  /// yellows — deliberately skipping the 70°–170° green band. A coprime
-  /// stride spreads consecutive slots far apart on the wheel, and
-  /// alternating lightness doubles the effective separation.
-  static Color colorFor(int slot) {
+  /// The swatches offered by the setup color picker (`Realm.colorArgb`
+  /// values) — hand-picked to read clearly on the green terrain, well
+  /// apart from each other and from the slot-derived defaults' band.
+  static const List<Color> setupChoices = [
+    Color(0xFFD32F2F), // red
+    Color(0xFFF57C00), // orange
+    Color(0xFFFBC02D), // amber
+    Color(0xFF795548), // brown
+    Color(0xFFE91E63), // pink
+    Color(0xFF8E24AA), // purple
+    Color(0xFF5E35B1), // deep purple
+    Color(0xFF3949AB), // indigo
+    Color(0xFF1E88E5), // blue
+    Color(0xFF00ACC1), // cyan
+    Color(0xFF455A64), // slate
+    Color(0xFF880E4F), // wine
+  ];
+
+  /// A realm's map color: the player-chosen [GameState] color when one was
+  /// picked at setup, otherwise a derived default — 30 well-separated
+  /// colors that read clearly on the green terrain: hues run 170°–430°
+  /// (mod 360) — blues, purples, reds, oranges, yellows — deliberately
+  /// skipping the 70°–170° green band. A coprime stride spreads
+  /// consecutive slots far apart on the wheel, and alternating lightness
+  /// doubles the effective separation.
+  static Color colorFor(int slot, {GameState? state}) {
+    final argb = (state != null && slot >= 1 && slot <= state.realmCount)
+        ? state.realm(slot).colorArgb
+        : null;
+    if (argb != null) return Color(argb);
     final hue = (170.0 + ((slot * 11) % 30) / 30.0 * 260.0) % 360.0;
     final lightness = slot.isEven ? 0.58 : 0.44;
     return HSLColor.fromAHSL(1.0, hue, 0.85, lightness).toColor();
@@ -18,7 +43,8 @@ class RealmPalette {
 
   /// Marks a realm's capital: a flag pole with a pennant in the realm
   /// color (no suitable sprite exists in the original tile set).
-  static void paintCapital(Canvas canvas, Rect cell, int slot) {
+  static void paintCapital(Canvas canvas, Rect cell, int slot,
+      {GameState? state}) {
     final s = cell.width;
     final pole = Paint()
       ..color = const Color(0xFF222222)
@@ -33,7 +59,7 @@ class RealmPalette {
       ..lineTo(cell.left + s * 0.85, cell.top + s * 0.28)
       ..lineTo(cell.left + s * 0.38, cell.top + s * 0.45)
       ..close();
-    canvas.drawPath(pennant, Paint()..color = colorFor(slot));
+    canvas.drawPath(pennant, Paint()..color = colorFor(slot, state: state));
     canvas.drawPath(
       pennant,
       Paint()
@@ -52,12 +78,13 @@ class RealmPalette {
     Canvas canvas,
     Rect cell,
     int slot, {
+    GameState? state,
     required bool left,
     required bool top,
     required bool right,
     required bool bottom,
   }) {
-    final color = colorFor(slot);
+    final color = colorFor(slot, state: state);
     canvas.drawRect(cell, Paint()..color = color.withValues(alpha: 0.16));
 
     if (!(left || top || right || bottom)) return;

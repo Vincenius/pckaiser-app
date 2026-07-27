@@ -224,6 +224,7 @@ class MapGame extends FlameGame with ScaleDetector {
             canvas,
             cell,
             owner,
+            state: _state,
             left: foreign(x - 1, y),
             top: foreign(x, y - 1),
             right: foreign(x + 1, y),
@@ -231,7 +232,7 @@ class MapGame extends FlameGame with ScaleDetector {
           );
           final realm = _state.realm(owner);
           if (realm.capitalX == x && realm.capitalY == y) {
-            RealmPalette.paintCapital(canvas, cell, owner);
+            RealmPalette.paintCapital(canvas, cell, owner, state: _state);
           }
         }
         // The visible state encodes the troop owner in the marker: the
@@ -249,6 +250,7 @@ class MapGame extends FlameGame with ScaleDetector {
             Paint()
               ..color = RealmPalette.colorFor(
                 troopOwner,
+                state: _state,
               ).withValues(alpha: 0.8),
           );
           canvas.drawCircle(
@@ -354,6 +356,7 @@ class MapGame extends FlameGame with ScaleDetector {
             Paint()
               ..color = RealmPalette.colorFor(
                 report.targetSlot,
+                state: _state,
               ).withValues(alpha: 0.35),
           );
           canvas.drawCircle(
@@ -391,7 +394,8 @@ class MapGame extends FlameGame with ScaleDetector {
           cell.center,
           tileSize * 0.42,
           Paint()
-            ..color = RealmPalette.colorFor(realm.slot).withValues(alpha: 0.8),
+            ..color = RealmPalette.colorFor(realm.slot, state: _state)
+                .withValues(alpha: 0.8),
         );
         canvas.drawCircle(
           cell.center,

@@ -24,6 +24,10 @@ abstract class PushService {
 
   /// ~15 minutes before an AGREED duel start (never for the fallback).
   Future<void> warStartSoon(PlayerRecord player, MatchRecord match);
+
+  /// The retention sweep flagged a long-stalled active match: it will be
+  /// deleted unless somebody plays (ARCHITECTURE.md "Retention").
+  Future<void> matchExpiring(PlayerRecord player, MatchRecord match);
 }
 
 class LogPushService implements PushService {
@@ -58,4 +62,8 @@ class LogPushService implements PushService {
   @override
   Future<void> warStartSoon(PlayerRecord player, MatchRecord match) async =>
       _log('WAR_START_SOON', player, match);
+
+  @override
+  Future<void> matchExpiring(PlayerRecord player, MatchRecord match) async =>
+      _log('MATCH_EXPIRING', player, match);
 }

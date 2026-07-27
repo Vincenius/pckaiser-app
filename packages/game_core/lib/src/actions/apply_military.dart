@@ -739,7 +739,7 @@ List<GameEvent> applyWarEndRound(
 }
 
 List<GameEvent> applySettlementAnnex(
-    GameState state, Realm realm, SettlementAnnex action) {
+    GameState state, Realm realm, SettlementAnnex action, Rng rng) {
   final war = _warFor(state, realm.slot, phase: WarPhase.settlement);
   if (war.winnerSlot != realm.slot) {
     throw ActionException(coreMessage('onlyVictorClaims'));
@@ -760,7 +760,20 @@ List<GameEvent> applySettlementAnnex(
   final events = <GameEvent>[];
   transferTile(state, action.x, action.y, realm.slot, events);
   war.remainingClaim -= value;
+  _finishIfLoserLandless(state, loserSlot, rng, events);
   return events;
+}
+
+/// Annexing the loser's LAST tile ends the settlement on the spot: there is
+/// nothing left to claim, and leaving the war open parked the online AI
+/// turn forever (bug 2026-07-27 — "won the war, got all the land, war
+/// continued"). `finishSettlement` then vacates the landless realm via
+/// `checkLandLoss` and the server's resume-after-war check can fire.
+void _finishIfLoserLandless(
+    GameState state, int loserSlot, Rng rng, List<GameEvent> events) {
+  if (state.activeWar == null) return;
+  final owned = state.realm(loserSlot).tileCount.fold(0, (a, b) => a + b);
+  if (owned == 0) finishSettlement(state, rng, events);
 }
 
 /// Batched settlement annexes in tap order, atomic: any invalid tile
@@ -768,11 +781,11 @@ List<GameEvent> applySettlementAnnex(
 /// The online client validated each tap locally with the same rules, so a
 /// rejection here only happens on a genuine desync.
 List<GameEvent> applySettlementAnnexMany(
-    GameState state, Realm realm, SettlementAnnexMany action) {
+    GameState state, Realm realm, SettlementAnnexMany action, Rng rng) {
   final events = <GameEvent>[];
   for (final tile in action.tiles) {
     events.addAll(applySettlementAnnex(state, realm,
-        SettlementAnnex(slot: action.slot, x: tile.x, y: tile.y)));
+        SettlementAnnex(slot: action.slot, x: tile.x, y: tile.y), rng));
   }
   return events;
 }

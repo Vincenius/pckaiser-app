@@ -4,7 +4,9 @@
 ///   FIREBASE_SERVICE_ACCOUNT  — base64 service-account JSON; enables FCM
 ///                               push (logged stub without it)
 ///
-/// The timeout sweep runs once a minute (ARCHITECTURE.md "Timeouts").
+/// The timeout sweep runs once a minute (ARCHITECTURE.md "Timeouts");
+/// the retention sweep once a day and at startup (ARCHITECTURE.md
+/// "Retention").
 library;
 
 import 'dart:async';
@@ -33,6 +35,18 @@ Future<void> main() async {
       print('[sweep] failed: $e');
     }
   });
+
+  Future<void> retention() async {
+    try {
+      final removed = await service.sweepStale();
+      if (removed > 0) print('[retention] deleted $removed stale match(es)');
+    } on Object catch (e) {
+      print('[retention] failed: $e');
+    }
+  }
+
+  unawaited(retention());
+  Timer.periodic(const Duration(hours: 24), (_) => retention());
 
   final handler =
       const Pipeline().addMiddleware(logRequests()).addHandler(api.handler);

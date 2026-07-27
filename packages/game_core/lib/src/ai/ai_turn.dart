@@ -151,7 +151,13 @@ void _runAiTurnInPlace(
   // + 1), floored below the strife line) — demand a matching mood cushion
   // so a serial-warring AI never talks itself into a §19.1 revolt.
   final warMoodOk = realm.popularity >= 50 + 5 * realm.recentWars;
-  if ((warFlag || tuning.warChance > 0 && rng.nextInt(tuning.warChance) == 0) &&
+  // At least two units: the war movement reserves the unit nearest the
+  // capital as a home guard that never marches out (2026-07-27 it holds
+  // the seat even as the ONLY unit) — a lone-army declaration would start
+  // a war the AI cannot prosecute: its single unit sits at home while the
+  // defender farms plunder and occupation score unopposed.
+  if (realm.troops.length >= 2 &&
+      (warFlag || tuning.warChance > 0 && rng.nextInt(tuning.warChance) == 0) &&
       rng.nextInt(3) == 0 &&
       warMoodOk &&
       warDeclarationBlocker(state, realm) == null) {
@@ -702,16 +708,19 @@ void runAiWarMovement(
   final realm = state.realm(slot);
 
   // `[DESIGNED]` A real AI side always keeps a HOME GUARD on its base: the
-  // unit nearest the capital is reserved and never marched out, so the realm
-  // is never left wholly undefended (the player always has a defender to
-  // fight at the AI's base). Held by reference so it survives the troop-list
-  // reshaping as units die. Not applied to an autopiloted human side (its
-  // per-unit stance already governs defence), nor to a one-unit realm (it
-  // cannot both guard the base and field an army).
-  final Troop? homeGuard =
-      state.dynasty(slot).status == DynastyStatus.ai && realm.troops.length >= 2
-          ? _nearestToCapital(realm)
-          : null;
+  // unit nearest the capital is reserved and marches back onto the seat tile
+  // instead of out, so the realm is never left wholly undefended (the player
+  // always has a defender to fight ON the AI's base — a lone-unit realm's
+  // only troop IS the guard, so a one-army AI can't be beaten by simply
+  // walking onto its empty seat). Held by reference so it survives the
+  // troop-list reshaping as units die. Not applied to an autopiloted human
+  // side (its per-unit stance already governs defence), nor once the enemy
+  // has no troops left — a troopless enemy cannot take the seat, so the
+  // guard is free to join the counter-march.
+  final Troop? homeGuard = state.dynasty(slot).status == DynastyStatus.ai &&
+          state.realm(war.opponentOf(slot)).troops.isNotEmpty
+      ? _nearestToCapital(realm)
+      : null;
 
   for (var i = 0; i < realm.troops.length; i++) {
     var guard = 0;
@@ -721,10 +730,12 @@ void runAiWarMovement(
         (war.movesLeft[slot]?[i] ?? 0) > 0 &&
         guard++ < 30) {
       final troop = realm.troops[i];
-      if (identical(troop, homeGuard)) break; // the home guard holds the base
       // Recomputed every step: kills and deaths reshape the troop list
-      // and can change the nearest-intruder pick.
-      final target = _warTarget(state, war, slot, i, troop);
+      // and can change the nearest-intruder pick. The home guard's one
+      // and only destination is the seat tile, where it holds.
+      final target = identical(troop, homeGuard)
+          ? (realm.capitalX, realm.capitalY)
+          : _warTarget(state, war, slot, i, troop);
       if (target == null) break;
       final (tx, ty) = target;
       if (troop.x == tx && troop.y == ty) break;

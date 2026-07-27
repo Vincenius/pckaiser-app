@@ -1509,7 +1509,8 @@ void main() {
           reason: 'an unvalidated online settings payload must not crash');
     });
 
-    test('map size and realm count reach the game state (out of range → '
+    test(
+        'map size and realm count reach the game state (out of range → '
         'clamped, never a 500)', () async {
       final a = await service.registerPlayer(displayName: 'Solo');
       final match = await createStarted(
@@ -1537,6 +1538,46 @@ void main() {
       expect(state2.realmCount, MapSize.gross.maxRealmCount);
     });
 
+    test(
+        'a seat color reaches the realm; a duplicate falls back to the '
+        'default (2026-07-27)', () async {
+      final host = await service.registerPlayer(displayName: 'Host');
+      final match = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Host', 1)..['color'] = 0xFFD32F2F,
+      );
+      final joiner = await service.registerPlayer(displayName: 'Gast');
+      await service.joinMatch(
+        matchId: match.id,
+        playerId: joiner.id,
+        setup: setupFor('Gast', 2)..['color'] = 0xFFD32F2F, // already taken
+      );
+      final open = await service.openSlots(match.id);
+      expect(open['taken_colors'], [0xFFD32F2F],
+          reason: 'the duplicate pick was dropped, not stored twice');
+      final started =
+          await service.startMatch(matchId: match.id, playerId: host.id);
+      final state =
+          GameState.fromJson((await store.match(started.id))!.stateJson!);
+      expect(state.realm(1).colorArgb, 0xFFD32F2F);
+      expect(state.realm(2).colorArgb, isNull,
+          reason: 'the losing racer keeps the slot-derived default');
+    });
+
+    test('a non-opaque color falls back to the default (2026-07-27)', () async {
+      // Display-only, but rendered on every player's map — a doctored
+      // client must not seat an invisible (alpha 0) realm.
+      final host = await service.registerPlayer(displayName: 'Host');
+      final match = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Host', 1)..['color'] = 0x00D32F2F, // alpha 0
+      );
+      final open = await service.openSlots(match.id);
+      expect(open['taken_colors'], isEmpty);
+    });
+
     test('joining a small match rejects a country beyond the realms in play',
         () async {
       final host = await service.registerPlayer(displayName: 'Host');
@@ -1552,9 +1593,110 @@ void main() {
           playerId: joiner.id,
           setup: setupFor('Gast', 13), // klein plays slots 1–12
         ),
-        throwsA(isA<ApiException>()
-            .having((e) => e.statusCode, 'statusCode', 400)),
+        throwsA(
+            isA<ApiException>().having((e) => e.statusCode, 'statusCode', 400)),
       );
+    });
+  });
+
+  group('retention (sweepStale)', () {
+    late _RecordingPushService push;
+    late DateTime now;
+
+    setUp(() {
+      push = _RecordingPushService();
+      now = DateTime.utc(2026, 7, 27, 12);
+      service = MatchService(store, push, clock: () => now);
+    });
+
+    /// A stored record aged so its last activity lies [silence] in the past.
+    MatchRecord record(String id, MatchStatus status, Duration silence,
+            {List<MatchPlayer> players = const []}) =>
+        MatchRecord(
+          id: id,
+          settings: MatchSettings(seed: 1),
+          players: players,
+          status: status,
+          createdAt: now.subtract(silence),
+          updatedAt: now.subtract(silence),
+        );
+
+    test('finished matches are deleted 30 days after the last update',
+        () async {
+      await store.saveMatch(record(
+          'FRESH', MatchStatus.finished, const Duration(days: 29)));
+      await store.saveMatch(
+          record('STALE', MatchStatus.finished, const Duration(days: 31)));
+      expect(await service.sweepStale(), 1);
+      expect(await store.match('FRESH'), isNotNull,
+          reason: 'still inside the result-screen grace period');
+      expect(await store.match('STALE'), isNull);
+    });
+
+    test('abandoned waiting lobbies are deleted after 7 days', () async {
+      await store.saveMatch(
+          record('FRESH', MatchStatus.waiting, const Duration(days: 6)));
+      await store.saveMatch(
+          record('STALE', MatchStatus.waiting, const Duration(days: 8)));
+      expect(await service.sweepStale(), 1);
+      expect(await store.match('FRESH'), isNotNull);
+      expect(await store.match('STALE'), isNull);
+    });
+
+    test('a silent active match is warned once, then deleted after the lead',
+        () async {
+      final p = await service.registerPlayer(displayName: 'Still');
+      final seat = MatchPlayer(
+        playerId: p.id,
+        turnOrder: 0,
+        slot: 1,
+        founderName: 'Still',
+        gender: 1,
+        dorfName: 'Stilldorf',
+      );
+      await store.saveMatch(record(
+          'QUIET', MatchStatus.active, const Duration(days: 352),
+          players: [seat]));
+
+      // Inside the warning window: push goes out, nothing is deleted.
+      expect(await service.sweepStale(), 0);
+      expect(push.kinds, containsOnce('matchExpiring'));
+      expect((await store.match('QUIET'))!.expiryWarnedAt, now);
+
+      // The next daily run re-warns nobody and still keeps the match.
+      now = now.add(const Duration(days: 1));
+      expect(await service.sweepStale(), 0);
+      expect(push.kinds, containsOnce('matchExpiring'));
+
+      // Warning lead over AND the retention age reached: deleted.
+      now = now.add(const Duration(days: 14));
+      expect(await service.sweepStale(), 1);
+      expect(await store.match('QUIET'), isNull);
+    });
+
+    test('activity after the warning cancels the pending expiry', () async {
+      await store.saveMatch(
+          record('WOKEN', MatchStatus.active, const Duration(days: 360)));
+      expect(await service.sweepStale(), 0); // warned
+      expect((await store.match('WOKEN'))!.expiryWarnedAt, isNotNull);
+
+      // Somebody plays: every commit moves updatedAt past the warning.
+      final match = (await store.match('WOKEN'))!;
+      match.updatedAt = now.add(const Duration(hours: 1));
+      await store.saveMatch(match);
+
+      now = now.add(const Duration(days: 20));
+      expect(await service.sweepStale(), 0,
+          reason: 'the silence clock restarted with the new activity');
+      expect((await store.match('WOKEN'))!.expiryWarnedAt, isNull);
+    });
+
+    test('active matches inside the retention window are untouched', () async {
+      await store.saveMatch(
+          record('YOUNG', MatchStatus.active, const Duration(days: 300)));
+      expect(await service.sweepStale(), 0);
+      expect(push.kinds, isEmpty);
+      expect((await store.match('YOUNG'))!.expiryWarnedAt, isNull);
     });
   });
 }
@@ -1613,4 +1755,8 @@ class _RecordingPushService implements PushService {
   @override
   Future<void> warStartSoon(PlayerRecord player, MatchRecord match) async =>
       kinds.add('warStartSoon');
+
+  @override
+  Future<void> matchExpiring(PlayerRecord player, MatchRecord match) async =>
+      kinds.add('matchExpiring');
 }

@@ -134,4 +134,14 @@ class FcmPushService implements PushService {
         'PCKaiser',
         'Dein Krieg beginnt in Kürze — mach dich bereit !',
       );
+
+  @override
+  Future<void> matchExpiring(PlayerRecord player, MatchRecord match) => _send(
+        player,
+        match,
+        'MATCH_EXPIRING',
+        'PCKaiser',
+        'Eure Partie ruht seit langem und wird bald gelöscht — '
+            'spielt einen Zug, um sie zu behalten.',
+      );
 }

@@ -48,6 +48,7 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Dart shelf backend (`backend/`): players/matches routes, state documents, turn endpoint (ARCHITECTURE.md) — JSON file store behind `GameStore` (PostgreSQL later)
 - [x] Server-side simulation advance; `visibleStateFor` on all responses
 - [x] Host match settings + turn timers; timeout sweep (reminder push pending FCM)
+- [x] Retention sweep: stale finished/waiting/silent-active matches deleted daily, `MATCH_EXPIRING` warning push (2026-07-27)
 - [x] Client online foundation: device identity, `ApiClient`, lobby (create/join/list, polling); server URL via `--dart-define=PCKAISER_SERVER_URL`
 - [x] In-match play screen against the server (async `GameSession` round-trips; submissions return their events; out-of-turn decisions prompted from the waiting view)
 - [x] Human-vs-human wars: two-sided war-round input (`ActiveWar.actingSlot`, attacker hands over to the defender), hot-seat handoff locally, `war_round_timeout` war clock online with AI fallback on timeout

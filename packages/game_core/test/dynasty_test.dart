@@ -136,6 +136,33 @@ void main() {
       expect(
           state.pendingDecisions.where((d) => d.type == 'heirChoice'), isEmpty);
     });
+
+    test(
+        'natural death causes are age-appropriate (2026-07-27: no more '
+        '10-year-olds dying of Altersschwäche)', () {
+      final rng = Rng(42);
+      for (var i = 0; i < 100; i++) {
+        expect(childDeathCauses, contains(naturalDeathCause(10, rng)),
+            reason: 'children die of childhood diseases');
+        expect(adultDeathCauses, contains(naturalDeathCause(30, rng)),
+            reason: 'under 50 "age" is never the cause');
+        expect(['age', ...adultDeathCauses], contains(naturalDeathCause(70, rng)));
+      }
+      // From 50 on plain old age DOES occur.
+      expect(List.generate(50, (i) => naturalDeathCause(75, Rng(i))),
+          contains('age'));
+    });
+
+    test('a personDied event carries the age-appropriate cause', () {
+      final state = startGame(freshGame(), Rng(1)).state;
+      state.year = 1010;
+      final ruler = state.person(state.realm(1).rulerId)!;
+      ruler.age = 89; // certain death roll
+      final events = <GameEvent>[];
+      runDynastyPhase(state, 1, Rng(5), events);
+      final died = events.firstWhere((e) => e.type == 'personDied');
+      expect(['age', ...adultDeathCauses], contains(died.payload['cause']));
+    });
   });
 
   group('succession priority (§15.4)', () {

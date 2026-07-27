@@ -356,11 +356,13 @@ class MatchService {
     final String dorfName;
     final int gender;
     final int? requestedSlot;
+    final int? requestedColor;
     try {
       founderName = (setup['founder_name'] as String?)?.trim() ?? '';
       dorfName = (setup['dorf_name'] as String?)?.trim() ?? '';
       gender = setup['gender'] as int? ?? 0;
       requestedSlot = setup['country_slot'] as int?;
+      requestedColor = setup['color'] as int?;
     } on TypeError {
       throw ApiException(400, 'invalid field type in setup');
     }
@@ -390,6 +392,21 @@ class MatchService {
       free.shuffle();
       slot = free.first;
     }
+    // A color another seat already picked silently falls back to the
+    // slot-derived default instead of rejecting the join — the openSlots
+    // hint is best-effort, so two players CAN race for the same swatch.
+    // Same fallback for a value outside fully-opaque 32-bit ARGB: the
+    // color is display-only but rendered on EVERY player's map, and a
+    // doctored client could otherwise seat e.g. an invisible (alpha 0)
+    // realm. The swatch list itself is not pinned server-side — future
+    // clients may offer more choices without a backend change.
+    final takenColors = {
+      for (final p in match.players)
+        if (p.color != null) p.color,
+    };
+    final opaque = requestedColor != null &&
+        requestedColor >= 0xFF000000 &&
+        requestedColor <= 0xFFFFFFFF;
     match.players.add(MatchPlayer(
       playerId: playerId,
       turnOrder: match.players.length,
@@ -397,6 +414,9 @@ class MatchService {
       founderName: founderName,
       gender: gender,
       dorfName: dorfName,
+      color: opaque && !takenColors.contains(requestedColor)
+          ? requestedColor
+          : null,
     ));
   }
 
@@ -413,6 +433,7 @@ class MatchService {
             gender: p.gender,
             countrySlot: p.slot,
             dorfName: p.dorfName,
+            color: p.color,
           ),
       ],
       reformationYear: match.settings.reformationYear,
@@ -577,10 +598,11 @@ class MatchService {
         // match is waiting for) — and the agreed start, if the sides
         // found a common warPlan slot.
         'war_preparing': warPreparing,
-        'war_scheduled_at': warPreparing && scheduledMs != null && scheduledMs > 0
-            ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
-                .toIso8601String()
-            : null,
+        'war_scheduled_at':
+            warPreparing && scheduledMs != null && scheduledMs > 0
+                ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
+                    .toIso8601String()
+                : null,
         'updated_at': m.updatedAt.toIso8601String(),
       });
     }
@@ -622,6 +644,10 @@ class MatchService {
       'status': match.status.name,
       'realm_count': realmCountFor(match.settings),
       'taken_slots': [for (final p in match.players) p.slot],
+      'taken_colors': [
+        for (final p in match.players)
+          if (p.color != null) p.color,
+      ],
     };
   }
 
@@ -887,6 +913,94 @@ class MatchService {
         }
       });
     }
+  }
+
+  // --- Retention (ARCHITECTURE.md "Retention") ---------------------------
+
+  /// How long a finished match stays visible in its players' lists (the
+  /// result screen) before the retention sweep deletes it.
+  static const Duration finishedRetention = Duration(days: 30);
+
+  /// How long an untouched waiting lobby is kept. Nothing of value is lost
+  /// on deletion — no game state exists yet.
+  static const Duration waitingRetention = Duration(days: 7);
+
+  /// How long a completely silent ACTIVE match is kept. Matches WITH a turn
+  /// timer never get this old — the timeout sweep advances them at every
+  /// deadline, refreshing `updatedAt` — so in practice this only reaps
+  /// timer-less matches whose remaining humans all went silent. Players are
+  /// never eliminated for idling, so the bar is deliberately high.
+  static const Duration activeRetention = Duration(days: 365);
+
+  /// Warning lead before an active match is deleted: every seat gets a
+  /// `MATCH_EXPIRING` push, and the deletion waits at least this long after
+  /// the warning so a returning player can always save the match.
+  static const Duration activeExpiryWarningLead = Duration(days: 14);
+
+  /// Deletes stale matches (run daily, not in the minute sweep):
+  /// finished → [finishedRetention] after the last update (players had the
+  /// result in their list the whole time); waiting → [waitingRetention];
+  /// active → warned via push at [activeRetention] − [activeExpiryWarningLead]
+  /// of silence, deleted [activeExpiryWarningLead] after the warning at the
+  /// earliest. Any activity clears a pending warning. Returns the number of
+  /// matches deleted.
+  Future<int> sweepStale() async {
+    final now = _clock();
+    var deleted = 0;
+    for (final candidate in await _store.allMatches()) {
+      final didDelete = await _locked(candidate.id, () async {
+        // Re-read under the lock, like sweepExpired: the bulk scan races
+        // ordinary match operations.
+        final match = await _store.match(candidate.id);
+        if (match == null) return false;
+        final age = now.difference(match.updatedAt);
+        switch (match.status) {
+          case MatchStatus.waiting:
+            if (age < waitingRetention) return false;
+            await _store.deleteMatch(match.id);
+            return true;
+          case MatchStatus.finished:
+            if (age < finishedRetention) return false;
+            await _store.deleteMatch(match.id);
+            return true;
+          case MatchStatus.active:
+            return _sweepStaleActive(match, now, age);
+        }
+      });
+      if (didDelete) deleted++;
+    }
+    return deleted;
+  }
+
+  /// Warn-then-delete for a silent active match — see [sweepStale].
+  Future<bool> _sweepStaleActive(
+      MatchRecord match, DateTime now, Duration age) async {
+    // Activity since the warning cancels the pending expiry: `updatedAt`
+    // moves on every submitted action and every timeout-sweep advance,
+    // while saving the warning timestamp itself deliberately does not.
+    if (match.expiryWarnedAt != null &&
+        match.updatedAt.isAfter(match.expiryWarnedAt!)) {
+      match.expiryWarnedAt = null;
+      await _store.saveMatch(match);
+    }
+    if (age < activeRetention - activeExpiryWarningLead) return false;
+    if (match.expiryWarnedAt == null) {
+      match.expiryWarnedAt = now;
+      await _store.saveMatch(match);
+      for (final seat in match.players) {
+        final p = await _store.player(seat.playerId);
+        if (p != null) await _push.matchExpiring(p, match);
+      }
+      return false;
+    }
+    // Even a match found long past `activeRetention` (e.g. the server was
+    // down) gets its full warning lead before deletion.
+    if (age < activeRetention ||
+        now.difference(match.expiryWarnedAt!) < activeExpiryWarningLead) {
+      return false;
+    }
+    await _store.deleteMatch(match.id);
+    return true;
   }
 
   Future<void> _sweepMatch(MatchRecord match) async {

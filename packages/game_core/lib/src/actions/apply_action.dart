@@ -90,8 +90,9 @@ List<GameEvent> applyActionInPlace(
     WarPlunder() => applyWarPlunder(state, realm, action, rng),
     WarPeaceWish() => applyWarPeaceWish(state, realm, action),
     WarEndRound() => applyWarEndRound(state, realm, action, rng),
-    SettlementAnnex() => applySettlementAnnex(state, realm, action),
-    SettlementAnnexMany() => applySettlementAnnexMany(state, realm, action),
+    SettlementAnnex() => applySettlementAnnex(state, realm, action, rng),
+    SettlementAnnexMany() =>
+      applySettlementAnnexMany(state, realm, action, rng),
     SettlementTakeAll() => applySettlementTakeAll(state, realm, action, rng),
     SettlementFinish() => applySettlementFinish(state, realm, action, rng),
     SpyMission() => applySpyMission(state, realm, action, rng),

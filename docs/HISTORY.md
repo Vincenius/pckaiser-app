@@ -6,6 +6,90 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-27 — Server match retention (daily `sweepStale`)
+
+Stale matches lived forever: a finished match was only deleted once
+EVERY seat dismissed it, abandoned waiting lobbies never expired, and a
+timer-less active match whose humans all went silent sat in the store
+indefinitely (matches WITH a timer keep advancing via the minute sweep;
+a game whose humans are all dead ends as `humansDefeated` → `finished`,
+so it was already covered by the finished path). New daily retention
+sweep (`MatchService.sweepStale`, also run at server start), keyed off
+`updated_at`: finished deleted after 30 days (the result stays in the
+players' lists that long), waiting after 7 days, silent active matches
+warned with a `MATCH_EXPIRING` push at 351 days and deleted ≥ 14 days
+after the warning and ≥ 365 days after the last activity — any activity
+clears the pending warning (additive `expiry_warned_at` on the match
+record dedups the push). `GameStore.allMatches` exposed for the scan.
+Constants in `match_service.dart`; ARCHITECTURE.md "Retention". 5 new
+service tests, 56 backend tests green.
+
+## 2026-07-27 — Review round on the 0.2.3 changes (3 fixes)
+
+Bug hunt over the four features below found three follow-up flaws:
+
+- **Foreign realms lost their chosen color in every filtered view.**
+  `_redactRealm` (`visibility/visible_state.dart`) rebuilds a foreign
+  realm field-by-field and dropped `colorArgb` — and BOTH the local
+  hot-seat map and the server's match view render through
+  `visibleStateFor`, so every OTHER player's picked color silently fell
+  back to the slot default (only your own realm showed its color). Fix:
+  the redaction keeps `colorArgb` — it is public display identity like
+  the title, not hidden information. Test in `visibility_test.dart`.
+- **Local drag-annex of the loser's last tile froze the game.** The new
+  `_finishIfLoserLandless` ends the war inside `SettlementAnnexMany`, but
+  the client's `_annexSelection` (war_panel) still assumed the settlement
+  stays open: it never resumed the paused AI advance (`endWarRound`) nor
+  showed the treaty report/decisions — the same parked-turn symptom the
+  engine fix cured online (the server resumes in `_resumeAfterWarIfOver`;
+  the local session has no such hook). Fix: `_annexSelection` mirrors
+  `_takeAllLand`'s war-over tail when `activeWar` is null after the annex.
+- **A lone-army AI could declare an unwinnable war.** With the home guard
+  now pinning even a realm's ONLY unit to the seat, an AI attacker with
+  one army would start a war in which its single unit never marches — the
+  human defender farms plunder/occupation score unopposed for 21 rounds.
+  Fix: the §20.8 declaration additionally requires ≥ 2 units (guard +
+  field army); tests incl. a positive control in `ai_difficulty_test.dart`.
+
+## 2026-07-27 — War end on full annexation, AI home guard, realm colors, death causes (app 0.2.3)
+
+Four user reports/requests in one round:
+
+- **Bug: online war vs AI never ended after annexing everything.** A
+  settlement-phase annex (`SettlementAnnex`/`SettlementAnnexMany` — the
+  drag-and-drop path) transferred tiles but never checked whether the
+  loser was landless, so `state.activeWar` stayed open and the server's
+  `_resumeAfterWarIfOver` never fired — the parked AI turn waited forever.
+  Fix: `_finishIfLoserLandless` in `apply_military.dart` auto-runs
+  `finishSettlement` the moment the loser's tile count hits zero (which
+  vacates the realm via `checkLandLoss`/`realmOverrun`). Both annex
+  actions now take `rng` for the seat repair inside `finishSettlement`.
+- **AI war movement: the home guard mans the seat.** `runAiWarMovement`
+  previously (a) skipped the guard reservation for one-unit realms — the
+  lone army marched out and the player could win by walking onto the empty
+  Hauptsitz — and (b) never moved a displaced guard back. Now every AI
+  side reserves the unit nearest the capital (a lone unit IS the guard)
+  and that guard actively marches onto the seat tile and holds it.
+  Exception: once the enemy has no troops left the guard is released for
+  the v7 counter-march (a troopless enemy cannot take the seat).
+- **Realm colors are player-choosable at setup** (local + online). New
+  additive state field `Realm.colorArgb` (null = the old slot-derived
+  HSL default; no schema bump), threaded `HumanPlayerSetup.color` →
+  `newGame`. Client: swatch picker in the shared `EmpireCard`
+  (`RealmPalette.setupChoices`, 12 curated colors + "Automatisch"),
+  `RealmPalette.colorFor(slot, state:)` override, all map/badge/avatar
+  call sites pass the state. Online: `'color'` in the per-seat
+  `setupJson`, stored on `MatchPlayer`; `openSlots` returns
+  `taken_colors` so joiners see claimed swatches greyed out; a duplicate
+  pick in a race silently falls back to the default (never a 400).
+- **Age-appropriate death causes.** The §15.1 natural-death event always
+  said `cause: 'age'` ("Altersschwäche") — even for a child. New
+  `naturalDeathCause(age, rng)` in `rules/dynasty.dart`: under 16 a
+  childhood disease (Pocken/Masern/Ruhr/Fieber), under 50 an adult cause
+  (Pest/Typhus/Schwindsucht/Blutvergiftung/Jagdunfall), from 50 on
+  'age' — still mixed 1:3 with adult causes. Client `_diseaseNamesEn`
+  extended for the new stored-German cause strings.
+
 ## 2026-07-24 — Box select replaces paint select (user request, app 0.2.2)
 
 Reworked both map multi-selects (field cultivation, settlement annexation)

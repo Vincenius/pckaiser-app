@@ -44,6 +44,7 @@ matches       (id TEXT PK,                -- 5-letter room code (legacy rows: UU
                                        --        "war_start_year":1010,"is_public":false,
                                        --        "gender_equal_succession":true}
                turn_deadline TIMESTAMPTZ, status TEXT,  -- waiting|active|finished
+               expiry_warned_at TIMESTAMPTZ,  -- retention sweep: MATCH_EXPIRING warning sent
                winner UUID→players, created_at, updated_at)
 match_players (match_id, player_id, turn_order SMALLINT,
                dynasty_index SMALLINT,  -- realm slot 1–30
@@ -101,6 +102,8 @@ Online additionally: API changes stay additive within `/api/v1`.
 5. Set `current_turn`, `turn_deadline` (if timer), push `YOUR_TURN`/`YOUR_DECISION`; return the filtered match.
 
 **Timeouts**: a periodic job auto-resolves expired inputs (turn → end-turn with no actions; decision → its default), then advances as above. Reminder push at ~80%. Players are never eliminated for idling.
+
+**Retention** (2026-07-27): a daily sweep (`sweepStale`, also run at server start) deletes matches nobody will come back to, keyed off `updated_at`. **Finished** → deleted 30 days after the last update (a game whose humans are all dead/defeated ends as `humansDefeated` and takes this path; before the sweep, a finished match also disappears as soon as every seat left it). **Waiting** → abandoned lobbies deleted after 7 days (no game state exists yet). **Active** → only truly silent matches are reaped: after 351 days without any update every seat gets one `MATCH_EXPIRING` push (`expiry_warned_at` dedups it), and the match is deleted no earlier than 14 days after that warning and 365 days after the last activity; any activity clears the pending warning. Matches WITH a turn timer never reach this age — the timeout sweep advances them at every deadline — so in practice this covers timer-less matches whose remaining humans all went silent.
 
 Local mode runs the same loop on-device (`advanceUntilHuman`); auto-save after every completed turn.
 

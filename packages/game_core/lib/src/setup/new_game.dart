@@ -27,6 +27,7 @@ class HumanPlayerSetup {
     required this.gender,
     required this.countrySlot,
     required this.dorfName,
+    this.color,
   });
 
   final String founderName;
@@ -42,6 +43,10 @@ class HumanPlayerSetup {
   /// Name of the first Dorf. Empty = the (chosen or drawn) realm's
   /// historical first village ([cityNames]).
   final String dorfName;
+
+  /// Chosen map color (ARGB) for the realm, or null = the client's
+  /// slot-derived default. Stored on [Realm.colorArgb]; display only.
+  final int? color;
 }
 
 /// Configuration for a new game.
@@ -197,6 +202,7 @@ GameState newGame(GameSetup setup) {
       // (class + 12, §16.1). Muslim founding titles only occur for
       // replacement dynasties after the Ottoman year (§15.2, §19).
       titleClass: gender == 0 ? 1 : 13,
+      colorArgb: human?.color,
       treasury: 1000,
       popularity: 50,
       rulerId: founder.id,

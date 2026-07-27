@@ -22,6 +22,9 @@ abstract class GameStore {
   /// Matches whose turn deadline has passed — the timeout sweep input.
   Future<List<MatchRecord>> expiredMatches(DateTime now);
 
+  /// Every stored match regardless of status — the retention sweep input.
+  Future<List<MatchRecord>> allMatches();
+
   /// Public matches still waiting for players — the lobby's open-games list.
   Future<List<MatchRecord>> publicWaitingMatches();
 }
@@ -67,6 +70,9 @@ class InMemoryStore implements GameStore {
         for (final m in _matches.values)
           if (m.status == MatchStatus.waiting && m.settings.isPublic) m,
       ];
+
+  @override
+  Future<List<MatchRecord>> allMatches() async => _matches.values.toList();
 }
 
 /// Durable single-node store: one JSON file per match plus a players
@@ -128,7 +134,8 @@ class FileStore implements GameStore {
     if (file.existsSync()) file.deleteSync();
   }
 
-  Future<List<MatchRecord>> _allMatches() async {
+  @override
+  Future<List<MatchRecord>> allMatches() async {
     final records = <MatchRecord>[];
     for (final f in Directory('$directory/matches').listSync()) {
       if (f is! File || !f.path.endsWith('.json')) continue;
@@ -145,13 +152,13 @@ class FileStore implements GameStore {
 
   @override
   Future<List<MatchRecord>> matchesForPlayer(String playerId) async => [
-        for (final m in await _allMatches())
+        for (final m in await allMatches())
           if (m.playerById(playerId) != null) m,
       ];
 
   @override
   Future<List<MatchRecord>> expiredMatches(DateTime now) async => [
-        for (final m in await _allMatches())
+        for (final m in await allMatches())
           if (m.status == MatchStatus.active &&
               m.turnDeadline != null &&
               m.turnDeadline!.isBefore(now))
@@ -160,7 +167,7 @@ class FileStore implements GameStore {
 
   @override
   Future<List<MatchRecord>> publicWaitingMatches() async => [
-        for (final m in await _allMatches())
+        for (final m in await allMatches())
           if (m.status == MatchStatus.waiting && m.settings.isPublic) m,
       ];
 }

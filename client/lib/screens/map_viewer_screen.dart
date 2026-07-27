@@ -147,7 +147,8 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
                     children: [
                       CircleAvatar(
                         radius: 6,
-                        backgroundColor: RealmPalette.colorFor(slot),
+                        backgroundColor: RealmPalette.colorFor(slot,
+                            state: _controller.state),
                       ),
                       const SizedBox(width: 6),
                       Flexible(
@@ -176,7 +177,8 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
                         children: [
                           CircleAvatar(
                             radius: 6,
-                            backgroundColor: RealmPalette.colorFor(s),
+                            backgroundColor: RealmPalette.colorFor(s,
+                                state: _controller.state),
                           ),
                           const SizedBox(width: 8),
                           Text(realmName(s)),

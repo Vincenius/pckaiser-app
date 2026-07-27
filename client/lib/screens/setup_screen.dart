@@ -19,6 +19,9 @@ class _PlayerDraft {
   /// Realm slot 1–30, or null = drawn at random when the game starts.
   int? countrySlot;
   int gender = 0;
+
+  /// Map color (ARGB), or null = the slot-derived default.
+  int? color;
 }
 
 /// New-game setup (§5 + PROJECT_REQUIREMENTS smart defaults): slot name,
@@ -180,6 +183,7 @@ class _SetupScreenState extends State<SetupScreen> {
             gender: p.gender,
             countrySlot: p.countrySlot,
             dorfName: p.dorf.text.trim(),
+            color: p.color,
           ),
       ],
       reformationYear: int.parse(_reformation.text),
@@ -298,6 +302,12 @@ class _SetupScreenState extends State<SetupScreen> {
         onGenderChanged: (v) => setState(() => p.gender = v),
         countrySlot: p.countrySlot,
         onCountryChanged: (v) => setState(() => p.countrySlot = v),
+        color: p.color,
+        onColorChanged: (v) => setState(() => p.color = v),
+        takenColors: {
+          for (final other in _players)
+            if (!identical(other, p) && other.color != null) other.color!,
+        },
         maxSlot: _realmCount,
         randomDorfHint: tr('setup.randomDorfHint'),
         header: Row(

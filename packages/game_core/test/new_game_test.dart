@@ -298,6 +298,29 @@ void main() {
       expect(map.height, 44);
     });
 
+    test('a chosen realm color lands on the Realm and survives JSON '
+        '(2026-07-27)', () {
+      final state = newGame(GameSetup(
+        humans: [
+          HumanPlayerSetup(
+              founderName: 'X',
+              gender: 0,
+              countrySlot: 3,
+              dorfName: 'D',
+              color: 0xFFD32F2F),
+        ],
+        reformationYear: 1020,
+        ottomanYear: 1040,
+        seed: 1,
+      ));
+      expect(state.realm(3).colorArgb, 0xFFD32F2F);
+      expect(state.realm(1).colorArgb, isNull,
+          reason: 'AI realms keep the slot-derived default');
+      final loaded = GameState.fromJson(state.toJson());
+      expect(loaded.realm(3).colorArgb, 0xFFD32F2F);
+      expect(loaded.realm(3).copy().colorArgb, 0xFFD32F2F);
+    });
+
     test('rejects setup years before 1011 (§5) and bad slots', () {
       expect(
         () => GameSetup(
