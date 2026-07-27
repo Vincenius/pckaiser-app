@@ -176,7 +176,9 @@ void main() {
       }
     });
 
-    test('intercepts an intruder standing on own territory', () {
+    test(
+        'a lone defender unit guards the seat instead of chasing intruders '
+        '(2026-07-27: a one-army AI must not leave its capital unmanned)', () {
       state = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
@@ -194,20 +196,20 @@ void main() {
         }
       }
 
-      final defender = state.realm(2).troops.single;
-      final before =
-          (defender.x - intruder.x).abs() + (defender.y - intruder.y).abs();
       final events = <GameEvent>[];
       runAiWarMovement(state, 2, Rng(99), events);
 
+      // The realm's only unit is the home guard: it must end the movement
+      // on the seat tile (it starts one step away, in the Dorf) — unless a
+      // battle on the way wiped one of the sides.
       final fought = events.any((e) => e.type == 'battle');
+      final troops = state.realm(2).troops;
       if (!fought) {
-        final troops = state.realm(2).troops;
         expect(troops, isNotEmpty);
-        final after = (troops.first.x - intruder.x).abs() +
-            (troops.first.y - intruder.y).abs();
-        expect(after, lessThan(before),
-            reason: 'the defender must close in on the intruder');
+        final defender = state.realm(2);
+        expect((troops.first.x, troops.first.y),
+            (defender.capitalX, defender.capitalY),
+            reason: 'the lone unit must hold the Hauptsitz');
       }
     });
   });

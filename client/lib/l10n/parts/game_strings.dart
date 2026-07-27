@@ -128,6 +128,8 @@ const Map<String, String> gameDe = {
   'game.random': 'Zufällig',
   'game.landTaken': '{name} (belegt)',
   'game.firstVillage': 'Erstes Dorf',
+  'game.colorLabel': 'Landesfarbe',
+  'game.colorAuto': 'Automatisch',
 };
 
 const Map<String, String> gameEn = {
@@ -255,4 +257,6 @@ const Map<String, String> gameEn = {
   'game.random': 'Random',
   'game.landTaken': '{name} (taken)',
   'game.firstVillage': 'First village',
+  'game.colorLabel': 'Realm color',
+  'game.colorAuto': 'Automatic',
 };

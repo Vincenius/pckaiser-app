@@ -1537,6 +1537,32 @@ void main() {
       expect(state2.realmCount, MapSize.gross.maxRealmCount);
     });
 
+    test('a seat color reaches the realm; a duplicate falls back to the '
+        'default (2026-07-27)', () async {
+      final host = await service.registerPlayer(displayName: 'Host');
+      final match = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Host', 1)..['color'] = 0xFFD32F2F,
+      );
+      final joiner = await service.registerPlayer(displayName: 'Gast');
+      await service.joinMatch(
+        matchId: match.id,
+        playerId: joiner.id,
+        setup: setupFor('Gast', 2)..['color'] = 0xFFD32F2F, // already taken
+      );
+      final open = await service.openSlots(match.id);
+      expect(open['taken_colors'], [0xFFD32F2F],
+          reason: 'the duplicate pick was dropped, not stored twice');
+      final started =
+          await service.startMatch(matchId: match.id, playerId: host.id);
+      final state =
+          GameState.fromJson((await store.match(started.id))!.stateJson!);
+      expect(state.realm(1).colorArgb, 0xFFD32F2F);
+      expect(state.realm(2).colorArgb, isNull,
+          reason: 'the losing racer keeps the slot-derived default');
+    });
+
     test('joining a small match rejects a country beyond the realms in play',
         () async {
       final host = await service.registerPlayer(displayName: 'Host');

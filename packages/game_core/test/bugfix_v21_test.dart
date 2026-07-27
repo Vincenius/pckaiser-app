@@ -212,12 +212,17 @@ void main() {
         ..x = bx
         ..y = by;
     }
-    war.movesLeft[2] = [3, 3];
+    // ONE move each: the marcher steps off the base but cannot reach the
+    // enemy capital (≥ 2 steps away), so no combat muddies the guard/march
+    // split. The enemy must KEEP a troop — since 2026-07-27 a troopless
+    // enemy frees the guard for the counter-march (war_ai_v7_test covers
+    // that), so clearing slot 1's army here would release the guard too.
+    war.movesLeft[2] = [1, 1];
     final guard = state.realm(2).troops.first;
-    // Clear the march path of defenders: this test pins the guard/march
-    // split, not combat outcomes — a marcher charging a fortified equal
-    // defender twice can (realistically) be annihilated en route.
-    state.realm(1).troops.clear();
+    final enemy = state.realm(1);
+    enemy.troops.single
+      ..x = enemy.capitalX
+      ..y = enemy.capitalY;
 
     runAiWarMovement(state, 2, Rng(state.rngSeed), <GameEvent>[]);
 

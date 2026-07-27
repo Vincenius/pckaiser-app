@@ -72,6 +72,7 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   final _warStart = TextEditingController(text: '${gc.defaultWarStartYear}');
   var _gender = 0;
   int? _slot;
+  int? _color;
   int? _timeoutHours = 24;
   var _warRoundMinutes = 10;
   var _isPublic = false;
@@ -86,6 +87,7 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   /// so the EmpireCard can grey out taken realms. A stale response from an
   /// earlier room code must not overwrite a newer one, hence [_slotsGen].
   Set<int> _takenSlots = const {};
+  Set<int> _takenColors = const {};
   int? _remoteRealmCount;
   int _slotsGen = 0;
 
@@ -108,11 +110,14 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
     final code = _roomCode.text.trim();
     if (code.length == 5) {
       _fetchOpenSlots(code);
-    } else if (_takenSlots.isNotEmpty || _remoteRealmCount != null) {
+    } else if (_takenSlots.isNotEmpty ||
+        _takenColors.isNotEmpty ||
+        _remoteRealmCount != null) {
       // An incomplete code can't identify a match — drop any stale hints.
       _slotsGen++;
       setState(() {
         _takenSlots = const {};
+        _takenColors = const {};
         _remoteRealmCount = null;
       });
     }
@@ -133,6 +138,12 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
         _takenSlots = {
           for (final s in (data['taken_slots'] as List).cast<int>()) s,
         };
+        // Additive key — an older server simply reports no taken colors.
+        _takenColors = {
+          for (final c
+              in ((data['taken_colors'] as List?) ?? const []).cast<int>())
+            c,
+        };
         _remoteRealmCount = data['realm_count'] as int?;
         // A pre-selected country that turns out taken (or beyond the match's
         // realm count) falls back to "Zufällig" so the dropdown never holds
@@ -142,6 +153,8 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
                 (_remoteRealmCount != null && _slot! > _remoteRealmCount!))) {
           _slot = null;
         }
+        // Same for a color another player claimed in the meantime.
+        if (_color != null && _takenColors.contains(_color)) _color = null;
       });
     } on Object {
       // Best-effort hint: on any failure keep the full list — the join call
@@ -223,6 +236,7 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
           founderName: _founder.text.trim(),
           gender: _gender,
           countrySlot: _slot,
+          color: _color,
           dorfName: _dorf.text.trim(),
           turnTimeoutHours: _timeoutHours,
           warRoundTimeoutSeconds: _warRoundMinutes * 60,
@@ -290,13 +304,16 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
             onGenderChanged: (v) => setState(() => _gender = v),
             countrySlot: _slot,
             onCountryChanged: (v) => setState(() => _slot = v),
+            color: _color,
+            onColorChanged: (v) => setState(() => _color = v),
             // Hosts use the configured count; joiners fall back to the full
             // list until the openSlots lookup returns the match's real count.
             maxSlot: _isHost
                 ? _realmCount
                 : (_remoteRealmCount ?? gc.World.realmCount),
-            // Countries other players already claimed — greyed out.
+            // Countries and colors other players already claimed — greyed out.
             takenSlots: _takenSlots,
+            takenColors: _takenColors,
           ),
           if (_isHost) ...[
             const SizedBox(height: 24),

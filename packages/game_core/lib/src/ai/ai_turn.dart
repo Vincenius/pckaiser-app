@@ -702,16 +702,19 @@ void runAiWarMovement(
   final realm = state.realm(slot);
 
   // `[DESIGNED]` A real AI side always keeps a HOME GUARD on its base: the
-  // unit nearest the capital is reserved and never marched out, so the realm
-  // is never left wholly undefended (the player always has a defender to
-  // fight at the AI's base). Held by reference so it survives the troop-list
-  // reshaping as units die. Not applied to an autopiloted human side (its
-  // per-unit stance already governs defence), nor to a one-unit realm (it
-  // cannot both guard the base and field an army).
-  final Troop? homeGuard =
-      state.dynasty(slot).status == DynastyStatus.ai && realm.troops.length >= 2
-          ? _nearestToCapital(realm)
-          : null;
+  // unit nearest the capital is reserved and marches back onto the seat tile
+  // instead of out, so the realm is never left wholly undefended (the player
+  // always has a defender to fight ON the AI's base — a lone-unit realm's
+  // only troop IS the guard, so a one-army AI can't be beaten by simply
+  // walking onto its empty seat). Held by reference so it survives the
+  // troop-list reshaping as units die. Not applied to an autopiloted human
+  // side (its per-unit stance already governs defence), nor once the enemy
+  // has no troops left — a troopless enemy cannot take the seat, so the
+  // guard is free to join the counter-march.
+  final Troop? homeGuard = state.dynasty(slot).status == DynastyStatus.ai &&
+          state.realm(war.opponentOf(slot)).troops.isNotEmpty
+      ? _nearestToCapital(realm)
+      : null;
 
   for (var i = 0; i < realm.troops.length; i++) {
     var guard = 0;
@@ -721,10 +724,12 @@ void runAiWarMovement(
         (war.movesLeft[slot]?[i] ?? 0) > 0 &&
         guard++ < 30) {
       final troop = realm.troops[i];
-      if (identical(troop, homeGuard)) break; // the home guard holds the base
       // Recomputed every step: kills and deaths reshape the troop list
-      // and can change the nearest-intruder pick.
-      final target = _warTarget(state, war, slot, i, troop);
+      // and can change the nearest-intruder pick. The home guard's one
+      // and only destination is the seat tile, where it holds.
+      final target = identical(troop, homeGuard)
+          ? (realm.capitalX, realm.capitalY)
+          : _warTarget(state, war, slot, i, troop);
       if (target == null) break;
       final (tx, ty) = target;
       if (troop.x == tx && troop.y == ty) break;

@@ -11,6 +11,30 @@ import 'offices.dart';
 import 'protection.dart';
 import 'titles.dart' show regenderTitle;
 
+/// Cause strings (stored German, see `deathCauseName` client-side) for
+/// natural deaths under age 50 — the death ROLL only knows `90 - age`, so
+/// without this a 10-year-old would "die of old age".
+const List<String> childDeathCauses = ['Pocken', 'Masern', 'Ruhr', 'Fieber'];
+const List<String> adultDeathCauses = [
+  'Pest',
+  'Typhus',
+  'Schwindsucht',
+  'Blutvergiftung',
+  'Jagdunfall',
+];
+
+/// Age-dependent cause for a natural (§15.1) death: children die of
+/// childhood diseases, adults of medieval diseases or mishaps; only from
+/// 50 on is plain old age ('age') plausible — and even then a third of
+/// deaths keep a disease as the stated cause.
+String naturalDeathCause(int age, Rng rng) {
+  if (age < 16) return childDeathCauses[rng.nextInt(childDeathCauses.length)];
+  if (age < 50 || rng.nextInt(3) == 0) {
+    return adultDeathCauses[rng.nextInt(adultDeathCauses.length)];
+  }
+  return 'age';
+}
+
 /// End-of-turn dynasty events for the active slot (§6.1 step 3, §14, §15):
 /// aging & death rolls (with succession), the annual marriage/birth loop.
 /// Mutates [state] in place; the pipeline owns the copy.
@@ -33,7 +57,11 @@ void runDynastyPhase(
         slot: slot,
         type: 'personDied',
         visibility: EventVisibility.public,
-        payload: {'name': person.name, 'age': person.age, 'cause': 'age'},
+        payload: {
+          'name': person.name,
+          'age': person.age,
+          'cause': naturalDeathCause(person.age, rng),
+        },
       ));
       handleDeath(state, person, rng, events);
     }

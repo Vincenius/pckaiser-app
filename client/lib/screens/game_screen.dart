@@ -931,6 +931,7 @@ class _GameScreenState extends State<GameScreen> {
                         radius: 6,
                         backgroundColor: RealmPalette.colorFor(
                           controller.currentSlot,
+                          state: controller.state,
                         ),
                       ),
                       const SizedBox(width: 6),

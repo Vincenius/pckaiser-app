@@ -62,11 +62,19 @@ String troopClassName(int troopClass) {
 String troopClassInitial(int troopClass) =>
     troopClassName(troopClass).substring(0, 1).toUpperCase();
 
-/// English names for the engine's §18 disease values (stored German in the
-/// `personDied`/`disease` payloads). Unlisted names keep the German original.
+/// English names for the engine's stored-German death causes (§18 disease
+/// values and §15.1 natural-death causes in the `personDied`/`disease`
+/// payloads). Unlisted names keep the German original.
 const Map<String, String> _diseaseNamesEn = {
   'Pest': 'Plague',
   'Ruhr': 'Dysentery',
+  'Typhus': 'Typhoid fever',
+  'Pocken': 'Smallpox',
+  'Masern': 'Measles',
+  'Fieber': 'Fever',
+  'Schwindsucht': 'Consumption',
+  'Blutvergiftung': 'Blood poisoning',
+  'Jagdunfall': 'Hunting accident',
 };
 
 /// Display name for a stored §18 disease value (German in game state).

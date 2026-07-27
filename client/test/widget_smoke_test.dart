@@ -34,8 +34,14 @@ void main() {
     expect(find.text('Spieler'), findsOneWidget);
     expect(find.text('Spieler hinzufügen'), findsOneWidget);
     expect(find.text('Spiel starten'), findsOneWidget);
-    // Advanced options are collapsed by default and expand on tap.
+    // Advanced options are collapsed by default and expand on tap. The
+    // card sits below the fold since the color picker row (2026-07-27).
     expect(find.text('Stärke der KI-Gegner'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Erweiterte Optionen'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Erweiterte Optionen'));
     await tester.pumpAndSettle();
     expect(find.text('Stärke der KI-Gegner'), findsOneWidget);
@@ -89,6 +95,8 @@ void main() {
               onGenderChanged: (_) {},
               countrySlot: slot,
               onCountryChanged: (v) => setState(() => slot = v),
+              color: null,
+              onColorChanged: (_) {},
             ),
           ),
         ),

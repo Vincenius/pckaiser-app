@@ -6,6 +6,45 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-27 — War end on full annexation, AI home guard, realm colors, death causes (app 0.2.3)
+
+Four user reports/requests in one round:
+
+- **Bug: online war vs AI never ended after annexing everything.** A
+  settlement-phase annex (`SettlementAnnex`/`SettlementAnnexMany` — the
+  drag-and-drop path) transferred tiles but never checked whether the
+  loser was landless, so `state.activeWar` stayed open and the server's
+  `_resumeAfterWarIfOver` never fired — the parked AI turn waited forever.
+  Fix: `_finishIfLoserLandless` in `apply_military.dart` auto-runs
+  `finishSettlement` the moment the loser's tile count hits zero (which
+  vacates the realm via `checkLandLoss`/`realmOverrun`). Both annex
+  actions now take `rng` for the seat repair inside `finishSettlement`.
+- **AI war movement: the home guard mans the seat.** `runAiWarMovement`
+  previously (a) skipped the guard reservation for one-unit realms — the
+  lone army marched out and the player could win by walking onto the empty
+  Hauptsitz — and (b) never moved a displaced guard back. Now every AI
+  side reserves the unit nearest the capital (a lone unit IS the guard)
+  and that guard actively marches onto the seat tile and holds it.
+  Exception: once the enemy has no troops left the guard is released for
+  the v7 counter-march (a troopless enemy cannot take the seat).
+- **Realm colors are player-choosable at setup** (local + online). New
+  additive state field `Realm.colorArgb` (null = the old slot-derived
+  HSL default; no schema bump), threaded `HumanPlayerSetup.color` →
+  `newGame`. Client: swatch picker in the shared `EmpireCard`
+  (`RealmPalette.setupChoices`, 12 curated colors + "Automatisch"),
+  `RealmPalette.colorFor(slot, state:)` override, all map/badge/avatar
+  call sites pass the state. Online: `'color'` in the per-seat
+  `setupJson`, stored on `MatchPlayer`; `openSlots` returns
+  `taken_colors` so joiners see claimed swatches greyed out; a duplicate
+  pick in a race silently falls back to the default (never a 400).
+- **Age-appropriate death causes.** The §15.1 natural-death event always
+  said `cause: 'age'` ("Altersschwäche") — even for a child. New
+  `naturalDeathCause(age, rng)` in `rules/dynasty.dart`: under 16 a
+  childhood disease (Pocken/Masern/Ruhr/Fieber), under 50 an adult cause
+  (Pest/Typhus/Schwindsucht/Blutvergiftung/Jagdunfall), from 50 on
+  'age' — still mixed 1:3 with adult causes. Client `_diseaseNamesEn`
+  extended for the new stored-German cause strings.
+
 ## 2026-07-24 — Box select replaces paint select (user request, app 0.2.2)
 
 Reworked both map multi-selects (field cultivation, settlement annexation)

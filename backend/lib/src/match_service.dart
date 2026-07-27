@@ -356,11 +356,13 @@ class MatchService {
     final String dorfName;
     final int gender;
     final int? requestedSlot;
+    final int? requestedColor;
     try {
       founderName = (setup['founder_name'] as String?)?.trim() ?? '';
       dorfName = (setup['dorf_name'] as String?)?.trim() ?? '';
       gender = setup['gender'] as int? ?? 0;
       requestedSlot = setup['country_slot'] as int?;
+      requestedColor = setup['color'] as int?;
     } on TypeError {
       throw ApiException(400, 'invalid field type in setup');
     }
@@ -390,6 +392,13 @@ class MatchService {
       free.shuffle();
       slot = free.first;
     }
+    // A color another seat already picked silently falls back to the
+    // slot-derived default instead of rejecting the join — the openSlots
+    // hint is best-effort, so two players CAN race for the same swatch.
+    final takenColors = {
+      for (final p in match.players)
+        if (p.color != null) p.color,
+    };
     match.players.add(MatchPlayer(
       playerId: playerId,
       turnOrder: match.players.length,
@@ -397,6 +406,7 @@ class MatchService {
       founderName: founderName,
       gender: gender,
       dorfName: dorfName,
+      color: takenColors.contains(requestedColor) ? null : requestedColor,
     ));
   }
 
@@ -413,6 +423,7 @@ class MatchService {
             gender: p.gender,
             countrySlot: p.slot,
             dorfName: p.dorfName,
+            color: p.color,
           ),
       ],
       reformationYear: match.settings.reformationYear,
@@ -622,6 +633,10 @@ class MatchService {
       'status': match.status.name,
       'realm_count': realmCountFor(match.settings),
       'taken_slots': [for (final p in match.players) p.slot],
+      'taken_colors': [
+        for (final p in match.players)
+          if (p.color != null) p.color,
+      ],
     };
   }
 

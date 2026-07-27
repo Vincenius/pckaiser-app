@@ -14,6 +14,7 @@ class Realm {
     this.capitalY = 0,
     this.cursorX = 0,
     this.cursorY = 0,
+    this.colorArgb,
     this.population = 0,
     this.troopCapacity = 0,
     List<int>? tileCount,
@@ -54,6 +55,8 @@ class Realm {
         capitalY: json['capitalY'] as int? ?? 0,
         cursorX: json['cursorX'] as int? ?? 0,
         cursorY: json['cursorY'] as int? ?? 0,
+        // Additive field — older saves keep the slot-derived default color.
+        colorArgb: json['colorArgb'] as int?,
         population: json['population'] as int? ?? 0,
         troopCapacity: json['troopCapacity'] as int? ?? 0,
         // 'armySize' in the document is ignored: the army is DERIVED from
@@ -119,6 +122,11 @@ class Realm {
   int capitalY;
   int cursorX;
   int cursorY;
+
+  /// Player-chosen map color (ARGB), picked at game setup; null = the
+  /// client derives a default color from the slot index. Pure display
+  /// data — no rule ever reads it.
+  int? colorArgb;
 
   /// Σ of this realm's towns' populations (kept in sync).
   int population;
@@ -232,6 +240,7 @@ class Realm {
         capitalY: capitalY,
         cursorX: cursorX,
         cursorY: cursorY,
+        colorArgb: colorArgb,
         population: population,
         troopCapacity: troopCapacity,
         tileCount: List.of(tileCount),
@@ -266,6 +275,7 @@ class Realm {
         'capitalY': capitalY,
         'cursorX': cursorX,
         'cursorY': cursorY,
+        'colorArgb': colorArgb,
         'population': population,
         'troopCapacity': troopCapacity,
         // Derived, but still written so older builds reading this save

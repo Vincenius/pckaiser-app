@@ -68,6 +68,7 @@ class MatchPlayer {
     required this.founderName,
     required this.gender,
     required this.dorfName,
+    this.color,
     this.idleTurns = 0,
   });
 
@@ -78,6 +79,8 @@ class MatchPlayer {
         founderName: json['founder_name'] as String,
         gender: json['gender'] as int,
         dorfName: json['dorf_name'] as String,
+        // Additive field — seats from older rows keep the default color.
+        color: json['color'] as int?,
         idleTurns: json['idle_turns'] as int? ?? 0,
       );
 
@@ -95,6 +98,10 @@ class MatchPlayer {
   final int gender;
   final String dorfName;
 
+  /// Chosen map color (ARGB), or null = the client's slot-derived default.
+  /// Passed into `HumanPlayerSetup.color` when the match starts.
+  final int? color;
+
   /// Consecutive turns this seat let expire by timeout (never showed up).
   /// Reset to 0 on any submitted action / end-turn. Once it reaches 3 the
   /// match creator may kick the seat and hand its realm to the AI
@@ -108,6 +115,7 @@ class MatchPlayer {
         'founder_name': founderName,
         'gender': gender,
         'dorf_name': dorfName,
+        if (color != null) 'color': color,
         'idle_turns': idleTurns,
       };
 }

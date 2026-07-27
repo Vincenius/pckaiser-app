@@ -522,6 +522,91 @@ void main() {
           reason: 'unspent claim converts 1:1 into Taler');
     });
 
+    test(
+        'annexing the loser\'s LAST tile ends the war on the spot '
+        '(bug 2026-07-27: online drag-and-drop annexed everything but the '
+        'war stayed open)', () {
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      final enemyTown = s.realm(2).towns.single;
+      final troop = s.realm(1).troops.single;
+      troop.x = enemyTown.x;
+      troop.y = enemyTown.y;
+      s.activeWar!.round = 21;
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.activeWar!.phase, WarPhase.settlement);
+      expect(s.activeWar!.winnerSlot, 1);
+      // Test shortcut: the claim itself is not under test — make it large
+      // enough to afford every loser tile.
+      s.activeWar!.remainingClaim = 1000000;
+
+      // The setUp border tile touches slot 1, but the loser's starting
+      // cross does not — bridge the gap with a slot-1 tile next to the
+      // cross so EVERY loser tile becomes annexable (bordersSlot).
+      final map = s.map;
+      final loserCapital = s.realm(2);
+      bridging:
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
+            continue;
+          }
+          for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+            if (map.inBounds(x + dx, y + dy) &&
+                map.ownerAt(x + dx, y + dy) == 2 &&
+                (x + dx - loserCapital.capitalX).abs() +
+                        (y + dy - loserCapital.capitalY).abs() <=
+                    1) {
+              map.owner[map.index(x, y)] = 1;
+              s.realm(1).tileCount[Building.none]++;
+              break bridging;
+            }
+          }
+        }
+      }
+
+      // The loser's tiles in a border-respecting order (each next tile
+      // touches slot 1's land or an already-annexed tile) — the same order
+      // a drag-and-drop selection would produce.
+      final loserTiles = <(int, int)>{
+        for (var y = 0; y < map.height; y++)
+          for (var x = 0; x < map.width; x++)
+            if (map.ownerAt(x, y) == 2) (x, y),
+      };
+      bool bordersWinner((int, int) t) {
+        for (final (dx, dy) in const [(-1, 0), (1, 0), (0, 1), (0, -1)]) {
+          final nx = t.$1 + dx;
+          final ny = t.$2 + dy;
+          if (map.inBounds(nx, ny) && map.ownerAt(nx, ny) == 1) return true;
+        }
+        return false;
+      }
+
+      final ordered = <({int x, int y})>[];
+      final annexed = <(int, int)>{};
+      while (annexed.length < loserTiles.length) {
+        final next = loserTiles.firstWhere((t) =>
+            !annexed.contains(t) &&
+            (bordersWinner(t) ||
+                const [(-1, 0), (1, 0), (0, 1), (0, -1)].any((d) =>
+                    annexed.contains((t.$1 + d.$1, t.$2 + d.$2)))));
+        annexed.add(next);
+        ordered.add((x: next.$1, y: next.$2));
+      }
+
+      s = applyAction(
+              s, SettlementAnnexMany(slot: 1, tiles: ordered), Rng(s.rngSeed))
+          .state;
+
+      expect(s.activeWar, isNull,
+          reason: 'a landless loser leaves nothing to settle — the war '
+              'must end without an explicit SettlementFinish');
+      expect(s.realm(2).tileCount.fold(0, (a, b) => a + b), 0);
+      expect(s.realm(2).isVacant, isTrue);
+      expect(s.events.any((e) => e.type == 'realmOverrun'), isTrue);
+    });
+
     test('conquest transfer moves town objects and treasury shares', () {
       final winner = state.realm(1);
       final loser = state.realm(2);

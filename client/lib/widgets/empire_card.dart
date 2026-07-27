@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:game_core/game_core.dart' show World, cityNames;
 
+import '../game/realm_palette.dart';
 import '../l10n/labels.dart';
 import '../l10n/strings.dart';
 
@@ -23,8 +24,11 @@ class EmpireCard extends StatelessWidget {
     required this.onGenderChanged,
     required this.countrySlot,
     required this.onCountryChanged,
+    required this.color,
+    required this.onColorChanged,
     this.maxSlot = World.realmCount,
     this.takenSlots = const {},
+    this.takenColors = const {},
     this.randomDorfHint,
     this.header,
   });
@@ -39,6 +43,15 @@ class EmpireCard extends StatelessWidget {
   /// Realm slot 1–[maxSlot], or null = "Zufällig".
   final int? countrySlot;
   final ValueChanged<int?> onCountryChanged;
+
+  /// Chosen map color (ARGB from [RealmPalette.setupChoices]), or null =
+  /// the slot-derived default ("Automatisch").
+  final int? color;
+  final ValueChanged<int?> onColorChanged;
+
+  /// Colors (ARGB) already claimed by other players — greyed out and
+  /// unselectable so two realms never share a map color.
+  final Set<int> takenColors;
 
   /// Highest selectable realm slot — the game's realm count (local setup:
   /// the configured value; online joiners see the full 1–30 list, the
@@ -160,9 +173,68 @@ class EmpireCard extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                tr('game.colorLabel'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _colorSwatch(context, null),
+                  for (final choice in RealmPalette.setupChoices)
+                    _colorSwatch(context, choice.toARGB32()),
+                ],
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  /// One tappable color dot; null = "Automatisch" (the slot-derived
+  /// default). A color another player already claimed is greyed out.
+  Widget _colorSwatch(BuildContext context, int? argb) {
+    final theme = Theme.of(context);
+    final selected = color == argb;
+    final taken = argb != null && !selected && takenColors.contains(argb);
+    final swatch = Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: argb == null ? theme.colorScheme.surfaceContainerHigh : Color(argb),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? theme.colorScheme.onSurface : theme.dividerColor,
+          width: selected ? 2.5 : 1,
+        ),
+      ),
+      child: selected
+          ? Icon(Icons.check,
+              size: 18,
+              color: argb == null ? theme.colorScheme.onSurface : Colors.white)
+          : argb == null
+              ? Icon(Icons.shuffle,
+                  size: 16, color: theme.colorScheme.onSurfaceVariant)
+              : null,
+    );
+    return Tooltip(
+      message: argb == null ? tr('game.colorAuto') : '',
+      child: taken
+          ? Opacity(opacity: 0.25, child: swatch)
+          : InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => onColorChanged(argb),
+              child: swatch,
+            ),
     );
   }
 }

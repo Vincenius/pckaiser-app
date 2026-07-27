@@ -16,6 +16,7 @@ class MatchSetup {
     required this.gender,
     required this.countrySlot,
     required this.dorfName,
+    this.color,
     required this.turnTimeoutHours,
     this.warRoundTimeoutSeconds = 600,
     this.reformationYear = defaultReformationYear,
@@ -33,6 +34,9 @@ class MatchSetup {
   final int gender;
   final int? countrySlot;
   final String dorfName;
+
+  /// Chosen map color (ARGB), or null = the slot-derived default.
+  final int? color;
   final int? turnTimeoutHours;
   // Host-only choices (ignored when joining an existing match).
   final int warRoundTimeoutSeconds;
@@ -52,6 +56,7 @@ class MatchSetup {
     'gender': gender,
     if (countrySlot != null) 'country_slot': countrySlot,
     'dorf_name': dorfName,
+    if (color != null) 'color': color,
   };
 
   /// Match settings sent by the host on create only.
