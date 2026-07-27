@@ -161,13 +161,17 @@ Realm _redactRealm(Realm realm, {bool keepTroops = false}) => Realm(
       titleClass: realm.titleClass,
       capitalX: realm.capitalX,
       capitalY: realm.capitalY,
+      // Public identity like the title: without it every OTHER player's
+      // chosen setup color fell back to the slot default on the map.
+      colorArgb: realm.colorArgb,
       tileCount: List.of(realm.tileCount),
       rulerId: realm.rulerId,
       popularity: 0,
       // A war opponent's units are kept but zeroed to class + position; every
       // other foreign realm's list is omitted (reads as army size 0 anyway).
-      troops:
-          keepTroops ? [for (final t in realm.troops) _battlefieldTroop(t)] : null,
+      troops: keepTroops
+          ? [for (final t in realm.troops) _battlefieldTroop(t)]
+          : null,
       towns: [
         for (final town in realm.towns)
           town.copy()

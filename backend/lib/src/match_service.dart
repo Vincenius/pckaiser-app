@@ -395,10 +395,18 @@ class MatchService {
     // A color another seat already picked silently falls back to the
     // slot-derived default instead of rejecting the join — the openSlots
     // hint is best-effort, so two players CAN race for the same swatch.
+    // Same fallback for a value outside fully-opaque 32-bit ARGB: the
+    // color is display-only but rendered on EVERY player's map, and a
+    // doctored client could otherwise seat e.g. an invisible (alpha 0)
+    // realm. The swatch list itself is not pinned server-side — future
+    // clients may offer more choices without a backend change.
     final takenColors = {
       for (final p in match.players)
         if (p.color != null) p.color,
     };
+    final opaque = requestedColor != null &&
+        requestedColor >= 0xFF000000 &&
+        requestedColor <= 0xFFFFFFFF;
     match.players.add(MatchPlayer(
       playerId: playerId,
       turnOrder: match.players.length,
@@ -406,7 +414,9 @@ class MatchService {
       founderName: founderName,
       gender: gender,
       dorfName: dorfName,
-      color: takenColors.contains(requestedColor) ? null : requestedColor,
+      color: opaque && !takenColors.contains(requestedColor)
+          ? requestedColor
+          : null,
     ));
   }
 
@@ -588,10 +598,11 @@ class MatchService {
         // match is waiting for) — and the agreed start, if the sides
         // found a common warPlan slot.
         'war_preparing': warPreparing,
-        'war_scheduled_at': warPreparing && scheduledMs != null && scheduledMs > 0
-            ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
-                .toIso8601String()
-            : null,
+        'war_scheduled_at':
+            warPreparing && scheduledMs != null && scheduledMs > 0
+                ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
+                    .toIso8601String()
+                : null,
         'updated_at': m.updatedAt.toIso8601String(),
       });
     }

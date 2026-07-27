@@ -6,6 +6,33 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-27 — Review round on the 0.2.3 changes (3 fixes)
+
+Bug hunt over the four features below found three follow-up flaws:
+
+- **Foreign realms lost their chosen color in every filtered view.**
+  `_redactRealm` (`visibility/visible_state.dart`) rebuilds a foreign
+  realm field-by-field and dropped `colorArgb` — and BOTH the local
+  hot-seat map and the server's match view render through
+  `visibleStateFor`, so every OTHER player's picked color silently fell
+  back to the slot default (only your own realm showed its color). Fix:
+  the redaction keeps `colorArgb` — it is public display identity like
+  the title, not hidden information. Test in `visibility_test.dart`.
+- **Local drag-annex of the loser's last tile froze the game.** The new
+  `_finishIfLoserLandless` ends the war inside `SettlementAnnexMany`, but
+  the client's `_annexSelection` (war_panel) still assumed the settlement
+  stays open: it never resumed the paused AI advance (`endWarRound`) nor
+  showed the treaty report/decisions — the same parked-turn symptom the
+  engine fix cured online (the server resumes in `_resumeAfterWarIfOver`;
+  the local session has no such hook). Fix: `_annexSelection` mirrors
+  `_takeAllLand`'s war-over tail when `activeWar` is null after the annex.
+- **A lone-army AI could declare an unwinnable war.** With the home guard
+  now pinning even a realm's ONLY unit to the seat, an AI attacker with
+  one army would start a war in which its single unit never marches — the
+  human defender farms plunder/occupation score unopposed for 21 rounds.
+  Fix: the §20.8 declaration additionally requires ≥ 2 units (guard +
+  field army); tests incl. a positive control in `ai_difficulty_test.dart`.
+
 ## 2026-07-27 — War end on full annexation, AI home guard, realm colors, death causes (app 0.2.3)
 
 Four user reports/requests in one round:

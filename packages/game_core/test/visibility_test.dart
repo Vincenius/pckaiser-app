@@ -43,6 +43,15 @@ void main() {
   });
 
   group('visibleStateFor', () {
+    test('keeps a foreign realm\'s chosen map color (2026-07-27)', () {
+      // Display-only public identity: without it every OTHER player's
+      // setup color fell back to the slot default on the map.
+      state.realm(2).colorArgb = 0xFFD32F2F;
+      final view = visibleStateFor(state, 1);
+      expect(view.realm(2).colorArgb, 0xFFD32F2F);
+      expect(view.realm(2).treasury, 0, reason: 'still redacted otherwise');
+    });
+
     test('keeps the viewer\'s own realm complete', () {
       final view = visibleStateFor(state, 1);
       final own = view.realm(1);

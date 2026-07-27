@@ -678,8 +678,7 @@ class _WarPanelState extends State<WarPanel> {
     // offers one it then rejects (an under-strength lone unit).
     final plunderBlock = selectedTroop == null
         ? null
-        : gc.warPlunderBlocker(
-            state, slot, selectedTroop.x, selectedTroop.y);
+        : gc.warPlunderBlocker(state, slot, selectedTroop.x, selectedTroop.y);
     final canPlunder = selectedTroop != null && plunderBlock == null;
     final plunderHint = selectedTroop == null
         ? tr('war.plunderNeedUnit')
@@ -900,7 +899,10 @@ class _WarPanelState extends State<WarPanel> {
         : const <({int x, int y})>[];
     var planValue = 0;
     for (final t in plan) {
-      planValue += gc.settlementTileValue(state, state.map.buildingAt(t.x, t.y));
+      planValue += gc.settlementTileValue(
+        state,
+        state.map.buildingAt(t.x, t.y),
+      );
     }
 
     final header = Row(
@@ -990,10 +992,12 @@ class _WarPanelState extends State<WarPanel> {
                           onPressed: plan.isEmpty
                               ? null
                               : () => _annexSelection(context, slot),
-                          label: Text(tr('war.annexSelected', {
-                            'count': plan.length,
-                            'value': planValue,
-                          })),
+                          label: Text(
+                            tr('war.annexSelected', {
+                              'count': plan.length,
+                              'value': planValue,
+                            }),
+                          ),
                         ),
                       FilledButton.icon(
                         icon: const Icon(Icons.flag, size: 18),
@@ -1022,14 +1026,20 @@ class _WarPanelState extends State<WarPanel> {
   /// Annexes the winner's drag-selection: the engine-planned valid, ordered,
   /// affordable subset (`planSettlementAnnexSelection`) is submitted as one
   /// `SettlementAnnexMany`; unreachable / unaffordable tiles stay with the
-  /// loser. The settlement stays OPEN afterwards — the winner can keep
-  /// selecting, auto-annex the rest, or press Fertig.
+  /// loser. The settlement usually stays OPEN afterwards — the winner can
+  /// keep selecting, auto-annex the rest, or press Fertig. Annexing the
+  /// loser's LAST tile however ends the war on the spot (engine,
+  /// 2026-07-27) — then this must resume the paused AI advance and show
+  /// the treaty report, exactly like _takeAllLand.
   Future<void> _annexSelection(BuildContext context, int slot) async {
     final plan = gc.planSettlementAnnexSelection(
-        controller.state, controller.settlementSelection);
+      controller.state,
+      controller.settlementSelection,
+    );
     if (plan.isEmpty) return;
+    final gc.ActionResult result;
     try {
-      await controller.applyWarAction(
+      result = await controller.applyWarAction(
         gc.SettlementAnnexMany(slot: slot, tiles: plan),
       );
     } on gc.ActionException catch (e) {
@@ -1041,6 +1051,29 @@ class _WarPanelState extends State<WarPanel> {
       return;
     }
     controller.clearSettlementSelection();
+    if (controller.state.activeWar != null) return;
+    // The annex took the loser's last tile — the settlement is over.
+    try {
+      await controller.endWarRound(); // resumes AI advance
+    } on gc.ActionException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
+    if (context.mounted) {
+      await showWarReport(
+        context,
+        result.events,
+        viewerSlot: slot,
+        title: tr('war.peaceTreatyTitle'),
+      );
+    }
+    if (context.mounted) {
+      await promptDecisionsFor(context, controller, slot);
+    }
   }
 
   /// Auto-annex: takes affordable loser tiles in a wave from the own

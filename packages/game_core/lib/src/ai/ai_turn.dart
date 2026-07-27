@@ -151,7 +151,13 @@ void _runAiTurnInPlace(
   // + 1), floored below the strife line) — demand a matching mood cushion
   // so a serial-warring AI never talks itself into a §19.1 revolt.
   final warMoodOk = realm.popularity >= 50 + 5 * realm.recentWars;
-  if ((warFlag || tuning.warChance > 0 && rng.nextInt(tuning.warChance) == 0) &&
+  // At least two units: the war movement reserves the unit nearest the
+  // capital as a home guard that never marches out (2026-07-27 it holds
+  // the seat even as the ONLY unit) — a lone-army declaration would start
+  // a war the AI cannot prosecute: its single unit sits at home while the
+  // defender farms plunder and occupation score unopposed.
+  if (realm.troops.length >= 2 &&
+      (warFlag || tuning.warChance > 0 && rng.nextInt(tuning.warChance) == 0) &&
       rng.nextInt(3) == 0 &&
       warMoodOk &&
       warDeclarationBlocker(state, realm) == null) {

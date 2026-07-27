@@ -1509,7 +1509,8 @@ void main() {
           reason: 'an unvalidated online settings payload must not crash');
     });
 
-    test('map size and realm count reach the game state (out of range → '
+    test(
+        'map size and realm count reach the game state (out of range → '
         'clamped, never a 500)', () async {
       final a = await service.registerPlayer(displayName: 'Solo');
       final match = await createStarted(
@@ -1537,7 +1538,8 @@ void main() {
       expect(state2.realmCount, MapSize.gross.maxRealmCount);
     });
 
-    test('a seat color reaches the realm; a duplicate falls back to the '
+    test(
+        'a seat color reaches the realm; a duplicate falls back to the '
         'default (2026-07-27)', () async {
       final host = await service.registerPlayer(displayName: 'Host');
       final match = await service.createMatch(
@@ -1563,6 +1565,19 @@ void main() {
           reason: 'the losing racer keeps the slot-derived default');
     });
 
+    test('a non-opaque color falls back to the default (2026-07-27)', () async {
+      // Display-only, but rendered on every player's map — a doctored
+      // client must not seat an invisible (alpha 0) realm.
+      final host = await service.registerPlayer(displayName: 'Host');
+      final match = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 42),
+        setup: setupFor('Host', 1)..['color'] = 0x00D32F2F, // alpha 0
+      );
+      final open = await service.openSlots(match.id);
+      expect(open['taken_colors'], isEmpty);
+    });
+
     test('joining a small match rejects a country beyond the realms in play',
         () async {
       final host = await service.registerPlayer(displayName: 'Host');
@@ -1578,8 +1593,8 @@ void main() {
           playerId: joiner.id,
           setup: setupFor('Gast', 13), // klein plays slots 1–12
         ),
-        throwsA(isA<ApiException>()
-            .having((e) => e.statusCode, 'statusCode', 400)),
+        throwsA(
+            isA<ApiException>().having((e) => e.statusCode, 'statusCode', 400)),
       );
     });
   });

@@ -104,8 +104,7 @@ void main() {
       var dispatched = false;
       for (var seed = 0; seed < 80 && !dispatched; seed++) {
         final result = runAiTurn(base, 1, Rng(seed));
-        dispatched =
-            result.events.any((e) => e.type == 'assassinsDispatched');
+        dispatched = result.events.any((e) => e.type == 'assassinsDispatched');
       }
       // P(miss in 80 turns) = (14/15)^80 ≈ 0.4% — a failure here means the
       // schwer assassination path broke, not bad luck.
@@ -167,6 +166,59 @@ void main() {
         expect(result.events.where((e) => e.type == 'warDeclared'), isEmpty,
             reason: 'schwer must not attack a stronger neighbour (seed $seed)');
       }
+    });
+  });
+
+  group('lone-army war declaration (2026-07-27)', () {
+    // Since the home guard holds the seat even as the ONLY unit, an AI
+    // that declared war with a single army could never prosecute it — the
+    // unit would sit at home for the whole war while the defender farms
+    // plunder and occupation score. So the AI only declares with at least
+    // two units (guard + field army).
+    GameState warEagerGame({required int troops}) {
+      final state = aiGame(AiDifficulty.mittel, seed: 9);
+      state.year = 2001; // past the (deferred) war gate
+      final realm = state.realm(1);
+      realm.popularity = 100;
+      realm.recentWars = 0;
+      _makeNeighbor(state, 1);
+      realm.troops.clear();
+      for (var i = 0; i < troops; i++) {
+        realm.troops.add(Troop(
+          name: 'Heer $i',
+          men: 100,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: true,
+          x: realm.capitalX,
+          y: realm.capitalY,
+        ));
+      }
+      state.rebuildTroopMarkers();
+      return state;
+    }
+
+    test('an AI with a single army never declares war', () {
+      final state = warEagerGame(troops: 1);
+      for (var seed = 0; seed < 200; seed++) {
+        final result = runAiTurn(state, 1, Rng(seed));
+        expect(result.events.where((e) => e.type == 'warDeclared'), isEmpty,
+            reason: 'a lone-army war is unwinnable — the home guard would '
+                'pin the only unit at the capital (seed $seed)');
+      }
+    });
+
+    test('with a second unit the same realm still goes to war', () {
+      // Positive control for the test above: proves the setup CAN declare
+      // at all, so the lone-army silence is the troop-count gate — not a
+      // blocker, mood or dice artefact.
+      final state = warEagerGame(troops: 2);
+      var declared = false;
+      for (var seed = 0; seed < 200 && !declared; seed++) {
+        final result = runAiTurn(state, 1, Rng(seed));
+        declared = result.events.any((e) => e.type == 'warDeclared');
+      }
+      expect(declared, isTrue);
     });
   });
 }
