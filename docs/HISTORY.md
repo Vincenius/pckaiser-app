@@ -6,6 +6,24 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-27 — Server match retention (daily `sweepStale`)
+
+Stale matches lived forever: a finished match was only deleted once
+EVERY seat dismissed it, abandoned waiting lobbies never expired, and a
+timer-less active match whose humans all went silent sat in the store
+indefinitely (matches WITH a timer keep advancing via the minute sweep;
+a game whose humans are all dead ends as `humansDefeated` → `finished`,
+so it was already covered by the finished path). New daily retention
+sweep (`MatchService.sweepStale`, also run at server start), keyed off
+`updated_at`: finished deleted after 30 days (the result stays in the
+players' lists that long), waiting after 7 days, silent active matches
+warned with a `MATCH_EXPIRING` push at 351 days and deleted ≥ 14 days
+after the warning and ≥ 365 days after the last activity — any activity
+clears the pending warning (additive `expiry_warned_at` on the match
+record dedups the push). `GameStore.allMatches` exposed for the scan.
+Constants in `match_service.dart`; ARCHITECTURE.md "Retention". 5 new
+service tests, 56 backend tests green.
+
 ## 2026-07-27 — Review round on the 0.2.3 changes (3 fixes)
 
 Bug hunt over the four features below found three follow-up flaws:

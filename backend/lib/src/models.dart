@@ -239,6 +239,7 @@ class MatchRecord {
     this.stateJson,
     this.turnDeadline,
     this.warReminderFor,
+    this.expiryWarnedAt,
     this.winnerPlayerId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -263,6 +264,10 @@ class MatchRecord {
         warReminderFor: json['war_reminder_for'] == null
             ? null
             : DateTime.parse(json['war_reminder_for'] as String),
+        // Additive field — pre-retention records were never warned.
+        expiryWarnedAt: json['expiry_warned_at'] == null
+            ? null
+            : DateTime.parse(json['expiry_warned_at'] as String),
         winnerPlayerId: json['winner'] as String?,
         createdAt: DateTime.parse(json['created_at'] as String),
         updatedAt: DateTime.parse(json['updated_at'] as String),
@@ -284,6 +289,11 @@ class MatchRecord {
   /// The agreed war start this match was already REMINDED of (the ~15 min
   /// "duel starts soon" push) — sent at most once per agreed start time.
   DateTime? warReminderFor;
+
+  /// When the retention sweep warned this (active, stalled) match that it
+  /// will be deleted. Cleared again by the sweep once [updatedAt] moves past
+  /// it — any activity cancels the pending expiry. Null = never warned.
+  DateTime? expiryWarnedAt;
 
   String? winnerPlayerId;
   final DateTime createdAt;
@@ -321,6 +331,7 @@ class MatchRecord {
         'state': stateJson,
         'turn_deadline': turnDeadline?.toIso8601String(),
         'war_reminder_for': warReminderFor?.toIso8601String(),
+        'expiry_warned_at': expiryWarnedAt?.toIso8601String(),
         'winner': winnerPlayerId,
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),

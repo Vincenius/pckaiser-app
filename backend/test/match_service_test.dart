@@ -1598,6 +1598,107 @@ void main() {
       );
     });
   });
+
+  group('retention (sweepStale)', () {
+    late _RecordingPushService push;
+    late DateTime now;
+
+    setUp(() {
+      push = _RecordingPushService();
+      now = DateTime.utc(2026, 7, 27, 12);
+      service = MatchService(store, push, clock: () => now);
+    });
+
+    /// A stored record aged so its last activity lies [silence] in the past.
+    MatchRecord record(String id, MatchStatus status, Duration silence,
+            {List<MatchPlayer> players = const []}) =>
+        MatchRecord(
+          id: id,
+          settings: MatchSettings(seed: 1),
+          players: players,
+          status: status,
+          createdAt: now.subtract(silence),
+          updatedAt: now.subtract(silence),
+        );
+
+    test('finished matches are deleted 30 days after the last update',
+        () async {
+      await store.saveMatch(record(
+          'FRESH', MatchStatus.finished, const Duration(days: 29)));
+      await store.saveMatch(
+          record('STALE', MatchStatus.finished, const Duration(days: 31)));
+      expect(await service.sweepStale(), 1);
+      expect(await store.match('FRESH'), isNotNull,
+          reason: 'still inside the result-screen grace period');
+      expect(await store.match('STALE'), isNull);
+    });
+
+    test('abandoned waiting lobbies are deleted after 7 days', () async {
+      await store.saveMatch(
+          record('FRESH', MatchStatus.waiting, const Duration(days: 6)));
+      await store.saveMatch(
+          record('STALE', MatchStatus.waiting, const Duration(days: 8)));
+      expect(await service.sweepStale(), 1);
+      expect(await store.match('FRESH'), isNotNull);
+      expect(await store.match('STALE'), isNull);
+    });
+
+    test('a silent active match is warned once, then deleted after the lead',
+        () async {
+      final p = await service.registerPlayer(displayName: 'Still');
+      final seat = MatchPlayer(
+        playerId: p.id,
+        turnOrder: 0,
+        slot: 1,
+        founderName: 'Still',
+        gender: 1,
+        dorfName: 'Stilldorf',
+      );
+      await store.saveMatch(record(
+          'QUIET', MatchStatus.active, const Duration(days: 352),
+          players: [seat]));
+
+      // Inside the warning window: push goes out, nothing is deleted.
+      expect(await service.sweepStale(), 0);
+      expect(push.kinds, containsOnce('matchExpiring'));
+      expect((await store.match('QUIET'))!.expiryWarnedAt, now);
+
+      // The next daily run re-warns nobody and still keeps the match.
+      now = now.add(const Duration(days: 1));
+      expect(await service.sweepStale(), 0);
+      expect(push.kinds, containsOnce('matchExpiring'));
+
+      // Warning lead over AND the retention age reached: deleted.
+      now = now.add(const Duration(days: 14));
+      expect(await service.sweepStale(), 1);
+      expect(await store.match('QUIET'), isNull);
+    });
+
+    test('activity after the warning cancels the pending expiry', () async {
+      await store.saveMatch(
+          record('WOKEN', MatchStatus.active, const Duration(days: 360)));
+      expect(await service.sweepStale(), 0); // warned
+      expect((await store.match('WOKEN'))!.expiryWarnedAt, isNotNull);
+
+      // Somebody plays: every commit moves updatedAt past the warning.
+      final match = (await store.match('WOKEN'))!;
+      match.updatedAt = now.add(const Duration(hours: 1));
+      await store.saveMatch(match);
+
+      now = now.add(const Duration(days: 20));
+      expect(await service.sweepStale(), 0,
+          reason: 'the silence clock restarted with the new activity');
+      expect((await store.match('WOKEN'))!.expiryWarnedAt, isNull);
+    });
+
+    test('active matches inside the retention window are untouched', () async {
+      await store.saveMatch(
+          record('YOUNG', MatchStatus.active, const Duration(days: 300)));
+      expect(await service.sweepStale(), 0);
+      expect(push.kinds, isEmpty);
+      expect((await store.match('YOUNG'))!.expiryWarnedAt, isNull);
+    });
+  });
 }
 
 /// Matcher: the iterable contains [value] exactly once.
@@ -1654,4 +1755,8 @@ class _RecordingPushService implements PushService {
   @override
   Future<void> warStartSoon(PlayerRecord player, MatchRecord match) async =>
       kinds.add('warStartSoon');
+
+  @override
+  Future<void> matchExpiring(PlayerRecord player, MatchRecord match) async =>
+      kinds.add('matchExpiring');
 }
