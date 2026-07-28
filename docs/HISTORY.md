@@ -6,6 +6,27 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-28 — One assassination per target realm per round
+
+User report: a player could send assassins at the SAME realm several
+times in one turn, which sidestepped the 30-agent mission cap
+(`maxAgentsPerMission`) entirely — `queueAssassination` merged repeated
+orders from the same sponsor into one order, so 3 × 30 agents resolved
+as a single 90-agent squad.
+
+Fix (`[DESIGNED]`, §13.3): new additive per-turn flag
+`Realm.assassinatedThisTurnSlots` (cleared in `_beginTurn` with the
+other per-turn flags). `applyOrderAssassination` refuses a second order
+against a realm already targeted this turn (`assassinsAlreadySent`,
+de/en) BEFORE charging the treasury; different targets in the same turn
+and different sponsors against the same target stay allowed. The
+espionage menu greys the already-targeted realms out
+(`menus.assassinAlready`). The AI dispatches at most one squad per turn
+anyway, so it is unaffected. `queueAssassination`'s merge branch is now
+only a safety net. Test: `war_test.dart` "only one assassination per
+target realm per round" (rejected order is free, next turn allowed
+again).
+
 ## 2026-07-28 — Ottoman invasion reworked: Janissaries serve no new master
 
 User report: a player "suddenly had a troop of 1,000 men at level 50 he

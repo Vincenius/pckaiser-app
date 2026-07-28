@@ -849,11 +849,18 @@ List<GameEvent> applyOrderAssassination(
       state.realm(action.targetSlot).isVacant) {
     throw ActionException(coreMessage('invalidTarget'));
   }
+  // One attempt per target realm per round — otherwise several orders
+  // against the same realm merge into a single squad and the
+  // [maxAgentsPerMission] cap means nothing.
+  if (realm.assassinatedThisTurnSlots.contains(action.targetSlot)) {
+    throw ActionException(coreMessage('assassinsAlreadySent'));
+  }
   final cost = action.agents * assassinCost;
   if (realm.treasury < cost) {
     throw ActionException(coreMessage('notEnoughTaler', {'cost': cost}));
   }
   realm.treasury -= cost;
+  realm.assassinatedThisTurnSlots.add(action.targetSlot);
   queueAssassination(state, realm.slot, action.targetSlot, action.agents);
   return [
     GameEvent(

@@ -32,6 +32,7 @@ class Realm {
     this.investedThisTurn = false,
     this.recruitedThisTurn = 0,
     List<int>? proposedThisTurnIds,
+    List<int>? assassinatedThisTurnSlots,
     this.warThisYear = false,
     this.recentWars = 0,
     this.rulerId,
@@ -42,6 +43,7 @@ class Realm {
     List<IntelReport>? intelReports,
   })  : tileCount = tileCount ?? List.filled(9, 0),
         proposedThisTurnIds = proposedThisTurnIds ?? [],
+        assassinatedThisTurnSlots = assassinatedThisTurnSlots ?? [],
         troops = troops ?? [],
         towns = towns ?? [],
         ships = ships ?? [],
@@ -87,6 +89,11 @@ class Realm {
         // allows one extra proposal once.
         proposedThisTurnIds:
             (json['proposedThisTurnIds'] as List?)?.cast<int>().toList(),
+        // Additive field — an old mid-turn save allows one extra
+        // assassination against an already-targeted realm once.
+        assassinatedThisTurnSlots: (json['assassinatedThisTurnSlots'] as List?)
+            ?.cast<int>()
+            .toList(),
         warThisYear: json['warThisYear'] as bool? ?? false,
         // Additive field — older saves carry no war-weariness yet.
         recentWars: json['recentWars'] as int? ?? 0,
@@ -195,6 +202,12 @@ class Realm {
   /// no cap at all, §14.1). Cleared with the other per-turn flags.
   final List<int> proposedThisTurnIds;
 
+  /// Realms this realm already sent assassins at THIS turn (§13.3
+  /// `[DESIGNED]`): one attempt per target realm per round, so splitting a
+  /// squad into several orders can no longer beat the
+  /// [maxAgentsPerMission] cap. Cleared with the other per-turn flags.
+  final List<int> assassinatedThisTurnSlots;
+
   /// War weariness: wars this realm STARTED without a peace year in
   /// between. Escalates the declaration's popularity penalty
   /// (−5 × (recentWars + 1), see applyDeclareWar) and decays by one per
@@ -258,6 +271,7 @@ class Realm {
         investedThisTurn: investedThisTurn,
         recruitedThisTurn: recruitedThisTurn,
         proposedThisTurnIds: List.of(proposedThisTurnIds),
+        assassinatedThisTurnSlots: List.of(assassinatedThisTurnSlots),
         warThisYear: warThisYear,
         recentWars: recentWars,
         rulerId: rulerId,
@@ -296,6 +310,7 @@ class Realm {
         'investedThisTurn': investedThisTurn,
         'recruitedThisTurn': recruitedThisTurn,
         'proposedThisTurnIds': proposedThisTurnIds,
+        'assassinatedThisTurnSlots': assassinatedThisTurnSlots,
         'warThisYear': warThisYear,
         'recentWars': recentWars,
         'rulerId': rulerId,

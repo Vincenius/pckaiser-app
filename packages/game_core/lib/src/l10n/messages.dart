@@ -127,6 +127,8 @@ const Map<String, Map<String, String>> _messages = {
         'Du kannst dir nur Felder aneignen, die direkt an dein Land '
             'grenzen !',
     'tooManySpies': 'So viele Spione würden zu sehr auffallen',
+    'assassinsAlreadySent':
+        'Deine Attentäter sind dieses Jahr schon dorthin unterwegs !',
     'invalidTarget': 'Ungültiges Ziel !',
     'guardsNotArmy':
         'Das ist keine Spionageabwehr, sondern eine Armee !!!',
@@ -238,6 +240,8 @@ const Map<String, Map<String, String>> _messages = {
     'annexOnlyBordering':
         'You can only seize tiles that directly border your own land!',
     'tooManySpies': 'That many spies would draw too much attention',
+    'assassinsAlreadySent':
+        'Your assassins are already on their way there this year!',
     'invalidTarget': 'Invalid target!',
     'guardsNotArmy':
         'That is not counter-espionage, that is an army!!!',

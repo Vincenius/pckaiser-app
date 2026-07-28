@@ -190,6 +190,7 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
   realm.investedThisTurn = false;
   realm.recruitedThisTurn = 0;
   realm.proposedThisTurnIds.clear();
+  realm.assassinatedThisTurnSlots.clear();
 
   events.add(GameEvent(
     year: state.year,

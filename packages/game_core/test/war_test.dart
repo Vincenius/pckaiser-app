@@ -928,6 +928,39 @@ void main() {
       expect(found, isTrue,
           reason: '30 agents kill within 30 seeds (p≈30%+ each)');
     });
+
+    test('only one assassination per target realm per round', () {
+      var s = applyAction(state,
+              OrderAssassination(slot: 1, targetSlot: 2, agents: 30), Rng(1))
+          .state;
+      final spent = state.realm(1).treasury - s.realm(1).treasury;
+      expect(
+        () => applyAction(
+            s, OrderAssassination(slot: 1, targetSlot: 2, agents: 30), Rng(1)),
+        throwsA(isA<ActionException>()),
+        reason: 'stacking squads would beat the 30-agent mission cap',
+      );
+      expect(s.assassinationOrders, hasLength(1));
+      expect(s.assassinationOrders.single.count, 30);
+      expect(s.realm(1).treasury, state.realm(1).treasury - spent,
+          reason: 'the rejected order costs nothing');
+      // A different realm in the same turn is still allowed.
+      s = applyAction(
+              s, OrderAssassination(slot: 1, targetSlot: 3, agents: 5), Rng(1))
+          .state;
+      expect(s.assassinationOrders, hasLength(2));
+      // Next turn the limit is lifted again.
+      s.realm(1).treasury += 10000;
+      s = completeTurn(s, Rng(7)).state; // ends 1, begins 2
+      while (s.currentPlayer != 1) {
+        s = completeTurn(s, Rng(s.rngSeed)).state;
+      }
+      expect(s.realm(1).assassinatedThisTurnSlots, isEmpty);
+      s = applyAction(
+              s, OrderAssassination(slot: 1, targetSlot: 2, agents: 30), Rng(1))
+          .state;
+      expect(s.assassinationOrders.where((o) => o.targetSlot == 2), hasLength(1));
+    });
   });
 
   group('war bookkeeping fixes', () {

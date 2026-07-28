@@ -202,6 +202,11 @@ void resolveAssassinations(
 
 /// Queues an assassination order (§13.3): "Die Attentäter sind auf dem
 /// Weg !!!"
+///
+/// Merging into an existing order is only a safety net: the action gate
+/// allows one attempt per sponsor per target and round
+/// (`Realm.assassinatedThisTurnSlots`), so a sponsor cannot stack squads
+/// past [maxAgentsPerMission] any more.
 void queueAssassination(
     GameState state, int sponsorSlot, int targetSlot, int agents) {
   for (final order in state.assassinationOrders) {

@@ -107,6 +107,7 @@ const Map<String, String> menusDe = {
   'menus.assassinUnderway':
       'Die Attentäter sind auf dem Weg !!!\n\n'
       'Ob der Anschlag gelingt, erfährst du in einem der nächsten Züge.',
+  'menus.assassinAlready': 'Diesen Zug schon Attentäter entsandt',
   // --- Dynasty & misc ---
   'menus.nobodyMarriageable': 'Niemand in deiner Dynastie kann heiraten !',
   'menus.allProposed': 'Alle haben diesen Zug schon einen Antrag gestellt !',
@@ -291,6 +292,7 @@ const Map<String, String> menusEn = {
   'menus.assassinUnderway':
       'The assassins are on their way!!!\n\n'
       'Whether the deed succeeds you will learn in one of the coming turns.',
+  'menus.assassinAlready': 'Assassins already sent this turn',
   // --- Dynasty & misc ---
   'menus.nobodyMarriageable': 'No one in your dynasty can marry!',
   'menus.allProposed': 'Everyone has already proposed this turn!',

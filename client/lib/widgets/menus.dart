@@ -1288,6 +1288,10 @@ void _assassinSheet(BuildContext context, GameController controller) {
     max: math.min(30, controller.currentRealm.treasury ~/ gc.assassinCost),
     detail: (agents) =>
         tr('menus.agentsDetail', {'cost': agents * gc.assassinCost}),
+    // One attempt per realm per round (engine gate) — a realm already
+    // targeted this turn cannot be picked again.
+    disabledSlots: controller.currentRealm.assassinatedThisTurnSlots.toSet(),
+    disabledNote: tr('menus.assassinAlready'),
     onSubmit: (target, agents) async {
       final sure = await showDialog<bool>(
         context: context,
@@ -2277,6 +2281,8 @@ void _targetThenAmount(
   required int max,
   String? titlePrefix,
   String Function(int amount)? detail,
+  Set<int> disabledSlots = const {},
+  String? disabledNote,
   required void Function(int targetSlot, int amount) onSubmit,
 }) {
   final state = controller.visibleState;
@@ -2292,6 +2298,10 @@ void _targetThenAmount(
             if (realm.slot != controller.currentSlot && !realm.isVacant)
               ListTile(
                 title: Text(realmName(realm.slot)),
+                subtitle: disabledSlots.contains(realm.slot) && disabledNote != null
+                    ? Text(disabledNote)
+                    : null,
+                enabled: !disabledSlots.contains(realm.slot),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _amountSheet(
