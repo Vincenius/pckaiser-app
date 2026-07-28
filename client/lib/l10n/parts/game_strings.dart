@@ -17,6 +17,7 @@ const Map<String, String> gameDe = {
   'game.leaveGameLocalBody': 'Der letzte abgeschlossene Zug ist gespeichert.',
   'game.leaveGame': 'Spiel verlassen',
   'game.annoRealm': 'Anno {year} — {realm}',
+  'game.anno': 'Anno {year}',
   'game.warTitle': 'Krieg !',
   'game.warBriefing':
       '{attacker} ist mit Armeen in dein Land eingefallen !\n\n'
@@ -148,6 +149,7 @@ const Map<String, String> gameEn = {
   'game.leaveGameLocalBody': 'The last completed turn is saved.',
   'game.leaveGame': 'Leave game',
   'game.annoRealm': 'Anno {year} — {realm}',
+  'game.anno': 'Anno {year}',
   'game.warTitle': 'War!',
   'game.warBriefing':
       '{attacker} has invaded your land with armies!\n\n'

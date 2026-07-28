@@ -23,6 +23,32 @@ const int guardCost = 100;
 /// squad sizing.
 const int maxAgentsPerMission = 30;
 
+/// The mission ladder `[DESIGNED]`, easiest first — every chance below is
+/// rolled on a 0–99 scale against these ceilings:
+///
+/// 1. **Wirtschaftsspionage** — what the markets and tax collectors
+///    already gossip about; a full squad brings the headline numbers home
+///    near-certainly (per-value checks in [runEconomyMission]).
+/// 2. **Militärspionage** — counting tents in an open camp: up to
+///    [militaryIntelMaxChance] with a full squad, ~50 % with ten agents.
+/// 3. **Attentat** — reaching a ruler behind his own walls and bodyguard.
+///    A full squad at an open court is a bit better than a coin flip
+///    (~53 %, ceiling [assassinationMaxChance]) and still a real threat
+///    against a maxed Leibwache (~36 %) — but never the reliable way to
+///    remove a rival. Guards work twice: they catch agents on the way in
+///    (the bulk of their effect) and shield the ruler
+///    ([assassinationCeiling]).
+const int militaryIntelMaxChance = 90;
+const int assassinationMaxChance = 60;
+
+/// Ceiling for an attempt on a court holding [guardLevel] guards: from
+/// [assassinationMaxChance] on an unguarded ruler down to 50 % at the
+/// [guardCap]. The guards' main defense is catching agents before the
+/// deed; this ceiling is the extra shield of a ruler who never walks
+/// alone.
+int assassinationCeiling(int guardLevel) =>
+    assassinationMaxChance - guardLevel ~/ 5;
+
 /// Fuzzes a spied value ±10% uniform — never show exact numbers
 /// (§13.2 `[APPROX]`, adopted as final design).
 int fuzz(int value, Rng rng) => (value * (0.9 + rng.nextReal() * 0.2)).round();
@@ -88,8 +114,11 @@ List<GameEvent> runMilitaryMission(
   final caught = _caughtAgents(
       state, math.min(defense, rng.nextInt(2 * defense + 5)), agents, rng);
   final survivors = math.min(agents - caught, 49);
-  final success =
-      survivors > 0 && rng.nextInt(50) < math.min(45, 15 + 2 * survivors);
+  // Rung 2 of the ladder: 34 % with a lone survivor, ~50 % with ten,
+  // topping out at [militaryIntelMaxChance] from ~15 agents on.
+  final success = survivors > 0 &&
+      rng.nextInt(100) <
+          math.min(militaryIntelMaxChance, 30 + 4 * survivors);
   if (!success) {
     return [_missionFailed(state, spy, target, 'military', caught)];
   }
@@ -159,10 +188,15 @@ void resolveAssassinations(
     final caught = _caughtAgents(
         state, math.min(rng.nextInt(g + 15), order.count), order.count, rng);
     final survivors = math.min(order.count - caught, 49);
-    // Like the spy missions, an attempt whose agents were ALL caught
-    // fails outright; success scales with the survivors `[DESIGNED]`.
-    final success =
-        survivors > 0 && rng.nextInt(50) < math.min(40, 10 + survivors);
+    // Rung 3 of the ladder — the hard one. Like the spy missions an
+    // attempt whose agents were ALL caught fails outright, and success
+    // scales with the survivors, but every attempt stays a gamble:
+    // ~11 % for five knifemen, ~53 % for a full squad at an open court,
+    // ~36 % once 50 Leibwachen stand in the way `[DESIGNED]`.
+    final success = survivors > 0 &&
+        rng.nextInt(100) <
+            math.min(assassinationCeiling(target.guardLevel),
+                6 + 2 * survivors);
 
     if (success) {
       events.add(GameEvent(

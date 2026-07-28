@@ -929,6 +929,55 @@ void main() {
           reason: '30 agents kill within 30 seeds (p≈30%+ each)');
     });
 
+    test('mission ladder: spying beats daggers, guards shield the ruler', () {
+      // Measured over many seeds on the real rolls — the ORDER is the
+      // rule, the bands only pin the tuning against silent drift.
+      double militaryRate(int guards, int agents) {
+        var hits = 0;
+        for (var seed = 0; seed < 400; seed++) {
+          final s = state.copy();
+          s.realm(2).guardLevel = guards;
+          final events =
+              runMilitaryMission(s, s.realm(1), s.realm(2), agents, Rng(seed));
+          if (events.any((e) => e.type == 'intelGathered')) hits++;
+        }
+        return hits / 400;
+      }
+
+      double assassinRate(int guards, int agents) {
+        var hits = 0;
+        for (var seed = 0; seed < 400; seed++) {
+          final s = state.copy();
+          s.realm(2).guardLevel = guards;
+          queueAssassination(s, 1, 2, agents);
+          final events = <GameEvent>[];
+          resolveAssassinations(s, 2, Rng(seed), events);
+          if (events.any((e) => e.type == 'assassination')) hits++;
+        }
+        return hits / 400;
+      }
+
+      final spyFull = militaryRate(0, maxAgentsPerMission);
+      final daggerFull = assassinRate(0, maxAgentsPerMission);
+      final daggerGuarded = assassinRate(guardCap, maxAgentsPerMission);
+      final daggerSmall = assassinRate(0, 5);
+
+      expect(spyFull, greaterThan(0.8),
+          reason: 'counting tents in an open camp is the easy mission');
+      expect(daggerFull, lessThan(0.65),
+          reason: 'even the largest plot stays a gamble');
+      expect(daggerFull, greaterThan(0.45),
+          reason: 'but a full squad must be worth its 7500 T');
+      expect(daggerFull, lessThan(spyFull - 0.25),
+          reason: 'a dagger is riskier than a spyglass');
+      expect(daggerGuarded, greaterThan(0.25),
+          reason: 'no court is safe from a full squad');
+      expect(daggerGuarded, lessThan(daggerFull - 0.1),
+          reason: '50 Leibwachen must visibly pay off');
+      expect(daggerSmall, lessThan(0.2),
+          reason: 'a handful of knifemen rarely reaches a ruler');
+    });
+
     test('only one assassination per target realm per round', () {
       var s = applyAction(state,
               OrderAssassination(slot: 1, targetSlot: 2, agents: 30), Rng(1))

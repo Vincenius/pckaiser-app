@@ -14,15 +14,16 @@ const Map<String, String> tutorialDe = {
       'Fingern. Die Fahne markiert deinen Königssitz (deine Burg).',
   'tut.statsTitle': 'Deine Werte',
   'tut.statsBody':
-      'Oben rechts siehst du das aktuelle Jahr (Kalender), deine '
-      'Taler (Münze), deine verbleibenden Züge (Hammer) und deine '
-      'Beliebtheit (Herz) — '
+      'Oben links steht, welches Reich gerade am Zug ist, oben rechts '
+      'das aktuelle Jahr (Kalender), deine Taler (Münze), deine '
+      'verbleibenden Züge (Hammer) und deine Beliebtheit (Herz) — '
+      'tippe eines von beidem an für alle Werte deines Reichs '
+      '("Mein Reich"). '
       'Bauen und Erweitern auf der Karte kostet einen Zug, Truppen '
       'verlegen ist kostenlos. Die Züge werden jede Runde neu '
       'gewürfelt: je höher der Titel deines Herrschers, desto mehr. '
-      'Die Leiste unten zeigt Jahr und Reich; tippe auf beides für '
-      'alle Werte deines Reichs ("Mein Reich"). Der Pfeil macht '
-      'Aktionen innerhalb des Zuges rückgängig.',
+      'Der Pfeil unten rechts macht Aktionen innerhalb des Zuges '
+      'rückgängig.',
   'tut.buildTitle': 'Bauen & Erweitern',
   'tut.buildBody':
       'Dein Reich wächst, indem du auf freien Feldern neben deinem '
@@ -116,14 +117,14 @@ const Map<String, String> tutorialEn = {
       'your royal seat (your castle).',
   'tut.statsTitle': 'Your stats',
   'tut.statsBody':
-      'At the top right you see the current year (calendar), your '
-      'Taler (coin), your remaining moves (hammer) and your popularity '
-      '(heart) — building and expanding on the map costs one move, '
-      'moving troops is free. Your moves are re-rolled every round: '
-      'the higher your ruler\'s title, the more you get. The bar at '
-      'the bottom shows year and realm; tap either for all of your '
-      'realm\'s stats ("My realm"). The arrow undoes actions within '
-      'the current turn.',
+      'At the top left you see whose realm is on turn, at the top right '
+      'the current year (calendar), your Taler (coin), your remaining '
+      'moves (hammer) and your popularity (heart) — tap either for all '
+      'of your realm\'s stats ("My realm"). Building and expanding on the map '
+      'costs one move, moving troops is free. Your moves are re-rolled '
+      'every round: the higher your ruler\'s title, the more you get. '
+      'The arrow at the bottom right undoes actions within the current '
+      'turn.',
   'tut.buildTitle': 'Build & expand',
   'tut.buildBody':
       'Your realm grows by building on free fields next to your '

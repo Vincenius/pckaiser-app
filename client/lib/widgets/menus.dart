@@ -1297,6 +1297,9 @@ void _assassinSheet(BuildContext context, GameController controller) {
         context: context,
         builder: (context) => AlertDialog(
           title: Text(tr('menus.assassinConfirm', {'realm': realmName(target)})),
+          // The odds are deliberately poor (see the espionage ladder in
+          // game_core) — say so before the taler are gone.
+          content: Text(tr('menus.assassinRisk')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),

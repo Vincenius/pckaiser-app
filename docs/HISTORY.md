@@ -6,6 +6,65 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-28 — HUD split: realm identity over the map, actions in the row
+
+User report: "Anno 1400 — Mecklenburg" in the bottom status row was cut
+off on nearly every phone, and undo/leave sat awkwardly between the
+text and "Zug beenden". Root cause: four elements shared ~360 dp, and
+the same information existed twice (year in the floating vitals chip
+AND the status row) with three entry points to "Mein Reich".
+
+Layout chosen (of four proposed): realm identity and numbers move out
+of the status row and float over the map, where a widget sizes itself
+and therefore cannot truncate. First attempt put both in ONE card top
+right — rejected same day: a 13-character realm name dragged the whole
+column of numbers out to its width. Final split into two overlays:
+`_realmChip` top LEFT (color dot + name; the name grows against free
+map, capped at 45 % of the screen as a never-reached safety net) and
+`_resourceChip` top RIGHT (year, Taler, Züge, Beliebtheit — its width
+is set by 4-digit numbers, never by text). The vitals card is no
+longer hidden during a war; it drops to the year alone
+(`vitals: false`), since the docked war panel owns the numbers but the
+year must stay on screen. `_statusRow` keeps only actions: leave-game
+left, undo and end turn grouped right. New key `game.anno` =
+"Anno {year}" (de/en); `game.annoRealm` remains for the "Mein Reich"
+dialog title. Tutorial step `tut.statsBody` rewritten for the new
+positions. Test `game_hud_test.dart` boots the screen at 360 × 740
+with the long realm name "Mecklenburg" and asserts
+`didExceedMaxLines == false` for name and year (verified to fail when
+the name box is narrowed) plus that the two overlays do not meet —
+conservatively, since the test font is 1 em per glyph and makes every
+label ~1.8× its real width.
+
+## 2026-07-28 — Espionage mission ladder: daggers are a gamble, guards shield
+
+Follow-up to the per-round assassination cap below. Measured odds (Monte
+Carlo over the real rolls, full 30-agent squad): Militärspionage 90 %,
+Attentat 68 % on an open court and still 52 % against 50 Leibwachen —
+i.e. killing a ruler was nearly as safe as counting his tents, and the
+5,000 T bodyguard bought 16 points. New: 53 % / 36 %.
+
+Rework (`rules/espionage.dart`, all rolls moved onto one 0–99 scale):
+an explicit three-rung ladder documented at the top of the file.
+Wirtschaftsspionage (market/tax gossip) stays near-certain with a full
+squad; Militärspionage keeps its curve exactly (`30 + 4 × survivors`,
+capped at `militaryIntelMaxChance = 90` — the old `nextInt(50) <
+min(45, 15 + 2s)` doubled); the Attentat drops to `6 + 2 × survivors`,
+capped by `assassinationCeiling(guardLevel)` =
+`assassinationMaxChance (60) − guardLevel ~/ 5`. Resulting rates with a
+full squad: 53 % unguarded, 42 % at 15 guards, 36 % at the guard cap;
+20 agents 36 %/27 %, a 5-agent plot ~11 %. (First cut on the same day
+was harsher — 45 % ceiling, −½ point per guard, i.e. 39 %/17 %; raised
+on user feedback: a full squad must stay a real threat even against a
+maxed Leibwache, ~35 % there.) Guards keep most of their weight where
+it is natural — catching agents on the way in. The AI is unaffected in
+code (it sends 3–20 agents rarely). The confirm dialog now states the
+gamble up front (`menus.assassinRisk`, de/en) — poor odds, the target's
+Leibwache lowers them further, a caught agent names the sponsor
+publicly. Test: `war_test.dart` "mission ladder: spying beats daggers,
+guards shield the ruler" pins the order and the bands; deviation row in
+PROJECT_REQUIREMENTS.md.
+
 ## 2026-07-28 — One assassination per target realm per round
 
 User report: a player could send assassins at the SAME realm several

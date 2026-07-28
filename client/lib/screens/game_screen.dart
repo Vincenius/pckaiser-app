@@ -693,18 +693,30 @@ class _GameScreenState extends State<GameScreen> {
                   child: Stack(
                     children: [
                       Positioned.fill(child: GameWidget(game: game)),
-                      // Vitals over the map; hidden during a war (the
-                      // docked war panel rules the screen and the turn
-                      // vitals don't apply mid-war) and while the
-                      // tile-pick banner occupies the top edge.
-                      if (controller.state.activeWar == null &&
-                          !controller.tilePickActive &&
-                          !controller.handoffPending)
+                      // The two map overlays share the top edge but not a
+                      // box: the realm name (left) may be long, the vitals
+                      // (right) must stay a narrow column of numbers —
+                      // stacking them in one card made it grow into the
+                      // map (user report 2026-07-28). Both are hidden while
+                      // the tile-pick banner occupies the top edge; during
+                      // a war the vitals drop to the year alone (the docked
+                      // war panel owns the numbers).
+                      if (!controller.tilePickActive &&
+                          !controller.handoffPending) ...[
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: _realmChip(controller),
+                        ),
                         Positioned(
                           top: 8,
                           right: 8,
-                          child: _resourceChip(controller),
+                          child: _resourceChip(
+                            controller,
+                            vitals: controller.state.activeWar == null,
+                          ),
                         ),
+                      ],
                       if (controller.tilePickActive &&
                           !controller.handoffPending)
                         Align(
@@ -797,13 +809,64 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  /// Whose turn it is, floating over the map's top left: the realm color
+  /// and name on one line. Tapping opens "Mein Reich", like the vitals
+  /// card opposite.
+  ///
+  /// Its own overlay rather than a header inside [_resourceChip]: names
+  /// run up to ~13 characters and dragged that card's whole column of
+  /// numbers out to their width (user report 2026-07-28). Anchored left,
+  /// the name grows away from the numbers and only against free map, so
+  /// it needs no truncation until it would meet the vitals card — the
+  /// cap below (45 % of the screen) is the never-reached safety net.
+  Widget _realmChip(GameController controller) {
+    final theme = Theme.of(context);
+    final realmLabel = realmName(controller.currentSlot);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: theme.colorScheme.surfaceContainerHigh,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showInfoMenu(context, controller),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 6,
+                backgroundColor: RealmPalette.colorFor(
+                  controller.currentSlot,
+                  state: controller.state,
+                ),
+              ),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.45,
+                ),
+                child: Text(
+                  realmLabel,
+                  style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Always-visible vitals floating over the map (top right): year,
-  /// treasury, remaining moves and popularity stacked as compact icon
-  /// rows. Tapping opens "Mein Reich", like the status row below. The
-  /// year also lives in the bottom status row, but that line ellipsizes
-  /// on narrow screens — here it stays readable mid-turn (user report
-  /// 2026-07-10).
-  Widget _resourceChip(GameController controller) {
+  /// treasury, remaining moves and popularity as a narrow column of icon
+  /// rows — its width is fixed by 4-digit numbers, never by text.
+  /// Tapping opens "Mein Reich". With [vitals] false only the year is
+  /// drawn: the form used during a war, where the docked war panel owns
+  /// the numbers but the year must stay on screen (the bottom row carries
+  /// neither year nor realm since 2026-07-28).
+  Widget _resourceChip(GameController controller, {bool vitals = true}) {
     final realm = controller.currentRealm;
     final theme = Theme.of(context);
     final lowPopularity = realm.popularity < 30;
@@ -827,32 +890,37 @@ class _GameScreenState extends State<GameScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Semantics(
             container: true,
-            label:
-                'Anno ${controller.state.year}, '
-                '${tr('treasury')}: ${realm.treasury} Taler, '
-                '${tr('moves')}: ${realm.movementPoints}, '
+            label: [
+              tr('game.anno', {'year': controller.state.year}),
+              if (vitals) ...[
+                '${tr('treasury')}: ${realm.treasury} Taler',
+                '${tr('moves')}: ${realm.movementPoints}',
                 '${tr('popularity')}: ${realm.popularity}'
-                '${lowPopularity ? ' — ${tr('game.dangerouslyLow')}' : ''}',
+                    '${lowPopularity ? ' — ${tr('game.dangerouslyLow')}' : ''}',
+              ],
+            ].join(', '),
             child: ExcludeSemantics(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   line(Icons.calendar_today, '${controller.state.year}'),
-                  const SizedBox(height: 2),
-                  line(Icons.toll, '${realm.treasury}'),
-                  const SizedBox(height: 2),
-                  line(Icons.construction, '${realm.movementPoints}'),
-                  const SizedBox(height: 2),
-                  Tooltip(
-                    message: lowPopularity
-                        ? tr('game.popularityDangerLow')
-                        : tr('popularity'),
-                    child: line(
-                      lowPopularity ? Icons.heart_broken : Icons.favorite,
-                      '${realm.popularity}',
-                      color: lowPopularity ? theme.colorScheme.error : null,
+                  if (vitals) ...[
+                    const SizedBox(height: 2),
+                    line(Icons.toll, '${realm.treasury}'),
+                    const SizedBox(height: 2),
+                    line(Icons.construction, '${realm.movementPoints}'),
+                    const SizedBox(height: 2),
+                    Tooltip(
+                      message: lowPopularity
+                          ? tr('game.popularityDangerLow')
+                          : tr('popularity'),
+                      child: line(
+                        lowPopularity ? Icons.heart_broken : Icons.favorite,
+                        '${realm.popularity}',
+                        color: lowPopularity ? theme.colorScheme.error : null,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -891,13 +959,12 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  /// Slim status row, replacing both the old HUD and the top-bar overlay
-  /// (which used to block map tiles): leave-game button, one tappable
-  /// chip with realm color and year/realm (tap for the full "Mein Reich"
-  /// stats), undo, and end turn. Taler and Züge live in the top-right
-  /// [_resourceChip].
+  /// Slim action row, replacing both the old HUD and the top-bar overlay
+  /// (which used to block map tiles): leave-game on the left, the two
+  /// turn controls (undo, end turn) grouped on the right. Realm, year and
+  /// the vitals live over the map in [_resourceChip] — sharing this row
+  /// with them left every element too narrow (user report 2026-07-28).
   Widget _statusRow(GameController controller) {
-    final realmLabel = realmName(controller.currentSlot);
     final theme = Theme.of(context);
     return Material(
       color: theme.colorScheme.surfaceContainerHigh,
@@ -905,9 +972,6 @@ class _GameScreenState extends State<GameScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Row(
           children: [
-            // Compact fixed-width members: on narrow phones the row's
-            // minimum width (icons + year + end-turn button) must stay
-            // under the screen width — only the realm name may truncate.
             IconButton(
               onPressed: _confirmLeaveGame,
               icon: const Icon(Icons.logout),
@@ -915,45 +979,7 @@ class _GameScreenState extends State<GameScreen> {
               tooltip: tr('game.leaveGame'),
               visualDensity: VisualDensity.compact,
             ),
-            Flexible(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => showInfoMenu(context, controller),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 6,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircleAvatar(
-                        radius: 6,
-                        backgroundColor: RealmPalette.colorFor(
-                          controller.currentSlot,
-                          state: controller.state,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      // One ellipsized text: the realm name (the tail)
-                      // truncates first; on extremely narrow screens the
-                      // year ellipsizes too instead of overflowing.
-                      Flexible(
-                        child: Text(
-                          tr('game.annoRealm', {
-                            'year': controller.state.year,
-                            'realm': realmLabel,
-                          }),
-                          style: theme.textTheme.titleSmall,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            const Spacer(),
             if (controller.supportsUndo)
               IconButton(
                 onPressed: controller.canUndo ? controller.undo : null,
@@ -961,7 +987,7 @@ class _GameScreenState extends State<GameScreen> {
                 tooltip: tr('undo'),
                 visualDensity: VisualDensity.compact,
               ),
-            const Spacer(),
+            const SizedBox(width: 4),
             FilledButton.icon(
               onPressed: controller.state.activeWar == null
                   ? () => _endTurn(controller)
