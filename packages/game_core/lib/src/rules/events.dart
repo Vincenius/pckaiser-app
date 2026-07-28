@@ -14,6 +14,7 @@ import '../state/troop.dart';
 import 'dynasty.dart' as dyn;
 import 'population.dart' show cutGarrisonTroops;
 import 'protection.dart';
+import 'troops.dart' show disbandJanissaries;
 import 'titles.dart'
     show christianEquivalentClass, regenderTitle, switchTitleLadder;
 import 'war.dart' show checkLandLoss;
@@ -311,27 +312,31 @@ void _maybeReformation(GameState state, Rng rng, List<GameEvent> events) {
   ));
 }
 
-/// §18.4 Ottoman invasion at the player-chosen year: one realm falls to
-/// the Moslems, its capital town is renamed "`<ruler>`sburg" and grows by
-/// 1,000, and "Die Janitscharen" (1,000 men, quality 50) spawn.
-/// [INTERPRETATION: the realm is chosen at random among living AI realms;
-/// a human realm is only taken if no AI realm exists.]
+/// §18.4 Ottoman invasion at the player-chosen year, reworked (deviation
+/// 2026-07-28, see PROJECT_REQUIREMENTS.md): one AI realm converts to
+/// Islam — capital renamed "`<ruler>`sburg", Muslim title ladder, Kurfürst
+/// seats of the converting house forfeit — and "Die Janitscharen" garrison
+/// its capital. Changes vs the original: never a human realm (no AI
+/// candidate → the event is skipped; Islam still unlocks through the
+/// §15.2 year gates), the guard scales with the world instead of a flat
+/// 1,000 men, its quality is [TroopQuality.janitscharenGuard] instead of
+/// the near-unbeatable 50, and the unit is `janissary`-flagged: it serves
+/// only the house it was installed for and disbands whenever the realm
+/// changes hands ([disbandJanissaries]) — the original's free elite army
+/// kept surfacing in human hands (direct hit in all-human games, or years
+/// later via inheritance/merge) as an inexplicable 1,000-man level-50
+/// troop (user report 2026-07-28).
 void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
   if (state.year != state.ottomanYear) return;
-  final living = [
+  final aiSlots = [
     for (final d in state.dynasties)
-      if (!state.realm(d.index).isVacant &&
+      if (d.status == DynastyStatus.ai &&
+          !state.realm(d.index).isVacant &&
           state.realm(d.index).towns.isNotEmpty)
         d.index,
   ];
-  if (living.isEmpty) return;
-  final aiSlots = [
-    for (final slot in living)
-      if (state.dynasty(slot).status == DynastyStatus.ai) slot,
-  ];
-  final slot = (aiSlots.isNotEmpty
-      ? aiSlots
-      : living)[rng.nextInt((aiSlots.isNotEmpty ? aiSlots : living).length)];
+  if (aiSlots.isEmpty) return;
+  final slot = aiSlots[rng.nextInt(aiSlots.length)];
   final realm = state.realm(slot);
   final dynasty = state.dynasty(slot);
   final ruler = state.person(realm.rulerId);
@@ -351,19 +356,31 @@ void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
   // The capital town: nearest town to the capital (usually the first Dorf).
   final town = realm.towns.first;
   town.name = '${ruler?.name ?? 'Sultan'}sburg';
-  town.population += 1000;
-  town.troopCapacity += 1000;
-  town.garrison += 1000;
-  realm.population += 1000;
-  realm.troopCapacity += 1000;
 
+  // The guard scales with the world: twice the average standing army of
+  // the living realms, clamped to [200, 1000] (the cap is the original's
+  // flat size). The settling horde brings its own quarters and stays as
+  // population even if the guard later disbands — same bookkeeping as the
+  // original, just scaled.
+  final living = [
+    for (final r in state.realms)
+      if (!r.isVacant && r.towns.isNotEmpty) r,
+  ];
+  final totalArmy = living.fold(0, (sum, r) => sum + r.armySize);
+  final men = (2 * totalArmy ~/ living.length).clamp(200, 1000);
+  town.population += men;
+  town.troopCapacity += men;
+  town.garrison += men;
+  realm.population += men;
+  realm.troopCapacity += men;
   realm.troops.add(Troop(
     id: state.nextUnitId++,
     name: 'Die Janitscharen',
-    men: 1000,
+    men: men,
     troopClass: TroopClass.infanterie,
-    quality: TroopQuality.janitscharen,
+    quality: TroopQuality.janitscharenGuard,
     garrisonCounted: true,
+    janissary: true,
     x: town.x,
     y: town.y,
   ));
@@ -374,7 +391,7 @@ void _maybeOttomanInvasion(GameState state, Rng rng, List<GameEvent> events) {
     slot: slot,
     type: 'ottomanInvasion',
     visibility: EventVisibility.public,
-    payload: {'capital': town.name},
+    payload: {'capital': town.name, 'men': men},
   ));
 }
 
@@ -406,6 +423,9 @@ Person foundReplacementDynasty(
     {int? treasury}) {
   final realm = state.realm(slot);
   final dynasty = state.dynasty(slot);
+  // A whole new house takes the slot — the Ottoman guard never serves it
+  // (§18.4 rework).
+  disbandJanissaries(state, slot, events);
 
   // The old dynasty's members disappear with it. Each removal runs the
   // same reference cleanup as a death (`removePersonFromWorld`): a
@@ -445,6 +465,9 @@ Person foundReplacementDynasty(
         dyn.alignSlotControl(state, aliased, inheritor);
         regenderTitle(state, state.realm(aliased));
       }
+      // The slot passes to another house (or falls vacant) — the Ottoman
+      // guard never follows a new master (§18.4 rework).
+      disbandJanissaries(state, aliased, events);
       events.add(GameEvent(
         year: state.year,
         slot: aliased,

@@ -10,6 +10,7 @@ import '../state/realm.dart';
 import 'offices.dart';
 import 'protection.dart';
 import 'titles.dart' show regenderTitle;
+import 'troops.dart' show disbandJanissaries;
 
 /// Cause strings (stored German, see `deathCauseName` client-side) for
 /// natural deaths under age 50 — the death ROLL only knows `90 - age`, so
@@ -485,6 +486,11 @@ void handleDeath(
       alignSlotControl(state, slot, heir.id);
       regenderTitle(state, state.realm(slot));
       _noteSeatLostEvent(state, slot, wasHuman, heir.name, events);
+      // Cross-dynasty inheritance (§15.4): the realm passes to another
+      // house — the Ottoman guard never follows (§18.4 rework).
+      if (heir.dynasty != deceased.dynasty) {
+        disbandJanissaries(state, slot, events);
+      }
     }
     events.add(GameEvent(
       year: state.year,
@@ -554,6 +560,9 @@ void handleDeath(
     regenderTitle(state, state.realm(slot));
     _noteSeatLostEvent(
         state, slot, wasHuman, state.persons[inheritor]?.name, events);
+    // Windfall inheritance always crosses houses — the Ottoman guard
+    // never follows a new master (§18.4 rework).
+    disbandJanissaries(state, slot, events);
   }
   events.add(GameEvent(
     year: state.year,

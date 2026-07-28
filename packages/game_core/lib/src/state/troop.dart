@@ -6,10 +6,15 @@ abstract final class TroopClass {
 }
 
 /// Troop quality values (§2): 1 = regular, 3 = Söldner, 50 = Janitscharen.
+/// The reworked §18.4 event (deviation 2026-07-28) spawns its Janissary
+/// guard at [janitscharenGuard] instead of the original's near-unbeatable
+/// 50 — [janitscharen] stays for combat math and for old saves that still
+/// carry the original troop.
 abstract final class TroopQuality {
   static const int regular = 1;
   static const int soeldner = 3;
   static const int janitscharen = 50;
+  static const int janitscharenGuard = 10;
 }
 
 /// `[DESIGNED]` How a unit behaves when its side's war round is fought on
@@ -39,6 +44,7 @@ class Troop {
     this.id = 0,
     this.stance = TroopStance.holdPosition,
     this.plunderedThisRound = false,
+    this.janissary = false,
   });
 
   factory Troop.fromJson(Map<String, dynamic> json) => Troop(
@@ -57,6 +63,10 @@ class Troop {
         stance: json['stance'] as int? ?? TroopStance.holdPosition,
         // Additive field — units from older saves have not plundered yet.
         plunderedThisRound: json['plunderedThisRound'] as bool? ?? false,
+        // Additive field — only the §18.4 Ottoman guard carries it. Old
+        // saves' original 1,000-man Janitscharen deliberately stay false:
+        // whoever holds them keeps them, we only stop NEW ones migrating.
+        janissary: json['janissary'] as bool? ?? false,
       );
 
   /// Stable unit identity, unique within one game (assigned from
@@ -94,6 +104,13 @@ class Troop {
   /// and on every round advance.
   bool plunderedThisRound;
 
+  /// §18.4 rework (deviation 2026-07-28): the Ottoman guard serves the
+  /// house it was installed for — `disbandJanissaries` removes flagged
+  /// units whenever their realm passes to another house (inheritance,
+  /// merge/transfer, replacement dynasty), so no player ever "suddenly
+  /// owns" them.
+  final bool janissary;
+
   Troop copy() => Troop(
         name: name,
         men: men,
@@ -105,6 +122,7 @@ class Troop {
         id: id,
         stance: stance,
         plunderedThisRound: plunderedThisRound,
+        janissary: janissary,
       );
 
   Map<String, dynamic> toJson() => {
@@ -118,5 +136,6 @@ class Troop {
         'id': id,
         'stance': stance,
         'plunderedThisRound': plunderedThisRound,
+        'janissary': janissary,
       };
 }

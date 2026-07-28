@@ -146,7 +146,12 @@ const Map<String, String> eventsDe = {
   'ev.earthquake': 'Ein verheerendes Erdbeben verwüstet das Reich',
   'ev.disease': 'Die {name} geht um!',
   'ev.reformation': 'Die Reformation! ',
-  'ev.ottomanInvasion': 'Eine riesige Reiterhorde dringt in das Reich ein!',
+  'ev.ottomanInvasion':
+      'Die Osmanen erreichen {realm}: Das Reich tritt zum Islam über, '
+          'die Janitscharen ({men} Mann) beziehen die Hauptstadt!',
+  'ev.janissariesDisbanded':
+      'Die Janitscharen von {realm} lösen sich auf — '
+          'einem neuen Herrn dienen sie nicht.',
   'ev.buildingDemolished': '{realm} reißt ({x}, {y}) ab',
   'ev.gameWon': '{realm} ist der alleinige Herrscher des ganzen Landes!',
   'ev.gameDraw': 'Alle Dynastien sind erloschen — das Land bleibt herrenlos',
@@ -381,7 +386,11 @@ const Map<String, String> eventsEn = {
   'ev.earthquake': 'A devastating earthquake ravages the realm',
   'ev.disease': 'The {name} is spreading!',
   'ev.reformation': 'The Reformation!',
-  'ev.ottomanInvasion': 'A vast horde of horsemen invades the realm!',
+  'ev.ottomanInvasion':
+      'The Ottomans reach {realm}: the realm converts to Islam, '
+          'the Janissaries ({men} men) garrison the capital!',
+  'ev.janissariesDisbanded':
+      'The Janissaries of {realm} disband — they serve no new master.',
   'ev.buildingDemolished': '{realm} demolishes ({x}, {y})',
   'ev.gameWon': '{realm} is the sole ruler of the whole land!',
   'ev.gameDraw':

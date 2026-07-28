@@ -39,7 +39,9 @@ void main() {
       expect(events, isEmpty);
     });
 
-    test('Ottoman invasion creates a Muslim realm with Janitscharen', () {
+    test(
+        'Ottoman invasion converts one AI realm and spawns the scaled, '
+        'janissary-flagged guard (deviation 2026-07-28)', () {
       final state = freshGame();
       state.year = state.ottomanYear - 1;
       var s = state;
@@ -50,14 +52,125 @@ void main() {
       final muslim =
           s.dynasties.where((d) => d.religion == Religion.moslemisch).toList();
       expect(muslim, hasLength(1));
+      expect(muslim.single.status, DynastyStatus.ai);
       final realm = s.realm(muslim.single.index);
-      final janitscharen =
-          realm.troops.where((t) => t.name == 'Die Janitscharen').toList();
-      expect(janitscharen, hasLength(1));
-      expect(janitscharen.single.men, 1000);
-      expect(janitscharen.single.quality, TroopQuality.janitscharen);
+      final guard = realm.troops.where((t) => t.janissary).toList();
+      expect(guard, hasLength(1));
+      expect(guard.single.name, 'Die Janitscharen');
+      // Scaled to the world and modest quality — never the original's
+      // near-unbeatable flat 1,000 men at 50.
+      expect(guard.single.quality, TroopQuality.janitscharenGuard);
+      expect(guard.single.men, inInclusiveRange(200, 1000));
+      expect(guard.single.garrisonCounted, isTrue);
+      expect(realm.armySize, lessThanOrEqualTo(realm.troopCapacity));
       expect(realm.towns.first.name, endsWith('sburg'));
-      expect(s.events.any((e) => e.type == 'ottomanInvasion'), isTrue);
+      final ev = s.events.firstWhere((e) => e.type == 'ottomanInvasion');
+      expect(ev.payload['men'], guard.single.men);
+    });
+
+    test('Ottoman invasion never converts a human realm', () {
+      // Only one realm with towns left: the human's own. The event must
+      // skip entirely rather than fall back to a human realm.
+      final state = freshGame();
+      state.year = state.ottomanYear - 1;
+      for (final realm in state.realms) {
+        if (realm.slot == 1) continue;
+        realm.towns.clear();
+      }
+      var s = state;
+      for (var i = 0; i < 30; i++) {
+        s = completeTurn(s, Rng(s.rngSeed)).state;
+      }
+      expect(s.year, s.ottomanYear);
+      expect(s.dynasty(1).religion, isNot(Religion.moslemisch));
+      expect(s.events.any((e) => e.type == 'ottomanInvasion'), isFalse);
+    });
+  });
+
+  group('Janissary loyalty (§18.4 rework, deviation 2026-07-28)', () {
+    // Plants a janissary guard in [slot] with the same garrison/capacity
+    // bookkeeping the invasion uses.
+    Troop plantJanissaries(GameState s, int slot, {int men = 300}) {
+      final realm = s.realm(slot);
+      final town = realm.towns.first;
+      town.population += men;
+      town.troopCapacity += men;
+      town.garrison += men;
+      realm.population += men;
+      realm.troopCapacity += men;
+      final troop = Troop(
+        id: s.nextUnitId++,
+        name: 'Die Janitscharen',
+        men: men,
+        troopClass: TroopClass.infanterie,
+        quality: TroopQuality.janitscharenGuard,
+        garrisonCounted: true,
+        janissary: true,
+        x: town.x,
+        y: town.y,
+      );
+      realm.troops.add(troop);
+      s.rebuildTroopMarkers();
+      return troop;
+    }
+
+    test('the guard disbands instead of following a realm merge', () {
+      final s = freshGame();
+      plantJanissaries(s, 2);
+      final events = <GameEvent>[];
+      mergeRealms(s, 3, 2, Rng(1), events);
+      expect(s.realm(3).troops.where((t) => t.janissary), isEmpty);
+      expect(s.realm(2).troops, isEmpty);
+      expect(events.any((e) => e.type == 'janissariesDisbanded'), isTrue);
+    });
+
+    test('the guard disbands when a replacement dynasty takes the slot', () {
+      final s = freshGame();
+      plantJanissaries(s, 2);
+      final events = <GameEvent>[];
+      foundReplacementDynasty(s, 2, Rng(1), events);
+      expect(s.realm(2).troops.where((t) => t.janissary), isEmpty);
+      expect(events.any((e) => e.type == 'janissariesDisbanded'), isTrue);
+    });
+
+    test('the guard disbands when another house inherits the realm', () {
+      final s = freshGame();
+      plantJanissaries(s, 2);
+      final rulerId = s.realm(2).rulerId!;
+      final ruler = s.persons[rulerId]!;
+      final events = <GameEvent>[];
+      // Reduce house 2 to its ruler so the death triggers the windfall
+      // inheritance to a random other living ruler.
+      for (final id in List.of(s.dynasty(2).memberIds)) {
+        if (id == rulerId) continue;
+        removePersonFromWorld(s, s.persons[id]!, Rng(7), events);
+      }
+      handleDeath(s, ruler, Rng(7), events);
+      expect(s.realm(2).rulerId, isNotNull);
+      expect(s.realm(2).troops.where((t) => t.janissary), isEmpty);
+      expect(events.any((e) => e.type == 'janissariesDisbanded'), isTrue);
+    });
+
+    test('normal succession within the same house keeps the guard', () {
+      final s = freshGame();
+      plantJanissaries(s, 2);
+      final rulerId = s.realm(2).rulerId!;
+      final ruler = s.persons[rulerId]!;
+      final events = <GameEvent>[];
+      // Give the ruler a same-house heir.
+      final heir = Person(
+        id: s.nextPersonId++,
+        name: 'Erbe',
+        age: 20,
+        dynasty: 2,
+        gender: 0,
+      );
+      s.persons[heir.id] = heir;
+      s.dynasty(2).memberIds.add(heir.id);
+      handleDeath(s, ruler, Rng(7), events);
+      expect(s.realm(2).rulerId, heir.id);
+      expect(s.realm(2).troops.where((t) => t.janissary), hasLength(1));
+      expect(events.any((e) => e.type == 'janissariesDisbanded'), isFalse);
     });
   });
 

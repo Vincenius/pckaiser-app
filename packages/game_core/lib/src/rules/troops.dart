@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import '../rng/rng.dart';
+import '../state/game_event.dart';
+import '../state/game_state.dart';
 import '../state/realm.dart';
 import '../state/troop.dart';
 
@@ -61,7 +63,11 @@ int retrainCost(Troop troop, int troopClass) =>
 bool canMergeTroops(Troop a, Troop b) =>
     a.troopClass == b.troopClass &&
     a.quality == b.quality &&
-    a.garrisonCounted == b.garrisonCounted;
+    a.garrisonCounted == b.garrisonCounted &&
+    // The §18.4 Ottoman guard must keep its flag: absorbing it into (or
+    // filling it with) a regular unit would let it slip past
+    // [disbandJanissaries] on the next change of control.
+    a.janissary == b.janissary;
 
 /// `[DESIGNED 2026-07-14, user report]` Per-turn levy limit for REGULAR
 /// recruits: at most 10% of the population (min. 100 men) can be levied
@@ -125,4 +131,33 @@ void releaseGarrison(Realm realm, int men) {
     town.garrison -= cut;
     left -= cut;
   }
+}
+
+/// §18.4 rework (deviation 2026-07-28): the Janissaries serve the house
+/// the Ottoman arrival installed — they never follow a new master. Call
+/// whenever [slot] passes to another house (cross-dynasty inheritance,
+/// realm merge/transfer, replacement dynasty): every `janissary`-flagged
+/// unit disbands with full garrison/marker bookkeeping and a public
+/// event, so a player can never "suddenly own" the elite guard (user
+/// report 2026-07-28).
+void disbandJanissaries(GameState state, int slot, List<GameEvent> events) {
+  final realm = state.realm(slot);
+  var men = 0;
+  var quartered = 0;
+  realm.troops.removeWhere((t) {
+    if (!t.janissary) return false;
+    men += t.men;
+    if (t.garrisonCounted) quartered += t.men;
+    return true;
+  });
+  if (men == 0) return;
+  releaseGarrison(realm, quartered);
+  state.rebuildTroopMarkers();
+  events.add(GameEvent(
+    year: state.year,
+    slot: slot,
+    type: 'janissariesDisbanded',
+    visibility: EventVisibility.public,
+    payload: {'men': men},
+  ));
 }

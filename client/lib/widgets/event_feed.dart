@@ -47,6 +47,7 @@ const _worldTypes = {
   'disease',
   'reformation',
   'ottomanInvasion',
+  'janissariesDisbanded',
   'merchantFounder',
   'crowned',
   'electionStarted',
@@ -322,7 +323,11 @@ String describeEvent(gc.GameEvent e) {
       'name': diseaseName(p['name'] as String? ?? '?'),
     }),
     'reformation' => tr('ev.reformation'),
-    'ottomanInvasion' => tr('ev.ottomanInvasion'),
+    'ottomanInvasion' => tr('ev.ottomanInvasion', {
+      'realm': realm,
+      'men': p['men'] ?? 1000,
+    }),
+    'janissariesDisbanded' => tr('ev.janissariesDisbanded', {'realm': realm}),
     'buildingDemolished' => tr('ev.buildingDemolished', {
       'realm': realm,
       'x': p['x'],
@@ -659,6 +664,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'religionChanged' ||
   'dynastyConverted' => (Icons.church, Colors.purple),
   'ottomanInvasion' => (Icons.warning, Colors.red),
+  'janissariesDisbanded' => (Icons.group_off, null),
   'assassination' => (Icons.dangerous, Colors.red),
   'assassinationSucceeded' => (Icons.dangerous, Colors.green),
   'assassinationFailed' => (Icons.report, Colors.orange),

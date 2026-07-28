@@ -6,6 +6,42 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-28 — Ottoman invasion reworked: Janissaries serve no new master
+
+User report: a player "suddenly had a troop of 1,000 men at level 50 he
+never created" (in a game with the Ottoman year set to 2040). Root
+cause: the §18.4 Ottoman invasion spawned "Die Janitscharen" (1,000
+men, quality 50) in the invaded realm — and that army reached human
+hands either directly (the event fell back to a human realm when no AI
+realm with towns existed) or years later, because troops travel with
+realms through inheritance (`dynastyExtinct` windfall, §15.4 spouse
+path) and merge/transfer. The feed line ("Eine riesige Reiterhorde
+dringt in das Reich ein!") named neither the realm nor the troop, so
+the army looked like corruption. It was also badly out of balance:
+never scaled with the Kartengröße worlds, and unbeatable in the field
+under the quality-beats-mass combat model.
+
+Rework (`_maybeOttomanInvasion`; deviation row in
+PROJECT_REQUIREMENTS.md): only an **AI** realm converts — no AI
+candidate → the event is skipped (Islam still unlocks via the §15.2
+year gates). The guard still garrisons the renamed capital but is
+scaled (2× the living realms' average standing army, clamped 200–1,000)
+at quality 10 (`TroopQuality.janitscharenGuard`; the legacy
+`janitscharen = 50` stays for combat math and old saves). New additive
+`Troop.janissary` flag + `disbandJanissaries` (rules/troops.dart): the
+guard disbands with full garrison/marker bookkeeping and a public
+`janissariesDisbanded` event whenever its realm passes to another house
+— hooks in cross-dynasty succession and windfall inheritance
+(`handleDeath`), ruler-aliasing extinction, `foundReplacementDynasty`
+and `mergeRealms` (covers "Reich übertragen"); war annexation already
+clears the loser's troops. `canMergeTroops` refuses to mix the flag
+away. Old saves' original 1,000-man troop deliberately stays unflagged
+— whoever holds it keeps it; only new spawns are loyalty-bound.
+`ev.ottomanInvasion` now names the realm and the guard's size. Tests:
+scaled-spawn assertions, never-hits-a-human, and four loyalty tests
+(merge / replacement / windfall disband, same-house succession keeps)
+in `events_test.dart`; 457 core + 41 client + 56 backend tests green.
+
 ## 2026-07-27 — Server match retention (daily `sweepStale`)
 
 Stale matches lived forever: a finished match was only deleted once

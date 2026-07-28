@@ -3,6 +3,7 @@ import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
+import 'troops.dart' show disbandJanissaries;
 
 /// "Reiche zusammenlegen" (§6.2): merge slot [sourceSlot] into
 /// [targetSlot] — both under the same control (the same player, even across
@@ -20,6 +21,11 @@ void mergeRealms(GameState state, int targetSlot, int sourceSlot, Rng rng,
     List<GameEvent> events, {bool emitEvent = true}) {
   final target = state.realm(targetSlot);
   final source = state.realm(sourceSlot);
+
+  // §18.4 rework: the Ottoman guard serves the house it was installed
+  // for — it disbands instead of marching into the absorbing realm. Must
+  // run BEFORE the towns move: the garrison release walks source.towns.
+  disbandJanissaries(state, sourceSlot, events);
 
   // Popularity: population-weighted average.
   if (target.population > 0) {
