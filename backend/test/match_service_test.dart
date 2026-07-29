@@ -1371,6 +1371,57 @@ void main() {
       await service.startMatch(matchId: m.id, playerId: host.id);
       expect(await service.publicMatches(), isEmpty);
     });
+
+    test('a full public room is not advertised (nothing left to join)',
+        () async {
+      final host = await service.registerPlayer(displayName: 'Host');
+      // Smallest world: 6 realms ⇒ 6 human seats at most.
+      final m = await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(
+            seed: 1, isPublic: true, mapSize: 'klein', realmCount: 6),
+        setup: setupFor('Host', 1),
+      );
+      for (var i = 2; i <= 6; i++) {
+        final p = await service.registerPlayer(displayName: 'Gast$i');
+        await service.joinMatch(
+            matchId: m.id, playerId: p.id, setup: setupFor('Gast$i', i));
+      }
+      expect(await service.publicMatches(), isEmpty,
+          reason: 'every seat is taken — a join could only fail');
+
+      // One seat frees up again → the room reappears.
+      final leaver = (await store.match(m.id))!.players.last.playerId;
+      await service.leaveMatch(matchId: m.id, playerId: leaver);
+      expect((await service.publicMatches()).map((e) => e['id']), [m.id]);
+    });
+  });
+
+  group('settings off the wire', () {
+    test('too-early event years never 500 the start — floored instead',
+        () async {
+      final a = await service.registerPlayer(displayName: 'Solo');
+      final match = await createStarted(
+        a.id,
+        MatchSettings(
+            seed: 42, reformationYear: 500, ottomanYear: 3, warStartYear: -1),
+        setupFor('Solo', 1),
+      );
+      expect(match.status, MatchStatus.active);
+      final state = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(state.reformationYear, minEventYear);
+      expect(state.ottomanYear, minEventYear);
+      expect(state.warStartYear, 1000);
+    });
+
+    test('zero/negative timers are floored at the parse boundary', () {
+      final settings = MatchSettings.fromJson(
+          {'turn_timeout_hours': 0, 'war_round_timeout': -5});
+      expect(settings.turnTimeoutHours, 1);
+      expect(settings.warRoundTimeoutSeconds, 60);
+      // No timer stays no timer.
+      expect(MatchSettings.fromJson({}).turnTimeoutHours, isNull);
+    });
   });
 
   group('idle kick', () {

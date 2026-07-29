@@ -6,6 +6,37 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-29 — Review of the public-rooms commit (e507ba1): two server fixes
+
+Requested review of "Add advanced game settings, public/private online
+rooms, idle-player kick" against the current tree. Two real flaws, both
+server-side; kick flow, idle-turn bookkeeping, succession option and the
+client lobby held up.
+
+1. **Public discovery list advertised full rooms.** `publicMatches()`
+   returned every waiting public match regardless of seats; a tap on a
+   full room could only produce joinMatch's "match is full" error. New
+   `seatCapFor(settings)` (= min(realmCount, 16), the exact joinMatch
+   cap, now shared) filters full rooms out of the list; they reappear
+   when a seat frees up.
+2. **Unvalidated wire settings could 500 — and permanently block — a
+   match start.** The commit forwarded `reformation_year` /
+   `ottoman_year` / `war_start_year` from the request body into
+   `GameSetup`, which THROWS below `minEventYear` — an out-of-range
+   value (doctored client; the app validates client-side) made every
+   `POST /start` a 500 with no way out. `_start` now floors the years
+   like `realmCountFor` floors the realm count. Same boundary hardening
+   for the timers: `turn_timeout_hours` / `war_round_timeout` ≤ 0 would
+   arm every deadline already expired (the sweep then auto-plays the
+   whole match); `MatchSettings.fromJson` floors them to 1 h / 60 s.
+
+No gameplay/rule change (degenerate inputs only) ⇒ no appVersion bump.
+Noted, deliberately unfixed: a kicked player's open match screen shows
+the raw 403 "player is not part of this match" instead of a friendly
+"you were removed" (same for leave from another device); the kick
+button repeats on each row of a multi-realm seat; the client mirrors
+the kick threshold 3 as a literal.
+
 ## 2026-07-28 — HUD split: realm identity over the map, actions in the row
 
 User report: "Anno 1400 — Mecklenburg" in the bottom status row was cut

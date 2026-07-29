@@ -32,6 +32,14 @@ int realmCountFor(MatchSettings settings) {
   return count.clamp(size.minRealmCount, size.maxRealmCount);
 }
 
+/// Human seats a match can hold: capped by the realms in play (and the
+/// original's 16). Guards joins AND keeps full rooms out of the public
+/// discovery list.
+int seatCapFor(MatchSettings settings) {
+  final realmCount = realmCountFor(settings);
+  return realmCount < 16 ? realmCount : 16;
+}
+
 class MatchService {
   MatchService(this._store, this._push, {DateTime Function()? clock})
       : _clock = clock ?? (() => DateTime.now().toUtc());
@@ -155,10 +163,7 @@ class MatchService {
       if (match.playerById(playerId) != null) {
         throw ApiException(400, 'player already joined');
       }
-      // Human seats are capped by the realms in play (and the original's
-      // 16 — realmCountFor never exceeds 30, small maps allow fewer).
-      final realmCount = realmCountFor(match.settings);
-      if (match.players.length >= (realmCount < 16 ? realmCount : 16)) {
+      if (match.players.length >= seatCapFor(match.settings)) {
         throw ApiException(400, 'match is full');
       }
       _seat(match, playerId, setup);
@@ -436,9 +441,19 @@ class MatchService {
             color: p.color,
           ),
       ],
-      reformationYear: match.settings.reformationYear,
-      ottomanYear: match.settings.ottomanYear,
-      warStartYear: match.settings.warStartYear,
+      // Event years come off the wire like the realm count — floored to the
+      // engine minimums, because GameSetup THROWS on a too-early year and
+      // that ArgumentError would 500 (and permanently block) every start of
+      // this match. The war-start year has no engine minimum; ≥1000 mirrors
+      // the client's shared validateEventYears rule.
+      reformationYear: match.settings.reformationYear < minEventYear
+          ? minEventYear
+          : match.settings.reformationYear,
+      ottomanYear: match.settings.ottomanYear < minEventYear
+          ? minEventYear
+          : match.settings.ottomanYear,
+      warStartYear:
+          match.settings.warStartYear < 1000 ? 1000 : match.settings.warStartYear,
       genderEqualSuccession: match.settings.genderEqualSuccession,
       suggestChildNames: match.settings.suggestChildNames,
       aiDifficulty: AiDifficulty.fromName(match.settings.aiDifficulty),
@@ -617,6 +632,9 @@ class MatchService {
     matches.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final result = <Map<String, dynamic>>[];
     for (final m in matches) {
+      // A full room can't be joined — advertising it would only hand every
+      // tapper a "match is full" error (same cap joinMatch enforces).
+      if (m.players.length >= seatCapFor(m.settings)) continue;
       final creatorId = m.players.isEmpty ? null : m.players.first.playerId;
       result.add({
         'id': m.id,

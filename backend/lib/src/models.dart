@@ -138,8 +138,19 @@ class MatchSettings {
   }) : seed = seed ?? Random.secure().nextInt(1 << 31);
 
   factory MatchSettings.fromJson(Map<String, dynamic> json) => MatchSettings(
-        turnTimeoutHours: json['turn_timeout_hours'] as int?,
-        warRoundTimeoutSeconds: json['war_round_timeout'] as int? ?? 600,
+        // Floored at the boundary: a zero/negative timer off the wire would
+        // arm every deadline already expired, so the sweep auto-plays the
+        // whole match. (Like ai_difficulty, normalized here so the views
+        // never echo a value the game doesn't actually play.)
+        turnTimeoutHours: switch (json['turn_timeout_hours'] as int?) {
+          null => null,
+          final h when h < 1 => 1,
+          final h => h,
+        },
+        warRoundTimeoutSeconds: switch (json['war_round_timeout'] as int? ?? 600) {
+          final s when s < 60 => 60,
+          final s => s,
+        },
         reformationYear: json['reformation_year'] as int? ?? 1020,
         ottomanYear: json['ottoman_year'] as int? ?? 1040,
         warStartYear: json['war_start_year'] as int? ?? 1010,
