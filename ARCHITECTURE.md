@@ -42,8 +42,10 @@ matches       (id TEXT PK,                -- 5-letter room code (legacy rows: UU
                settings JSONB,         -- e.g. {"turn_timeout_hours":24,"war_round_timeout":600,
                                        --        "reformation_year":1020,"ottoman_year":1040,
                                        --        "war_start_year":1010,"is_public":false,
-                                       --        "gender_equal_succession":true}
+                                       --        "gender_equal_succession":true,
+                                       --        "template":null}  -- matchmaking room type
                turn_deadline TIMESTAMPTZ, status TEXT,  -- waiting|active|finished
+               auto_start_at TIMESTAMPTZ,   -- matchmaking room: scheduled start
                expiry_warned_at TIMESTAMPTZ,  -- retention sweep: MATCH_EXPIRING warning sent
                winner UUID→players, created_at, updated_at)
 match_players (match_id, player_id, turn_order SMALLINT,
@@ -60,7 +62,7 @@ turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- au
 | POST | `/players` | Register device `{id, display_name, fcm_token}` |
 | PATCH | `/players/:id` | Update name / FCM token |
 | POST | `/matches` | Create `{player_id, settings}` → `status: waiting`, id = 5-letter room code. `settings.is_public` lists it publicly; `settings.gender_equal_succession` (default true) drops male-priority heirs + the §15.5 Islamic crisis |
-| GET | `/matches/public` | List open **public** waiting matches with their settings (turn timer, joined count, host) — the lobby's discovery list |
+| GET | `/matches/public` | List open **public** waiting matches with their settings (turn timer, joined count, host) — the lobby's discovery list. Matchmaking rooms come first, each with `seats` + `auto_start_at` |
 | POST | `/matches/:id/join` | Join a waiting match (≤ 16 seats, no fixed count) |
 | POST | `/matches/:id/start` | Start the match — creator (first seat) only |
 | POST | `/matches/:id/leave` | Leave/delete: waiting + creator → match deleted, otherwise the seat is freed; in a running game the realm falls to the AI (`playerLeft` event, awaited input auto-resolves like the timeout sweep); an empty match is deleted |
@@ -72,6 +74,38 @@ turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- au
 Match ids are 5-letter uppercase room codes (typed by hand; lowercase
 accepted on lookup). There is no fixed player count: players join via the
 code until the creator starts the game.
+
+### Matchmaking rooms (2026-07-29, user-designed)
+
+Playing online must not require knowing anybody: the server itself hosts a
+small, fixed set of permanently open matches (`backend/lib/src/match_templates.dart`),
+listed in the lobby's own "Offizielle Partien" section (`client/lib/widgets/room_card.dart`).
+
+| Room | Map / realms | Seats | Fallback start | Turn | War round |
+|------|--------------|-------|----------------|------|-----------|
+| Blitz | klein 48×28 / 12 | 4 | 24 h after the 3rd player | 12 h | 5 min |
+| Standard | mittel 64×36 / 20 | 6 | 24 h after the 4th player | 24 h | 10 min |
+| Kaiserreich | gross 80×44 / 30 | 10 | 24 h after the 6th player | 24 h | 10 min |
+
+- **Exactly one open room per template** (`ensureTemplateMatches`, run at
+  server start, in the minute sweep and right after a room starts) — several
+  open rooms of the same kind would split the players across half-full lobbies.
+- **Starts by itself**: full ⇒ immediately (in `joinMatch`); otherwise
+  `matches.auto_start_at` is armed when the `fallbackSeats`-th player joins
+  and `sweepTemplates()` starts the room at that instant with the humans it
+  has — the remaining realms simply stay AI. Dropping back below the
+  threshold disarms it again.
+- **No creator**: `settings.template` marks the room; `view`/`matchesForPlayer`
+  report `creator_id`/`is_creator` as null/false while it waits, `POST /start`
+  is rejected (400), and leaving only frees the seat — even an emptied room
+  stays open. Once the room is *running*, its first seat takes over the host
+  duty that outlives the start (kicking a permanently idle player).
+- The 7-day waiting retention applies to rooms too, and must: a room stuck
+  below its threshold for a week is deleted (no game state exists yet) and
+  immediately replaced by a fresh one, so a template can never be blocked.
+- `settings.template` is stripped from client-supplied settings in `api.dart`
+  (like the seed) — only the server hosts rooms. The key is stable and
+  language-neutral; the client localizes the display name.
 
 Responses `{data, error}`; 400 validation, 403 wrong turn, 404 missing.
 
@@ -179,4 +213,4 @@ Docker Compose (server + Postgres), Nginx reverse proxy + Let's Encrypt, daily `
 
 ## Out of Scope (V1 of online)
 
-Auth/JWT, matchmaking queue (share the room code), leaderboard, spectator mode, WebSockets (client polls on foreground).
+Auth/JWT, skill-based matchmaking/ranking, leaderboard, spectator mode, WebSockets (client polls on foreground).

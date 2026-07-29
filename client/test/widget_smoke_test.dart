@@ -8,6 +8,7 @@ import 'package:pckaiser/screens/online_setup_screen.dart';
 import 'package:pckaiser/screens/setup_screen.dart';
 import 'package:pckaiser/services/save_service.dart';
 import 'package:pckaiser/widgets/empire_card.dart';
+import 'package:pckaiser/widgets/room_card.dart';
 
 void main() {
   testWidgets('the app builds and shows the home screen', (tester) async {
@@ -181,6 +182,68 @@ void main() {
     // Dorf was cleared with it.
     expect(find.text(countryNames[13]), findsNothing);
     expect(find.text(cityNames[12]), findsNothing);
+  });
+
+  testWidgets('a matchmaking room card names the room and its start rule', (
+    tester,
+  ) async {
+    var joined = false;
+    // One entry as `GET /matches/public` sends it for a server-hosted room.
+    final room = {
+      'id': 'ABCDE',
+      'joined': 3,
+      'seats': 4,
+      'auto_start_at': DateTime.now()
+          .toUtc()
+          .add(const Duration(hours: 2, minutes: 30))
+          .toIso8601String(),
+      'settings': {
+        'template': 'blitz',
+        'map_size': 'klein',
+        'realm_count': 12,
+        'turn_timeout_hours': 12,
+        'war_round_timeout': 300,
+      },
+    };
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RoomCard(match: room, onJoin: () => joined = true),
+        ),
+      ),
+    );
+    expect(find.text('Blitz'), findsOneWidget);
+    expect(find.text('3/4'), findsOneWidget);
+    expect(
+      find.text('Klein · 12 Reiche · 12 h/Zug · 5 min Krieg'),
+      findsOneWidget,
+    );
+    // Enough players joined ⇒ the room shows its countdown, not the target.
+    expect(find.textContaining('Startet in 2 h'), findsOneWidget);
+    await tester.tap(find.text('Beitreten'));
+    expect(joined, isTrue);
+  });
+
+  testWidgets('a room below its threshold names the seats that start it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RoomCard(
+            match: const {
+              'id': 'ABCDE',
+              'joined': 1,
+              'seats': 10,
+              'settings': {'template': 'kaiserreich', 'map_size': 'gross'},
+            },
+            onJoin: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Kaiserreich'), findsOneWidget);
+    expect(find.text('Startet bei 10 Spielern'), findsOneWidget);
   });
 
   testWidgets('joining by code asks for the room code on the same screen', (

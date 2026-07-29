@@ -1397,6 +1397,206 @@ void main() {
     });
   });
 
+  group('matchmaking rooms', () {
+    /// The open room of [key], as the lobby sees it.
+    Future<Map<String, dynamic>> room(String key) async {
+      final list = await service.publicMatches();
+      return list.firstWhere((m) => (m['settings'] as Map)['template'] == key);
+    }
+
+    /// Seats [count] fresh players in [matchId] (slots 1..count).
+    Future<void> fill(String matchId, int count, {int from = 1}) async {
+      for (var i = from; i < from + count; i++) {
+        final p = await service.registerPlayer(displayName: 'Spieler$i');
+        await service.joinMatch(
+            matchId: matchId, playerId: p.id, setup: setupFor('Spieler$i', i));
+      }
+    }
+
+    test('one open room per template, matchmaking rooms listed first',
+        () async {
+      final host = await service.registerPlayer(displayName: 'Host');
+      await service.createMatch(
+        playerId: host.id,
+        settings: MatchSettings(seed: 1, isPublic: true),
+        setup: setupFor('Host', 1),
+      );
+      await service.ensureTemplateMatches();
+      // A second call must not open duplicates — one room per kind is the
+      // whole point (else the players split across half-full rooms).
+      await service.ensureTemplateMatches();
+
+      final list = await service.publicMatches();
+      expect(
+        [for (final m in list) (m['settings'] as Map)['template']],
+        ['blitz', 'standard', 'kaiserreich', null],
+      );
+      expect(list.first['seats'], 4);
+      expect((list.first['settings'] as Map)['map_size'], 'klein');
+      expect((list.first['settings'] as Map)['turn_timeout_hours'], 12);
+      expect((list.first['settings'] as Map)['war_round_timeout'], 300);
+      expect(list[2]['seats'], 10);
+      expect((list[2]['settings'] as Map)['realm_count'], 30);
+    });
+
+    test('a filled room starts itself and is replaced by a fresh one',
+        () async {
+      await service.ensureTemplateMatches();
+      final blitz = (await room('blitz'))['id'] as String;
+      await fill(blitz, 4);
+
+      final started = (await store.match(blitz))!;
+      expect(started.status, MatchStatus.active);
+      expect(started.stateJson, isNotNull);
+
+      final replacement = await room('blitz');
+      expect(replacement['id'], isNot(blitz));
+      expect(replacement['joined'], 0);
+    });
+
+    test('an unfilled room starts on its fallback deadline', () async {
+      var now = DateTime.utc(2026, 7, 29, 12);
+      final store = InMemoryStore();
+      final service = MatchService(store, LogPushService(), clock: () => now);
+      await service.ensureTemplateMatches();
+      final list = await service.publicMatches();
+      final blitz = list.firstWhere(
+          (m) => (m['settings'] as Map)['template'] == 'blitz')['id'] as String;
+
+      // Two players are not enough to schedule anything yet.
+      for (var i = 1; i <= 2; i++) {
+        final p = await service.registerPlayer(displayName: 'S$i');
+        await service.joinMatch(
+            matchId: blitz, playerId: p.id, setup: setupFor('S$i', i));
+      }
+      expect((await store.match(blitz))!.autoStartAt, isNull);
+
+      // The third arms the 24 h fallback start.
+      final third = await service.registerPlayer(displayName: 'S3');
+      await service.joinMatch(
+          matchId: blitz, playerId: third.id, setup: setupFor('S3', 3));
+      expect((await store.match(blitz))!.autoStartAt,
+          DateTime.utc(2026, 7, 30, 12));
+
+      now = DateTime.utc(2026, 7, 30, 11);
+      expect(await service.sweepTemplates(), 0,
+          reason: 'the deadline has not passed yet');
+      expect((await store.match(blitz))!.status, MatchStatus.waiting);
+
+      now = DateTime.utc(2026, 7, 30, 13);
+      expect(await service.sweepTemplates(), 1);
+      final started = (await store.match(blitz))!;
+      expect(started.status, MatchStatus.active);
+      expect(started.players, hasLength(3),
+          reason: 'the remaining realms simply stay AI');
+
+      // And the room is replaced, so the lobby keeps offering a Blitz game.
+      final open = await service.publicMatches();
+      expect(
+        open.where((m) => (m['settings'] as Map)['template'] == 'blitz'),
+        hasLength(1),
+      );
+    });
+
+    test('leaving a waiting room frees the seat and disarms the start',
+        () async {
+      await service.ensureTemplateMatches();
+      final standard = (await room('standard'))['id'] as String;
+      await fill(standard, 4);
+      expect((await store.match(standard))!.autoStartAt, isNotNull);
+
+      final last = (await store.match(standard))!.players.last.playerId;
+      final deleted =
+          await service.leaveMatch(matchId: standard, playerId: last);
+      expect(deleted, isFalse, reason: 'the room belongs to the server');
+      final left = (await store.match(standard))!;
+      expect(left.players, hasLength(3));
+      expect(left.autoStartAt, isNull,
+          reason: 'back below the threshold that armed it');
+
+      // Even the FIRST seat leaving must not delete the room (an ordinary
+      // waiting match dies with its creator — a matchmaking room has none).
+      for (final seat in [...left.players]) {
+        expect(
+          await service.leaveMatch(
+              matchId: standard, playerId: seat.playerId),
+          isFalse,
+        );
+      }
+      expect((await store.match(standard))!.players, isEmpty);
+    });
+
+    test('a matchmaking room cannot be started or deleted by hand', () async {
+      await service.ensureTemplateMatches();
+      final id = (await room('kaiserreich'))['id'] as String;
+      final p = await service.registerPlayer(displayName: 'Erste');
+      await service.joinMatch(
+          matchId: id, playerId: p.id, setup: setupFor('Erste', 1));
+
+      await expectLater(
+        service.startMatch(matchId: id, playerId: p.id),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'status', 400)),
+      );
+      // The lobby must not offer this seat a "delete game" button either.
+      final view = await service.view(id, p.id);
+      expect(view['creator_id'], isNull);
+      expect(view['seats'], 10);
+      final mine = await service.matchesForPlayer(p.id);
+      expect(mine.single['is_creator'], isFalse);
+      expect(mine.single['template'], 'kaiserreich');
+    });
+
+    test('a template key from a later build degrades to an ordinary match',
+        () async {
+      // A stored room whose template this build no longer knows (a removed
+      // kind). The server plays it as an ordinary match — the wire must
+      // say so too, or the client would render a room the server would let
+      // its creator start and delete.
+      final host = await service.registerPlayer(displayName: 'Alt');
+      await store.saveMatch(MatchRecord(
+        id: 'RETRO',
+        settings: MatchSettings(seed: 5, isPublic: true, template: 'retired'),
+        players: [],
+      ));
+      await service.joinMatch(
+          matchId: 'RETRO', playerId: host.id, setup: setupFor('Alt', 1));
+
+      final mine = await service.matchesForPlayer(host.id);
+      final row = mine.singleWhere((m) => m['id'] == 'RETRO');
+      expect(row['template'], isNull);
+      expect(row['is_creator'], isTrue);
+      final open = await service.publicMatches();
+      final listed = open.singleWhere((m) => m['id'] == 'RETRO');
+      expect((listed['settings'] as Map).containsKey('template'), isFalse);
+      final view = await service.view('RETRO', host.id);
+      expect(view['creator_id'], host.id);
+      expect((view['settings'] as Map).containsKey('template'), isFalse);
+
+      await service.startMatch(matchId: 'RETRO', playerId: host.id);
+      expect((await store.match('RETRO'))!.status, MatchStatus.active);
+    });
+
+    test('a client cannot host a room by claiming a template key', () async {
+      final host = await service.registerPlayer(displayName: 'Schlau');
+      // The API strips `template` from client settings (api.dart) — the
+      // service itself only ever sees it from a template room.
+      final settings = MatchSettings.fromJson({
+        'is_public': true,
+        'map_size': 'klein',
+      }..remove('template'));
+      final m = await service.createMatch(
+        playerId: host.id,
+        settings: settings,
+        setup: setupFor('Schlau', 1),
+      );
+      expect((await store.match(m.id))!.settings.template, isNull);
+      // …and stays a normal match: its creator starts and deletes it.
+      await service.startMatch(matchId: m.id, playerId: host.id);
+      expect((await store.match(m.id))!.status, MatchStatus.active);
+    });
+  });
+
   group('settings off the wire', () {
     test('too-early event years never 500 the start — floored instead',
         () async {

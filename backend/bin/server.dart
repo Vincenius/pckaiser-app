@@ -34,6 +34,14 @@ Future<void> main() async {
     } on Object catch (e) {
       print('[sweep] failed: $e');
     }
+    // Matchmaking rooms: start the ones past their fallback deadline and
+    // keep exactly one open room per template (match_templates.dart).
+    try {
+      final started = await service.sweepTemplates();
+      if (started > 0) print('[rooms] auto-started $started room(s)');
+    } on Object catch (e) {
+      print('[rooms] failed: $e');
+    }
   });
 
   Future<void> retention() async {
@@ -47,6 +55,11 @@ Future<void> main() async {
 
   unawaited(retention());
   Timer.periodic(const Duration(hours: 24), (_) => retention());
+
+  // Open the matchmaking rooms right away — the lobby must offer them from
+  // the first request, not a minute after the server came up.
+  unawaited(service.ensureTemplateMatches().catchError(
+      (Object e) => print('[rooms] initial setup failed: $e')));
 
   final handler =
       const Pipeline().addMiddleware(logRequests()).addHandler(api.handler);

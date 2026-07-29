@@ -79,6 +79,10 @@ class Api {
         final settingsJson =
             (body['settings'] as Map?)?.cast<String, dynamic>() ?? {};
         settingsJson.remove('seed');
+        // Matchmaking rooms are server-hosted (no creator, automatic start,
+        // never deleted by leaving) — a client must not be able to open one
+        // by claiming a template key.
+        settingsJson.remove('template');
         // A wrong field TYPE inside a well-formed body is a client error —
         // report 400, not the catch-all 500.
         final MatchSettings settings;

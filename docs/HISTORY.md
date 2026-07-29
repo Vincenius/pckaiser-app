@@ -6,6 +6,32 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-07-29 — Matchmaking rooms: server-hosted lobbies without a room code
+
+Joining an online game required knowing somebody's room code (or finding a
+player-hosted public game). The server now permanently hosts three open
+matches — **Blitz** (klein, 4 seats, 12 h/turn, 5 min war), **Standard**
+(mittel, 6 seats, 24 h/10 min) and **Kaiserreich** (gross, 10 seats,
+24 h/10 min) — configuration and names chosen by the user. Details in
+ARCHITECTURE.md "Matchmaking rooms"; the shape of the decision:
+
+- **Exactly one open room per template.** With a small player base, several
+  open rooms of the same kind are the classic matchmaking death: every one
+  sits at 1/4 and none ever fills. A started room is replaced immediately
+  (`ensureTemplateMatches`), so the lobby always shows exactly one of each.
+- **Start guarantee instead of a seat requirement.** Full ⇒ start; otherwise
+  the room starts 24 h after the 3rd/4th/6th player joined, with the empty
+  seats staying AI. Without it the 10-seat room would never start.
+- **No host.** A room has no creator: nobody starts it by hand, and leaving
+  frees only the seat (an ordinary waiting match still dies with its
+  creator). The first seat inherits the kick right once the game runs.
+- **Open point (raised, deliberately not implemented):** the fallback timer
+  only arms at the 3rd/4th/6th player, so a room that never gets past 2
+  players never starts on its own. The 7-day waiting retention is the only
+  release valve — it deletes such a room and `ensureTemplateMatches` opens a
+  fresh one. A second, longer fallback (e.g. "≥2 players ⇒ start after 48 h")
+  would close it properly.
+
 ## 2026-07-29 — Review of the public-rooms commit (e507ba1): two server fixes
 
 Requested review of "Add advanced game settings, public/private online

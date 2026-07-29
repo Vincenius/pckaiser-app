@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:game_core/game_core.dart';
 
+import 'match_templates.dart';
 import 'models.dart';
 import 'push_service.dart';
 import 'store.dart';
@@ -37,7 +38,11 @@ int realmCountFor(MatchSettings settings) {
 /// discovery list.
 int seatCapFor(MatchSettings settings) {
   final realmCount = realmCountFor(settings);
-  return realmCount < 16 ? realmCount : 16;
+  final cap = realmCount < 16 ? realmCount : 16;
+  // A matchmaking room never seats more than its start target — reaching
+  // the target starts the match, so the target IS its cap.
+  final template = templateFor(settings);
+  return template != null && template.seats < cap ? template.seats : cap;
 }
 
 class MatchService {
@@ -133,13 +138,8 @@ class MatchService {
     required Map<String, dynamic> setup,
   }) async {
     await _requirePlayer(playerId);
-    // Retry on the rare code collision with an existing match.
-    var id = matchCode();
-    while (await _store.match(id) != null) {
-      id = matchCode();
-    }
     final match = MatchRecord(
-      id: id,
+      id: await _freshMatchId(),
       settings: settings,
       players: [],
     );
@@ -148,13 +148,85 @@ class MatchService {
     return match;
   }
 
-  /// Joins a waiting match (up to 16 human seats).
+  /// An unused room code — retries on the rare collision.
+  Future<String> _freshMatchId() async {
+    var id = matchCode();
+    while (await _store.match(id) != null) {
+      id = matchCode();
+    }
+    return id;
+  }
+
+  // --- Matchmaking rooms (match_templates.dart) --------------------------
+
+  /// Lock key for the room bookkeeping — creating the replacement room must
+  /// not race a second creator (two rooms of the same kind would split the
+  /// players, which is exactly what the templates exist to prevent).
+  static const String _templatesKey = 'templates';
+
+  /// Tops the lobby up so every [matchTemplates] entry has exactly one open
+  /// room. Called at server start, from the minute sweep and right after a
+  /// room started — a started room is replaced immediately.
+  Future<void> ensureTemplateMatches() {
+    return _locked(_templatesKey, () async {
+      final open = await _store.publicWaitingMatches();
+      final have = {
+        for (final m in open)
+          if (m.settings.template != null) m.settings.template,
+      };
+      for (final template in matchTemplates) {
+        if (have.contains(template.key)) continue;
+        await _store.saveMatch(MatchRecord(
+          id: await _freshMatchId(),
+          settings: template.newSettings(),
+          players: [],
+        ));
+      }
+    });
+  }
+
+  /// Starts every matchmaking room whose fallback deadline has passed (it
+  /// never filled up, so it starts with the humans it has and AI for the
+  /// rest), then tops the lobby up. Returns the number of rooms started.
+  Future<int> sweepTemplates() async {
+    final now = _clock();
+    var started = 0;
+    for (final candidate in await _store.publicWaitingMatches()) {
+      if (templateFor(candidate.settings) == null) continue;
+      if (candidate.autoStartAt == null ||
+          candidate.autoStartAt!.isAfter(now)) {
+        continue;
+      }
+      final didStart = await _locked(candidate.id, () async {
+        // Re-read under the lock like the other sweeps: a join between the
+        // scan and the lock may have filled (and started) the room already.
+        final match = await _store.match(candidate.id);
+        if (match == null ||
+            match.status != MatchStatus.waiting ||
+            match.players.isEmpty ||
+            match.autoStartAt == null ||
+            match.autoStartAt!.isAfter(now)) {
+          return false;
+        }
+        await _start(match);
+        match.updatedAt = _clock();
+        await _store.saveMatch(match);
+        return true;
+      });
+      if (didStart) started++;
+    }
+    await ensureTemplateMatches();
+    return started;
+  }
+
+  /// Joins a waiting match (up to 16 human seats). A matchmaking room
+  /// starts on its own once full — and is replaced by a fresh open room.
   Future<MatchRecord> joinMatch({
     required String matchId,
     required String playerId,
     required Map<String, dynamic> setup,
-  }) {
-    return _locked(_canonicalId(matchId), () async {
+  }) async {
+    final match = await _locked(_canonicalId(matchId), () async {
       await _requirePlayer(playerId);
       final match = await _requireMatch(matchId);
       if (match.status != MatchStatus.waiting) {
@@ -167,16 +239,34 @@ class MatchService {
         throw ApiException(400, 'match is full');
       }
       _seat(match, playerId, setup);
-      // Legacy fixed-size matches (pre room codes) still auto-start when
-      // the last announced seat fills.
-      if (match.humanCount != null &&
+      final template = templateFor(match.settings);
+      if (template != null) {
+        if (match.players.length >= template.seats) {
+          // Full — the room starts at once (nobody has to press anything).
+          await _start(match);
+        } else if (match.players.length >= template.fallbackSeats &&
+            match.autoStartAt == null) {
+          // Enough players to be worth playing: from here the room starts
+          // on a deadline even if the last seats stay empty.
+          match.autoStartAt = _clock().add(MatchTemplate.fallbackDelay);
+        }
+      } else if (match.humanCount != null &&
           match.players.length == match.humanCount) {
+        // Legacy fixed-size matches (pre room codes) still auto-start when
+        // the last announced seat fills.
         await _start(match);
       }
       match.updatedAt = _clock();
       await _store.saveMatch(match);
       return match;
     });
+    // The lobby must always offer an open room of every kind — replace one
+    // that just started (outside the match lock, it takes the room lock).
+    if (match.status != MatchStatus.waiting &&
+        templateFor(match.settings) != null) {
+      await ensureTemplateMatches();
+    }
+    return match;
   }
 
   /// Starts a waiting match — only the creator (first seat) may. The
@@ -191,6 +281,11 @@ class MatchService {
       final match = await _requireMatch(matchId);
       if (match.status != MatchStatus.waiting) {
         throw ApiException(400, 'match already started');
+      }
+      // A matchmaking room has no host: it starts when it is full or when
+      // its fallback deadline passes, never by hand.
+      if (templateFor(match.settings) != null) {
+        throw ApiException(400, 'this match starts automatically');
       }
       if (match.players.isEmpty || match.players.first.playerId != playerId) {
         throw ApiException(403, 'only the creator can start the match');
@@ -221,6 +316,25 @@ class MatchService {
     final seat = match.playerById(playerId);
     if (seat == null) {
       throw ApiException(403, 'player is not part of this match');
+    }
+
+    final template = templateFor(match.settings);
+    if (match.status == MatchStatus.waiting && template != null) {
+      // A matchmaking room belongs to the server, not to its first joiner:
+      // leaving only frees the seat, and even an emptied room stays open
+      // for the next player instead of being deleted.
+      match.players.remove(seat);
+      for (var i = 0; i < match.players.length; i++) {
+        match.players[i].turnOrder = i;
+      }
+      // Back below the threshold that armed the fallback start — disarm it,
+      // or the room would start understaffed at the old deadline.
+      if (match.players.length < template.fallbackSeats) {
+        match.autoStartAt = null;
+      }
+      match.updatedAt = _clock();
+      await _store.saveMatch(match);
+      return false;
     }
 
     if (match.status == MatchStatus.waiting &&
@@ -428,6 +542,8 @@ class MatchService {
   /// All seats filled: build the world and run to the first awaited human
   /// (mirrors the client's LocalGameSession.create).
   Future<void> _start(MatchRecord match) async {
+    // A scheduled start (matchmaking room) is spent once the game runs.
+    match.autoStartAt = null;
     final humans = [...match.players]
       ..sort((a, b) => a.turnOrder.compareTo(b.turnOrder));
     final setup = GameSetup(
@@ -472,6 +588,17 @@ class MatchService {
 
   // --- Views -------------------------------------------------------------
 
+  /// Client-facing settings JSON. A stored template key this build no
+  /// longer knows degrades the match to an ordinary one everywhere on the
+  /// server (see [templateFor]) — withhold it, or the client would present
+  /// a room the server no longer treats as one (no `seats`, creator-owned,
+  /// deletable) as a matchmaking room.
+  Map<String, dynamic> _clientSettings(MatchSettings settings) {
+    final json = settings.toJson(includeSeed: false);
+    if (templateFor(settings) == null) json.remove('template');
+    return json;
+  }
+
   /// The match as the requesting participant may see it: metadata plus
   /// the state filtered through `visibleStateFor` — the authoritative
   /// document never leaves the server. [clientAppVersion] is the build the
@@ -501,8 +628,19 @@ class MatchService {
       'id': match.id,
       'status': match.status.name,
       'human_count': match.humanCount,
-      // The first seat is the creator — they alone may start the match.
-      'creator_id': match.players.isEmpty ? null : match.players.first.playerId,
+      // The first seat is the creator — they alone may start the match. A
+      // WAITING matchmaking room has no creator at all (it starts on its
+      // own); once it runs, its first joiner takes over the host duties
+      // that outlive the start, i.e. kicking a permanently idle seat.
+      'creator_id': match.players.isEmpty ||
+              (match.status == MatchStatus.waiting &&
+                  templateFor(match.settings) != null)
+          ? null
+          : match.players.first.playerId,
+      // Matchmaking room: how many seats start it, and when it starts even
+      // if it never fills (null = not scheduled yet).
+      'seats': templateFor(match.settings)?.seats,
+      'auto_start_at': match.autoStartAt?.toIso8601String(),
       'players': [
         for (final p in match.players)
           {
@@ -521,7 +659,7 @@ class MatchService {
             'idle_turns': p.idleTurns,
           },
       ],
-      'settings': match.settings.toJson(includeSeed: false),
+      'settings': _clientSettings(match.settings),
       'turn_deadline': match.turnDeadline?.toIso8601String(),
       'winner': match.winnerPlayerId,
       // The realm the client should play/show this turn (see [playSlot]).
@@ -598,9 +736,20 @@ class MatchService {
         'human_count': m.humanCount,
         'joined': m.players.length,
         // Creator = first seat; a waiting match is deleted (not left)
-        // by its creator — drives the lobby's delete/leave labels.
-        'is_creator':
-            m.players.isNotEmpty && m.players.first.playerId == playerId,
+        // by its creator — drives the lobby's delete/leave labels. A
+        // waiting matchmaking room has no creator (see [view]): leaving it
+        // only frees the seat, so the row must not offer "delete".
+        'is_creator': m.players.isNotEmpty &&
+            m.players.first.playerId == playerId &&
+            !(m.status == MatchStatus.waiting &&
+                templateFor(m.settings) != null),
+        // Matchmaking room: type, start target and scheduled fallback start.
+        // Via [templateFor], not the raw stored key: a template removed in
+        // a later build degrades to an ordinary match server-side, and the
+        // client must render it as one (delete/leave labels, no seat bar).
+        'template': templateFor(m.settings)?.key,
+        'seats': templateFor(m.settings)?.seats,
+        'auto_start_at': m.autoStartAt?.toIso8601String(),
         'turn_deadline': m.turnDeadline?.toIso8601String(),
         'your_turn': awaited == playerId,
         // Whose move it is — lets the lists say "Anna ist am Zug" instead
@@ -629,7 +778,18 @@ class MatchService {
   /// who hosts it) but never the game state. Newest first.
   Future<List<Map<String, dynamic>>> publicMatches() async {
     final matches = await _store.publicWaitingMatches();
-    matches.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    // Matchmaking rooms first, in their fixed lobby order (see
+    // [matchTemplates]); ordinary player-hosted games after them, newest
+    // first. The client renders the two groups as separate sections.
+    int rank(MatchRecord m) {
+      final template = templateFor(m.settings);
+      return template == null ? matchTemplates.length : matchTemplates.indexOf(template);
+    }
+
+    matches.sort((a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      return byRank != 0 ? byRank : b.createdAt.compareTo(a.createdAt);
+    });
     final result = <Map<String, dynamic>>[];
     for (final m in matches) {
       // A full room can't be joined — advertising it would only hand every
@@ -640,7 +800,11 @@ class MatchService {
         'id': m.id,
         'status': m.status.name,
         'joined': m.players.length,
-        'settings': m.settings.toJson(includeSeed: false),
+        'settings': _clientSettings(m.settings),
+        // Matchmaking room: seats that start it, and the scheduled fallback
+        // start once enough players are in (null = not scheduled yet).
+        'seats': templateFor(m.settings)?.seats,
+        'auto_start_at': m.autoStartAt?.toIso8601String(),
         'creator_name': creatorId == null
             ? null
             : (await _store.player(creatorId))?.displayName ??
@@ -975,6 +1139,11 @@ class MatchService {
         switch (match.status) {
           case MatchStatus.waiting:
             if (age < waitingRetention) return false;
+            // Matchmaking rooms take this path too, and should: a room
+            // nobody joined for a week is stuck below its start threshold
+            // and would block its template forever. Deleting it costs
+            // nothing (no game state yet) and [ensureTemplateMatches]
+            // immediately opens a fresh one in its place.
             await _store.deleteMatch(match.id);
             return true;
           case MatchStatus.finished:

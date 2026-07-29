@@ -12,6 +12,7 @@ import '../services/online_service.dart';
 import '../state/game_controller.dart';
 import '../widgets/decisions.dart' show formatWarStartTime, promptDecisionsFor;
 import '../widgets/event_feed.dart' show showDramaPopupsFor;
+import '../widgets/room_card.dart' show roomIcon, roomStartLine, roomTitle;
 import '../widgets/update_banner.dart';
 import 'game_screen.dart';
 import 'map_viewer_screen.dart';
@@ -322,6 +323,11 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
     final updateRequired = view['update_required'] == true;
     final myId = widget.service.playerId;
     final started = status != 'waiting';
+    // Matchmaking room (widgets/room_card.dart): server-hosted, no host to
+    // wait for — it starts when it is full or when its deadline passes.
+    final template =
+        ((view['settings'] as Map?)?['template']) as String?;
+    final roomSeats = view['seats'] as int? ?? 0;
     final awaitedPid = view['awaited_player_id'];
     // War context for the status card (see [_activeTitle]); the deadline
     // label below also flips to "Kriegsbeginn" during the preparation.
@@ -385,11 +391,17 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         Card(
           child: ListTile(
             leading: Icon(switch (status) {
+              'waiting' when template != null => roomIcon(template),
               'waiting' => Icons.hourglass_top,
               'active' => yourTurn ? Icons.play_circle : Icons.schedule,
               _ => Icons.emoji_events,
             }),
             title: Text(switch (status) {
+              // A template key only a NEWER server knows has no local name —
+              // fall back like RoomCard does instead of rendering "null".
+              'waiting' when template != null =>
+                '${roomTitle(template) ?? tr('online.openGame')} · '
+                    '${tr('online.seatsOf', {'n': players.length, 'max': roomSeats})}',
               'waiting' => tr('online.waitingJoined', {'n': players.length}),
               'active' => _activeTitle(
                   yourTurn: yourTurn,
@@ -402,7 +414,13 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
                     ? tr('online.victoryFinished')
                     : tr('online.gameFinished'),
             }),
-            subtitle: view['turn_deadline'] == null
+            subtitle: status == 'waiting' && template != null
+                ? Text(roomStartLine(
+                    joined: players.length,
+                    seats: roomSeats,
+                    autoStartAt: view['auto_start_at'] as String?,
+                  ))
+                : view['turn_deadline'] == null
                 ? null
                 : Text(
                     '${warPreparing ? tr('online.warStartLabel') : tr('online.turnDeadlineLabel')}: '
@@ -510,7 +528,17 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
               ),
             ),
         ],
-        if (status == 'waiting' &&
+        // A matchmaking room has no host to wait for — say what actually
+        // makes it start (the server sends no creator_id for one).
+        if (status == 'waiting' && template != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              tr('online.roomWaiting', {'n': roomSeats}),
+              textAlign: TextAlign.center,
+            ),
+          )
+        else if (status == 'waiting' &&
             view['creator_id'] != widget.service.playerId)
           Padding(
             padding: const EdgeInsets.only(top: 8),

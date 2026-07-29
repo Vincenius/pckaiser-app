@@ -8,6 +8,7 @@ import '../services/api_client.dart';
 import '../services/match_setup.dart';
 import '../services/online_service.dart';
 import '../widgets/decisions.dart' show formatWarStartTime;
+import '../widgets/room_card.dart';
 import 'online_match_screen.dart';
 import 'online_setup_screen.dart';
 
@@ -26,6 +27,12 @@ class OnlineScreen extends StatefulWidget {
 class _OnlineScreenState extends State<OnlineScreen> {
   OnlineService? _service;
   List<dynamic> _matches = const [];
+
+  /// Server-hosted matchmaking rooms (`settings.template`) — always open,
+  /// joined without a room code. Shown in their own section.
+  List<dynamic> _rooms = const [];
+
+  /// Player-hosted public games.
   List<dynamic> _publicMatches = const [];
   bool _loading = true;
   String? _error;
@@ -82,11 +89,21 @@ class _OnlineScreenState extends State<OnlineScreen> {
       if (!mounted) return;
       // Hide public games the player already joined (they appear above).
       final mine = {for (final m in matches.cast<Map>()) m['id']};
+      final open = [
+        for (final m in public.cast<Map>())
+          if (!mine.contains(m['id'])) m,
+      ];
       setState(() {
         _matches = matches;
+        // Matchmaking rooms are hosted by the server (they carry a template
+        // key) and get their own, visually distinct section.
+        _rooms = [
+          for (final m in open)
+            if ((m['settings'] as Map?)?['template'] != null) m,
+        ];
         _publicMatches = [
-          for (final m in public.cast<Map>())
-            if (!mine.contains(m['id'])) m,
+          for (final m in open)
+            if ((m['settings'] as Map?)?['template'] == null) m,
         ];
         _error = null;
         _loading = false;
@@ -407,12 +424,22 @@ class _OnlineScreenState extends State<OnlineScreen> {
           for (final m in _matches.cast<Map>())
             ListTile(
               leading: Icon(switch (m['status'] as String) {
+                // A matchmaking room keeps its own icon while it waits, so
+                // it is recognizable in the player's list too.
+                'waiting' when m['template'] != null => roomIcon(
+                  m['template'] as String?,
+                ),
                 'waiting' => Icons.hourglass_top,
                 'active' =>
                   m['your_turn'] == true ? Icons.play_circle : Icons.schedule,
                 _ => Icons.emoji_events,
               }),
               title: Text(switch (m['status'] as String) {
+                // A template key only a NEWER server knows has no local
+                // name — fall back like RoomCard instead of showing "null".
+                'waiting' when m['template'] != null =>
+                  '${roomTitle(m['template'] as String?) ?? tr('online.openGame')} · '
+                      '${tr('online.seatsOf', {'n': m['joined'], 'max': m['seats']})}',
                 'waiting' => tr('online.waitingJoined', {'n': m['joined']}),
                 'active' =>
                   m['your_turn'] == true
@@ -431,8 +458,13 @@ class _OnlineScreenState extends State<OnlineScreen> {
                 _ => tr('online.finished'),
               }),
               subtitle: Text(
-                '${tr('onlineRoom', {'id': m['id']})}'
-                '${m['turn_deadline'] != null ? ' — ${m['war_preparing'] == true ? tr('online.warStartLabel') : tr('online.deadlineLabel')} ${formatTimestamp(m['turn_deadline'] as String)}' : ''}',
+                m['status'] == 'waiting' && m['template'] != null
+                    // Waiting matchmaking room: when it starts matters more
+                    // than the (rarely shared) room code.
+                    ? '${tr('onlineRoom', {'id': m['id']})} — '
+                          '${roomStartLine(joined: m['joined'] as int? ?? 0, seats: m['seats'] as int? ?? 0, autoStartAt: m['auto_start_at'] as String?)}'
+                    : '${tr('onlineRoom', {'id': m['id']})}'
+                          '${m['turn_deadline'] != null ? ' — ${m['war_preparing'] == true ? tr('online.warStartLabel') : tr('online.deadlineLabel')} ${formatTimestamp(m['turn_deadline'] as String)}' : ''}',
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -465,6 +497,23 @@ class _OnlineScreenState extends State<OnlineScreen> {
               ),
               onTap: () => _open(m['id'] as String),
             ),
+          // Server-hosted rooms: no code, no host, automatic start — set
+          // apart from the player-hosted games below (widgets/room_card.dart).
+          if (_rooms.isNotEmpty) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                tr('online.officialGames'),
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            for (final m in _rooms.cast<Map>())
+              RoomCard(
+                match: m.cast<String, dynamic>(),
+                onJoin: () => _joinPublic(m['id'] as String),
+              ),
+          ],
           if (_publicMatches.isNotEmpty) ...[
             const Divider(height: 1),
             Padding(

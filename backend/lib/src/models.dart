@@ -134,6 +134,7 @@ class MatchSettings {
     this.mapSize = 'gross',
     this.realmCount,
     this.isPublic = false,
+    this.template,
     int? seed,
   }) : seed = seed ?? Random.secure().nextInt(1 << 31);
 
@@ -172,6 +173,10 @@ class MatchSettings {
         },
         realmCount: json['realm_count'] as int?,
         isPublic: json['is_public'] as bool? ?? false,
+        // Additive (matchmaking rooms): ordinary player-hosted matches
+        // carry no template. Never accepted off the wire — the API strips
+        // it like the seed, so only the server can host a template room.
+        template: json['template'] as String?,
         seed: json['seed'] as int?,
       );
 
@@ -214,6 +219,12 @@ class MatchSettings {
   /// join, not only those who know the room code. Default private.
   final bool isPublic;
 
+  /// Matchmaking-room type this match was opened as ('blitz' | 'standard' |
+  /// 'kaiserreich', see `match_templates.dart`), or null for an ordinary
+  /// player-hosted match. Template rooms are server-hosted: they have no
+  /// creator, start on their own and are replaced when they do.
+  final String? template;
+
   final int seed;
 
   /// [includeSeed] is for persistence only. Client-facing views must pass
@@ -232,6 +243,7 @@ class MatchSettings {
         'map_size': mapSize,
         if (realmCount != null) 'realm_count': realmCount,
         'is_public': isPublic,
+        if (template != null) 'template': template,
         if (includeSeed) 'seed': seed,
       };
 }
@@ -249,6 +261,7 @@ class MatchRecord {
     this.status = MatchStatus.waiting,
     this.stateJson,
     this.turnDeadline,
+    this.autoStartAt,
     this.warReminderFor,
     this.expiryWarnedAt,
     this.winnerPlayerId,
@@ -271,6 +284,10 @@ class MatchRecord {
         turnDeadline: json['turn_deadline'] == null
             ? null
             : DateTime.parse(json['turn_deadline'] as String),
+        // Additive field — ordinary matches never start on a schedule.
+        autoStartAt: json['auto_start_at'] == null
+            ? null
+            : DateTime.parse(json['auto_start_at'] as String),
         // Additive field — pre-scheduling records sent no war reminder.
         warReminderFor: json['war_reminder_for'] == null
             ? null
@@ -296,6 +313,12 @@ class MatchRecord {
   MatchStatus status;
   Map<String, dynamic>? stateJson;
   DateTime? turnDeadline;
+
+  /// When a waiting matchmaking room starts even though it never filled up
+  /// (armed once `MatchTemplate.fallbackSeats` players have joined, cleared
+  /// again if the room drops back below that). Null on every ordinary match
+  /// and on a room that is still too empty to schedule.
+  DateTime? autoStartAt;
 
   /// The agreed war start this match was already REMINDED of (the ~15 min
   /// "duel starts soon" push) — sent at most once per agreed start time.
@@ -341,6 +364,7 @@ class MatchRecord {
         'status': status.name,
         'state': stateJson,
         'turn_deadline': turnDeadline?.toIso8601String(),
+        'auto_start_at': autoStartAt?.toIso8601String(),
         'war_reminder_for': warReminderFor?.toIso8601String(),
         'expiry_warned_at': expiryWarnedAt?.toIso8601String(),
         'winner': winnerPlayerId,

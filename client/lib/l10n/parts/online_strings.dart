@@ -36,6 +36,22 @@ const Map<String, String> onlineDe = {
   'online.openGame': 'Offene Partie',
   'online.joinedCount': '{n} beigetreten',
   'online.join': 'Beitreten',
+  // Matchmaking rooms (widgets/room_card.dart) — server-hosted, always open
+  'online.officialGames': 'Offizielle Partien',
+  'online.roomBlitz': 'Blitz',
+  'online.roomStandard': 'Standard',
+  'online.roomKaiserreich': 'Kaiserreich',
+  'online.realmCount': '{n} Reiche',
+  'online.warMinutes': '{n} min Krieg',
+  'online.seatsOf': '{n}/{max}',
+  'online.startsIn': 'Startet in {time}',
+  'online.startsMomentarily': 'Startet jeden Moment …',
+  'online.startsAtSeats': 'Startet bei {n} Spielern',
+  'online.countdownHours': '{h} h',
+  'online.countdownMinutes': '{m} min',
+  'online.roomWaiting':
+      'Startet automatisch, sobald {n} Spieler dabei sind — '
+      'die übrigen Reiche führt der Computer.',
   // Leave/delete dialogs (lobby + match screen)
   'online.deleteGameQ': 'Partie löschen?',
   'online.deleteWaitingBody':
@@ -135,6 +151,22 @@ const Map<String, String> onlineEn = {
   'online.openGame': 'Open game',
   'online.joinedCount': '{n} joined',
   'online.join': 'Join',
+  // Matchmaking rooms (widgets/room_card.dart) — server-hosted, always open
+  'online.officialGames': 'Official games',
+  'online.roomBlitz': 'Blitz',
+  'online.roomStandard': 'Standard',
+  'online.roomKaiserreich': 'Empire',
+  'online.realmCount': '{n} realms',
+  'online.warMinutes': '{n} min war',
+  'online.seatsOf': '{n}/{max}',
+  'online.startsIn': 'Starts in {time}',
+  'online.startsMomentarily': 'Starting any moment …',
+  'online.startsAtSeats': 'Starts at {n} players',
+  'online.countdownHours': '{h} h',
+  'online.countdownMinutes': '{m} min',
+  'online.roomWaiting':
+      'Starts automatically once {n} players have joined — '
+      'the remaining realms are run by the computer.',
   // Leave/delete dialogs (lobby + match screen)
   'online.deleteGameQ': 'Delete game?',
   'online.deleteWaitingBody':
