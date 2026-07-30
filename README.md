@@ -7,7 +7,7 @@
 [![Flame](https://img.shields.io/badge/engine-Flame-FF6B00)](https://flame-engine.org)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#status)
 
-##[Play Store](https://play.google.com/store/apps/details?id=com.pckaiser.app)
+[Download via Play Store](https://play.google.com/store/apps/details?id=com.pckaiser.app)
 
 A mobile-first remake of the 1992 German strategy classic *PCKaiser++*
 (Martin Gelter & Lorenz Giefing) for Android and iOS — Flutter + Flame. Rule one of 30
