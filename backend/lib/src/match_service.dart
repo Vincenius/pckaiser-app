@@ -13,12 +13,17 @@ import 'push_service.dart';
 import 'store.dart';
 
 /// Errors mapped onto HTTP statuses by the API layer: 400 validation,
-/// 403 wrong turn/seat, 404 missing. [message] is client-facing.
+/// 403 wrong turn/seat, 404 missing. [message] is a KEY into the
+/// `api_messages.dart` catalog (formatted with [params] in the request's
+/// language by the API layer at response time) — or already-final text,
+/// which passes through the catalog unchanged (the engine's localized
+/// rule rejections).
 class ApiException implements Exception {
-  ApiException(this.statusCode, this.message);
+  ApiException(this.statusCode, this.message, [this.params]);
 
   final int statusCode;
   final String message;
+  final Map<String, Object?>? params;
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -91,7 +96,7 @@ class MatchService {
     String? fcmToken,
   }) {
     if (displayName.trim().isEmpty) {
-      throw ApiException(400, 'display_name must not be empty');
+      throw ApiException(400, 'api.nameRequired');
     }
     // All players share one document; serialize writes so concurrent
     // registrations / token refreshes don't clobber each other.
@@ -230,13 +235,13 @@ class MatchService {
       await _requirePlayer(playerId);
       final match = await _requireMatch(matchId);
       if (match.status != MatchStatus.waiting) {
-        throw ApiException(400, 'match is not open for joining');
+        throw ApiException(400, 'api.matchNotOpen');
       }
       if (match.playerById(playerId) != null) {
-        throw ApiException(400, 'player already joined');
+        throw ApiException(400, 'api.alreadyJoined');
       }
       if (match.players.length >= seatCapFor(match.settings)) {
-        throw ApiException(400, 'match is full');
+        throw ApiException(400, 'api.matchFull');
       }
       _seat(match, playerId, setup);
       final template = templateFor(match.settings);
@@ -280,15 +285,15 @@ class MatchService {
       await _requirePlayer(playerId);
       final match = await _requireMatch(matchId);
       if (match.status != MatchStatus.waiting) {
-        throw ApiException(400, 'match already started');
+        throw ApiException(400, 'api.matchAlreadyStarted');
       }
       // A matchmaking room has no host: it starts when it is full or when
       // its fallback deadline passes, never by hand.
       if (templateFor(match.settings) != null) {
-        throw ApiException(400, 'this match starts automatically');
+        throw ApiException(400, 'api.matchStartsAutomatically');
       }
       if (match.players.isEmpty || match.players.first.playerId != playerId) {
-        throw ApiException(403, 'only the creator can start the match');
+        throw ApiException(403, 'api.onlyCreatorStarts');
       }
       await _start(match);
       match.updatedAt = _clock();
@@ -315,7 +320,7 @@ class MatchService {
     final match = await _requireMatch(matchId);
     final seat = match.playerById(playerId);
     if (seat == null) {
-      throw ApiException(403, 'player is not part of this match');
+      throw ApiException(403, 'api.notInMatch');
     }
 
     final template = templateFor(match.settings);
@@ -382,21 +387,21 @@ class MatchService {
       await _requirePlayer(requesterId);
       final match = await _requireMatch(matchId);
       if (match.status != MatchStatus.active) {
-        throw ApiException(400, 'match is not active');
+        throw ApiException(400, 'api.matchNotActive');
       }
       if (match.players.isEmpty ||
           match.players.first.playerId != requesterId) {
-        throw ApiException(403, 'only the creator can remove a player');
+        throw ApiException(403, 'api.onlyCreatorKicks');
       }
       final target = match.playerById(targetPlayerId);
       if (target == null) {
-        throw ApiException(404, 'player is not part of this match');
+        throw ApiException(404, 'api.playerNotInMatch');
       }
       if (target.playerId == requesterId) {
-        throw ApiException(400, 'the creator cannot remove themselves');
+        throw ApiException(400, 'api.creatorCannotKickSelf');
       }
       if (target.idleTurns < idleKickThreshold) {
-        throw ApiException(400, 'player has not been idle long enough');
+        throw ApiException(400, 'api.notIdleEnough');
       }
       await _dropSeatToAi(match, target, eventType: 'playerKicked');
       if (match.players.isEmpty) {
@@ -483,23 +488,23 @@ class MatchService {
       requestedSlot = setup['country_slot'] as int?;
       requestedColor = setup['color'] as int?;
     } on TypeError {
-      throw ApiException(400, 'invalid field type in setup');
+      throw ApiException(400, 'api.badRequest');
     }
     if (founderName.isEmpty || dorfName.isEmpty) {
-      throw ApiException(400, 'founder_name and dorf_name are required');
+      throw ApiException(400, 'api.setupNamesRequired');
     }
     if (gender != 0 && gender != 1) {
-      throw ApiException(400, 'gender must be 0 or 1');
+      throw ApiException(400, 'api.badRequest');
     }
     final realmCount = realmCountFor(match.settings);
     final taken = {for (final p in match.players) p.slot};
     var slot = requestedSlot;
     if (slot != null) {
       if (slot < 1 || slot > realmCount) {
-        throw ApiException(400, 'country_slot must be 1–$realmCount');
+        throw ApiException(400, 'api.slotInvalid');
       }
       if (taken.contains(slot)) {
-        throw ApiException(400, 'country_slot already taken');
+        throw ApiException(400, 'api.slotTaken');
       }
     } else {
       // First free slot after a random offset — uniform enough and
@@ -613,7 +618,7 @@ class MatchService {
     final match = await _requireMatch(matchId);
     final seat = match.playerById(playerId);
     if (seat == null) {
-      throw ApiException(403, 'player is not part of this match');
+      throw ApiException(403, 'api.notInMatch');
     }
     GameState? state;
     if (match.stateJson != null) {
@@ -868,20 +873,17 @@ class MatchService {
     final match = await _requireMatch(matchId);
     final seat = match.playerById(playerId);
     if (seat == null) {
-      throw ApiException(403, 'player is not part of this match');
+      throw ApiException(403, 'api.notInMatch');
     }
     if (match.status != MatchStatus.active) {
-      throw ApiException(400, 'match is not active');
+      throw ApiException(400, 'api.matchNotActive');
     }
     // A new app version may change the rules — every seat must run the same
     // build before it may take its turn (426 Upgrade Required). null is the
     // internal/test path; the HTTP layer always forwards the client's
     // version. The view's `update_required` flag warns the client first.
     if (clientAppVersion != null && clientAppVersion != appVersion) {
-      throw ApiException(
-          426,
-          'Diese Partie läuft auf App-Version $appVersion. Bitte '
-          'aktualisiere die App, um deinen Zug zu machen.');
+      throw ApiException(426, 'api.updateRequired', {'version': appVersion});
     }
     // Format any engine rejection (ActionException, via coreMessage) in THIS
     // seat's language, not the server's default. messageLocale is a
@@ -896,9 +898,9 @@ class MatchService {
     final emitted = <GameEvent>[];
 
     if (endTurn) {
-      if (awaited != playerId) throw ApiException(403, 'not your turn');
+      if (awaited != playerId) throw ApiException(403, 'api.notYourTurn');
       if (state.activeWar != null) {
-        throw ApiException(400, 'a war must end before the turn can');
+        throw ApiException(400, 'api.warBlocksTurn');
       }
       // The recap baseline ("seen up to here") moves when the player ends
       // their turn — mirrors the local client's markRecapSeen. Keyed on the
@@ -913,7 +915,7 @@ class MatchService {
       try {
         action = PlayerAction.fromJson(actionJson);
       } on Object {
-        throw ApiException(400, 'malformed action');
+        throw ApiException(400, 'api.badRequest');
       }
       // The action must act for a realm this seat currently controls — not
       // only their home slot: control follows the ruler, so a player can
@@ -921,7 +923,10 @@ class MatchService {
       if (action.slot < 1 ||
           action.slot > state.realmCount ||
           state.dynasty(action.slot).humanPlayer != seat.turnOrder) {
-        throw ApiException(403, 'action acts for a foreign realm');
+        // A race, not only a client bug: control of a realm can shift
+        // (strife, capture) while a submission is in flight — so the
+        // player reads "the game moved on", not "your app is broken".
+        throw ApiException(403, 'api.actionNotAwaited');
       }
       if (action is ResolveDecision) {
         // Pending decisions are answered out of turn (ARCHITECTURE
@@ -950,7 +955,7 @@ class MatchService {
         // already ran; the action only sets a unit's autopilot stance.
         state = _apply(state, action, emitted);
       } else {
-        if (awaited != playerId) throw ApiException(403, 'not your turn');
+        if (awaited != playerId) throw ApiException(403, 'api.notYourTurn');
         // No-show bookkeeping (online duel scheduling): ANY interactive
         // input during the war rounds marks this side as present
         // (`war.actedSlots`). A side that never acted before its round
@@ -963,10 +968,7 @@ class MatchService {
         // realm B during realm A's turn — doubling B's once-per-turn
         // actions (grain sale, movement points) every year.
         if (action.slot != _awaitedSlot(state)) {
-          throw ApiException(
-              403,
-              'action acts for a realm whose turn is '
-              'not running');
+          throw ApiException(403, 'api.actionNotAwaited');
         }
         if (action is WarEndRound) {
           // The engine entry point for awaited war-round input: a
@@ -995,7 +997,7 @@ class MatchService {
         state = _resumeAfterWarIfOver(state, emitted);
       }
     } else {
-      throw ApiException(400, 'provide action or end_turn');
+      throw ApiException(400, 'api.badRequest');
     }
 
     // The seat showed up and submitted — clear its idle streak (the
@@ -1603,13 +1605,13 @@ class MatchService {
 
   Future<PlayerRecord> _requirePlayer(String id) async {
     final player = await _store.player(id);
-    if (player == null) throw ApiException(404, 'unknown player');
+    if (player == null) throw ApiException(404, 'api.unknownPlayer');
     return player;
   }
 
   Future<MatchRecord> _requireMatch(String id) async {
     final match = await _store.match(_canonicalId(id));
-    if (match == null) throw ApiException(404, 'unknown match');
+    if (match == null) throw ApiException(404, 'api.unknownMatch');
     return match;
   }
 }

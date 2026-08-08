@@ -503,7 +503,7 @@ void _investInShips(
 /// is the WEAKEST adjacent realm instead — and only when the own army
 /// holds that strength edge over it, so a schwer AI never CHOOSES a war it
 /// is likely to lose; [desperate] (boxed in, §20.4) drops the edge
-/// requirement but keeps the weakest-target pick. Realms that fought a war
+/// requirement but keeps the weakest-target pick. Realms that were ATTACKED
 /// this year or last year are skipped (recovery grace, see below) unless
 /// nothing else is reachable and the AI is [desperate].
 int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
@@ -517,15 +517,18 @@ int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
       if (declareWarBlocker(state, realm, other) == null) other,
   ];
   // `[DESIGNED 2026-08-08, user feedback]` Recovery grace: leave a realm
-  // that fought a war this year or last year alone. The truce only binds
+  // that was ATTACKED this year or last year alone. The truce only binds
   // the PAIR — but the AI hunts the weakest neighbour, and a realm just
   // beaten down by one neighbour is the weakest for all the others too, so
   // without this the same victim was attacked year after year by a fresh
-  // aggressor and never got a turn to act. A boxed-in AI (`desperate`,
+  // aggressor and never got a turn to act. Keyed on `lastDefendedYear`,
+  // not `lastWarYear`: a realm that STARTED its recent war chose it and
+  // earns no shield (else a cheap declaration every other year bought
+  // permanent immunity from AI attack). A boxed-in AI (`desperate`,
   // §20.4's escape valve) still takes what it can get.
   final rested = [
     for (final other in adjacent)
-      if (state.realm(other).lastWarYear < state.year - 1) other,
+      if (state.realm(other).lastDefendedYear < state.year - 1) other,
   ];
   final targets =
       rested.isNotEmpty ? rested : (desperate ? adjacent : const <int>[]);

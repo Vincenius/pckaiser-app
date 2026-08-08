@@ -19,12 +19,13 @@ void main() {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    Map<String, String>? headers,
   }) async {
     final request = Request(
       method,
       Uri.parse('http://localhost$path'),
       body: body == null ? null : jsonEncode(body),
-      headers: {'content-type': 'application/json'},
+      headers: {'content-type': 'application/json', ...?headers},
     );
     final response = await handler(request);
     final decoded = (jsonDecode(await response.readAsString()) as Map)
@@ -145,6 +146,25 @@ void main() {
         await call('GET', '/api/v1/matches/$matchId?player_id=$strangerId');
     expect(forbidden, 403);
     expect(fb['error'], isNotNull);
+  });
+
+  test(
+      'rejections are player-readable and follow the Accept-Language '
+      'header (2026-08-08)', () async {
+    // No header → German, like clients from before the header (≤ 0.2.4).
+    final (_, de) =
+        await call('GET', '/api/v1/matches/doesnotexist?player_id=nobody');
+    expect(de['error'], contains('Partie wurde nicht gefunden'),
+        reason: 'a full German sentence, not developer English');
+
+    // A region-tagged English header resolves to English.
+    final (_, en) = await call(
+        'GET', '/api/v1/matches/doesnotexist?player_id=nobody',
+        headers: {'accept-language': 'en-US'});
+    expect(en['error'], contains('could not be found'));
+
+    // No raw catalog key may ever leak to a player.
+    expect('${de['error']}${en['error']}', isNot(contains('api.')));
   });
 
   test('malformed JSON is a 400, not a crash', () async {

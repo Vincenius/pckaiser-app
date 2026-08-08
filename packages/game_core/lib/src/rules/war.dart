@@ -77,9 +77,13 @@ ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot, Rng rng,
   // (popularity penalty, `recentWars`). A war the same year against the
   // very same opponent is still blocked — by the truce below.
   state.realm(attackerSlot).warThisYear = true;
-  // Both sides count as "recently at war" for the AI's target choice.
+  // Both sides count as "at war this year" for the weariness decay; only
+  // the ATTACKED side earns the AI's recovery grace (`lastDefendedYear`) —
+  // an aggressor must not be able to shield itself from AI attack by
+  // declaring wars (see the field docs in realm.dart).
   state.realm(attackerSlot).lastWarYear = state.year;
   state.realm(defenderSlot).lastWarYear = state.year;
+  state.realm(defenderSlot).lastDefendedYear = state.year;
   // `[DESIGNED 2026-07-06, user-designed mechanic]` A war between two
   // HUMANS starts in a PREPARATION phase: both combatants choose (as a
   // `warPlan` decision) whether they command their side live or hand it to

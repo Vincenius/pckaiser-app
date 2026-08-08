@@ -6,6 +6,56 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-08 — Review round on the v0.2.5 branch + player-readable server rejections
+
+Findings of a full branch review (main…v0.2.5), all fixed the same day:
+
+**1. The AI recovery grace shielded aggressors.** It keyed on
+`lastWarYear`, which `startWar` stamps on BOTH sides — so declaring a
+cheap war every other year bought permanent immunity from (non-desperate)
+AI attack. New `Realm.lastDefendedYear` (additive JSON field), stamped on
+the ATTACKED side only; `_pickWarTarget` now keys its grace on that. A
+realm that chose its wars is fair game; the weariness decay still counts
+defended years via `lastWarYear`, unchanged.
+
+**2. `foundReplacementDynasty` half-reset war history.** It cleared
+`recentWars`/`peaceYears` but kept `lastWarYear`, `lastDefendedYear` and
+the truce map — now all cleared: a new house answers for none of the old
+one's wars. (The pretender COUP keeps the realm's truces: same realm,
+same wars, only the ruler changed.)
+
+**3. Android misread "host unreachable" as "server refuses".** The
+errno mapping in `api_client.dart` lacked Linux EHOSTUNREACH (113) —
+Android players with no route to the host were told the server was down.
+
+**4. `ApiError.isOffline` overpromised.** Its doc claimed "the request
+never reached the server, retrying is safe" — untrue for timeouts and
+proxied 5xx. Re-documented as a display classification that must never
+gate an automatic re-submit.
+
+**5. Home screen could pin a stale error.** The generic catch in
+`_reloadOnlineMatches` left the previous `ApiError` on screen; it now
+clears it.
+
+**6. Server rejections in plain language (user request).** The API sent
+raw developer English ("not your turn", "match is full") which the client
+shows verbatim. `ApiException` now carries a key into a new de/en catalog
+(`backend/lib/src/api_messages.dart`) of non-technical messages ("Du bist
+gerade nicht am Zug. Sobald du an der Reihe bist, bekommst du eine
+Benachrichtigung."); the API layer formats it per request from the
+`Accept-Language` header the app now sends on every call (no global
+locale state → no cross-request races; no header → German, like ≤0.2.4
+clients). Engine rule rejections (already localized via `messageLocale`)
+pass through the catalog untouched. The 426 update-required text moved
+into the catalog (was hardcoded German). Client side, a rejection's tile
+heading is now "Meldung vom Server" instead of "Serverfehler (403)".
+
+Also verified during the review (no change needed): the `_commit`
+deadlock guard cannot misfire during war preparation — a no-timer match
+starts a fully-answered duel in-request (`waitWhenAllManual` is false
+without a turn timer), and every other prep state carries a deadline or
+an awaited player.
+
 ## 2026-08-08 — War balance: freed defender, post-war truce, war weariness that bites, peasant revolts, world-scaled plague
 
 User report from a hot-seat round: attacked five years running, never able

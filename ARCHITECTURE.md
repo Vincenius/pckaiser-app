@@ -108,6 +108,12 @@ listed in the lobby's own "Offizielle Partien" section (`client/lib/widgets/room
   language-neutral; the client localizes the display name.
 
 Responses `{data, error}`; 400 validation, 403 wrong turn, 404 missing.
+`error` is player-facing prose (since 2026-08-08): `ApiException` carries a
+key into the de/en catalog `backend/lib/src/api_messages.dart`, formatted at
+response time in the language of the request's `Accept-Language` header (the
+app sends it on every call; no header → German). The engine's rule
+rejections are already localized (`messageLocale`, from the submit body's
+`locale`) and pass through the catalog verbatim.
 
 ## Versioning & compatibility
 

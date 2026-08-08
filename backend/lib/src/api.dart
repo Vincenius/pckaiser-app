@@ -9,6 +9,7 @@ import 'package:game_core/game_core.dart' as gc;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+import 'api_messages.dart';
 import 'match_service.dart';
 import 'models.dart';
 
@@ -40,12 +41,12 @@ class Api {
   /// Reports the app build this server is running so a client can confirm
   /// the deployment is current — an online turn from a client on a
   /// different [gc.appVersion] is rejected (426) until the app is updated.
-  Future<Response> _version(Request request) => _guard(() async => {
+  Future<Response> _version(Request request) => _guard(request, ()async => {
         'app_version': gc.appVersion,
         'schema_version': gc.currentSchemaVersion,
       });
 
-  Future<Response> _registerPlayer(Request request) => _guard(() async {
+  Future<Response> _registerPlayer(Request request) => _guard(request, ()async {
         final body = await _json(request);
         final player = await _service.registerPlayer(
           id: body['id'] as String?,
@@ -56,7 +57,7 @@ class Api {
       });
 
   Future<Response> _updatePlayer(Request request, String id) =>
-      _guard(() async {
+      _guard(request, ()async {
         final body = await _json(request);
         final player = await _service.updatePlayer(
           id,
@@ -67,12 +68,12 @@ class Api {
       });
 
   Future<Response> _playerMatches(Request request, String id) =>
-      _guard(() => _service.matchesForPlayer(id));
+      _guard(request, ()=> _service.matchesForPlayer(id));
 
   Future<Response> _publicMatches(Request request) =>
-      _guard(() => _service.publicMatches());
+      _guard(request, ()=> _service.publicMatches());
 
-  Future<Response> _createMatch(Request request) => _guard(() async {
+  Future<Response> _createMatch(Request request) => _guard(request, ()async {
         final body = await _json(request);
         // The seed is server-chosen: a creating client must not be able to
         // pick (and thus predict) the match's random stream.
@@ -89,7 +90,7 @@ class Api {
         try {
           settings = MatchSettings.fromJson(settingsJson);
         } on TypeError {
-          throw ApiException(400, 'invalid field type in settings');
+          throw ApiException(400, 'api.badRequest');
         }
         final match = await _service.createMatch(
           playerId: _requireString(body, 'player_id'),
@@ -99,7 +100,7 @@ class Api {
         return _service.view(match.id, _requireString(body, 'player_id'));
       });
 
-  Future<Response> _joinMatch(Request request, String id) => _guard(() async {
+  Future<Response> _joinMatch(Request request, String id) => _guard(request, ()async {
         final body = await _json(request);
         final match = await _service.joinMatch(
           matchId: id,
@@ -109,7 +110,7 @@ class Api {
         return _service.view(match.id, _requireString(body, 'player_id'));
       });
 
-  Future<Response> _startMatch(Request request, String id) => _guard(() async {
+  Future<Response> _startMatch(Request request, String id) => _guard(request, ()async {
         final body = await _json(request);
         final match = await _service.startMatch(
           matchId: id,
@@ -118,7 +119,7 @@ class Api {
         return _service.view(match.id, _requireString(body, 'player_id'));
       });
 
-  Future<Response> _leaveMatch(Request request, String id) => _guard(() async {
+  Future<Response> _leaveMatch(Request request, String id) => _guard(request, ()async {
         final body = await _json(request);
         final deleted = await _service.leaveMatch(
           matchId: id,
@@ -127,7 +128,7 @@ class Api {
         return {'left': true, 'deleted': deleted};
       });
 
-  Future<Response> _kickPlayer(Request request, String id) => _guard(() async {
+  Future<Response> _kickPlayer(Request request, String id) => _guard(request, ()async {
         final body = await _json(request);
         final requesterId = _requireString(body, 'player_id');
         await _service.kickPlayer(
@@ -139,12 +140,12 @@ class Api {
       });
 
   Future<Response> _openSlots(Request request, String id) =>
-      _guard(() => _service.openSlots(id));
+      _guard(request, ()=> _service.openSlots(id));
 
-  Future<Response> _getMatch(Request request, String id) => _guard(() {
+  Future<Response> _getMatch(Request request, String id) => _guard(request, (){
         final playerId = request.url.queryParameters['player_id'];
         if (playerId == null || playerId.isEmpty) {
-          throw ApiException(400, 'player_id query parameter is required');
+          throw ApiException(400, 'api.badRequest');
         }
         return _service.view(
           id,
@@ -153,7 +154,7 @@ class Api {
         );
       });
 
-  Future<Response> _submitTurn(Request request, String id) => _guard(() async {
+  Future<Response> _submitTurn(Request request, String id) => _guard(request, ()async {
         final body = await _json(request);
         return _service.submit(
           matchId: id,
@@ -170,7 +171,7 @@ class Api {
   String _requireString(Map<String, dynamic> body, String key) {
     final value = body[key];
     if (value is! String || value.isEmpty) {
-      throw ApiException(400, '$key is required');
+      throw ApiException(400, 'api.badRequest');
     }
     return value;
   }
@@ -181,11 +182,21 @@ class Api {
       if (text.isEmpty) return {};
       return (jsonDecode(text) as Map).cast<String, dynamic>();
     } on Object {
-      throw ApiException(400, 'malformed JSON body');
+      throw ApiException(400, 'api.badRequest');
     }
   }
 
-  Future<Response> _guard(Future<Object?> Function() body) async {
+  /// Runs [body] and wraps its result — or its failure — in the `{data,
+  /// error}` envelope. Rejections leave here in the language of the
+  /// REQUEST (`Accept-Language`, sent by the app since 0.2.5): the
+  /// [ApiException]s below carry catalog keys, formatted only now so the
+  /// locale never lives in mutable global state (concurrent requests in
+  /// different languages cannot race each other); the engine's rule
+  /// rejections arrive as final text and pass through the catalog
+  /// unchanged.
+  Future<Response> _guard(
+      Request request, Future<Object?> Function() body) async {
+    final locale = resolveApiLocale(request.headers['accept-language']);
     try {
       final data = await body();
       return Response.ok(
@@ -195,7 +206,8 @@ class Api {
     } on ApiException catch (e) {
       return Response(
         e.statusCode,
-        body: jsonEncode({'data': null, 'error': e.message}),
+        body: jsonEncode(
+            {'data': null, 'error': apiMessage(e.message, locale, e.params)}),
         headers: {'content-type': 'application/json'},
       );
     } catch (e, stack) {
@@ -206,7 +218,8 @@ class Api {
       print('[api] unhandled error: $e\n$stack');
       return Response(
         500,
-        body: jsonEncode({'data': null, 'error': 'internal server error'}),
+        body: jsonEncode(
+            {'data': null, 'error': apiMessage('api.internalError', locale)}),
         headers: {'content-type': 'application/json'},
       );
     }

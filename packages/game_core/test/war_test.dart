@@ -1422,8 +1422,12 @@ void main() {
               'field against a third realm to recover');
       for (final slot in [1, 2]) {
         expect(s.realm(slot).lastWarYear, s.year,
-            reason: 'both sides count as recently at war (AI recovery grace)');
+            reason: 'both sides count as at war this year (weariness decay)');
       }
+      expect(s.realm(2).lastDefendedYear, s.year,
+          reason: 'the ATTACKED side earns the AI recovery grace');
+      expect(s.realm(1).lastDefendedYear, 0,
+          reason: 'the aggressor earns no grace from a war it chose');
     });
 
     test('a post-war truce blocks the same pair for truceYears', () {

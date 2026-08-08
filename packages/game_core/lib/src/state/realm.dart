@@ -36,6 +36,7 @@ class Realm {
     this.warThisYear = false,
     this.recentWars = 0,
     this.lastWarYear = 0,
+    this.lastDefendedYear = 0,
     this.peaceYears = 0,
     Map<int, int>? truceUntilYear,
     this.rulerId,
@@ -104,6 +105,7 @@ class Realm {
         // Additive fields — older saves know no war recovery and no truce
         // (year 0 is before any game year, so nothing is blocked on load).
         lastWarYear: json['lastWarYear'] as int? ?? 0,
+        lastDefendedYear: json['lastDefendedYear'] as int? ?? 0,
         peaceYears: json['peaceYears'] as int? ?? 0,
         truceUntilYear: {
           for (final e in ((json['truceUntilYear'] as Map?) ?? {}).entries)
@@ -227,13 +229,21 @@ class Realm {
   int recentWars;
 
   /// `[DESIGNED 2026-08-08, user feedback]` The year this realm last ENTERED
-  /// a war — as aggressor or as defender. Not a rule of its own: the AI
-  /// leaves a realm that fought last year or this year alone
-  /// (`_pickWarTarget`), so a beaten-down realm gets a breather instead of
-  /// being the whole neighbourhood's preferred prey year after year (the AI
-  /// picks the WEAKEST neighbour, which is a self-reinforcing loop without
-  /// this). A boxed-in ("desperate") AI still ignores it. 0 = never at war.
+  /// a war — as aggressor or as defender. Weariness bookkeeping only: the
+  /// §-decay in `_startRound` counts a year as war-free solely when the
+  /// realm saw NO war at all, defending included. 0 = never at war.
   int lastWarYear;
+
+  /// `[FIX 2026-08-08 review]` The year this realm was last ATTACKED (the
+  /// defender side of `startWar`). Drives the AI's recovery grace
+  /// (`_pickWarTarget`): a realm just beaten down by an aggressor is the
+  /// weakest neighbour for everyone else too, so without a breather the
+  /// same victim was farmed year after year. Deliberately NOT stamped on
+  /// the aggressor ([lastWarYear] is) — a realm that CHOSE its wars earns
+  /// no shield from them, or declaring a cheap war every other year would
+  /// have bought permanent immunity from AI attack. A boxed-in
+  /// ("desperate") AI still ignores it. 0 = never attacked.
+  int lastDefendedYear;
 
   /// `[DESIGNED 2026-08-08, user feedback]` Truce per opponent slot: the
   /// LAST year (inclusive) in which this realm may not declare war on that
@@ -311,6 +321,7 @@ class Realm {
         warThisYear: warThisYear,
         recentWars: recentWars,
         lastWarYear: lastWarYear,
+        lastDefendedYear: lastDefendedYear,
         peaceYears: peaceYears,
         truceUntilYear: Map.of(truceUntilYear),
         rulerId: rulerId,
@@ -353,6 +364,7 @@ class Realm {
         'warThisYear': warThisYear,
         'recentWars': recentWars,
         'lastWarYear': lastWarYear,
+        'lastDefendedYear': lastDefendedYear,
         'peaceYears': peaceYears,
         'truceUntilYear': {
           for (final e in truceUntilYear.entries) '${e.key}': e.value,

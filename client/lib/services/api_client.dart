@@ -51,8 +51,11 @@ class ApiError implements Exception {
 
   final ApiFailure failure;
 
-  /// True when the request never reached the server, so nothing happened
-  /// on its side and retrying is safe.
+  /// True for transport-level failures — the request got no usable answer
+  /// from the game server, so the UI shows the offline-style heading and a
+  /// retry. NOT a guarantee the request never arrived: a timeout or a
+  /// proxy's 5xx page may hide a request the server did process, so this
+  /// must never gate an automatic re-submit.
   bool get isOffline => failure != ApiFailure.server;
 
   @override
@@ -228,7 +231,10 @@ class ApiClient {
             ? ApiFailure.unknownHost
             : code == 61 || code == 111 || code == 10061 // ECONNREFUSED
             ? ApiFailure.refused
-            : code == 51 || code == 101 || code == 65 // ENETUNREACH/EHOSTUNREACH
+            // ENETUNREACH: Darwin 51 / Linux 101; EHOSTUNREACH: Darwin 65 /
+            // Linux 113 (Android is Linux — without 113 an unreachable host
+            // there read as "server refuses connections").
+            : code == 51 || code == 101 || code == 65 || code == 113
             ? ApiFailure.offline
             : ApiFailure.refused,
       );
@@ -268,6 +274,10 @@ class ApiClient {
   }) async {
     final request = await _http.openUrl(method, Uri.parse('$baseUrl$path'));
     request.headers.contentType = ContentType.json;
+    // The UI language, on EVERY request (GETs included): the server formats
+    // its rejection messages in this language. The `locale` body field of
+    // the turn submit stays — it localizes the engine's rule rejections.
+    request.headers.set(HttpHeaders.acceptLanguageHeader, appLocale.value);
     if (body != null) request.write(jsonEncode(body));
     final response = await request.close();
     final text = await response.transform(utf8.decoder).join();
@@ -291,8 +301,8 @@ class ApiClient {
     if (response.statusCode != 200) {
       throw ApiError(
         response.statusCode,
-        // The server sends its rejections already localized (it gets the
-        // player's locale with every turn); only the fallback is ours.
+        // The server sends its rejections already localized (it reads the
+        // Accept-Language header sent above); only the fallback is ours.
         decoded['error'] as String? ??
             (response.statusCode >= 500
                 ? tr('online.errServerDown')

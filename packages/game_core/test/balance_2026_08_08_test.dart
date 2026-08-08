@@ -51,15 +51,15 @@ void main() {
     int soleNeighborOf(GameState state) =>
         state.map.realmNeighbors(1).single;
 
-    test('a neighbour that fought this year or last year is spared', () {
-      for (final lastWar in [2001, 2000]) {
+    test('a neighbour that was attacked this year or last year is spared', () {
+      for (final lastDefended in [2001, 2000]) {
         final state = warEagerGame();
-        state.realm(soleNeighborOf(state)).lastWarYear = lastWar;
+        state.realm(soleNeighborOf(state)).lastDefendedYear = lastDefended;
         for (var seed = 0; seed < 200; seed++) {
           final result = runAiTurn(state, 1, Rng(seed));
           expect(result.events.where((e) => e.type == 'warDeclared'), isEmpty,
-              reason: 'the only neighbour last fought in $lastWar and must be '
-                  'left to recover (seed $seed)');
+              reason: 'the only neighbour was last attacked in $lastDefended '
+                  'and must be left to recover (seed $seed)');
         }
       }
     });
@@ -68,13 +68,31 @@ void main() {
       // Positive control: proves the silence above is the grace, not a
       // blocker, mood or dice artefact.
       final state = warEagerGame();
-      state.realm(soleNeighborOf(state)).lastWarYear = 1999;
+      state.realm(soleNeighborOf(state)).lastDefendedYear = 1999;
       var declared = false;
       for (var seed = 0; seed < 200 && !declared; seed++) {
         final result = runAiTurn(state, 1, Rng(seed));
         declared = result.events.any((e) => e.type == 'warDeclared');
       }
       expect(declared, isTrue);
+    });
+
+    test('a neighbour that STARTED its recent war earns no grace', () {
+      // `[FIX 2026-08-08 review]` The grace protects victims, not
+      // aggressors: were it keyed on `lastWarYear` (stamped on both
+      // sides), declaring a cheap war every other year would have bought
+      // permanent immunity from AI attack.
+      final state = warEagerGame();
+      final neighbor = state.realm(soleNeighborOf(state));
+      neighbor.lastWarYear = 2001; // it declared a war this year …
+      neighbor.lastDefendedYear = 0; // … but was never itself attacked
+      var declared = false;
+      for (var seed = 0; seed < 200 && !declared; seed++) {
+        final result = runAiTurn(state, 1, Rng(seed));
+        declared = result.events.any((e) => e.type == 'warDeclared');
+      }
+      expect(declared, isTrue,
+          reason: 'an aggressor stays a legitimate target');
     });
   });
 
@@ -271,11 +289,13 @@ void main() {
           .state;
       state.realm(1).truceUntilYear[2] = 1016;
       state.realm(1).lastWarYear = 1015;
+      state.realm(1).lastDefendedYear = 1014;
 
       // JSON keys are strings — the map must come back keyed by int.
       final loaded = GameState.fromJson(state.toJson());
       expect(loaded.realm(1).truceUntilYear[2], 1016);
       expect(loaded.realm(1).lastWarYear, 1015);
+      expect(loaded.realm(1).lastDefendedYear, 1014);
 
       final copy = state.copy();
       copy.realm(1).truceUntilYear[2] = 1099;

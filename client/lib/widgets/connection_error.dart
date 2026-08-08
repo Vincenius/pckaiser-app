@@ -51,10 +51,14 @@ class ConnectionErrorTile extends StatelessWidget {
                 Icon(icon, color: theme.colorScheme.onErrorContainer),
                 const SizedBox(width: 8),
                 Expanded(
+                  // A rejection's heading stays neutral ("Meldung vom
+                  // Server") — the old "Serverfehler (403)" read like a
+                  // breakdown plus a mystery number, when the message
+                  // below it already says what is wrong in plain words.
                   child: Text(
                     offline
                         ? tr('online.offlineBanner')
-                        : tr('online.errServer', {'code': '${error.statusCode}'}),
+                        : tr('online.errServerTitle'),
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: theme.colorScheme.onErrorContainer,
                     ),

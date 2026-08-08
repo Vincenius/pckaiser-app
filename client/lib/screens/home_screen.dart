@@ -125,7 +125,14 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } on Object {
-      if (mounted) setState(() => _onlineLoading = false);
+      // Unknown failure type: no cause to show — clear a stale ApiError
+      // from an earlier refresh rather than mislabeling this one.
+      if (mounted) {
+        setState(() {
+          _onlineLoading = false;
+          _onlineError = null;
+        });
+      }
     }
   }
 

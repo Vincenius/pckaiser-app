@@ -526,10 +526,13 @@ Person foundReplacementDynasty(
   realm.rulerId = founder.id;
   realm.titleClass = (muslim ? 9 : 1) + (gender == 1 ? 12 : 0);
   realm.popularity = 50;
-  // A whole new house answers for none of the old one's wars — the
-  // weariness ceiling starts clean with it (2026-08-08).
+  // A whole new house answers for none of the old one's wars — weariness,
+  // war history and truces all start clean with it (2026-08-08).
   realm.recentWars = 0;
   realm.peaceYears = 0;
+  realm.lastWarYear = 0;
+  realm.lastDefendedYear = 0;
+  realm.truceUntilYear.clear();
   if (treasury != null) {
     realm.treasury = treasury;
   } else {

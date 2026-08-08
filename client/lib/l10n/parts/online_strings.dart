@@ -143,6 +143,9 @@ const Map<String, String> onlineDe = {
       'Der Server hat einen Fehler gemeldet und ist momentan nicht '
           'verfügbar. Bitte versuche es später noch einmal.',
   'online.errServer': 'Serverfehler ({code}). Bitte versuche es erneut.',
+  // Heading over a server REJECTION (the server answered and explained
+  // itself; the explanation is the message below this line).
+  'online.errServerTitle': 'Meldung vom Server',
   // Shown above the lobby / match list while the last refresh failed.
   'online.offlineBanner': 'Keine Verbindung zum Server',
   'online.retry': 'Erneut versuchen',
@@ -284,6 +287,7 @@ const Map<String, String> onlineEn = {
       'The server reported an error and is currently unavailable. Please '
           'try again later.',
   'online.errServer': 'Server error ({code}). Please try again.',
+  'online.errServerTitle': 'Message from the server',
   'online.offlineBanner': 'No connection to the server',
   'online.retry': 'Try again',
 };
