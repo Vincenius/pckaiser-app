@@ -913,6 +913,96 @@ void main() {
           reason: 'no longer a live duel: Anna gets the full turn clock');
     });
 
+    test(
+        'a duel neither player ever touches resolves itself instead of '
+        'dragging one turn timer per round (2026-08-08)', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      final start = now;
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      final sofort = now.millisecondsSinceEpoch;
+      for (final (playerId, slot) in [(a.id, 1), (b.id, 2)]) {
+        await answerPlan(
+            match, playerId, slot, {'auto': false, 'slots': [sofort]});
+      }
+
+      // From here NOBODY ever submits again: run the sweep at every
+      // deadline the server arms. Before the fix the no-show rule only
+      // fired for the FIRST absentee (its gate went false as soon as one
+      // side was delegated), so the second one kept the full turn clock
+      // for all 20 rounds — the war, and with it the whole match, was
+      // blocked for 20 days.
+      for (var i = 0; i < 40; i++) {
+        final record = (await store.match(match.id))!;
+        final state = GameState.fromJson(record.stateJson!);
+        if (state.activeWar == null) break;
+        expect(record.turnDeadline, isNotNull,
+            reason: 'a running war must always carry a clock — without one '
+                'nothing can ever advance the match again');
+        now = record.turnDeadline!.add(const Duration(minutes: 1));
+        await service.sweepExpired();
+      }
+      final done = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(done.activeWar, isNull, reason: 'the war resolved itself');
+      expect(now.difference(start), lessThan(const Duration(days: 3)),
+          reason: 'two absent duelists must not stall the match for weeks');
+    });
+
+    test('a war left with no live side is fast-forwarded, never frozen',
+        () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      final sofort = now.millisecondsSinceEpoch;
+      for (final (playerId, slot) in [(a.id, 1), (b.id, 2)]) {
+        await answerPlan(
+            match, playerId, slot, {'auto': false, 'slots': [sofort]});
+      }
+      now = now.add(const Duration(minutes: 1));
+      await service.sweepExpired();
+
+      // Surgery: both sides on the autopilot mid-rounds. Nobody is awaited
+      // then, so the old code armed NO deadline — the match was dead for
+      // good (a running war blocks every normal turn). The state is written
+      // straight to the store, exactly like a match that entered this state
+      // on an older build; the frozen-match sweep must revive it.
+      final record = (await store.match(match.id))!;
+      final state = GameState.fromJson(record.stateJson!);
+      expect(state.activeWar!.phase, WarPhase.rounds);
+      state.activeWar!.autoSlots.addAll([1, 2]);
+      record.stateJson = state.toJson();
+      record.turnDeadline = null;
+      await store.saveMatch(record);
+
+      now = now.add(const Duration(minutes: 1));
+      expect(await service.sweepExpired(), 1,
+          reason: 'the frozen match is picked up without a deadline');
+      final healed =
+          GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(healed.activeWar, isNull,
+          reason: 'a war nobody plays live must fast-forward to its end');
+      expect((await store.match(match.id))!.turnDeadline, isNotNull,
+          reason: 'the match runs on again');
+    });
+
     test('an agreed start pushes "fixed" once and one reminder ~15 min ahead',
         () async {
       final start = DateTime.utc(2026, 1, 1);

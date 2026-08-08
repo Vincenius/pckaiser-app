@@ -371,6 +371,14 @@ String? declareWarBlocker(GameState state, Realm realm, int targetSlot) {
   if (!state.map.realmNeighbors(realm.slot).contains(targetSlot)) {
     return coreMessage('noSharedBorder');
   }
+  // `[DESIGNED 2026-08-08, user feedback]` Post-war truce ([truceYears]):
+  // the same pair may not go at each other again right away. Applies to
+  // humans and AI alike — the AI filters its target picks with this very
+  // function, so it can never pick a truce-bound neighbour.
+  final truce = truceUntil(state, realm.slot, targetSlot);
+  if (truce != null) {
+    return coreMessage('truceActive', {'year': truce});
+  }
   return null;
 }
 

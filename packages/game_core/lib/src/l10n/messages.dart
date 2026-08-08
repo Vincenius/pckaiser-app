@@ -97,6 +97,7 @@ const Map<String, Map<String, String>> _messages = {
     'realmAlreadyYourRulers':
         'Dieses Reich gehört bereits deinem Herrscher !',
     'noSharedBorder': 'Du hast keine gemeinsame Grenze !',
+    'truceActive': 'Waffenruhe bis zum Jahr {year} !',
     'notAtWar': 'Du führst keinen Krieg !',
     'wrongWarPhase': 'Falsche Kriegsphase !',
     'opponentActing': 'Dein Gegner ist gerade am Zug !',
@@ -212,6 +213,7 @@ const Map<String, Map<String, String>> _messages = {
     'realmAlreadyYourRulers':
         'That realm already belongs to your ruler!',
     'noSharedBorder': 'You share no common border!',
+    'truceActive': 'Truce until the year {year}!',
     'notAtWar': 'You are not waging a war!',
     'wrongWarPhase': 'Wrong war phase!',
     'opponentActing': 'Your opponent is making their move!',

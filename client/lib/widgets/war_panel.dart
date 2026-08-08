@@ -103,8 +103,11 @@ class _WarPanelState extends State<WarPanel> {
                           enemySlot,
                           movesLeft: null, // no war moves yet
                           selected: i == selected,
+                          // focusMap: the army may stand anywhere on the
+                          // map — picking it from the list scrolls there.
                           onTap: () => controller.selectWarUnit(
                             i == selected ? null : i,
+                            focusMap: true,
                           ),
                         ),
                     ],
@@ -456,6 +459,7 @@ class _WarPanelState extends State<WarPanel> {
                             onTap: () {
                               controller.selectWarUnit(
                                 i == selected ? null : i,
+                                focusMap: true,
                               );
                               Navigator.of(sheetContext).pop();
                             },

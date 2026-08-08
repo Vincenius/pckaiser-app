@@ -513,8 +513,29 @@ class GameController extends ChangeNotifier {
     }
   }
 
-  void selectWarUnit(int? index) {
+  /// Set by the screen that owns the Flame map: centers the view on a
+  /// tile. Lets the war panel — which has no access to the map — scroll
+  /// the board to a unit picked from its LIST.
+  void Function(int x, int y)? focusTile;
+
+  /// Selects the war unit at [index] (index into the war side's troop
+  /// list); null clears the selection.
+  ///
+  /// [focusMap] centers the map on that unit — passed by the war panel's
+  /// unit chips (user request 2026-08-08: picking an army from the list
+  /// must scroll the map to it), NOT by taps on the map itself, where the
+  /// unit is under the finger already and a jump would be disorienting.
+  void selectWarUnit(int? index, {bool focusMap = false}) {
     selectedWarUnit = index;
+    if (focusMap && index != null) {
+      final slot = state.activeWar?.phase == WarPhase.preparation
+          ? warPrepSlot
+          : warHumanSlot;
+      final troops = slot == null ? const [] : state.realm(slot).troops;
+      if (index < troops.length) {
+        focusTile?.call(troops[index].x, troops[index].y);
+      }
+    }
     notifyListeners();
   }
 

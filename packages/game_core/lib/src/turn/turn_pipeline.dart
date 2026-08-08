@@ -9,6 +9,7 @@ import '../rules/offices.dart';
 import '../rules/population.dart';
 import '../rules/titles.dart';
 import '../rules/victory.dart';
+import '../state/constants.dart';
 import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
@@ -146,11 +147,23 @@ void _startRound(GameState state, Rng rng, List<GameEvent> events) {
   runOfficePhase(state, rng, events); // Kurfürsten + elections (§17)
 
   for (final realm in state.realms) {
-    // War weariness fades: every war-free year forgives one step of the
-    // escalating declaration penalty (checked BEFORE the flag reset, so
-    // the year the realm fought never counts as a peace year).
-    if (!realm.warThisYear && realm.recentWars > 0) realm.recentWars--;
-    realm.warThisYear = false; // wars: once per year per player (§11.1)
+    // War weariness fades — but slowly: [wearinessDecayYears] consecutive
+    // war-free years forgive ONE step of the escalating declaration penalty
+    // and its recovery ceiling. "War-free" means the realm saw NO war at
+    // all, defending included, exactly as it did while the defender still
+    // carried `warThisYear` (aggressor-only since 2026-08-08; `lastWarYear`
+    // is set for both sides). `state.year` was incremented above, so the
+    // year that just ended is `year - 1`.
+    if (realm.lastWarYear < state.year - 1) {
+      realm.peaceYears++;
+      if (realm.peaceYears >= wearinessDecayYears && realm.recentWars > 0) {
+        realm.recentWars--;
+        realm.peaceYears = 0;
+      }
+    } else {
+      realm.peaceYears = 0;
+    }
+    realm.warThisYear = false; // wars: once per year per aggressor (§11.1)
   }
 
   // Orders against realms that went vacant (or merged away) can never

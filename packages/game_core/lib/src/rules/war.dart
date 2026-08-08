@@ -41,6 +41,17 @@ ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot, Rng rng,
     // delete it on the spot.)
     for (final troop in realm.troops) {
       troop.plunderedThisRound = false;
+      // `[FIX 2026-08-08]` Starting ORDERS for the war: the aggressor
+      // marches, the defender holds. The stance only ever governs a side
+      // fought by the autopilot (a live commander moves every unit by
+      // hand), and `Troop.stance` defaults to holdPosition — so an
+      // ATTACKER who handed the war to the computer without touching a
+      // single stance used to leave its whole army standing at home for
+      // all 20 rounds: no battle, no ground taken, a guaranteed
+      // `warDraw` at winter. Both sides may still re-order every unit
+      // individually during the preparation window.
+      troop.stance =
+          slot == attackerSlot ? TroopStance.attack : TroopStance.holdPosition;
     }
   }
   final war = ActiveWar(
@@ -55,9 +66,20 @@ ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot, Rng rng,
     ];
   }
   state.activeWar = war;
-  // §11.1: both sides are locked into one war per year — not just the attacker.
+  // §11.1: the ATTACKER is locked into one war per year. `[DESIGNED
+  // 2026-08-08, user feedback]` Until now the defender's flag was set too,
+  // so being attacked silently burned your own war for the year: a player
+  // attacked in year N could not answer by taking the field against anyone
+  // — no counter-attack, no land grab to recover from the hit — although
+  // they never chose that war. The original's rule ("Sie haben dieses Jahr
+  // schon einmal Krieg geführt !", §11.1) reads as a cap on what a ruler
+  // STARTS, and every other cost of war here is already aggressor-only
+  // (popularity penalty, `recentWars`). A war the same year against the
+  // very same opponent is still blocked — by the truce below.
   state.realm(attackerSlot).warThisYear = true;
-  state.realm(defenderSlot).warThisYear = true;
+  // Both sides count as "recently at war" for the AI's target choice.
+  state.realm(attackerSlot).lastWarYear = state.year;
+  state.realm(defenderSlot).lastWarYear = state.year;
   // `[DESIGNED 2026-07-06, user-designed mechanic]` A war between two
   // HUMANS starts in a PREPARATION phase: both combatants choose (as a
   // `warPlan` decision) whether they command their side live or hand it to
@@ -90,6 +112,38 @@ ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot, Rng rng,
     _rollWarMoves(state, war, rng);
   }
   return war;
+}
+
+/// `[DESIGNED 2026-08-08, user feedback]` Years of enforced peace between
+/// two realms once their war ends: the truce covers the REST of the year
+/// the war ended in plus this many full years (1 → a war ended in 1015 is
+/// re-declarable between the pair in 1017). Without it the AI — which
+/// hunts the weakest neighbour — simply re-declared on the realm it had
+/// just beaten down, every single year, and the loser never got a turn to
+/// rebuild. It is a pair rule, not a shield: everyone ELSE may still
+/// declare, and the freed war slot (see [startWar]) means the defender can
+/// take the field against a third realm at once.
+const int truceYears = 1;
+
+/// Whether [slot] is still bound by a truce with [otherSlot], and until
+/// which year — null when war between them is allowed. Symmetric: the
+/// entry is written on both sides at every war teardown ([_clearWar]).
+int? truceUntil(GameState state, int slot, int otherSlot) {
+  final until = state.realm(slot).truceUntilYear[otherSlot];
+  if (until == null || until < state.year) return null;
+  return until;
+}
+
+/// THE war teardown: records the post-war truce on both combatants and
+/// clears the war state. Every ending (ruler capture, negotiated peace,
+/// winter draw, settled claim) goes through this — a path that just nulled
+/// `activeWar` would silently skip the truce.
+void _clearWar(GameState state, ActiveWar war) {
+  final until = state.year + truceYears;
+  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+    state.realm(slot).truceUntilYear[war.opponentOf(slot)] = until;
+  }
+  state.activeWar = null;
 }
 
 /// Ends the preparation phase: rolls the first round's movement allowance
@@ -673,6 +727,17 @@ bool occupiesAllKeyPoints(GameState state, int slot, int enemySlot) {
   return true;
 }
 
+/// The share band a settlement claim is capped to (see [_cappedClaim]),
+/// rolled per war end. (Briefly lowered to 25–45 % on 2026-08-08 to slow
+/// conquest down; reverted the same day — the pace of a game is regulated
+/// through the INTERNAL cost of warring, not by making won wars pay less.)
+const int warClaimShareMin = 50;
+const int warClaimShareMax = 80;
+
+/// Total settlement worth below which a loser is annexed WHOLE
+/// ([_cappedClaim]) — less than a single Burg.
+const int smallRealmValue = 5000;
+
 /// The settlement claim is capped at a share of the loser's total
 /// territory settlement value. War scores grow with army strength
 /// squared, so any sizeable army's claim used to dwarf the loser's whole
@@ -681,17 +746,17 @@ bool occupiesAllKeyPoints(GameState state, int slot, int enemySlot) {
 /// never costs the whole realm (the last tile is never affordable), so
 /// a losing party is never erased by a single war.
 ///
-/// The cap share is ROLLED per war end, 50–80% (rather than a flat 50%,
-/// which made every victory against a similar-sized realm pay out the
-/// same, predictable claim).
+/// The cap share is ROLLED per war end ([warClaimShareMin] …
+/// [warClaimShareMax] %, rather than a flat share, which made every victory
+/// against a similar-sized realm pay out the same, predictable claim).
 ///
-/// SMALL REALMS: a loser worth less than a single Burg (5,000) all told is
+/// SMALL REALMS: a loser worth less than [smallRealmValue] all told is
 /// taken WHOLE — the cap only shields sizeable realms, so a tiny rump state
 /// can always be finished off.
 ///
 /// FLOOR: above that, a clear victory can still always claim at least the
 /// single cheapest loser tile bordering the winner. Against a realm ground
-/// down to a few cheap fragments the 50–80 % cap of the remaining value can
+/// down to a few cheap fragments the capped share of the remaining value can
 /// fall BELOW the cheapest tile, so the winner could take nothing of what
 /// they fought for. The floor fixes that; the cap still keeps a sizeable
 /// realm from being swallowed whole in one war.
@@ -704,12 +769,13 @@ int _cappedClaim(
       total += settlementTileValue(state, map.building[i]);
     }
   }
-  // A small realm — worth less than a single Burg (5,000) all told — can be
+  // A small realm — worth less than [smallRealmValue] all told — can be
   // taken WHOLE: the anti-swallow cap only shields sizeable realms. Below
   // that the claim covers the loser's entire remaining territory, so a
   // victory is never left unable to finish off a tiny rump state.
-  if (total < 5000) return total;
-  final sharePercent = 50 + rng.nextInt(31);
+  if (total < smallRealmValue) return total;
+  final sharePercent =
+      warClaimShareMin + rng.nextInt(warClaimShareMax - warClaimShareMin + 1);
   final capped = math.min(claim, total * sharePercent ~/ 100);
   final cheapestBorder =
       _cheapestBorderingLoserTile(state, winnerSlot, loserSlot);
@@ -832,7 +898,7 @@ void _endWarByCapitalOccupation(
     // 'rulerCaptured' AFTER it (checkLandLoss stamps the generic
     // 'realmOverrun') — the ruler's capture is what actually fell the realm.
     _returnTroops(state, war, events);
-    state.activeWar = null;
+    _clearWar(state, war);
     if (loserWasHuman) state.humanLossReason = 'rulerCaptured';
 
     // The war state is gone before the coercion decisions land so their
@@ -943,7 +1009,7 @@ void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
       payload: {'summary': war.summary()},
     ));
     _returnTroops(state, war, events);
-    state.activeWar = null;
+    _clearWar(state, war);
     return;
   }
   if (winterReached) {
@@ -1120,7 +1186,7 @@ void resolveWarEnd(GameState state, Rng rng, List<GameEvent> events) {
       payload: {'summary': war.summary()},
     ));
     _returnTroops(state, war, events);
-    state.activeWar = null;
+    _clearWar(state, war);
     return;
   }
 
@@ -1319,7 +1385,7 @@ void finishSettlement(GameState state, Rng rng, List<GameEvent> events) {
   // Teardown: troops return home (annexed snapshot tiles fall back to
   // owned ground) and a landless loser is vacated.
   _returnTroops(state, war, events);
-  state.activeWar = null;
+  _clearWar(state, war);
   _surfaceMidTurnWin(state, winnerSlot, events);
 }
 

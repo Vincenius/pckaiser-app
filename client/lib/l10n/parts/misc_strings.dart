@@ -62,6 +62,10 @@ const Map<String, String> miscDe = {
       'gemeinsamen Zeitpunkt — sonst nach Ablauf der '
       'Vorbereitungsfrist. Ohne Auswahl gilt die Frist.',
   'dec.warStartNow': 'Sofort (diese Stunde)',
+  // An agreed start that already lies in the past — the server starts the
+  // duel on its next sweep (within a minute), so it is not "20:00 Uhr"
+  // but "any moment now".
+  'dec.warStartImminent': 'jeden Moment',
   'dec.warStartNoProposal': 'Ohne Terminvorschlag',
   'dec.warStartConfirmed': 'Kriegstermin steht: {time}.',
   'dec.warStartSaved':
@@ -137,6 +141,7 @@ const Map<String, String> miscEn = {
       'preparation deadline expires. With no selection, the deadline '
       'applies.',
   'dec.warStartNow': 'Immediately (this hour)',
+  'dec.warStartImminent': 'any moment now',
   'dec.warStartNoProposal': 'No time proposal',
   'dec.warStartConfirmed': 'War start fixed: {time}.',
   'dec.warStartSaved':

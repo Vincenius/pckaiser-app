@@ -25,7 +25,7 @@ library;
 ///
 /// Bump this on every release that changes gameplay: an online match then
 /// asks any seat still on the old build to update before their next turn.
-const String appVersion = '0.2.4';
+const String appVersion = '0.2.5';
 
 /// Bump on incompatible JSON reshapes only; add a migration alongside.
 const int currentSchemaVersion = 1;

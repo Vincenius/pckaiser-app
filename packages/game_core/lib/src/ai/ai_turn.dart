@@ -167,7 +167,7 @@ void _runAiTurnInPlace(
     final target = _pickWarTarget(state, slot, rng, tuning, desperate: warFlag);
     if (target != null) {
       _act(state, DeclareWar(slot: slot, targetSlot: target), rng, events);
-      _fastForwardAiWar(state, rng, events);
+      fastForwardUnattendedWar(state, rng, events);
     }
   }
 }
@@ -503,7 +503,9 @@ void _investInShips(
 /// is the WEAKEST adjacent realm instead — and only when the own army
 /// holds that strength edge over it, so a schwer AI never CHOOSES a war it
 /// is likely to lose; [desperate] (boxed in, §20.4) drops the edge
-/// requirement but keeps the weakest-target pick.
+/// requirement but keeps the weakest-target pick. Realms that fought a war
+/// this year or last year are skipped (recovery grace, see below) unless
+/// nothing else is reachable and the AI is [desperate].
 int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
     {bool desperate = false}) {
   final realm = state.realm(slot);
@@ -514,12 +516,25 @@ int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
     for (final other in state.map.realmNeighbors(slot))
       if (declareWarBlocker(state, realm, other) == null) other,
   ];
-  if (adjacent.isEmpty) return null;
+  // `[DESIGNED 2026-08-08, user feedback]` Recovery grace: leave a realm
+  // that fought a war this year or last year alone. The truce only binds
+  // the PAIR — but the AI hunts the weakest neighbour, and a realm just
+  // beaten down by one neighbour is the weakest for all the others too, so
+  // without this the same victim was attacked year after year by a fresh
+  // aggressor and never got a turn to act. A boxed-in AI (`desperate`,
+  // §20.4's escape valve) still takes what it can get.
+  final rested = [
+    for (final other in adjacent)
+      if (state.realm(other).lastWarYear < state.year - 1) other,
+  ];
+  final targets =
+      rested.isNotEmpty ? rested : (desperate ? adjacent : const <int>[]);
+  if (targets.isEmpty) return null;
   if (tuning.warStrengthAdvantage > 0) {
     final own = _armyStrength(state.realm(slot));
     int? weakest;
     var weakestStrength = double.infinity;
-    for (final s in adjacent) {
+    for (final s in targets) {
       final strength = _armyStrength(state.realm(s));
       if (strength < weakestStrength) {
         weakestStrength = strength;
@@ -534,10 +549,10 @@ int? _pickWarTarget(GameState state, int slot, Rng rng, AiTuning tuning,
   }
   final religion = state.dynasty(slot).religion;
   final infidels = [
-    for (final s in adjacent)
+    for (final s in targets)
       if (state.dynasty(s).religion != religion) s,
   ];
-  final pool = infidels.isNotEmpty ? infidels : adjacent;
+  final pool = infidels.isNotEmpty ? infidels : targets;
   return pool[rng.nextInt(pool.length)];
 }
 
@@ -874,20 +889,40 @@ void endWarRoundWithAi(GameState state, Rng rng, List<GameEvent> events) {
   }
 }
 
-/// Runs a whole AI-vs-AI war to completion in silent "fast mode" (§11.3).
-void _fastForwardAiWar(GameState state, Rng rng, List<GameEvent> events) {
+/// Whether an active war has NO live human side left — every combatant is
+/// an AI realm or a human who handed this war to the stance autopilot
+/// (`war.autoSlots`). Such a war awaits nobody: no seat can be prompted
+/// for it and no turn clock belongs to it, so it MUST be fast-forwarded
+/// ([fastForwardUnattendedWar]) rather than left standing. Online, a war
+/// left in that state freezes the whole match forever — nothing is
+/// awaited, so the server arms no deadline and the sweep never returns.
+bool warIsUnattended(GameState state) {
+  final war = state.activeWar;
+  if (war == null) return false;
+  for (final slot in [war.attackerSlot, war.defenderSlot]) {
+    if (warSideIsHuman(state, war, slot)) return false;
+  }
+  return true;
+}
+
+/// Runs a war that nobody plays live to completion in silent "fast mode"
+/// (§11.3) — an AI-vs-AI war, or one both humans delegated. No-op while a
+/// live human still drives their own rounds. An open claim settlement is
+/// left alone: only a LIVE human winner can ever have one (every other
+/// winner auto-settles on the spot).
+void fastForwardUnattendedWar(
+    GameState state, Rng rng, List<GameEvent> events) {
   var guard = 0;
   while (state.activeWar != null && guard++ < 30) {
     final war = state.activeWar!;
-    if (war.phase == WarPhase.settlement) {
-      // Only a live human winner leaves the settlement open.
-      return;
-    }
-    for (final slot in [war.attackerSlot, war.defenderSlot]) {
-      // Delegated human sides (autoSlots) fast-forward like AI sides.
-      if (warSideIsHuman(state, war, slot)) {
-        return; // a live human participant drives their own war rounds
-      }
+    if (war.phase == WarPhase.settlement) return;
+    if (!warIsUnattended(state)) return;
+    // A war delegated while still in its preparation window has to enter
+    // the rounds first, or the loop below would spin without advancing.
+    if (war.phase == WarPhase.preparation) {
+      state.pendingDecisions.removeWhere((d) => d.type == 'warPlan');
+      beginWarRounds(state, rng);
+      continue;
     }
     endWarRoundWithAi(state, rng, events);
   }
@@ -931,7 +966,7 @@ void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
     return;
   }
   beginWarRounds(state, rng);
-  if (liveSides == 0) _fastForwardAiWar(state, rng, events);
+  if (liveSides == 0) fastForwardUnattendedWar(state, rng, events);
 }
 
 /// Driver for local mode and the server (ARCHITECTURE.md "Turn Flow"):

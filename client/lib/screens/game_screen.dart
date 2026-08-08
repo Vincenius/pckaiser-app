@@ -104,6 +104,8 @@ class _GameScreenState extends State<GameScreen> {
         game.onLongPressTile = (x, y) => _onLongPressTile(controller, x, y);
         game.onBoxDrag = (x, y) => _onBoxDrag(controller, x, y);
         game.onBoxDragEnd = () => _onBoxSelectDone(controller);
+        // Lets the war panel scroll the map to a unit picked from its list.
+        controller.focusTile = game.focusOnTile;
         // Assign the field now (not only in the setState below) so
         // _syncDragMode's _applyDragMode can wire the map immediately — a
         // save resumed mid-settlement must arm annex mode right away.

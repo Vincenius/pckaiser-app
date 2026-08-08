@@ -12,7 +12,7 @@ import '../state/realm.dart';
 import '../state/town.dart';
 import '../state/troop.dart';
 import 'dynasty.dart' as dyn;
-import 'population.dart' show cutGarrisonTroops;
+import 'population.dart' show cutGarrisonTroops, removeArmyMen;
 import 'protection.dart';
 import 'troops.dart' show disbandJanissaries;
 import 'titles.dart'
@@ -231,18 +231,33 @@ void _damageTown(GameState state, Realm realm, Town town, int t) {
   realm.population -= t;
 }
 
-/// §18.2 disease: population control above 150/250 persons. One outbreak
-/// kills 50% of ALL persons in the world. [DEVIATION] Mercy rule: a
-/// person who is currently the last living member of their dynasty is
-/// spared — the original could erase a player's whole dynasty in one
-/// between-turns tick with zero counterplay. Population control still
-/// works (the floor is one survivor per dynasty).
+/// `[DESIGNED 2026-08-08, user feedback]` The §18.2 outbreak thresholds
+/// scale with the WORLD SIZE instead of the original's flat 150/250 persons.
+/// Those numbers assume a full 30-realm world (≈ 5 persons per living
+/// realm); on a Klein/Mittel map with 6–20 realms the world never held that
+/// many people, so the plague — one of the events that gave the original
+/// its historical texture — could not fire at all. Per living realm now,
+/// with a floor so a late-game world of two survivors is not permanently
+/// plague-ridden; at 30 realms the values come out at the original 150/250
+/// (the upper threshold is 5/3 × this one, as before).
+int diseaseThreshold(GameState state) {
+  final living = state.realms.where((r) => !r.isVacant).length;
+  return math.max(60, 5 * living);
+}
+
+/// §18.2 disease: population control above two person-count thresholds
+/// ([diseaseThreshold]). One outbreak kills 50% of ALL persons in the
+/// world. [DEVIATION] Mercy rule: a person who is currently the last living
+/// member of their dynasty is spared — the original could erase a player's
+/// whole dynasty in one between-turns tick with zero counterplay.
+/// Population control still works (the floor is one survivor per dynasty).
 /// Suppressed during the protect-new-players window (random deaths).
 void _maybeDisease(GameState state, Rng rng, List<GameEvent> events) {
   if (newPlayerProtectionActive(state)) return;
   final personCount = state.persons.length;
-  if (personCount <= 150) return;
-  if (personCount <= 250 && rng.nextInt(20) != 0) return;
+  final low = diseaseThreshold(state);
+  if (personCount <= low) return;
+  if (personCount <= low * 5 ~/ 3 && rng.nextInt(20) != 0) return;
 
   const diseases = ['Pest', 'Cholera', 'Typhus', 'Ruhr'];
   final disease = diseases[rng.nextInt(4)];
@@ -511,6 +526,10 @@ Person foundReplacementDynasty(
   realm.rulerId = founder.id;
   realm.titleClass = (muslim ? 9 : 1) + (gender == 1 ? 12 : 0);
   realm.popularity = 50;
+  // A whole new house answers for none of the old one's wars — the
+  // weariness ceiling starts clean with it (2026-08-08).
+  realm.recentWars = 0;
+  realm.peaceYears = 0;
   if (treasury != null) {
     realm.treasury = treasury;
   } else {
@@ -526,6 +545,20 @@ Person foundReplacementDynasty(
   }
   return founder;
 }
+
+/// `[DESIGNED 2026-08-08, user feedback]` Peasant revolt tuning: what an
+/// uprising costs the realm it breaks out in (see [_peasantRevolt]).
+/// A share of the standing army deserts to the mob or melts away, the
+/// biggest town loses people, and the year's takings are looted.
+const int peasantRevoltDesertionPercent = 20;
+const int peasantRevoltTownLossPercent = 10;
+const int peasantRevoltTreasuryLossPercent = 10;
+
+/// Popularity the realm is left with once an uprising has burnt itself
+/// out. Above the §19.1 strife line (20) so the revolt is a recurring
+/// scourge, not a per-turn death spiral: keep warring or starving and the
+/// people rise again in a few years.
+const int peasantRevoltVentedPopularity = 30;
 
 /// §19.1 internal strife + §19.2 bankruptcy, run in the end-of-turn
 /// elimination check for [slot]. Both are suppressed in the
@@ -553,6 +586,11 @@ void runEliminationChecks(
       realm.rulerId = newRuler;
       regenderTitle(state, realm);
       realm.popularity = 50;
+      // The pretender is not blamed for the deposed ruler's campaigns:
+      // without this the inherited weariness ceiling would pull the fresh
+      // ruler straight back under the strife line (2026-08-08).
+      realm.recentWars = 0;
+      realm.peaceYears = 0;
       if (wasHuman) {
         state.humanLossReason = 'internalStrife';
         dynasty.status = DynastyStatus.ai;
@@ -571,6 +609,19 @@ void runEliminationChecks(
       return;
     }
   }
+
+  // `[DESIGNED 2026-08-08, user feedback]` The coup above needs a rival
+  // BRANCH (> 3 members, at least one non-ruler alive). A young or thinned
+  // house could therefore sit at popularity 5 indefinitely with no
+  // consequence whatsoever — which is why an expansionist player never met
+  // the unrest the original punished them with. A realm below the strife
+  // line whose house cannot produce a pretender now faces a PEASANT
+  // REVOLT: it costs, it repeats while the cause persists, and it never
+  // takes the realm away (that stays the pretender's privilege).
+  // (No early return: the realm keeps its ruler, so the §19.2 debt check
+  // below still applies this turn — the revolt's looting can even be what
+  // tips it over.)
+  if (realm.popularity < 20) _peasantRevolt(state, realm, events);
 
   // §19.2 bankruptcy.
   const thresholds = [
@@ -657,4 +708,51 @@ void runEliminationChecks(
   // A seizure that took the realm's LAST tiles leaves the fresh founder
   // landless — vacate immediately (no-op when land remains).
   checkLandLoss(state, realm, events);
+}
+
+/// `[DESIGNED 2026-08-08, user feedback]` A peasant revolt: the fallback
+/// consequence for a realm below the §19.1 strife line whose house holds no
+/// pretender to depose the ruler (see the caller). The uprising costs
+/// soldiers (deserted or lost to the mob), townspeople and the treasury,
+/// then burns itself out at [peasantRevoltVentedPopularity] — well above
+/// the strife line, so this is a recurring scourge for a ruler who keeps
+/// warring or starving their people, never a per-turn spiral. It never
+/// changes who rules: losing the realm stays the pretender's privilege.
+void _peasantRevolt(GameState state, Realm realm, List<GameEvent> events) {
+  final deserted = realm.armySize * peasantRevoltDesertionPercent ~/ 100;
+  if (deserted > 0) removeArmyMen(realm, deserted);
+
+  // The biggest town is where the mob gathers.
+  var townLoss = 0;
+  if (realm.towns.isNotEmpty) {
+    var biggest = realm.towns.first;
+    for (final town in realm.towns) {
+      if (town.population > biggest.population) biggest = town;
+    }
+    townLoss = biggest.population * peasantRevoltTownLossPercent ~/ 100;
+    // `_damageTown` keeps the town/realm population, capacity and garrison
+    // bookkeeping in sync (and may dissolve a town that empties out).
+    if (townLoss > 0) _damageTown(state, realm, biggest, townLoss);
+  }
+
+  // Only a POSITIVE treasury can be looted — a realm already in debt must
+  // not gain money here (`~/` on a negative would subtract a negative).
+  final looted = realm.treasury > 0
+      ? realm.treasury * peasantRevoltTreasuryLossPercent ~/ 100
+      : 0;
+  realm.treasury -= looted;
+
+  realm.popularity = peasantRevoltVentedPopularity;
+
+  events.add(GameEvent(
+    year: state.year,
+    slot: realm.slot,
+    type: 'peasantRevolt',
+    visibility: EventVisibility.public,
+    payload: {
+      'men': deserted,
+      'people': townLoss,
+      'taler': looted,
+    },
+  ));
 }

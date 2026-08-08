@@ -115,6 +115,37 @@ const Map<String, String> onlineDe = {
       'Jeder kann diese Partie in der Liste sehen und beitreten.',
   'online.privateHint': 'Nur Spieler mit dem Raum-Code können beitreten.',
   'online.warTurnTime': 'Zugzeit im Krieg',
+
+  // Connection problems (services/api_client.dart). Each names the likely
+  // cause AND what the player can do — a bare "Server nicht erreichbar"
+  // left them guessing whether it was their phone or the server.
+  'online.errOffline':
+      'Keine Internetverbindung. Prüfe WLAN oder mobile Daten — '
+          'dein Zug wurde nicht gesendet.',
+  'online.errUnknownHost':
+      'Server "{url}" nicht gefunden. Prüfe die Server-Adresse in den '
+          'Online-Einstellungen und deine Internetverbindung.',
+  'online.errRefused':
+      'Der Server nimmt gerade keine Verbindungen an — vermutlich ist er '
+          'offline oder startet neu. Bitte versuche es in ein paar Minuten '
+          'erneut.',
+  'online.errTimeout':
+      'Der Server antwortet nicht (Zeitüberschreitung). Deine Verbindung '
+          'ist sehr langsam oder der Server ist überlastet — dein Zug wurde '
+          'nicht gesendet.',
+  'online.errTls':
+      'Gesicherte Verbindung zum Server fehlgeschlagen. Prüfe die '
+          'Server-Adresse (http/https) und die Uhrzeit deines Geräts.',
+  'online.errBadResponse':
+      'Unerwartete Antwort vom Server. Prüfe die Server-Adresse — dort '
+          'antwortet gerade kein PCKaiser-Server.',
+  'online.errServerDown':
+      'Der Server hat einen Fehler gemeldet und ist momentan nicht '
+          'verfügbar. Bitte versuche es später noch einmal.',
+  'online.errServer': 'Serverfehler ({code}). Bitte versuche es erneut.',
+  // Shown above the lobby / match list while the last refresh failed.
+  'online.offlineBanner': 'Keine Verbindung zum Server',
+  'online.retry': 'Erneut versuchen',
 };
 
 const Map<String, String> onlineEn = {
@@ -229,4 +260,30 @@ const Map<String, String> onlineEn = {
   'online.publicHint': 'Anyone can see this game in the list and join.',
   'online.privateHint': 'Only players with the room code can join.',
   'online.warTurnTime': 'Turn time in war',
+
+  // Connection problems (services/api_client.dart) — see the German part.
+  'online.errOffline':
+      'No internet connection. Check Wi-Fi or mobile data — your move was '
+          'not sent.',
+  'online.errUnknownHost':
+      'Server "{url}" not found. Check the server address in the online '
+          'settings and your internet connection.',
+  'online.errRefused':
+      'The server is not accepting connections right now — it is probably '
+          'offline or restarting. Please try again in a few minutes.',
+  'online.errTimeout':
+      'The server is not responding (timed out). Your connection is very '
+          'slow or the server is overloaded — your move was not sent.',
+  'online.errTls':
+      'Secure connection to the server failed. Check the server address '
+          '(http/https) and your device clock.',
+  'online.errBadResponse':
+      'Unexpected answer from the server. Check the server address — no '
+          'PCKaiser server is responding there.',
+  'online.errServerDown':
+      'The server reported an error and is currently unavailable. Please '
+          'try again later.',
+  'online.errServer': 'Server error ({code}). Please try again.',
+  'online.offlineBanner': 'No connection to the server',
+  'online.retry': 'Try again',
 };

@@ -318,6 +318,50 @@ void main() {
     },
   );
 
+  test(
+      'picking a war unit from the LIST scrolls the map to it; a map tap '
+      'does not (2026-08-08)', () async {
+    final controller = await twoPlayerGame();
+    controller.confirmHandoff();
+    final state = controller.state;
+    state.year = 1010;
+    for (final slot in [1, 5]) {
+      final realm = state.realm(slot);
+      realm.treasury = 10000;
+      realm.troops.add(
+        Troop(
+          name: 'Heer$slot',
+          men: 50,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: false,
+          x: realm.capitalX,
+          y: realm.capitalY,
+        ),
+      );
+    }
+    final map = state.map;
+    final (bx, by) = claimableTile(state, 1);
+    map.owner[map.index(bx, by)] = 5;
+    state.realm(5).tileCount[Building.none]++;
+    await controller.applyIrreversible(DeclareWar(slot: 1, targetSlot: 5));
+    expect(controller.state.activeWar!.phase, WarPhase.preparation);
+
+    final focused = <(int, int)>[];
+    controller.focusTile = (x, y) => focused.add((x, y));
+
+    // The war panel's chip list asks for the map to follow.
+    controller.selectWarUnit(0, focusMap: true);
+    final unit = controller.state.realm(1).troops.first;
+    expect(focused, [(unit.x, unit.y)]);
+
+    // A tap on the map itself must NOT jerk the camera — the unit is
+    // already under the finger.
+    controller.selectWarUnit(null);
+    controller.selectWarUnit(0);
+    expect(focused.length, 1);
+  });
+
   test('a full round returns to player 1 and the year advances', () async {
     final controller = await twoPlayerGame();
     controller.confirmHandoff();

@@ -127,6 +127,27 @@ const int religionChangePopularityCost = 25;
 /// [warPopularityFloor] instead.
 const int militarismPopularityFloor = 25;
 
+/// `[DESIGNED 2026-08-08, user feedback]` War weariness CEILING. The
+/// declaration penalty alone had no lasting bite: the §8.4 food
+/// satisfaction pulls a well-fed realm back toward 100 by up to 8 points a
+/// turn, so a −5/−10 hit was healed within one or two turns and a ruler
+/// who warred every single year never came near the §19.1 strife line.
+/// While wars pile up (`Realm.recentWars`) the mood may no longer recover
+/// past this ceiling — every war in a row lowers it by
+/// [warWearinessCeilingStep], down to [warWearinessCeilingFloor]. It only
+/// caps RECOVERY (the food step drifts popularity toward it), so a single
+/// campaign costs little and a permanent war economy grinds the people
+/// down. Only wars a realm STARTS count — being attacked never does.
+const int warWearinessCeilingStep = 10;
+const int warWearinessCeilingFloor = 30;
+
+/// `[DESIGNED 2026-08-08, user feedback]` Consecutive war-free years needed
+/// to forgive ONE step of war weariness (`Realm.recentWars`, counted in
+/// `Realm.peaceYears`). Was one year, which let a ruler alternate war and
+/// peace forever at a flat penalty; a serial warmonger must now actually
+/// stand down for a while to work off the resentment.
+const int wearinessDecayYears = 2;
+
 /// `[DESIGNED 2026-07-06, user feedback]` War declarations bypass the
 /// militarism floor down to this bound, BELOW the §19.1 strife line (20):
 /// repeated aggression can now realistically drag a warmonger into revolt

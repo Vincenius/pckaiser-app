@@ -56,8 +56,11 @@ const Map<String, String> tutorialDe = {
       'Besatzung, Artillerie schwächt diese Boni und belagert am besten; '
       'Infanterie schlägt Kavallerie, Kavallerie schlägt Artillerie, '
       'Artillerie schlägt Infanterie. Aber Vorsicht: Das Volk verübelt '
-      'dir Aushebungen und Kriege (Beliebtheit sinkt). Krieg erklären '
-      'kannst du ab dem Jahr 1010 — nur Nachbarn, einmal pro Jahr.',
+      'dir Aushebungen und Kriege (Beliebtheit sinkt) — wer Jahr für Jahr '
+      'Krieg führt, dessen Volk erholt sich nicht mehr und erhebt sich '
+      'irgendwann. Krieg erklären kannst du ab dem Jahr 1010 — nur '
+      'Nachbarn, einmal pro Jahr, und nach jedem Krieg gilt ein Jahr '
+      'Waffenruhe zwischen den beiden Reichen.',
   // {military} = tr('military'), {recruit} = tr('recruit').
   'tut.militaryTask':
       'Öffne „{military}" → „{recruit}" und stationiere '
@@ -154,8 +157,10 @@ const Map<String, String> tutorialEn = {
       'artillery weakens these bonuses and is best at sieges; '
       'infantry beats cavalry, cavalry beats artillery, artillery '
       'beats infantry. But beware: the people resent levies and wars '
-      '(popularity drops). You can declare war from the year 1010 — '
-      'only on neighbors, once per year.',
+      '(popularity drops) — war year after year and their mood never '
+      'recovers, until they rise up. You can declare war from the year '
+      '1010 — only on neighbors, once per year, and every war is followed '
+      'by a year of truce between the two realms.',
   'tut.militaryTask':
       'Open "{military}" → "{recruit}" and station '
       'recruits at your capital.',

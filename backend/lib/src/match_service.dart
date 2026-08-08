@@ -1032,24 +1032,77 @@ class MatchService {
     final expired = await _store.expiredMatches(now);
     var swept = 0;
     for (final stale in expired) {
-      final didSweep = await _locked(stale.id, () async {
-        // Re-read under the lock: a turn submitted between the bulk scan
-        // above and acquiring this lock may already have advanced the match
-        // past its old deadline, so it must no longer be swept.
-        final match = await _store.match(stale.id);
-        if (match == null ||
-            match.status != MatchStatus.active ||
-            match.turnDeadline == null ||
-            !match.turnDeadline!.isBefore(now)) {
-          return false;
-        }
-        await _sweepMatch(match);
-        return true;
-      });
+      // One unsweepable match must not abort the whole run: before this
+      // guard a single match whose state threw (corrupt document, engine
+      // assertion) killed every LATER match's timeout too — the deployment
+      // silently stopped advancing.
+      bool didSweep;
+      try {
+        didSweep = await _locked(stale.id, () async {
+          // Re-read under the lock: a turn submitted between the bulk scan
+          // above and acquiring this lock may already have advanced the
+          // match past its old deadline, so it must no longer be swept.
+          final match = await _store.match(stale.id);
+          if (match == null ||
+              match.status != MatchStatus.active ||
+              match.turnDeadline == null ||
+              !match.turnDeadline!.isBefore(now)) {
+            return false;
+          }
+          await _sweepMatch(match);
+          return true;
+        });
+      } on Object catch (e, stack) {
+        print('[sweep] match ${stale.id} failed: $e\n$stack');
+        didSweep = false;
+      }
       if (didSweep) swept++;
     }
+    swept += await _sweepFrozenMatches();
     await _sendWarStartReminders(now);
     return swept;
+  }
+
+  /// Self-heal for matches that carry NO deadline although something is
+  /// awaited — they can never be picked up by [sweepExpired] again and are
+  /// frozen for good. The one known producer was a war whose every side
+  /// ended up on the autopilot: nothing is awaited, so no clock was armed
+  /// and the war stood still forever (the match with it, since a running
+  /// war blocks every normal turn). The root causes are fixed in
+  /// [_commit]/[_sweepMatch]; this pass repairs matches that already went
+  /// into that state on an older build. Returns how many it revived.
+  Future<int> _sweepFrozenMatches() async {
+    var revived = 0;
+    for (final candidate in await _store.allMatches()) {
+      if (candidate.status != MatchStatus.active ||
+          candidate.turnDeadline != null ||
+          candidate.stateJson == null) {
+        continue;
+      }
+      // Cheap pre-filter off the raw JSON: only a running war can freeze a
+      // match this way. A timer-less match legitimately has no deadline.
+      if (candidate.stateJson!['activeWar'] == null) continue;
+      try {
+        final healed = await _locked(candidate.id, () async {
+          final match = await _store.match(candidate.id);
+          if (match == null ||
+              match.status != MatchStatus.active ||
+              match.turnDeadline != null ||
+              match.stateJson?['activeWar'] == null) {
+            return false;
+          }
+          final state = _load(match);
+          if (_awaitedSlot(state) != null) return false; // not frozen
+          print('[sweep] reviving frozen match ${match.id}');
+          await _sweepMatch(match);
+          return true;
+        });
+        if (healed) revived++;
+      } on Object catch (e, stack) {
+        print('[sweep] reviving ${candidate.id} failed: $e\n$stack');
+      }
+    }
+    return revived;
   }
 
   /// ~15 minutes before an AGREED duel start, nudge both live combatants
@@ -1215,11 +1268,18 @@ class MatchService {
       // stance autopilot for the REST of the war — an absent player would
       // otherwise drag every remaining round out by one short clock each.
       // Applied AFTER this round's classic fallback so the handover
-      // semantics of the current round stay intact; only in a live
-      // human-vs-human duel (a human fighting an AI keeps the full turn
-      // clock per round, as before).
+      // semantics of the current round stay intact; only in a duel between
+      // two HUMAN seats (a human fighting a real AI realm keeps the full
+      // turn clock per round, as before).
+      //
+      // `[FIX 2026-08-08]` The gate used to be `_warIsHumanVsHuman`, which
+      // is false as soon as ONE side has been delegated — so the SECOND
+      // absent duelist was never handed over and the war crawled on at a
+      // full turn timer per round: a 20-round duel between two absent
+      // players took 20 DAYS, with the whole match frozen behind it (a
+      // running war blocks every normal turn).
       final noShow = idleSlot != null &&
-          _warIsHumanVsHuman(state) &&
+          _warIsHumanDuel(state) &&
           state.activeWar!.phase == WarPhase.rounds &&
           !state.activeWar!.actedSlots.contains(idleSlot);
       state = _mutate(state, (s, rng, ev) {
@@ -1303,7 +1363,15 @@ class MatchService {
   /// A war that interrupted an AI's turn leaves that turn half-finished
   /// when it ends — complete it and let the remaining AIs play (mirrors
   /// the client's GameController.resumeAfterWar).
+  ///
+  /// Runs the unattended-war guard first: a war whose every side sits on
+  /// the autopilot awaits nobody, so no clock can be armed for it — left
+  /// standing it freezes the match for good. Fast-forward it here, at the
+  /// one place every war-touching path already funnels through.
   GameState _resumeAfterWarIfOver(GameState state, List<GameEvent> emitted) {
+    if (warIsUnattended(state)) {
+      state = _mutate(state, fastForwardUnattendedWar, emitted);
+    }
     if (state.activeWar != null || _gameOver(state)) return state;
     if (state.dynasty(state.currentPlayer).status == DynastyStatus.human) {
       return state;
@@ -1325,6 +1393,18 @@ class MatchService {
     if (war == null) return false;
     return warSideIsHuman(state, war, war.attackerSlot) &&
         warSideIsHuman(state, war, war.defenderSlot);
+  }
+
+  /// True when both combatants are HUMAN SEATS — unlike [_warIsHumanVsHuman]
+  /// this stays true once a side has been delegated to the autopilot. It is
+  /// what the no-show rule keys on: a duel between two players is the case
+  /// where an absent side must be handed over, no matter whether the other
+  /// side is already on autopilot.
+  bool _warIsHumanDuel(GameState state) {
+    final war = state.activeWar;
+    if (war == null) return false;
+    return state.dynasty(war.attackerSlot).status == DynastyStatus.human &&
+        state.dynasty(war.defenderSlot).status == DynastyStatus.human;
   }
 
   /// Realm slot whose human input the match is waiting for, or null.
@@ -1431,6 +1511,21 @@ class MatchService {
           : _clock().add(timeout);
     }
 
+    // Deadlock guard: a RUNNING war that awaits nobody and carries no
+    // deadline can never be advanced again by anything — no seat can act
+    // on it and the sweep only ever looks at expired deadlines. The
+    // unattended-war fast-forward (`_resumeAfterWarIfOver`) makes that
+    // unreachable, but the cost of being wrong is a permanently dead match,
+    // so arm a short retry instead of trusting it. Applies even without a
+    // turn timer: a war nobody can move is not a match "waiting for a
+    // player", it is stuck.
+    if (match.status == MatchStatus.active &&
+        state.activeWar != null &&
+        awaited == null &&
+        match.turnDeadline == null) {
+      match.turnDeadline = _clock().add(const Duration(minutes: 1));
+    }
+
     // Duel scheduling: the moment BOTH warPlan answers are in, tell both
     // sides when the duel starts — their agreed slot, or the fallback
     // deadline when no proposals overlapped. Fires exactly once (on the
@@ -1453,7 +1548,7 @@ class MatchService {
       final war = state.activeWar!;
       final agreed = scheduledMs != null && scheduledMs > 0;
       final start = agreed
-          ? DateTime.fromMillisecondsSinceEpoch(scheduledMs!, isUtc: true)
+          ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
           : (match.turnDeadline ?? _clock());
       for (final slot in [war.attackerSlot, war.defenderSlot]) {
         final id = _playerForSlot(match, state, slot);

@@ -1,15 +1,59 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import '../app_version.dart';
-import '../l10n/strings.dart' show appLocale;
+import '../l10n/strings.dart' show appLocale, tr;
+
+/// Why a request failed — the transport reasons are told apart so the UI
+/// can say what actually went wrong instead of one catch-all
+/// "Server nicht erreichbar" (user request 2026-08-08). `server` covers
+/// everything the server itself answered ([ApiError.statusCode] then
+/// carries its HTTP status and the message its `{data, error}` envelope
+/// sent, already in the player's language).
+enum ApiFailure {
+  /// No route to the internet at all (airplane mode, no Wi-Fi/mobile data).
+  offline,
+
+  /// The address could not be resolved — typically a mistyped or outdated
+  /// server address (or DNS is down).
+  unknownHost,
+
+  /// The host answered but refuses connections: the server is down or
+  /// restarting, or nothing listens on that port.
+  refused,
+
+  /// The connection or the response took too long (server overloaded, or a
+  /// captive-portal/very slow link).
+  timeout,
+
+  /// TLS handshake failed — wrong certificate, clock far off, plain HTTP
+  /// behind an HTTPS URL.
+  tls,
+
+  /// Reached the server but the answer was not the documented envelope —
+  /// usually a proxy/error page in front of it, or a wrong base URL.
+  badResponse,
+
+  /// The server answered with a non-200 status and a message of its own.
+  server,
+}
 
 /// Error from the server's `{data, error}` envelope (or transport).
 class ApiError implements Exception {
-  ApiError(this.statusCode, this.message);
+  ApiError(this.statusCode, this.message, {this.failure = ApiFailure.server});
 
+  /// HTTP status, or 0 when the request never got an answer.
   final int statusCode;
+
+  /// Player-facing, localized text — shown as-is by every call site.
   final String message;
+
+  final ApiFailure failure;
+
+  /// True when the request never reached the server, so nothing happened
+  /// on its side and retrying is safe.
+  bool get isOffline => failure != ApiFailure.server;
 
   @override
   String toString() => message;
@@ -157,33 +201,106 @@ class ApiClient {
     },
   );
 
+  /// How long a single call may take end to end before it is reported as
+  /// [ApiFailure.timeout]. Without it a dead-but-reachable host (dropped
+  /// packets, captive portal) left the UI on its spinner indefinitely.
+  static const Duration requestTimeout = Duration(seconds: 20);
+
   Future<Map<String, dynamic>> _request(
     String method,
     String path, {
     Map<String, dynamic>? body,
     bool expectList = false,
   }) async {
-    final HttpClientRequest request;
     try {
-      request = await _http.openUrl(method, Uri.parse('$baseUrl$path'));
-      request.headers.contentType = ContentType.json;
-      if (body != null) request.write(jsonEncode(body));
-      final response = await request.close();
-      final text = await response.transform(utf8.decoder).join();
-      final decoded = (jsonDecode(text) as Map).cast<String, dynamic>();
-      if (response.statusCode != 200) {
-        throw ApiError(
-          response.statusCode,
-          decoded['error'] as String? ?? 'Serverfehler',
-        );
-      }
-      final data = decoded['data'];
-      if (expectList) return {'list': data as List<dynamic>};
-      return (data as Map).cast<String, dynamic>();
+      return await _send(method, path, body: body, expectList: expectList)
+          .timeout(requestTimeout);
     } on ApiError {
       rethrow;
-    } on Object catch (e) {
-      throw ApiError(0, 'Server nicht erreichbar: $e');
+    } on TimeoutException {
+      throw _transportError(ApiFailure.timeout);
+    } on SocketException catch (e) {
+      // `osError == null` on a name-lookup failure; the codes below are the
+      // portable ones dart:io surfaces for "nothing there" vs "no network".
+      final code = e.osError?.errorCode;
+      throw _transportError(
+        e.message.contains('Failed host lookup')
+            ? ApiFailure.unknownHost
+            : code == 61 || code == 111 || code == 10061 // ECONNREFUSED
+            ? ApiFailure.refused
+            : code == 51 || code == 101 || code == 65 // ENETUNREACH/EHOSTUNREACH
+            ? ApiFailure.offline
+            : ApiFailure.refused,
+      );
+    } on HandshakeException {
+      throw _transportError(ApiFailure.tls);
+    } on TlsException {
+      throw _transportError(ApiFailure.tls);
+    } on HttpException {
+      throw _transportError(ApiFailure.badResponse);
+    } on FormatException {
+      // Reached something that isn't our server (proxy/error page) — or a
+      // malformed URL. Either way the answer is unusable.
+      throw _transportError(ApiFailure.badResponse);
+    } on Object {
+      throw _transportError(ApiFailure.offline);
     }
+  }
+
+  ApiError _transportError(ApiFailure failure) => ApiError(
+    0,
+    switch (failure) {
+      ApiFailure.unknownHost => tr('online.errUnknownHost', {'url': baseUrl}),
+      ApiFailure.refused => tr('online.errRefused'),
+      ApiFailure.timeout => tr('online.errTimeout'),
+      ApiFailure.tls => tr('online.errTls'),
+      ApiFailure.badResponse => tr('online.errBadResponse'),
+      _ => tr('online.errOffline'),
+    },
+    failure: failure,
+  );
+
+  Future<Map<String, dynamic>> _send(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    bool expectList = false,
+  }) async {
+    final request = await _http.openUrl(method, Uri.parse('$baseUrl$path'));
+    request.headers.contentType = ContentType.json;
+    if (body != null) request.write(jsonEncode(body));
+    final response = await request.close();
+    final text = await response.transform(utf8.decoder).join();
+    final Map<String, dynamic> decoded;
+    try {
+      decoded = (jsonDecode(text) as Map).cast<String, dynamic>();
+    } on Object {
+      // A non-200 that isn't our envelope is a gateway/proxy talking, not
+      // the game server — name the status so 502/503 reads as "server is
+      // down" rather than a parse failure.
+      throw ApiError(
+        response.statusCode,
+        response.statusCode >= 500 || response.statusCode == 0
+            ? tr('online.errServerDown')
+            : tr('online.errBadResponse'),
+        failure: response.statusCode >= 500
+            ? ApiFailure.refused
+            : ApiFailure.badResponse,
+      );
+    }
+    if (response.statusCode != 200) {
+      throw ApiError(
+        response.statusCode,
+        // The server sends its rejections already localized (it gets the
+        // player's locale with every turn); only the fallback is ours.
+        decoded['error'] as String? ??
+            (response.statusCode >= 500
+                ? tr('online.errServerDown')
+                : tr('online.errServer', {'code': '${response.statusCode}'})),
+      );
+    }
+    final data = decoded['data'];
+    if (expectList) return {'list': data as List<dynamic>};
+    return (data as Map).cast<String, dynamic>();
   }
 }

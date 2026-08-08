@@ -397,12 +397,20 @@ const _weekdayKeys = [
 
 /// A duel start instant (epoch ms UTC) in the device's local time —
 /// "Heute 18:00", "Morgen 03:00", else "Mi 14:00".
+///
+/// An instant that has PASSED reads "jeden Moment" instead of a clock
+/// time (`[FIX 2026-08-08]`, user report): the first offered slot is
+/// "sofort" = the top of the answering side's CURRENT hour, so an
+/// agreement on it is by construction already in the past — the panel
+/// then announced "Krieg startet um 20:00" at 20:40, which reads like a
+/// missed appointment instead of "the server fires it on its next sweep".
 String formatWarStartTime(int epochMs) {
   final local = DateTime.fromMillisecondsSinceEpoch(
     epochMs,
     isUtc: true,
   ).toLocal();
   final now = DateTime.now();
+  if (!local.isAfter(now)) return tr('dec.warStartImminent');
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(local.year, local.month, local.day);
   final dayLabel = day == today

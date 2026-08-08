@@ -56,6 +56,9 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
     // may select own units and set their stance (the panel below) — the
     // controller then notifies, and the selection ring must follow.
     _controller.addListener(_onControllerChanged);
+    // Picking an army from the panel's list centers the map on it here
+    // too — lining up troops happens mostly from this read-only viewer.
+    _controller.focusTile = _game.focusOnTile;
   }
 
   void _onControllerChanged() {

@@ -40,6 +40,7 @@ const _dynastyTypes = {
   'seatLost',
   'dynastyConverted',
   'internalStrife',
+  'peasantRevolt',
   'religionChanged',
 };
 const _worldTypes = {
@@ -304,6 +305,12 @@ String describeEvent(gc.GameEvent e) {
       p['human'] == true ? 'ev.internalStrifeHuman' : 'ev.internalStrife',
       {'realm': realm, 'newRuler': p['newRuler']},
     ),
+    'peasantRevolt' => tr('ev.peasantRevolt', {
+      'realm': realm,
+      'men': p['men'],
+      'people': p['people'],
+      'taler': p['taler'],
+    }),
     'seatLost' => tr(p['heir'] != null ? 'ev.seatLostHeir' : 'ev.seatLost', {
       'realm': realm,
       'heir': p['heir'],
@@ -597,6 +604,10 @@ bool _popupWorthy(gc.GameEvent e, int slot) => switch (e.type) {
   // flipped to the AI and they "never got told why" — these popups are
   // that answer, for the victim above all.
   'internalStrife' => e.payload['human'] == true,
+  // Your own people in open revolt — the consequence of a ruler who wars
+  // or starves them (2026-08-08). The realm is NOT lost, so it is a popup
+  // only for the realm it happens in, not for the whole table.
+  'peasantRevolt' => e.slot == slot,
   'bankruptcy' => e.payload['human'] == true,
   'islamicSuccessionCrisis' => e.payload['human'] == true,
   'seatLost' => true, // only ever emitted for a human seat's loss
@@ -631,6 +642,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'bankruptcy' ||
   'debtWarning' ||
   'internalStrife' ||
+  'peasantRevolt' ||
   'realmsMerged' ||
   'dynastyExtinct' ||
   'seatLost' ||
@@ -675,6 +687,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'bankruptcy' => (Icons.money_off, Colors.red),
   'debtWarning' => (Icons.warning_amber, Colors.orange),
   'internalStrife' => (Icons.local_fire_department, Colors.red),
+  'peasantRevolt' => (Icons.local_fire_department, Colors.deepOrange),
   'realmsMerged' => (Icons.merge_type, Colors.green),
   'realmTransferred' => (Icons.card_giftcard, Colors.green),
   'dynastyExtinct' ||
@@ -831,6 +844,16 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
       tr('ev.dramaInternalStrifeOtherBody', {
         'realm': realmName(e.slot),
         'newRuler': p['newRuler'],
+      }),
+    ),
+    'peasantRevolt' => (
+      Icons.local_fire_department,
+      Colors.deepOrange,
+      tr('ev.dramaPeasantRevoltTitle'),
+      tr('ev.dramaPeasantRevoltBody', {
+        'men': p['men'],
+        'people': p['people'],
+        'taler': p['taler'],
       }),
     ),
     'bankruptcy' when e.slot == slot => (

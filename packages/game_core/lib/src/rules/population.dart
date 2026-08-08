@@ -66,6 +66,15 @@ class FoodReport {
   int famineLoss = 0;
 }
 
+/// `[DESIGNED 2026-08-08, user feedback]` The highest popularity a realm's
+/// mood may RECOVER to while its wars pile up — 100 minus one
+/// [warWearinessCeilingStep] per war started without the peace years to
+/// work it off, never below [warWearinessCeilingFloor]. See those constants
+/// for the why. Read by the §8.4 food-satisfaction step and the balance
+/// nudge (the only two places popularity climbs on its own).
+int warWearinessCeiling(Realm realm) => math.max(
+    warWearinessCeilingFloor, 100 - warWearinessCeilingStep * realm.recentWars);
+
 /// Food production, growth, famine, town transitions and the popularity
 /// updates (ORIGINAL_GAME.md §8), in the §6.1/§8.4 order. Mutates [realm]
 /// in place; emits town-transition events into [events].
@@ -143,8 +152,13 @@ FoodReport runFoodAndPopulation(
   // single harvest never swings the mood violently.
   final oldStat = realm.popularity;
   // Target ∈ [0, 100]: 50 at break-even, → 100 at the +15 surplus cap,
-  // → 0 at the −30 famine floor.
-  final target = s >= 0 ? 50 + s * 50 ~/ 15 : 50 + s * 50 ~/ 30;
+  // → 0 at the −30 famine floor …
+  final fed = s >= 0 ? 50 + s * 50 ~/ 15 : 50 + s * 50 ~/ 30;
+  // … capped by war weariness: full bellies cannot buy back the goodwill a
+  // ruler spends on campaign after campaign. A realm already ABOVE the
+  // ceiling drifts down to it through this very step (bounded, a few
+  // points a turn) instead of being clamped in one jarring drop.
+  final target = math.min(fed, warWearinessCeiling(realm));
   final gap = target - oldStat;
   var step = (gap / 4).round();
   if (step == 0 && gap != 0) step = gap.sign; // always close the last point
@@ -226,8 +240,14 @@ FoodReport runFoodAndPopulation(
   final grain = realm.grainHarvest;
   final livestock = realm.livestockHarvest;
   final balanced = grain <= 2 * livestock && livestock <= 2 * grain;
+  final beforeNudge = realm.popularity;
   realm.popularity += (balanced ? 1 : -1) * (rng.nextInt(3) + 1);
   realm.popularity = realm.popularity.clamp(0, 100);
+  // The nudge must not lift a war-weary realm past its ceiling either. A
+  // realm already above the ceiling simply keeps what it had (the food step
+  // above walks it down); the negative nudge always applies.
+  realm.popularity = math.min(
+      realm.popularity, math.max(warWearinessCeiling(realm), beforeNudge));
 
   // Consumption [INTERPRETATION]: each inhabitant eats 1 food per turn
   // (§8.1). The spec implies it through S = stock − population but never

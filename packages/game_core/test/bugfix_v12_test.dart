@@ -95,7 +95,9 @@ void main() {
     return applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
   }
 
-  group('settlement claim cap (rules v12; share rolled 50–80% since v3)', () {
+  group(
+      'settlement claim cap (rules v12; share rolled '
+      '$warClaimShareMin–$warClaimShareMax % since v3)', () {
     test('a winter score victory is capped the same way', () {
       var s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
@@ -115,10 +117,10 @@ void main() {
 
       expect(s.activeWar!.phase, WarPhase.settlement);
       expect(s.activeWar!.remainingClaim,
-          lessThanOrEqualTo(loserValueBefore * 80 ~/ 100));
+          lessThanOrEqualTo(loserValueBefore * warClaimShareMax ~/ 100));
       expect(s.activeWar!.remainingClaim,
-          greaterThanOrEqualTo(loserValueBefore ~/ 2),
-          reason: 'the rolled share never falls below the old half cap');
+          greaterThanOrEqualTo(loserValueBefore * warClaimShareMin ~/ 100),
+          reason: 'the rolled share never falls below the band minimum');
     });
 
     test('2026-07-19: a claim below the cap is the earned score itself', () {

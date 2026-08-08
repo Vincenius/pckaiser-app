@@ -35,6 +35,9 @@ class Realm {
     List<int>? assassinatedThisTurnSlots,
     this.warThisYear = false,
     this.recentWars = 0,
+    this.lastWarYear = 0,
+    this.peaceYears = 0,
+    Map<int, int>? truceUntilYear,
     this.rulerId,
     List<Troop>? troops,
     List<Town>? towns,
@@ -42,6 +45,7 @@ class Realm {
     List<PendingShipReturn>? pendingShipReturns,
     List<IntelReport>? intelReports,
   })  : tileCount = tileCount ?? List.filled(9, 0),
+        truceUntilYear = truceUntilYear ?? {},
         proposedThisTurnIds = proposedThisTurnIds ?? [],
         assassinatedThisTurnSlots = assassinatedThisTurnSlots ?? [],
         troops = troops ?? [],
@@ -97,6 +101,14 @@ class Realm {
         warThisYear: json['warThisYear'] as bool? ?? false,
         // Additive field — older saves carry no war-weariness yet.
         recentWars: json['recentWars'] as int? ?? 0,
+        // Additive fields — older saves know no war recovery and no truce
+        // (year 0 is before any game year, so nothing is blocked on load).
+        lastWarYear: json['lastWarYear'] as int? ?? 0,
+        peaceYears: json['peaceYears'] as int? ?? 0,
+        truceUntilYear: {
+          for (final e in ((json['truceUntilYear'] as Map?) ?? {}).entries)
+            int.parse(e.key as String): e.value as int,
+        },
         rulerId: json['rulerId'] as int?,
         troops: (json['troops'] as List?)
             ?.map((t) => Troop.fromJson((t as Map).cast<String, dynamic>()))
@@ -214,6 +226,30 @@ class Realm {
   /// war-free year (turn pipeline year start).
   int recentWars;
 
+  /// `[DESIGNED 2026-08-08, user feedback]` The year this realm last ENTERED
+  /// a war — as aggressor or as defender. Not a rule of its own: the AI
+  /// leaves a realm that fought last year or this year alone
+  /// (`_pickWarTarget`), so a beaten-down realm gets a breather instead of
+  /// being the whole neighbourhood's preferred prey year after year (the AI
+  /// picks the WEAKEST neighbour, which is a self-reinforcing loop without
+  /// this). A boxed-in ("desperate") AI still ignores it. 0 = never at war.
+  int lastWarYear;
+
+  /// `[DESIGNED 2026-08-08, user feedback]` Truce per opponent slot: the
+  /// LAST year (inclusive) in which this realm may not declare war on that
+  /// slot. Written symmetrically for both combatants when a war ends
+  /// ([truceYears]) and enforced in `declareWarBlocker` for humans and AI
+  /// alike, so the same pair cannot grind each other down year after year.
+  /// Entries simply expire by year — a stale one from a vacated (and later
+  /// re-founded) slot can block nothing for long.
+  final Map<int, int> truceUntilYear;
+
+  /// Consecutive war-free years since the last one that forgave a step of
+  /// [recentWars] — the counter behind [wearinessDecayYears]. Reset to 0 by
+  /// any year the realm saw a war (defending included) and by each step it
+  /// pays for. Bookkeeping only; no rule reads it directly.
+  int peaceYears;
+
   /// Ruler person id; null = slot vacant. The same person can rule several
   /// slots (ruler aliasing, §19).
   int? rulerId;
@@ -274,6 +310,9 @@ class Realm {
         assassinatedThisTurnSlots: List.of(assassinatedThisTurnSlots),
         warThisYear: warThisYear,
         recentWars: recentWars,
+        lastWarYear: lastWarYear,
+        peaceYears: peaceYears,
+        truceUntilYear: Map.of(truceUntilYear),
         rulerId: rulerId,
         troops: [for (final t in troops) t.copy()],
         towns: [for (final t in towns) t.copy()],
@@ -313,6 +352,11 @@ class Realm {
         'assassinatedThisTurnSlots': assassinatedThisTurnSlots,
         'warThisYear': warThisYear,
         'recentWars': recentWars,
+        'lastWarYear': lastWarYear,
+        'peaceYears': peaceYears,
+        'truceUntilYear': {
+          for (final e in truceUntilYear.entries) '${e.key}': e.value,
+        },
         'rulerId': rulerId,
         'troops': [for (final t in troops) t.toJson()],
         'towns': [for (final t in towns) t.toJson()],

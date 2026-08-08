@@ -1076,55 +1076,68 @@ void _declareWarSheet(BuildContext context, GameController controller) {
                 // No war against a slot your own ruler already holds.
                 realm.rulerId != controller.currentRealm.rulerId &&
                 neighbors.contains(realm.slot))
-              ListTile(
-                title: Text(realmName(realm.slot)),
-                subtitle: Text(
-                  state.person(realm.rulerId)?.name ?? tr('menus.unknown'),
-                ),
-                onTap: () async {
-                  // Confirm on the stable screen [context]: the sheet's own
-                  // context is unmounted once its exit animation ends, so a
-                  // mounted-check on it after the dialog would silently
-                  // swallow the war declaration.
-                  Navigator.pop(sheetContext);
-                  final sure = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text(
-                        tr('menus.declareWarOn', {
-                          'realm': realmName(realm.slot),
-                        }),
+              // Per-TARGET gates (post-war truce): the engine's own blocker
+              // again, so a barred neighbour is greyed out with the reason
+              // instead of failing only after the confirmation dialog.
+              // `(_)`: the sheet's own context must NOT shadow [context] —
+              // the confirmation below deliberately runs on the stable
+              // screen context (see the comment there).
+              Builder(builder: (_) {
+                final blocked = gc.declareWarBlocker(
+                    controller.state, controller.currentRealm, realm.slot);
+                return ListTile(
+                  enabled: blocked == null,
+                  title: Text(realmName(realm.slot)),
+                  subtitle: Text(
+                    blocked ??
+                        state.person(realm.rulerId)?.name ??
+                        tr('menus.unknown'),
+                  ),
+                  onTap: () async {
+                    // Confirm on the stable screen [context]: the sheet's own
+                    // context is unmounted once its exit animation ends, so a
+                    // mounted-check on it after the dialog would silently
+                    // swallow the war declaration.
+                    Navigator.pop(sheetContext);
+                    final sure = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text(
+                          tr('menus.declareWarOn', {
+                            'realm': realmName(realm.slot),
+                          }),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: Text(tr('cancel')),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: Text(tr('declareWar')),
+                          ),
+                        ],
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: Text(tr('cancel')),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: Text(tr('declareWar')),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (sure == true && context.mounted) {
-                    await _tryAction(
-                      context,
-                      controller,
-                      gc.DeclareWar(slot: slot, targetSlot: realm.slot),
                     );
-                    // A human-vs-human war opens the preparation phase:
-                    // the attacker answers their own warPlan right away
-                    // (live vs autopilot + stance) instead of waiting for
-                    // the next handoff.
-                    if (context.mounted &&
-                        controller.state.activeWar?.phase ==
-                            gc.WarPhase.preparation) {
-                      await promptDecisionsFor(context, controller, slot);
+                    if (sure == true && context.mounted) {
+                      await _tryAction(
+                        context,
+                        controller,
+                        gc.DeclareWar(slot: slot, targetSlot: realm.slot),
+                      );
+                      // A human-vs-human war opens the preparation phase:
+                      // the attacker answers their own warPlan right away
+                      // (live vs autopilot + stance) instead of waiting for
+                      // the next handoff.
+                      if (context.mounted &&
+                          controller.state.activeWar?.phase ==
+                              gc.WarPhase.preparation) {
+                        await promptDecisionsFor(context, controller, slot);
+                      }
                     }
-                  }
-                },
-              ),
+                  },
+                );
+              }),
         ],
       ),
     ),

@@ -190,6 +190,24 @@ class MapGame extends FlameGame with ScaleDetector {
     _clampCamera();
   }
 
+  /// Centers the camera on tile [x],[y] — used when a war unit is picked
+  /// from the war panel's LIST (user request 2026-08-08): the army may be
+  /// anywhere on the map, and hunting for the pulsing ring by hand made
+  /// the list useless for anything but the units already on screen. Zooms
+  /// IN to [minZoom] when the view is further out than that, and never
+  /// zooms out — a player who deliberately zoomed in keeps their scale.
+  void focusOnTile(int x, int y, {double minZoom = 1.2}) {
+    if (!isMounted) return;
+    if (camera.viewfinder.zoom < minZoom) {
+      camera.viewfinder.zoom = minZoom;
+    }
+    camera.viewfinder.position = Vector2(
+      (x + 0.5) * tileSize,
+      (y + 0.5) * tileSize,
+    );
+    _clampCamera();
+  }
+
   void _rebuild() {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);

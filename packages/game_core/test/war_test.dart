@@ -1409,16 +1409,52 @@ void main() {
 
   group('war bug-fixes', () {
     test(
-        'startWar sets warThisYear on the defender too (§11.1 one-war-per-year)',
-        () {
+        'startWar locks only the ATTACKER into one war per year '
+        '(§11.1; the defender keeps its own war, 2026-08-08)', () {
       final s = applyAction(
               state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
           .state;
       expect(s.realm(1).warThisYear, isTrue,
           reason: 'attacker is locked into one war per year');
-      expect(s.realm(2).warThisYear, isTrue,
-          reason: 'defender is equally locked — a defending realm must not '
-              'be able to declare war on a third party in the same year');
+      expect(s.realm(2).warThisYear, isFalse,
+          reason: 'being attacked must not burn the defender\'s own war: '
+              'they never chose this war and must stay able to take the '
+              'field against a third realm to recover');
+      for (final slot in [1, 2]) {
+        expect(s.realm(slot).lastWarYear, s.year,
+            reason: 'both sides count as recently at war (AI recovery grace)');
+      }
+    });
+
+    test('a post-war truce blocks the same pair for truceYears', () {
+      var s = applyAction(
+              state, DeclareWar(slot: 1, targetSlot: 2), Rng(state.rngSeed))
+          .state;
+      // End the war without any land changing hands: winter arrives with
+      // neither side holding enemy ground, so it ends in a draw and only
+      // the truce is left behind.
+      s.activeWar!.round = 21;
+      final events = <GameEvent>[];
+      endWarRound(s, Rng(s.rngSeed), events);
+      expect(s.activeWar, isNull);
+
+      final until = s.year + truceYears;
+      expect(truceUntil(s, 1, 2), until);
+      expect(truceUntil(s, 2, 1), until, reason: 'the truce is symmetric');
+
+      // Even with a fresh war slot the pair may not go again this year …
+      s.realm(2).warThisYear = false;
+      expect(
+        () => applyAction(
+            s, DeclareWar(slot: 2, targetSlot: 1), Rng(s.rngSeed)),
+        throwsA(isA<ActionException>()),
+      );
+      // … nor in the following year …
+      s.year = until;
+      expect(truceUntil(s, 2, 1), until);
+      // … but the year after that the truce has expired.
+      s.year = until + 1;
+      expect(truceUntil(s, 2, 1), isNull);
     });
 
     test(

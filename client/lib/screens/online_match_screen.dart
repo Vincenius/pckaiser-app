@@ -10,6 +10,7 @@ import '../services/api_client.dart';
 import '../services/online_game_session.dart';
 import '../services/online_service.dart';
 import '../state/game_controller.dart';
+import '../widgets/connection_error.dart';
 import '../widgets/decisions.dart' show formatWarStartTime, promptDecisionsFor;
 import '../widgets/event_feed.dart' show showDramaPopupsFor;
 import '../widgets/room_card.dart' show roomIcon, roomStartLine, roomTitle;
@@ -37,7 +38,9 @@ class OnlineMatchScreen extends StatefulWidget {
 
 class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
   Map<String, dynamic>? _view;
-  String? _error;
+  /// Last failed server call — typed so the screen can distinguish a
+  /// transport failure (retryable, nothing happened) from a rejection.
+  ApiError? _error;
   Timer? _poll;
   bool _playing = false;
   bool _promptingDecisions = false;
@@ -95,7 +98,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       await _maybePromptDecisions(view);
     } on ApiError catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      setState(() => _error = e);
     }
   }
 
@@ -256,11 +259,13 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
         ],
       ),
       body: view == null
-          ? Center(
-              child: _error == null
-                  ? const CircularProgressIndicator()
-                  : Text(_error!),
-            )
+          ? (_error == null
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    children: [
+                      ConnectionErrorTile(error: _error!, onRetry: _fetchView),
+                    ],
+                  ))
           : _body(theme, view),
     );
   }
@@ -384,10 +389,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         if (_error != null)
-          ListTile(
-            leading: Icon(Icons.error_outline, color: theme.colorScheme.error),
-            title: Text(_error!),
-          ),
+          ConnectionErrorTile(error: _error!, onRetry: _fetchView),
         Card(
           child: ListTile(
             leading: Icon(switch (status) {
@@ -676,7 +678,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       if (mounted) Navigator.of(context).pop();
     } on ApiError catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      setState(() => _error = e);
     }
   }
 
@@ -714,7 +716,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       });
     } on ApiError catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      setState(() => _error = e);
     }
   }
 
@@ -731,7 +733,7 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
       });
     } on ApiError catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      setState(() => _error = e);
     }
   }
 }

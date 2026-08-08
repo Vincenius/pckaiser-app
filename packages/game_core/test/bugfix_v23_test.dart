@@ -105,9 +105,9 @@ GameState warReadyGame() {
   return (hx, hy);
 }
 
-/// Strips slot 2 down to a small rump worth less than a Burg: a Markt (2,500)
-/// bordering slot 1 plus an adjacent Hafen (700) — 3,200 < 5,000 total. Slot
-/// 1's unit stands on the Markt. Returns (Markt, Hafen) coords.
+/// Strips slot 2 down to a small rump worth less than [smallRealmValue]: a
+/// Markt (2,500) bordering slot 1 plus an adjacent Hafen (700) — 3,200 <
+/// 5,000 total. Slot 1's unit stands on the Markt. Returns (Markt, Hafen).
 ((int, int), (int, int)) reduceLoserToSmallRump(GameState state) {
   final map = state.map;
   int mx = -1, my = -1;
@@ -195,7 +195,7 @@ void main() {
           reason: 'the remaining part is finally claimable');
     });
 
-    test('a realm worth less than a Burg (5,000) is taken whole', () {
+    test('a realm worth less than [smallRealmValue] is taken whole', () {
       var s = warReadyGame();
       s = applyAction(s, DeclareWar(slot: 1, targetSlot: 2), Rng(s.rngSeed))
           .state;
@@ -203,12 +203,14 @@ void main() {
       final total = settlementTileValue(s, Building.markt) +
           settlementTileValue(s, Building.hafen);
       expect(total, 3200);
+      expect(total, lessThan(smallRealmValue));
 
       final events = <GameEvent>[];
       resolveWarEnd(s, Rng(s.rngSeed), events);
       expect(s.activeWar!.winnerSlot, 1);
-      // Below 5,000 the cap is lifted entirely: the claim covers the whole
-      // rump (the 50–80 % cap would have left the 2,500 Markt out of reach).
+      // Below the threshold the cap is lifted entirely: the claim covers the
+      // whole rump (the 50–80 % cap would have left the 2,500 Markt out of
+      // reach).
       expect(s.activeWar!.remainingClaim, total,
           reason: 'a sub-Burg realm can be taken whole');
 

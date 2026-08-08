@@ -6,6 +6,154 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-08 — War balance: freed defender, post-war truce, war weariness that bites, peasant revolts, world-scaled plague
+
+User report from a hot-seat round: attacked five years running, never able
+to act; games decided around year 1020, so the Reformation, the Ottomans
+and the plague never happen and "the intrigue and the historical texture —
+what made this game special — are gone; it feels like any other strategy
+game". The report was right on all three counts, and the causes were all
+in the code:
+
+**1. Being attacked burned your own war for the year.** `startWar` set
+`warThisYear` on BOTH sides, and the flag only resets at the year
+rollover — so a defender could not declare war on anyone for the rest of
+the year, although they never chose that war. §11.1 ("Sie haben dieses
+Jahr schon einmal Krieg geführt !") reads as a cap on what a ruler
+STARTS, and every other cost of war here is already aggressor-only
+(popularity penalty, `recentWars`). Now only the attacker spends the
+year's war. The weariness decay in `_startRound` keyed off that same flag,
+so it now reads `lastWarYear` instead — "war-free" still means the realm
+saw no war at all, defending included, exactly as before.
+
+**2. Nothing stopped the same victim being farmed.** New `truceYears` = 1:
+every war teardown (ruler capture, white peace, winter draw, settled
+claim — all four now go through the single `_clearWar`) writes a
+symmetric `Realm.truceUntilYear` entry, and `declareWarBlocker` bars the
+pair until it expires (new `truceActive` message; the client's war-target
+list greys the neighbour with that reason instead of failing after the
+confirmation dialog). Because the AI picks the WEAKEST neighbour, a
+beaten-down realm was also every OTHER neighbour's preferred target — so
+`_pickWarTarget` additionally skips realms with `lastWarYear >= year - 1`
+(new field, set on both combatants) unless the AI is boxed in (§20.4).
+
+**3. War cost nothing at home** — the heart of the report ("in the old
+game, playing expansively gave me constant revolutions; here I never had
+one, not even Luca who warred every single turn"). Two causes:
+
+  - The −5 × (`recentWars` + 1) declaration penalty was healed away almost
+    at once: the §8.4 food satisfaction pulls a well-fed realm back toward
+    100 by up to 8 points a turn. Now weariness also CAPS recovery —
+    `warWearinessCeiling` = `100 − 10 × recentWars`, floor 30 — applied to
+    the food target (so a realm above it drifts down in the same bounded
+    steps, no jarring clamp) and to the balance nudge. And it decays only
+    every SECOND war-free year (`wearinessDecayYears`, counted in the new
+    `Realm.peaceYears`), instead of every one.
+  - §19.1's coup needs a rival BRANCH (dynasty > 3 members), so a young or
+    thinned house could sit at popularity 5 forever with no consequence at
+    all. New fallback: a **peasant revolt** (`_peasantRevolt`) — 20 % of
+    the army deserts, the biggest town loses 10 % of its people, 10 % of a
+    positive treasury is looted, then the mood vents to 30 (above the
+    strife line, so it recurs while the cause persists instead of
+    spiralling per turn). It never changes who rules. Public
+    `peasantRevolt` event with a popup for the realm it hits. A pretender
+    who does take over — and any replacement house — starts with
+    `recentWars` cleared, or the inherited ceiling would drag the fresh
+    ruler straight back under the line.
+
+  Measured (10 seeds × 100 years, slot 1 declaring war every year it may,
+  everyone else on the normal script): the warmonger sees a revolt or coup
+  every ~2–4 years and averages popularity 42–49; every other realm
+  averages 85 and is essentially never touched. Peaceful play is
+  unaffected — the cost lands only on the ruler who chose it.
+
+**4. The plague could not fire on a small map.** §18.2's flat 150/250
+person thresholds assume a full 30-realm world; a Klein world of 12
+realms never holds that many people. `diseaseThreshold` is now
+`max(60, 5 × living realms)` (upper bound 5/3 × that, as before) — 30
+realms still yield the original 150/250.
+
+**Tried and reverted the same day:** lowering the settlement claim cap
+from 50–80 % to 25–45 % (with a 2,000 whole-realm threshold) to slow
+conquest down. The user's call, and the right one: the pace of a game
+belongs to the INTERNAL cost of warring, not to making won wars pay less.
+`warClaimShareMin`/`Max`/`smallRealmValue` survive as named constants at
+their original values.
+
+Tests: `balance_2026_08_08_test.dart` (AI recovery grace with positive
+control, the weariness ceiling and its decay, the peasant revolt incl. the
+coup-instead control and the negative-treasury guard, scaled outbreak
+thresholds); the truce and the freed defender slot in `war_test.dart`. No
+schema bump (all three new fields are additive with defaults);
+`appVersion` deliberately untouched.
+
+## 2026-08-08 — Online war fixes (stuck duel, delegated autopilot), connection errors, map focus
+
+Four user reports from a live online game.
+
+**1. A duel neither player attended blocked the match for ~20 days, and a
+fully delegated war froze it forever.** The no-show rule (`_sweepMatch`)
+was gated on `_warIsHumanVsHuman`, which turns false as soon as ONE side
+has been handed to the autopilot — so only the FIRST absentee was ever
+delegated. The second one kept the full turn clock for every remaining
+round: 20 rounds × 24 h, with the whole match blocked behind it (a running
+war blocks every normal turn). The gate is now `_warIsHumanDuel` (both
+combatants are human SEATS, regardless of delegation). Worse, once BOTH
+sides sit on the autopilot the war awaits nobody, so `_commit` armed no
+deadline at all and the match was dead for good — the sweep only ever
+looks at expired deadlines. New in game_core: `warIsUnattended` +
+`fastForwardUnattendedWar` (the former private `_fastForwardAiWar`, now
+also covering a war delegated while still in preparation); the match
+service runs the guard in `_resumeAfterWarIfOver`, `_commit` refuses to
+leave an active war without a deadline (1-minute retry), `sweepExpired`
+isolates per-match failures (one unsweepable match used to abort the
+whole run, silently stopping every other match's clock) and the new
+`_sweepFrozenMatches` pass revives matches that already entered the frozen
+state on an older build — **the running game repairs itself on the next
+sweep after deploying this.**
+
+**2. "Krieg startet um 20:00" shown at 20:40.** Not wrong, just unreadable:
+the first offered slot is "sofort" = the top of the answering side's
+CURRENT hour, so an agreement on it is in the past by construction (the
+server fires it on its next sweep, within a minute). `formatWarStartTime`
+now returns "jeden Moment" / "any moment now" for an instant that has
+passed — war panel, match screen, lobby and home-screen lists all read
+from it.
+
+**3. "Die KI hat den Krieg für mich geführt und gewonnen — trotzdem keine
+Gebietsänderung."** Root cause: `Troop.stance` defaults to *hold position*
+and the stance is exactly what governs a side fought by the autopilot. An
+ATTACKER who handed the war to the computer without setting a single unit
+left its whole army standing at home for all 20 rounds — zero battles,
+zero ground held, a guaranteed `warDraw` at winter (verified: every seed
+ended 0/0). `startWar` now issues starting ORDERS — the aggressor's units
+on *attack*, the defender's on *hold position*; both sides still re-order
+every unit individually during the preparation window. (The two other
+no-territory endings are by design and unchanged: a mutual `peaceAgreed`
+is a white peace at status quo ante, and a points win whose loser holds no
+tile bordering the winner pays the whole claim out in cash.)
+**Rules change — needs an `appVersion` bump before deploying** (not
+bumped here).
+
+**4. Connection errors.** `ApiClient` classified every transport failure
+into one hardcoded German `Server nicht erreichbar: SocketException …`.
+Now: an `ApiFailure` enum (offline / unknownHost / refused / timeout / tls
+/ badResponse / server), a 20 s end-to-end request timeout (a reachable
+but dead host left the UI spinning forever), localized de/en messages that
+name the likely cause AND what to do, and a shared `ConnectionErrorTile`
+(offline heading + retry button) in the lobby, the match screen and — new
+— the home screen, where a failed refresh used to be swallowed and read
+exactly like "you have no online games".
+
+**5. Map follows the war list.** Picking an army from the war panel's chip
+list (preparation window and the round details sheet) now centers the map
+on it (`MapGame.focusOnTile`, `GameController.selectWarUnit(focusMap:)`,
+wired in the game screen and the read-only map viewer). Zooms in to 1.2 if
+further out, never zooms out. Taps on the MAP deliberately do not move the
+camera — the unit is already under the finger.
+
+463 core + 48 client + 68 backend tests green.
+
 ## 2026-07-29 — Matchmaking rooms: server-hosted lobbies without a room code
 
 Joining an online game required knowing somebody's room code (or finding a

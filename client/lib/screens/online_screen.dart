@@ -7,6 +7,7 @@ import '../l10n/strings.dart' show formatTimestamp, tr;
 import '../services/api_client.dart';
 import '../services/match_setup.dart';
 import '../services/online_service.dart';
+import '../widgets/connection_error.dart';
 import '../widgets/decisions.dart' show formatWarStartTime;
 import '../widgets/room_card.dart';
 import 'online_match_screen.dart';
@@ -35,7 +36,10 @@ class _OnlineScreenState extends State<OnlineScreen> {
   /// Player-hosted public games.
   List<dynamic> _publicMatches = const [];
   bool _loading = true;
-  String? _error;
+
+  /// Last failed server call — kept as the typed error so the lobby can
+  /// tell "you are offline" from "the server rejected this".
+  ApiError? _error;
   Timer? _refresh;
 
   @override
@@ -111,7 +115,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
     } on ApiError catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = e;
         _loading = false;
       });
     } finally {
@@ -402,13 +406,7 @@ class _OnlineScreenState extends State<OnlineScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           if (_error != null)
-            ListTile(
-              leading: Icon(
-                Icons.error_outline,
-                color: theme.colorScheme.error,
-              ),
-              title: Text(_error!),
-            ),
+            ConnectionErrorTile(error: _error!, onRetry: _reload),
           ListTile(
             title: Text(
               tr('online.signedInAs', {'name': service.displayName}),

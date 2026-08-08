@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../services/api_client.dart';
 import '../services/online_service.dart';
+import '../widgets/connection_error.dart';
 import '../widgets/decisions.dart' show formatWarStartTime;
 import '../services/push_service.dart';
 import '../services/save_service.dart';
@@ -30,6 +32,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<SaveSlotInfo> _slots = const [];
   OnlineService? _online;
   List<Map<String, dynamic>> _onlineMatches = const [];
+
+  /// Last failed online refresh (null = fine) — surfaced as a compact
+  /// line so a dead server never reads as "no online games".
+  ApiError? _onlineError;
   Timer? _onlinePoll;
   bool _pushWired = false;
   // True while the first online-match fetch is in flight, so the home
@@ -106,10 +112,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ...all.where((m) => m['your_turn'] != true),
         ];
         _onlineLoading = false;
+        _onlineError = null;
       });
+    } on ApiError catch (e) {
+      // Server unreachable: say so instead of showing an empty "Online-
+      // Partien" section (user request 2026-08-08) — silently swallowing
+      // it looked exactly like "you have no online games".
+      if (mounted) {
+        setState(() {
+          _onlineLoading = false;
+          _onlineError = e;
+        });
+      }
     } on Object {
-      // Server unreachable — the home screen stays quiet about it; the
-      // online screen reports connection errors.
       if (mounted) setState(() => _onlineLoading = false);
     }
   }
@@ -225,7 +240,19 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 28),
               Text(tr('onlineGames'), style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
+              // A stale list plus a failed refresh: keep the matches, note
+              // that they may be out of date.
+              if (_onlineError != null)
+                ConnectionErrorTile(error: _onlineError!, compact: true),
               for (final m in _onlineMatches) _onlineMatchCard(theme, m),
+            ] else if (_onlineError != null) ...[
+              const SizedBox(height: 28),
+              Text(tr('onlineGames'), style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ConnectionErrorTile(
+                error: _onlineError!,
+                onRetry: _reloadOnlineMatches,
+              ),
             ] else if (_onlineLoading) ...[
               const SizedBox(height: 28),
               _onlineLoadingCard(theme),

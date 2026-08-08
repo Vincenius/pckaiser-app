@@ -122,6 +122,9 @@ const Map<String, String> eventsDe = {
       '{realm}: Erbfolgekrise — {heir} setzt sich durch; '
       'der Spieler verliert die Kontrolle über das Reich !',
   'ev.internalStrife': '{realm}: Volksaufstand — {newRuler} ergreift die Macht',
+  'ev.peasantRevolt':
+      '{realm}: Bauernaufstand — {men} Soldaten desertieren, {people} '
+      'Einwohner kommen um, {taler} T werden geplündert',
   'ev.internalStrifeHuman':
       '{realm}: Volksaufstand — {newRuler} ergreift die Macht; '
       'der Spieler verliert die Kontrolle über das Reich !',
@@ -210,6 +213,12 @@ const Map<String, String> eventsDe = {
   'ev.dramaInternalStrifeOtherBody':
       '{realm}: die Zustimmung fiel unter 20 — '
       '{newRuler} entthront den Spieler und ergreift die Macht !',
+  'ev.dramaPeasantRevoltTitle': 'Bauernaufstand !',
+  'ev.dramaPeasantRevoltBody':
+      'Die Zustimmung deines Volkes ist unter 20 gefallen — die Bauern '
+      'erheben sich ! {men} Soldaten desertieren, {people} Einwohner kommen '
+      'um, {taler} T werden geplündert. Der Aufstand verebbt, doch solange '
+      'du Krieg führst oder dein Volk hungert, erheben sie sich wieder.',
   'ev.dramaBankruptcyYouBody':
       'Dein Reich {realm} ist bankrott ({debt} T Schulden) — die Gläubiger '
       'übergeben es einem neuen Herrscherhaus. Du hast die Kontrolle über '
@@ -362,6 +371,9 @@ const Map<String, String> eventsEn = {
       '{realm}: succession crisis — {heir} prevails; '
       'the player loses control of the realm!',
   'ev.internalStrife': '{realm}: popular uprising — {newRuler} seizes power',
+  'ev.peasantRevolt':
+      '{realm}: peasant revolt — {men} soldiers desert, {people} inhabitants '
+      'perish, {taler} T are plundered',
   'ev.internalStrifeHuman':
       '{realm}: popular uprising — {newRuler} seizes power; '
       'the player loses control of the realm!',
@@ -448,6 +460,12 @@ const Map<String, String> eventsEn = {
   'ev.dramaInternalStrifeOtherBody':
       '{realm}: approval fell below 20 — '
       '{newRuler} dethrones the player and seizes power!',
+  'ev.dramaPeasantRevoltTitle': 'Peasant revolt!',
+  'ev.dramaPeasantRevoltBody':
+      "Your people's approval has fallen below 20 — the peasants rise up! "
+      '{men} soldiers desert, {people} inhabitants perish, {taler} T are '
+      'plundered. The revolt burns itself out, but as long as you keep '
+      'warring or let your people starve, they will rise again.',
   'ev.dramaBankruptcyYouBody':
       'Your realm {realm} is bankrupt ({debt} T of debt) — the creditors '
       'hand it over to a new ruling house. You have lost control of '
