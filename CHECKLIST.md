@@ -43,6 +43,7 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [ ] Beta round (TestFlight / Play internal) — signing + README steps ready; needs device + store accounts
 - [x] README run/test/build/deploy docs (standing rule: keep current)
 - [x] Update-safe versioning (schema migrations + rules gates + latest-rules adoption; see versioning.dart)
+- [x] "What's new" release-notes modal, once per app version (last-seen version in `settings.json`; 2026-08-13)
 
 ## Phase 8 — Online Mode (V2)
 - [x] Dart shelf backend (`backend/`): players/matches routes, state documents, turn endpoint (ARCHITECTURE.md) — JSON file store behind `GameStore` (PostgreSQL later)

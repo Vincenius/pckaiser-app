@@ -2,13 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app_version.dart';
 import '../l10n/strings.dart';
+import '../release_notes.dart';
 import '../services/api_client.dart';
 import '../services/online_service.dart';
-import '../widgets/connection_error.dart';
-import '../widgets/decisions.dart' show formatWarStartTime;
 import '../services/push_service.dart';
 import '../services/save_service.dart';
+import '../services/settings_service.dart';
+import '../widgets/connection_error.dart';
+import '../widgets/decisions.dart' show formatWarStartTime;
+import '../widgets/whats_new_dialog.dart';
 import 'about_screen.dart';
 import 'game_screen.dart';
 import 'online_match_screen.dart';
@@ -46,6 +50,26 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _load();
+    // "What's new" modal after the first frame (once per app version, and
+    // only when there are notes for the running version). SettingsService
+    // is null in widget tests (screens are pumped directly), which skips it.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWhatsNew());
+  }
+
+  /// Shows the release-notes modal once per app version: no notes for this
+  /// version, or a version already dismissed, both short-circuit. The
+  /// version is marked seen only after the dialog closes, so a crash while
+  /// it is open still re-shows it on the next launch.
+  Future<void> _maybeShowWhatsNew() async {
+    final settings = SettingsService.instance;
+    if (settings == null) return;
+    final note = releaseNotesFor(appVersion);
+    if (note == null) return;
+    if (settings.lastSeenWhatsNewVersion == note.version) return;
+    if (!mounted) return;
+    await showWhatsNewDialog(context, note);
+    if (!mounted) return;
+    await settings.markWhatsNewSeen(note.version);
   }
 
   @override

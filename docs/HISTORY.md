@@ -6,6 +6,26 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-13 — "What's new" release-notes modal (user request)
+
+After an app update the home screen shows a "Was ist neu?" modal with
+the release notes of the running version, once per version. The
+last-seen version is stored in `settings.json` (`SettingsService
+.lastSeenWhatsNewVersion` / `markWhatsNewSeen`) and the version is
+marked seen only after the dialog closes, so a crash while it is open
+re-shows it next launch.
+
+**Mechanic:** `client/lib/release_notes.dart` holds a catalog of
+`ReleaseNote` entries (newest first); each maps a version to a list of
+`tr()` keys whose text lives in
+`client/lib/l10n/parts/whatsnew_strings.dart` (de/en). The home screen
+checks on launch whether `releaseNotesFor(appVersion)` exists and the
+stored last-seen version differs, then shows `widgets/whats_new_dialog.dart`
+and records the version. Releasing a new version therefore means: bump
+`appVersion`, append a `ReleaseNote` + its `whatsnew.<version>.<i>` keys in
+the same change (a test guards that the running version always has notes).
+Old entries are never re-shown — only the latest one is ever displayed.
+
 ## 2026-08-13 — Adjustable tax rate (user request)
 
 New Handel-menu control to raise and lower taxes (§7.1). The default is

@@ -9,6 +9,7 @@ import 'parts/online_strings.dart';
 import 'parts/setup_strings.dart';
 import 'parts/tutorial_strings.dart';
 import 'parts/war_strings.dart';
+import 'parts/whatsnew_strings.dart';
 
 /// Active UI locale ('de' or 'en'). Set at startup by [SettingsService]
 /// from the stored choice (default: the device language — German devices
@@ -30,6 +31,7 @@ final Map<String, Map<String, String>> _table = {
     ...setupEn,
     ...miscEn,
     ...tutorialEn,
+    ...whatsnewEn,
   },
   'de': {
     ..._coreDe,
@@ -41,6 +43,7 @@ final Map<String, Map<String, String>> _table = {
     ...setupDe,
     ...miscDe,
     ...tutorialDe,
+    ...whatsnewDe,
   },
 };
 

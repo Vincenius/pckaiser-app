@@ -8,7 +8,7 @@ import '../l10n/strings.dart';
 
 /// App-wide preferences, stored as one small JSON file in the
 /// application-documents directory (same pattern as [SaveService]).
-/// Currently holds only the UI language.
+/// Holds the UI language and the last-seen "What's new" version.
 class SettingsService {
   SettingsService._(this._file, this._data);
 
@@ -37,6 +37,21 @@ class SettingsService {
   final File _file;
   final Map<String, dynamic> _data;
 
+  /// The app version the "What's new" modal was last shown for (null =
+  /// never shown — a fresh install or an upgrade from before the modal
+  /// existed). Compared against `appVersion` on launch; only one version
+  /// is remembered, so re-installing an old build cannot resurrect a
+  /// dismissed dialog.
+  String? get lastSeenWhatsNewVersion =>
+      _data['lastSeenWhatsNewVersion'] as String?;
+
+  /// Records [version] as seen, so its "What's new" modal never shows
+  /// again (called after the modal is dismissed).
+  Future<void> markWhatsNewSeen(String version) async {
+    _data['lastSeenWhatsNewVersion'] = version;
+    await _persist();
+  }
+
   /// The stored choice: 'system' (default — follow the device language),
   /// 'de' or 'en'.
   String get languageChoice {
@@ -58,6 +73,12 @@ class SettingsService {
   Future<void> setLanguageChoice(String choice) async {
     _data['language'] = choice;
     appLocale.value = resolvedLocale;
+    await _persist();
+  }
+
+  /// Atomic write of the whole settings JSON (tmp + rename, same pattern
+  /// as SaveService) — shared by every setter.
+  Future<void> _persist() async {
     final tmp = File('${_file.path}.tmp');
     await tmp.writeAsString(jsonEncode(_data), flush: true);
     await tmp.rename(_file.path);
