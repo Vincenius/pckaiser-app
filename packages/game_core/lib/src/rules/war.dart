@@ -173,8 +173,11 @@ bool warSideIsHuman(GameState state, ActiveWar war, int slot) =>
 /// `[DESIGNED 2026-08-09, user request]` Records [slot]'s war-start plan
 /// during the preparation window — the ONE place the `warPlan` decision
 /// answer and the revising [WarPrepPlan] action share:
-///  - `auto` hands this war to the stance autopilot (and withdraws any
-///    time proposal — a delegated side never schedules),
+///  - `auto` hands this war to the stance autopilot — a delegated side
+///    never schedules, but its stored offer is KEPT so switching back to
+///    live command restores the appointment instead of silently dropping
+///    it ([recomputeWarStart] ignores the offer for as long as the side is
+///    delegated),
 ///  - `auto: false` commands the side live; [slots] (epoch ms UTC on full
 ///    hours) REPLACES its proposal, null leaves the stored one alone.
 /// Marks the side as having answered (`war.planAnsweredSlots`, visible to
@@ -182,9 +185,15 @@ bool warSideIsHuman(GameState state, ActiveWar war, int slot) =>
 /// a revision immediately moves the appointment.
 void setWarPrepPlan(GameState state, ActiveWar war, int slot,
     {required bool auto, List<int>? slots}) {
+  // A plan submitted as a [WarPrepPlan] revision IS the answer to a still
+  // pending `warPlan` prompt. Leaving that decision open would let the
+  // preparation deadline default the side to the autopilot
+  // (`resolveWarPreparation`'s force pass) even though it just declared
+  // itself live — and would block the non-forced start meanwhile.
+  state.pendingDecisions
+      .removeWhere((d) => d.type == 'warPlan' && d.decidingSlot == slot);
   if (auto) {
     war.autoSlots.add(slot);
-    war.planSlots.remove(slot);
   } else {
     // Switching BACK to live command is the point of the revision (user
     // request): a player who delegated — or was defaulted to the

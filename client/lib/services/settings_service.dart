@@ -10,7 +10,7 @@ import '../l10n/strings.dart';
 /// application-documents directory (same pattern as [SaveService]).
 /// Holds the UI language and the last-seen "What's new" version.
 class SettingsService {
-  SettingsService._(this._file, this._data);
+  SettingsService._(this._file, this._data, this.hadStoredSettings);
 
   /// Loaded once at startup by `main.dart`; null until then (and in
   /// widget tests, which pump screens directly).
@@ -19,16 +19,17 @@ class SettingsService {
   static Future<SettingsService> init() async {
     final docs = await getApplicationDocumentsDirectory();
     final file = File('${docs.path}/settings.json');
+    final existed = file.existsSync();
     var data = <String, dynamic>{};
     try {
-      if (file.existsSync()) {
+      if (existed) {
         data = (jsonDecode(file.readAsStringSync()) as Map)
             .cast<String, dynamic>();
       }
     } on Object {
       // Corrupt settings file: fall back to defaults rather than crash.
     }
-    final service = SettingsService._(file, data);
+    final service = SettingsService._(file, data, existed);
     instance = service;
     appLocale.value = service.resolvedLocale;
     return service;
@@ -36,6 +37,11 @@ class SettingsService {
 
   final File _file;
   final Map<String, dynamic> _data;
+
+  /// True when a settings file was already on disk at startup — one half
+  /// of the "is this a first launch" test (the other is whether any save
+  /// exists). A returning player who never changed a setting has none.
+  final bool hadStoredSettings;
 
   /// The app version the "What's new" modal was last shown for (null =
   /// never shown — a fresh install or an upgrade from before the modal

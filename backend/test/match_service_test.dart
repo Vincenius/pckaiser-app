@@ -994,6 +994,120 @@ void main() {
       );
     });
 
+    // Regressions (2026-08-13) around revising an agreed appointment.
+    test('withdrawing an appointment past the fallback still gives notice',
+        () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      // Both agree on an instant BEYOND the 24 h fallback — legal, they
+      // chose it together.
+      final at40 = start.add(const Duration(hours: 40)).millisecondsSinceEpoch;
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [at40],
+      });
+      await answerPlan(match, b.id, 2, {
+        'auto': false,
+        'slots': [at40],
+      });
+      expect((await store.match(match.id))!.turnDeadline,
+          start.add(const Duration(hours: 40)));
+
+      // Six hours after the fallback ran out, Berta withdraws. The
+      // deadline falls back to an instant long past — arming that as-is
+      // would start the duel on the next sweep, ambushing Anna, who is
+      // waiting for the agreed hour.
+      now = start.add(const Duration(hours: 30));
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarPrepPlan(slot: 2, auto: false, slots: const []).toJson(),
+      );
+      final deadline = (await store.match(match.id))!.turnDeadline!;
+      expect(deadline, now.add(const Duration(seconds: 600)),
+          reason: 'a stale fallback buys one war round of grace');
+      expect(await service.sweepExpired(), 0);
+      final st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.phase, WarPhase.preparation);
+    });
+
+    test('a "sofort" agreement still starts the duel on the next sweep',
+        () async {
+      // The grace above must not delay the case it was never about: both
+      // sides picking the top of the current hour.
+      final start = DateTime.utc(2026, 1, 1, 12, 30);
+      var now = start;
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      final sofort = DateTime.utc(2026, 1, 1, 12).millisecondsSinceEpoch;
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [sofort],
+      });
+      await answerPlan(match, b.id, 2, {
+        'auto': false,
+        'slots': [sofort],
+      });
+      expect((await store.match(match.id))!.turnDeadline,
+          DateTime.utc(2026, 1, 1, 12));
+      expect(await service.sweepExpired(), 1);
+      final st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.phase, WarPhase.rounds);
+    });
+
+    test('an absurd start proposal is dropped instead of poisoning the match',
+        () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      // Beyond DateTime's legal millisecond range: agreeing on it would
+      // make every later commit of this match throw.
+      const absurd = 9223372036854775;
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [absurd],
+      });
+      await answerPlan(match, b.id, 2, {
+        'auto': false,
+        'slots': [absurd],
+      });
+      final st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.scheduledStartMs, isNull,
+          reason: 'the proposal never reached the engine');
+      expect((await store.match(match.id))!.turnDeadline,
+          now.add(const Duration(hours: 24)),
+          reason: 'the window keeps its full-turn fallback');
+    });
+
     test(
         'a duelist who never acted is handed to the autopilot when their '
         'first round clock expires', () async {

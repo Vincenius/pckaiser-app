@@ -179,10 +179,24 @@ class _WarPanelState extends State<WarPanel> {
   ) {
     final theme = Theme.of(context);
     final auto = war.autoSlots.contains(slot);
-    Future<void> submit({required bool auto, List<int>? slots}) =>
-        controller.applyWarAction(
+    // The window can close under the player's finger — the opponent
+    // answers, or the server's deadline sweep starts the duel, while this
+    // panel (or the time picker it opened) is still on screen. The engine
+    // then rejects the revision; report it like every other action path
+    // instead of letting the exception escape an async callback.
+    Future<void> submit({required bool auto, List<int>? slots}) async {
+      try {
+        await controller.applyWarAction(
           gc.WarPrepPlan(slot: slot, auto: auto, slots: slots),
         );
+      } on gc.ActionException catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(e.message)));
+        }
+      }
+    }
     return [
       Text(
         auto ? tr('war.planAutoChosen') : tr('war.planLiveChosen'),

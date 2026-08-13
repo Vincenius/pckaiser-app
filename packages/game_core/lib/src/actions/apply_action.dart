@@ -5,10 +5,11 @@ import '../rules/dynasty.dart';
 import '../rules/offices.dart';
 import '../rules/realm_merge.dart';
 import '../rules/titles.dart' show regenderTitle, switchTitleLadder;
-import '../rules/troops.dart' show releaseGarrison;
+import '../rules/troops.dart' show quarterRecruits, releaseGarrison;
 import '../rules/victory.dart';
 import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
+import '../state/dynasty.dart' show DynastyStatus;
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/pending_decision.dart';
@@ -88,7 +89,7 @@ List<GameEvent> applyActionInPlace(
     MergeTroops() => applyMergeTroops(state, realm, action),
     DisbandTroop() => applyDisbandTroop(state, realm, action),
     MoveTroop() => applyMoveTroop(state, realm, action),
-    TransferTroop() => applyTransferTroop(state, realm, action),
+    TransferTroop() => applyTransferTroop(state, realm, action, rng),
     DeclareWar() => applyDeclareWar(state, realm, action, rng),
     WarMove() => applyWarMove(state, realm, action, rng),
     WarMarch() => applyWarMarch(state, realm, action, rng),
@@ -747,10 +748,18 @@ List<GameEvent> _investShips(
   ];
 }
 
-/// "Geld schicken" (§6.2): transfer Taler to another living realm.
+/// "Truppe übertragen" [DESIGNED, deviation]: hand a whole unit to another
+/// living realm. The unit leaves at once (with its quarters freed at the
+/// source); a HUMAN recipient positions it via a `troopTransfer` decision,
+/// an AI/free realm takes delivery at its capital immediately.
 List<GameEvent> applyTransferTroop(
-    GameState state, Realm realm, TransferTroop action) {
-  if (state.activeWar != null && state.activeWar!.isParticipant(realm.slot)) {
+    GameState state, Realm realm, TransferTroop action, Rng rng) {
+  // Mid-war gate on BOTH sides (identical to `_transferRealm` and
+  // `_transferTile`): a bystander must not be able to funnel fresh units
+  // into a running duel.
+  final war = state.activeWar;
+  if (war != null &&
+      (war.isParticipant(realm.slot) || war.isParticipant(action.targetSlot))) {
     throw ActionException(coreMessage('notDuringWar'));
   }
   if (action.targetSlot < 1 ||
@@ -760,33 +769,77 @@ List<GameEvent> applyTransferTroop(
     throw ActionException(coreMessage('invalidTargetRealm'));
   }
   final troop = unitAt(realm, action.unitIndex);
-  if (troop.janissary)
+  if (troop.janissary) {
     throw ActionException(coreMessage('troopCannotTransfer'));
+  }
   if (troop.men <= 0) throw ActionException(coreMessage('notPossible'));
   final target = state.realm(action.targetSlot);
   final transferred = troop.copy();
+  // What LEFT — the immediate delivery below may cut the men the recipient
+  // cannot house, but this event reports the dispatch.
+  final sentMen = troop.men;
   if (troop.garrisonCounted) releaseGarrison(realm, troop.men);
   realm.troops.remove(troop);
   state.rebuildTroopMarkers();
-  state.pendingDecisions.add(PendingDecision(
-    id: 'troopTransfer-${state.year}-${realm.slot}-${transferred.id}',
-    type: 'troopTransfer',
-    decidingSlot: target.slot,
-    payload: {
-      'sourceSlot': realm.slot,
-      'sourceTroop': transferred.toJson(),
-    },
+
+  final events = <GameEvent>[];
+  if (state.dynasty(target.slot).status == DynastyStatus.human) {
+    state.pendingDecisions.add(PendingDecision(
+      id: 'troopTransfer-${state.year}-${realm.slot}-${transferred.id}',
+      type: 'troopTransfer',
+      decidingSlot: target.slot,
+      payload: {
+        'sourceSlot': realm.slot,
+        'sourceTroop': transferred.toJson(),
+      },
+    ));
+  } else {
+    // Pending decisions exist for HUMAN dynasties only — the turn pipeline
+    // drops every one addressed to an AI or vacant slot, and no AI driver
+    // answers them. Routing an AI recipient through a decision therefore
+    // deleted the unit outright (it had already left the sender). An AI
+    // takes delivery at its capital on the spot instead.
+    quarterTransferredTroop(state, target, transferred,
+        x: target.capitalX, y: target.capitalY, rng: rng);
+  }
+  events.add(GameEvent(
+    year: state.year,
+    slot: realm.slot,
+    type: 'troopsTransferred',
+    visibility: EventVisibility.participants,
+    participants: [realm.slot, target.slot],
+    payload: {'targetSlot': target.slot, 'men': sentMen},
   ));
-  return [
-    GameEvent(
-      year: state.year,
-      slot: realm.slot,
-      type: 'troopsTransferred',
-      visibility: EventVisibility.participants,
-      participants: [realm.slot, target.slot],
-      payload: {'targetSlot': target.slot, 'men': transferred.men},
-    ),
-  ];
+  return events;
+}
+
+/// Puts a transferred unit into [recipient] at ([x], [y]) with full
+/// garrison bookkeeping, and returns the men that actually arrived.
+///
+/// `Realm.armySize` is DERIVED from the garrison-counted units and must
+/// keep matching the per-town `garrison` fields (see the invariant on
+/// `Realm.armySize`) — so a garrison-counted unit has to be QUARTERED in
+/// the recipient's towns like fresh recruits. Men the recipient cannot
+/// house are dismissed, exactly as §8.3 (`normalizeTowns`) cuts a garrison
+/// that outgrows its capacity; a unit with no room at all never arrives.
+/// Söldner carry their own wages and need no quarters.
+int quarterTransferredTroop(GameState state, Realm recipient, Troop troop,
+    {required int x, required int y, required Rng rng}) {
+  if (troop.garrisonCounted) {
+    var free = 0;
+    for (final town in recipient.towns) {
+      final room = town.troopCapacity - town.garrison;
+      if (room > 0) free += room;
+    }
+    if (troop.men > free) troop.men = free;
+    if (troop.men > 0) quarterRecruits(recipient, troop.men, rng);
+  }
+  if (troop.men <= 0) return 0;
+  troop.x = x;
+  troop.y = y;
+  recipient.troops.add(troop);
+  state.map.troopMarker[state.map.index(x, y)] = 1;
+  return troop.men;
 }
 
 /// "Geld schicken" (§6.2): transfer Taler to another living realm.
@@ -1133,11 +1186,12 @@ List<GameEvent> _resolveDecision(
               state.map.ownerAt(x, y) == recipient.slot
           ? (x, y)
           : (recipient.capitalX, recipient.capitalY);
-      final troop = Troop.fromJson(raw)
-        ..x = position.$1
-        ..y = position.$2;
-      recipient.troops.add(troop);
-      state.map.troopMarker[state.map.index(troop.x, troop.y)] = 1;
+      final troop = Troop.fromJson(raw);
+      // Quarters the unit and cuts the men the recipient cannot house —
+      // without it `armySize` would outgrow the town garrisons it is
+      // supposed to mirror (see [quarterTransferredTroop]).
+      final received = quarterTransferredTroop(state, recipient, troop,
+          x: position.$1, y: position.$2, rng: rng);
       events.add(GameEvent(
         year: state.year,
         slot: decision.decidingSlot,
@@ -1145,7 +1199,7 @@ List<GameEvent> _resolveDecision(
         visibility: EventVisibility.owner,
         payload: {
           'sourceSlot': payload['sourceSlot'],
-          'men': troop.men,
+          'men': received,
           'name': troop.name,
         },
       ));

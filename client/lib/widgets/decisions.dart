@@ -106,40 +106,34 @@ Future<void> _promptDecision(
         (p['sourceTroop'] as Map).cast<String, dynamic>(),
       );
       final map = state.map;
-      final candidates = <(int, int)>[];
+      final candidateIndices = <int>{};
       for (var y = 0; y < map.height; y++) {
         for (var x = 0; x < map.width; x++) {
           if (map.ownerAt(x, y) == decision.decidingSlot) {
-            candidates.add((x, y));
+            candidateIndices.add(map.index(x, y));
           }
         }
       }
-      final pick = await showDialog<(int, int)>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => SimpleDialog(
-          title: Text(tr('dec.troopTransferTitle')),
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                tr('dec.troopTransferBody', {
-                  'source': realmName(p['sourceSlot'] as int),
-                  'name': troop.name,
-                  'men': troop.men,
-                }),
-              ),
-            ),
-            for (final (x, y) in candidates.take(100))
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, (x, y)),
-                child: Text(
-                  tr('dec.troopTransferTile', {'x': x + 1, 'y': y + 1}),
-                ),
-              ),
-          ],
-        ),
+      // Announce the gift first, then let the player tap its station on the
+      // map — a realm owns hundreds of tiles by mid-game, far more than any
+      // coordinate list can usefully offer. Skipping the pick (or owning no
+      // tile at all) stations the unit at the capital, as the engine's
+      // fallback does.
+      await _info(
+        context,
+        tr('dec.troopTransferTitle'),
+        tr('dec.troopTransferBody', {
+          'source': realmName(p['sourceSlot'] as int),
+          'name': troop.name,
+          'men': troop.men,
+        }),
       );
+      final pick = candidateIndices.isEmpty
+          ? null
+          : await controller.pickSeatOnMap(
+              hint: tr('dec.troopTransferMapHint'),
+              candidates: candidateIndices,
+            );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         if (pick != null) 'x': pick.$1,
         if (pick != null) 'y': pick.$2,
@@ -548,7 +542,9 @@ Future<List<int>?> askWarStartSlots(
                   secondary: enemy.contains(ms)
                       ? Tooltip(
                           message: tr('dec.warStartEnemyFits'),
-                          child: const Icon(Icons.how_to_reg, size: 20),
+                          // A check mark — `dec.warStartEnemyTimes` above
+                          // tells the player to look for exactly that.
+                          child: const Icon(Icons.check, size: 20),
                         )
                       : null,
                   onChanged: (v) => setState(

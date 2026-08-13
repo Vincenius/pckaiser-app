@@ -103,6 +103,7 @@ const Map<String, String> gameDe = {
   'game.yourTurnGreeting': '{title} {name}, Ihr seid am Zug !',
   'game.taxesLine': 'Steuern: +{tax} T',
   'game.harborIncomeSuffix': ' — Häfen: +{income} T',
+  'game.taxPopularityLine': 'Steuersatz {rate} %: {pop} Beliebtheit',
   'game.kaiserPotLine':
       'Kronschatz: {amount} T warten — '
       '„Staatskasse plündern" im Dynastie-Menü !',
@@ -233,6 +234,7 @@ const Map<String, String> gameEn = {
   'game.yourTurnGreeting': '{title} {name}, it is your turn!',
   'game.taxesLine': 'Taxes: +{tax} T',
   'game.harborIncomeSuffix': ' — harbors: +{income} T',
+  'game.taxPopularityLine': 'Tax rate {rate}%: {pop} popularity',
   'game.kaiserPotLine':
       'Crown treasure: {amount} T await — '
       '"Plunder the state coffers" in the Dynasty menu!',

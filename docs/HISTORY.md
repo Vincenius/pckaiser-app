@@ -6,6 +6,59 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-13 — Review round on v0.2.6 (branch vs. main)
+
+Bug hunt over everything v0.2.6 added (war-start plan revision, win
+conditions, "Truppe übertragen", tax rate, "Felder übertragen", release
+notes). Fixed:
+
+**Engine.** A unit handed to an AI/free realm VANISHED: `applyTransferTroop`
+removed it from the sender at once but delivered it through a
+`troopTransfer` pending decision — decisions exist for human dynasties
+only (the turn pipeline drops every one addressed to an AI, and no AI
+driver answers them). A non-human recipient now takes delivery at its
+capital in the same action. — The recipient of a garrison-counted unit
+never QUARTERED it, so `Realm.armySize` (derived from the units) drifted
+permanently away from the per-town `garrison` fields it must mirror;
+both delivery paths now go through `quarterTransferredTroop`, which
+quarters the men and cuts what the recipient cannot house (§8.3, like
+`normalizeTowns`). — The mid-war gate only looked at the SENDER, so a
+bystander could funnel fresh units into a running duel; it now covers
+both sides, like `TransferRealm`/`TransferTile`. — A `WarPrepPlan` left
+a still-open `warPlan` prompt pending, so the preparation deadline
+force-delegated a side that had just declared itself live;
+`setWarPrepPlan` consumes the prompt. — Delegating discarded the side's
+proposed times, so a plain Auto→Live toggle in the war panel (which
+sends no `slots`) destroyed the appointment the two had agreed on; the
+offer is kept and `recomputeWarStart` keeps ignoring it while delegated.
+
+**Backend.** Withdrawing an appointment that lay beyond the window's
+fallback armed a deadline HOURS in the past — the next sweep started the
+duel at once, ambushing the side that had not revised; a stale deadline
+now buys one war round's grace ("sofort", the current hour, stays
+immediate). — The old-build fallback reconstruction keyed on the
+POST-action appointment, so the very commit that withdrew an agreement
+persisted the abandoned instant as the window's fallback and no later
+revision could undo it; it keys on the previous state now. — Proposed
+start times are range-checked at the API boundary (now − 2 h … now +
+48 h): an absurd epoch made `DateTime.fromMillisecondsSinceEpoch` throw
+in `_commit` and every later sweep of that match with it.
+
+**Client.** The received-troop dialog listed only the first 100 owned
+tiles as a coordinate list (a mid-game realm owns far more) and was
+inescapable when the list was empty — it now uses the same map pick as
+the seat relocation. — The "Was ist neu?" modal greeted FRESH installs
+with release notes for changes they had never seen; a first launch (no
+settings file AND no saves) is marked seen silently. — `WarPrepPlan`
+submissions had no error handling, so a window closing under the
+player's finger threw out of an async callback; they toast like every
+other action. — The tax caption promised "+N Beliebtheit pro Jahr" at
+rates below 100 even while at war, where the engine withholds the
+goodwill entirely. — The per-turn tax popularity swing was written into
+the `turnUpkeep` payload but never rendered; the turn report shows it. —
+Janitscharen are greyed out in the transfer entry (§18.4, the engine
+rejects them) and the tax slider's header carries its percent sign.
+
 ## 2026-08-13 — "What's new" release-notes modal (user request)
 
 After an app update the home screen shows a "Was ist neu?" modal with

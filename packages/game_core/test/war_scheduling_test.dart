@@ -244,11 +244,21 @@ void main() {
       plan(state, 2, auto: true);
       expect(war.autoSlots, {2});
       expect(war.scheduledStartMs, 1000);
-      expect(war.planSlots.containsKey(2), isFalse);
+      // The offer itself is KEPT: a delegated side does not schedule (the
+      // recompute skips it), but discarding the times made a plain
+      // Auto→Live toggle destroy the appointment the two had agreed on —
+      // the panel sends no `slots` when it only flips the command mode.
+      expect(war.planSlots[2], [1000]);
       resolveWarPreparation(state, Rng(1), <GameEvent>[],
           waitWhenAllManual: true);
       expect(war.phase, WarPhase.preparation,
           reason: 'the agreed start outranks the one-live-side early start');
+
+      // Toggling back to live command restores the appointment unchanged.
+      plan(state, 2, auto: false);
+      expect(war.autoSlots, isEmpty);
+      expect(war.scheduledStartMs, 1000);
+
       resolveWarPreparation(state, Rng(1), <GameEvent>[], force: true);
       expect(war.phase, WarPhase.rounds);
     });

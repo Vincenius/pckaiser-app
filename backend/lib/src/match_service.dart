@@ -911,12 +911,13 @@ class MatchService {
           state.prunedEventCount + state.events.length;
       state = _endTurnAndAdvance(state, emitted);
     } else if (actionJson != null) {
-      final PlayerAction action;
+      final PlayerAction rawAction;
       try {
-        action = PlayerAction.fromJson(actionJson);
+        rawAction = PlayerAction.fromJson(actionJson);
       } on Object {
         throw ApiException(400, 'api.badRequest');
       }
+      final action = _sanitizeWarPlanTimes(rawAction);
       // The action must act for a realm this seat currently controls — not
       // only their home slot: control follows the ruler, so a player can
       // come to play several realms (conquest, inheritance).
@@ -1407,6 +1408,73 @@ class MatchService {
   /// on the short war clock). A human-vs-AI war instead uses the normal turn
   /// clock — see [_commit]'s timeout. A side that delegated the war to the
   /// autopilot (`warDefense` decision) no longer counts as human.
+  /// How far ahead a proposed duel start may lie. The client's picker
+  /// offers the current hour plus 24 h, so anything beyond this window is
+  /// a stale clock or a hand-crafted payload. Dropping those keeps the
+  /// value inside `DateTime.fromMillisecondsSinceEpoch`'s legal range (an
+  /// absurd epoch throws there, and `_commit` would then fail on every
+  /// later sweep of that match too) and bounds how far two sides can push
+  /// a running match's next deadline — a war blocks every other seat's
+  /// turn, so an unbounded appointment parks the whole match.
+  static const Duration _warPlanHorizon = Duration(hours: 48);
+
+  /// Drops out-of-range start proposals from a war-plan submission. Both
+  /// carriers are covered: the [WarPrepPlan] revision and the `warPlan`
+  /// decision answer, which use the same `'slots'` payload (epoch ms UTC).
+  /// The past is allowed a small margin — "sofort" is the top of the
+  /// answering side's CURRENT hour and so already lies behind us, plus
+  /// whatever clock skew the device carries. Nothing else is touched.
+  PlayerAction _sanitizeWarPlanTimes(PlayerAction action) {
+    final now = _clock().toUtc();
+    final from = now.subtract(const Duration(hours: 2)).millisecondsSinceEpoch;
+    final to = now.add(_warPlanHorizon).millisecondsSinceEpoch;
+    List<int> keep(List<int> slots) =>
+        [for (final ms in slots) if (ms >= from && ms <= to) ms];
+
+    if (action is WarPrepPlan) {
+      final slots = action.slots;
+      if (slots == null) return action;
+      return WarPrepPlan(
+          slot: action.slot, auto: action.auto, slots: keep(slots));
+    }
+    if (action is ResolveDecision) {
+      final raw = action.choice['slots'];
+      if (raw is! List) return action;
+      final List<int> slots;
+      try {
+        slots = raw.cast<int>();
+      } on Object {
+        return action;
+      }
+      return ResolveDecision(
+        slot: action.slot,
+        decisionId: action.decisionId,
+        choice: {...action.choice, 'slots': keep(slots)},
+      );
+    }
+    return action;
+  }
+
+  /// A war-preparation deadline must never be armed LONG after it expired:
+  /// the next sweep fires it on the spot and the duel begins with no
+  /// notice to the side that did not revise. That is reachable only via
+  /// the appointment path — the two agreed on a start beyond the window's
+  /// fallback and one of them then withdrew it, by which time the fallback
+  /// is hours gone. A stale instant buys one war round's clock as grace.
+  ///
+  /// The CURRENT hour is deliberately exempt: "sofort" is the top of the
+  /// answering side's own hour and so always lies a little behind us —
+  /// both sides asked for "now" and get it, and a fallback that has only
+  /// just run out still fires at once.
+  DateTime? _withPrepGrace(DateTime? deadline, MatchRecord match) {
+    if (deadline == null) return null;
+    final now = _clock();
+    if (deadline.isAfter(now.subtract(const Duration(hours: 1)))) {
+      return deadline;
+    }
+    return now.add(Duration(seconds: match.settings.warRoundTimeoutSeconds));
+  }
+
   bool _warIsHumanVsHuman(GameState state) {
     final war = state.activeWar;
     if (war == null) return false;
@@ -1517,10 +1585,19 @@ class MatchService {
       match.warPrepFallbackDeadline =
           turnTimeout == null ? null : _clock().add(turnTimeout);
     } else if (match.warPrepFallbackDeadline == null &&
-        (scheduledMs == null || scheduledMs <= 0)) {
+        ((previous?.activeWar?.scheduledStartMs ?? 0) <= 0)) {
       // A window opened by a pre-2026-08-09 build: its fixed deadline is
-      // whatever is armed right now.
+      // whatever was armed BEFORE this commit. Keyed on the PREVIOUS
+      // appointment, not the new one — otherwise the very commit that
+      // withdraws an agreement mistakes the abandoned appointment for the
+      // window's fallback and persists it, so the withdrawal does nothing
+      // and no later revision can undo it either.
       match.warPrepFallbackDeadline = match.turnDeadline;
+    } else if (match.warPrepFallbackDeadline == null) {
+      // Same old-build window, but it WAS sitting on an appointment: the
+      // true fallback is unrecoverable, so grant a fresh full turn.
+      match.warPrepFallbackDeadline =
+          turnTimeout == null ? null : _clock().add(turnTimeout);
     }
     if (prep && scheduledMs != null && scheduledMs > 0) {
       // The sides AGREED on a duel start (warPlan slot matching): the
@@ -1528,13 +1605,13 @@ class MatchService {
       // fallback (both sides chose it) and also works in a match without
       // a turn timer. Idempotent across commits — re-arming to the same
       // instant never moves the start.
-      match.turnDeadline =
-          DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true);
+      match.turnDeadline = _withPrepGrace(
+          DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true), match);
     } else if (prep && wasPrep) {
       // Still preparing, no (longer any) appointment: back to the window's
       // fixed fallback — a revision that withdraws an agreed time must not
       // leave the deadline sitting at the abandoned instant.
-      match.turnDeadline = match.warPrepFallbackDeadline;
+      match.turnDeadline = _withPrepGrace(match.warPrepFallbackDeadline, match);
     } else if (!(prep && wasPrep)) {
       final Duration? timeout;
       if (prep) {

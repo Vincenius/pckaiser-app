@@ -205,7 +205,8 @@ void _taxSheet(BuildContext context, GameController controller) {
         initial: realm.taxRate.toDouble(),
         divisions: (gc.taxRateMax - gc.taxRateMin) ~/ gc.taxRateStep,
         allowZero: true,
-        detail: _taxDetail,
+        unit: tr('menus.percentSuffix'),
+        detail: (rate) => _taxDetail(rate, controller.state, realm),
         onSubmit: (rate) {
           Navigator.pop(sheetContext);
           _tryAction(
@@ -223,7 +224,12 @@ void _taxSheet(BuildContext context, GameController controller) {
 /// Live caption for [_taxSheet]: what the chosen rate means for income and
 /// the per-turn popularity reaction (the same formula runEconomy applies,
 /// so the caption can never contradict the engine).
-String _taxDetail(int rate) {
+///
+/// That includes the war caveat: `_taxPopularityEffect` WITHHOLDS the
+/// goodwill from low taxes while the realm fights or is still war-weary
+/// (`recentWars > 0`), so promising "+2 Beliebtheit pro Jahr" there would
+/// be a promise the engine does not keep.
+String _taxDetail(int rate, gc.GameState state, gc.Realm realm) {
   final delta = (gc.taxRateDefault - rate) ~/ gc.taxPopularityStep;
   if (rate > gc.taxRateDefault) {
     return delta == 0
@@ -231,6 +237,9 @@ String _taxDetail(int rate) {
         : tr('menus.taxesDetailHigh', {'pct': rate, 'pop': -delta});
   }
   if (rate < gc.taxRateDefault) {
+    final atWar = (state.activeWar?.isParticipant(realm.slot) ?? false) ||
+        realm.recentWars > 0;
+    if (atWar) return tr('menus.taxesDetailLowAtWar', {'pct': rate});
     return delta == 0
         ? tr('menus.taxesDetailLowNeutral', {'pct': rate})
         : tr('menus.taxesDetailLow', {'pct': rate, 'pop': delta});
@@ -385,7 +394,11 @@ void _transferTilesSheet(BuildContext context, GameController controller) {
                       if (context.mounted) _toast(context, e.message);
                       return false;
                     }
-                    return true;
+                    // "FelDER übertragen": the pick stays armed so a border
+                    // strip can be handed over tile by tile without walking
+                    // the Handel → target round trip for each one. The
+                    // cancel button ends it.
+                    return false;
                   },
                 );
               },
@@ -1024,8 +1037,14 @@ void showTroopActions(
               ListTile(
                 leading: const Icon(Icons.send),
                 title: Text(tr('menus.transferTroop')),
-                subtitle: Text(tr('menus.transferTroopSubtitle')),
-                enabled: !atWar,
+                // Janitscharen serve the house the Ottoman arrival
+                // installed and never follow a new master (§18.4) — the
+                // engine rejects them, so grey the entry out like every
+                // other mirrored gate instead of toasting after the tap.
+                subtitle: Text(troop.janissary
+                    ? gc.coreMessage('troopCannotTransfer')
+                    : tr('menus.transferTroopSubtitle')),
+                enabled: !atWar && !troop.janissary,
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _transferTroopSheet(screenContext, controller, index);
@@ -2596,10 +2615,15 @@ class _AmountSlider extends StatefulWidget {
     this.initial,
     this.divisions,
     this.allowZero = false,
+    this.unit = '',
     required this.onSubmit,
   });
 
   final String title;
+
+  /// Localized suffix for the value in the header — the tax sheet's rate is
+  /// a percentage ('130 %'), every other slider counts bare Taler or men.
+  final String unit;
   final int max;
   final int min;
 
@@ -2642,7 +2666,7 @@ class _AmountSliderState extends State<_AmountSlider> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '${widget.title}: ${_value.round()}',
+            '${widget.title}: ${_value.round()}${widget.unit}',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           if (widget.detail != null)

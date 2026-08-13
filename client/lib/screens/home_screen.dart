@@ -50,22 +50,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _load();
-    // "What's new" modal after the first frame (once per app version, and
-    // only when there are notes for the running version). SettingsService
-    // is null in widget tests (screens are pumped directly), which skips it.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWhatsNew());
   }
 
   /// Shows the release-notes modal once per app version: no notes for this
   /// version, or a version already dismissed, both short-circuit. The
   /// version is marked seen only after the dialog closes, so a crash while
   /// it is open still re-shows it on the next launch.
-  Future<void> _maybeShowWhatsNew() async {
+  ///
+  /// A FIRST launch is silently marked as seen instead: "Was ist neu"
+  /// makes no sense to somebody who has never played a single turn.
+  /// Absent settings alone do not prove a fresh install (a returning
+  /// player who never touched the language or the modal has no settings
+  /// file either), so the save slots decide: no settings AND no saves.
+  Future<void> _maybeShowWhatsNew({required bool hasSaves}) async {
     final settings = SettingsService.instance;
     if (settings == null) return;
     final note = releaseNotesFor(appVersion);
     if (note == null) return;
     if (settings.lastSeenWhatsNewVersion == note.version) return;
+    if (!settings.hadStoredSettings && !hasSaves) {
+      await settings.markWhatsNewSeen(note.version);
+      return;
+    }
     if (!mounted) return;
     await showWhatsNewDialog(context, note);
     if (!mounted) return;
@@ -86,6 +92,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _saves = saves;
       _slots = slots;
     });
+    // Needs the save slots to tell a first launch from a returning player
+    // (see [_maybeShowWhatsNew]), so it runs here and not in initState.
+    await _maybeShowWhatsNew(hasSaves: slots.isNotEmpty);
+    if (!mounted) return;
     await _refreshOnline();
   }
 

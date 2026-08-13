@@ -49,7 +49,8 @@ const Map<String, String> miscDe = {
   'dec.troopTransferTitle': 'Truppen erhalten',
   'dec.troopTransferBody':
       '{source} hat dir {men} Soldaten ({name}) geschickt. Wähle einen Standort.',
-  'dec.troopTransferTile': 'Standort ({x}, {y})',
+  'dec.troopTransferMapHint':
+      'Tippe auf der Karte ein eigenes Feld als Standort der Truppe',
   'dec.today': 'Heute',
   'dec.tomorrow': 'Morgen',
   'dec.weekdayMon': 'Mo',
@@ -144,7 +145,8 @@ const Map<String, String> miscEn = {
   'dec.troopTransferTitle': 'Troops received',
   'dec.troopTransferBody':
       '{source} sent you {men} soldiers ({name}). Choose a position.',
-  'dec.troopTransferTile': 'Position ({x}, {y})',
+  'dec.troopTransferMapHint':
+      'Tap one of your own tiles on the map to station the troop',
   'dec.today': 'Today',
   'dec.tomorrow': 'Tomorrow',
   'dec.weekdayMon': 'Mon',

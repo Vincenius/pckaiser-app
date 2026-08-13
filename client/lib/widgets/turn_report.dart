@@ -104,6 +104,20 @@ Future<void> showTurnReport(
                         })
                       : ''),
             ),
+            // The tax RATE's yearly popularity swing (§7.1 tuning). Only a
+            // rate away from 100 % produces one, and it is silent
+            // otherwise — without this line a realm at 200 % would bleed
+            // popularity every year with nothing naming the cause.
+            if (n('taxPopularity') != 0)
+              row(
+                Icons.sentiment_satisfied_alt,
+                tr('game.taxPopularityLine', {
+                  'rate': realm.taxRate,
+                  'pop': '${n('taxPopularity') > 0 ? '+' : ''}'
+                      '${n('taxPopularity')}',
+                }),
+                color: n('taxPopularity') < 0 ? Colors.red.shade700 : null,
+              ),
             // The office holder's pot waits for the explicit "Staatskasse
             // plündern" action (Dynastie-Menü) — remind them here.
             if (state.kaiserId != null &&
