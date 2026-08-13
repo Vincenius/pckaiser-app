@@ -64,11 +64,19 @@ class ActiveWar {
     Map<int, List<int>>? planSlots,
     this.scheduledStartMs,
     Set<int>? actedSlots,
+    Set<int>? planAnsweredSlots,
   })  : snapshots = snapshots ?? {},
         movesLeft = movesLeft ?? {},
         autoSlots = autoSlots ?? {},
         planSlots = planSlots ?? {},
-        actedSlots = actedSlots ?? {};
+        actedSlots = actedSlots ?? {},
+        planAnsweredSlots = planAnsweredSlots ??
+            // Legacy derivation (pre-2026-08-09 saves): a side that had
+            // delegated or proposed times had obviously answered. A live
+            // side that proposed nothing is indistinguishable there — it
+            // reads as "not answered yet", which only costs the opponent's
+            // panel one line of certainty for the rest of that window.
+            {...(autoSlots ?? const <int>{}), ...(planSlots ?? const {}).keys};
 
   factory ActiveWar.fromJson(Map<String, dynamic> json) => ActiveWar(
         attackerSlot: json['attackerSlot'] as int,
@@ -124,6 +132,10 @@ class ActiveWar {
         },
         scheduledStartMs: json['scheduledStartMs'] as int?,
         actedSlots: (json['actedSlots'] as List?)?.cast<int>().toSet(),
+        // Additive field (2026-08-09) — older saves derive it from the
+        // delegation/proposal maps (see the constructor).
+        planAnsweredSlots:
+            (json['planAnsweredSlots'] as List?)?.cast<int>().toSet(),
       );
 
   final int attackerSlot;
@@ -204,8 +216,19 @@ class ActiveWar {
   /// slot is "sofort" — the top of the side's CURRENT hour — so two sides
   /// only match on it when both answer within the same clock hour (a late
   /// answer can no longer start the duel at an arbitrary future instant).
-  /// Used only during the preparation phase of a both-live war.
+  /// Used only during the preparation phase of a both-live war. A side may
+  /// REPLACE its proposal for as long as the preparation runs
+  /// (`WarPrepPlan`, 2026-08-09) — the map always holds the latest offer.
   final Map<int, List<int>> planSlots;
+
+  /// War sides that have submitted their preparation plan (live/autopilot
+  /// choice, plus proposed times) at least once — `[DESIGNED 2026-08-09,
+  /// user request]`. Both combatants see it (the war state is visible to
+  /// both), so the scheduling UI can say whether the opponent has chosen
+  /// yet instead of leaving the waiting side guessing. Independent of the
+  /// pending `warPlan` decision, which is hidden information filtered out
+  /// of the opponent's view.
+  final Set<int> planAnsweredSlots;
 
   /// The agreed duel start (earliest common `planSlots` entry) once every
   /// side has answered: epoch milliseconds UTC. A "sofort" agreement is
@@ -287,6 +310,7 @@ class ActiveWar {
         },
         scheduledStartMs: scheduledStartMs,
         actedSlots: Set.of(actedSlots),
+        planAnsweredSlots: Set.of(planAnsweredSlots),
       );
 
   Map<String, dynamic> toJson() => {
@@ -323,5 +347,6 @@ class ActiveWar {
         },
         'scheduledStartMs': scheduledStartMs,
         'actedSlots': actedSlots.toList(),
+        'planAnsweredSlots': planAnsweredSlots.toList(),
       };
 }

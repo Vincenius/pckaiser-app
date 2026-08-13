@@ -263,6 +263,7 @@ class MatchRecord {
     this.turnDeadline,
     this.autoStartAt,
     this.warReminderFor,
+    this.warPrepFallbackDeadline,
     this.expiryWarnedAt,
     this.winnerPlayerId,
     DateTime? createdAt,
@@ -292,6 +293,11 @@ class MatchRecord {
         warReminderFor: json['war_reminder_for'] == null
             ? null
             : DateTime.parse(json['war_reminder_for'] as String),
+        // Additive field — pre-2026-08-09 records reconstruct it from the
+        // running turn deadline (see MatchService._commit).
+        warPrepFallbackDeadline: json['war_prep_fallback_deadline'] == null
+            ? null
+            : DateTime.parse(json['war_prep_fallback_deadline'] as String),
         // Additive field — pre-retention records were never warned.
         expiryWarnedAt: json['expiry_warned_at'] == null
             ? null
@@ -323,6 +329,15 @@ class MatchRecord {
   /// The agreed war start this match was already REMINDED of (the ~15 min
   /// "duel starts soon" push) — sent at most once per agreed start time.
   DateTime? warReminderFor;
+
+  /// The war preparation's FALLBACK start (declaration + full turn timer),
+  /// kept separately from [turnDeadline] because the combatants may revise
+  /// their appointment while the window runs (`WarPrepPlan`, 2026-08-09):
+  /// agreeing on a time moves the deadline to it, WITHDRAWING the agreement
+  /// has to fall back to this fixed instant instead of silently granting
+  /// another full timer. Null outside a war preparation (and in a match
+  /// without a turn timer).
+  DateTime? warPrepFallbackDeadline;
 
   /// When the retention sweep warned this (active, stalled) match that it
   /// will be deleted. Cleared again by the sweep once [updatedAt] moves past
@@ -366,6 +381,8 @@ class MatchRecord {
         'turn_deadline': turnDeadline?.toIso8601String(),
         'auto_start_at': autoStartAt?.toIso8601String(),
         'war_reminder_for': warReminderFor?.toIso8601String(),
+        'war_prep_fallback_deadline':
+            warPrepFallbackDeadline?.toIso8601String(),
         'expiry_warned_at': expiryWarnedAt?.toIso8601String(),
         'winner': winnerPlayerId,
         'created_at': createdAt.toIso8601String(),

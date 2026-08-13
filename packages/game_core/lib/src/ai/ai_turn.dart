@@ -934,7 +934,10 @@ void fastForwardUnattendedWar(
 /// After a `warPlan` answer (or the online preparation deadline): begins
 /// the war rounds per the user-designed start rules (2026-07-06):
 ///  - all answered, exactly ONE side plays live → start at once (the live
-///    player declared themself ready, the other delegated),
+///    player declared themself ready, the other delegated) — UNLESS the two
+///    had already agreed on a start time (2026-08-09: a side may delegate
+///    AFTER the appointment was fixed; the live opponent planned for it and
+///    must not have the duel pulled forward to "now"),
 ///  - all answered, NOBODY plays live → begin and fast-forward the whole
 ///    war like an AI-vs-AI war (both sides on the stance autopilot),
 ///  - all answered, BOTH play live → start only when [waitWhenAllManual]
@@ -956,6 +959,7 @@ void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
   if (force) {
     for (final slot in sides.where(unanswered)) {
       war.autoSlots.add(slot);
+      war.planSlots.remove(slot);
     }
     state.pendingDecisions.removeWhere((d) => d.type == 'warPlan');
   } else if (sides.any(unanswered)) {
@@ -968,6 +972,20 @@ void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
     // agreement is a past current-hour instant the sweep fires immediately.
     return;
   }
+  if (!force && liveSides >= 1 && (war.scheduledStartMs ?? 0) > 0) {
+    // `[DESIGNED 2026-08-09, user request]` An AGREED appointment outranks
+    // every early-start rule: once the two sides settled on a time, the war
+    // begins THEN (the server arms its deadline at the instant and the
+    // sweep fires it). Two cases reach this:
+    //  - a later revision delegates ONE side (`WarPrepPlan`): pulling the
+    //    duel forward to "now" would make the still-live opponent — who
+    //    planned for the appointment — miss their own war,
+    //  - a match without a turn timer (waitWhenAllManual false): the sides
+    //    still deserve the time they agreed on.
+    // Hot-seat never reaches it: local play proposes no times at all.
+    return;
+  }
+
   beginWarRounds(state, rng);
   if (liveSides == 0) fastForwardUnattendedWar(state, rng, events);
 }

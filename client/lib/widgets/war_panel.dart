@@ -4,7 +4,8 @@ import 'package:game_core/game_core.dart' as gc;
 import '../l10n/labels.dart' show realmName, troopClassName;
 import '../l10n/strings.dart' show tr;
 import '../state/game_controller.dart';
-import 'decisions.dart' show formatWarStartTime, promptDecisionsFor;
+import 'decisions.dart'
+    show askWarStartSlots, formatWarStartTime, promptDecisionsFor;
 import 'war_report.dart';
 
 /// In-war controls (§11.2): unit selection (tap a unit on the map or via
@@ -38,6 +39,13 @@ class _WarPanelState extends State<WarPanel> {
   /// Stays available after this side answered (online the war may only
   /// start hours later at the agreed time) and inside the read-only
   /// off-turn viewer, where stance orders are the one allowed action.
+  ///
+  /// `[DESIGNED 2026-08-09, user request]` Everything about the plan stays
+  /// REVISABLE until the duel begins (`WarPrepPlan`): switch between
+  /// commanding live and the autopilot, and — online — re-open the time
+  /// picker to widen the offer when no common hour was found. The panel also
+  /// states whether the opponent has chosen yet and which hours suit them,
+  /// so nobody has to guess.
   Widget _preparation(BuildContext context, gc.ActiveWar war, int slot) {
     final theme = Theme.of(context);
     final state = controller.state;
@@ -83,6 +91,20 @@ class _WarPanelState extends State<WarPanel> {
                   }),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleSmall,
+                ),
+              ] else if (controller.isOnline && !owesPlan) ...[
+                // No appointment (yet): say WHY — the opponent has not
+                // answered, or the two offers do not overlap and somebody
+                // has to widen theirs (user request 2026-08-09).
+                const SizedBox(height: 4),
+                Text(
+                  war.planAnsweredSlots.contains(enemySlot)
+                      ? tr('war.noCommonTime')
+                      : tr('war.enemyStillChoosing', {
+                          'realm': realmName(enemySlot),
+                        }),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
               const SizedBox(height: 4),
@@ -132,16 +154,78 @@ class _WarPanelState extends State<WarPanel> {
                   child: Text(tr('war.choose')),
                 )
               else
-                Text(
-                  tr('war.planChosen'),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall,
-                ),
+                ..._planRevision(context, war, slot),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// The revisable part of the war-start plan, shown once this side has
+  /// answered its `warPlan` (`[DESIGNED 2026-08-09, user request]`):
+  ///  - command mode — live vs. the stance autopilot, switchable until the
+  ///    duel begins (a player who delegated in a hurry, or was defaulted to
+  ///    the autopilot by a missed answer, can still take the field),
+  ///  - online: "Zeiten anpassen" re-opens the time picker with this side's
+  ///    current offer pre-ticked and the opponent's accepted hours marked,
+  ///    so a pair that found no common hour can converge instead of waiting
+  ///    out the fallback deadline.
+  /// Hidden while the read-only viewer is busy (`controller.busy`).
+  List<Widget> _planRevision(
+    BuildContext context,
+    gc.ActiveWar war,
+    int slot,
+  ) {
+    final theme = Theme.of(context);
+    final auto = war.autoSlots.contains(slot);
+    Future<void> submit({required bool auto, List<int>? slots}) =>
+        controller.applyWarAction(
+          gc.WarPrepPlan(slot: slot, auto: auto, slots: slots),
+        );
+    return [
+      Text(
+        auto ? tr('war.planAutoChosen') : tr('war.planLiveChosen'),
+        textAlign: TextAlign.center,
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 4),
+      SegmentedButton<bool>(
+        showSelectedIcon: false,
+        segments: [
+          ButtonSegment(value: false, label: Text(tr('war.planLive'))),
+          ButtonSegment(value: true, label: Text(tr('war.planAuto'))),
+        ],
+        selected: {auto},
+        onSelectionChanged: controller.busy
+            ? null
+            : (v) => submit(auto: v.first),
+      ),
+      if (controller.isOnline && !auto) ...[
+        const SizedBox(height: 4),
+        TextButton.icon(
+          icon: const Icon(Icons.schedule, size: 18),
+          label: Text(tr('war.adjustTimes')),
+          onPressed: controller.busy
+              ? null
+              : () async {
+                  final enemySlot = war.opponentOf(slot);
+                  final picked = await askWarStartSlots(
+                    context,
+                    controller.turnTimeoutHours,
+                    initial: war.planSlots[slot] ?? const [],
+                    opponentSlots: war.planSlots[enemySlot] ?? const [],
+                    opponentAnswered: war.planAnsweredSlots.contains(
+                      enemySlot,
+                    ),
+                    cancellable: true,
+                  );
+                  if (picked == null) return; // cancelled — offer unchanged
+                  await submit(auto: false, slots: picked);
+                },
+        ),
+      ],
+    ];
   }
 
   @override

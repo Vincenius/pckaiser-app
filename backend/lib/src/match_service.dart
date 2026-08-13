@@ -944,6 +944,23 @@ class MatchService {
               emitted);
           state = _resumeAfterWarIfOver(state, emitted);
         }
+      } else if (action is WarPrepPlan &&
+          state.activeWar?.phase == WarPhase.preparation &&
+          state.activeWar!.isParticipant(action.slot)) {
+        // `[DESIGNED 2026-08-09, user request]` Revising the war-start plan
+        // (live command vs. autopilot, and the proposed times) is accepted
+        // OUT OF TURN for as long as the preparation window runs — like the
+        // stance orders below and the warPlan answer above: neither
+        // combatant is the awaited player once both have answered. Every
+        // revision re-runs the start rules, so newly matching times fix the
+        // appointment at once (and `_commit` re-arms the deadline).
+        state = _apply(state, action, emitted);
+        state = _mutate(
+            state,
+            (s, rng, ev) => resolveWarPreparation(s, rng, ev,
+                waitWhenAllManual: match.settings.turnTimeoutHours != null),
+            emitted);
+        state = _resumeAfterWarIfOver(state, emitted);
       } else if (action is SetTroopStance &&
           state.activeWar?.phase == WarPhase.preparation &&
           state.activeWar!.isParticipant(action.slot)) {
@@ -1489,6 +1506,22 @@ class MatchService {
     // every answer would otherwise push the "fair start" of a both-live
     // duel another half turn timer into the future.
     final wasPrep = previous?.activeWar?.phase == WarPhase.preparation;
+    // The FALLBACK start of this preparation window, remembered on the
+    // match: the combatants may revise their appointment while the window
+    // runs (`WarPrepPlan`, 2026-08-09), and a WITHDRAWN agreement has to
+    // fall back to the fixed declaration deadline — not to a fresh full
+    // turn timer, which a pair could otherwise keep pushing forever.
+    if (!prep) {
+      match.warPrepFallbackDeadline = null;
+    } else if (!wasPrep) {
+      match.warPrepFallbackDeadline =
+          turnTimeout == null ? null : _clock().add(turnTimeout);
+    } else if (match.warPrepFallbackDeadline == null &&
+        (scheduledMs == null || scheduledMs <= 0)) {
+      // A window opened by a pre-2026-08-09 build: its fixed deadline is
+      // whatever is armed right now.
+      match.warPrepFallbackDeadline = match.turnDeadline;
+    }
     if (prep && scheduledMs != null && scheduledMs > 0) {
       // The sides AGREED on a duel start (warPlan slot matching): the
       // deadline IS the appointment. It may lie later than the full-turn
@@ -1497,6 +1530,11 @@ class MatchService {
       // instant never moves the start.
       match.turnDeadline =
           DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true);
+    } else if (prep && wasPrep) {
+      // Still preparing, no (longer any) appointment: back to the window's
+      // fixed fallback — a revision that withdraws an agreed time must not
+      // leave the deadline sitting at the abandoned instant.
+      match.turnDeadline = match.warPrepFallbackDeadline;
     } else if (!(prep && wasPrep)) {
       final Duration? timeout;
       if (prep) {
@@ -1541,12 +1579,23 @@ class MatchService {
     // war has left preparation, hence the (prep || no-timer) gate. Sent
     // before the awaited-null return below: during a both-live wait nobody
     // is awaited.
+    //
+    // `[DESIGNED 2026-08-09, user request]` A REVISED plan (`WarPrepPlan`)
+    // re-announces the same way whenever it actually MOVES the start: two
+    // sides who first found no common time and then widened their offers
+    // must learn their new appointment, and a withdrawn agreement must be
+    // taken back. Only on a real change of the agreed instant, so
+    // fiddling with the offers spams nobody.
+    final scheduleChanged = prep &&
+        wasPrep &&
+        previous?.activeWar?.scheduledStartMs != scheduledMs;
     if (notify &&
         state.activeWar != null &&
         (prep || match.settings.turnTimeoutHours == null) &&
         previous != null &&
-        previous.pendingDecisions.any((d) => d.type == 'warPlan') &&
-        !state.pendingDecisions.any((d) => d.type == 'warPlan')) {
+        (scheduleChanged ||
+            (previous.pendingDecisions.any((d) => d.type == 'warPlan') &&
+                !state.pendingDecisions.any((d) => d.type == 'warPlan')))) {
       final war = state.activeWar!;
       final agreed = scheduledMs != null && scheduledMs > 0;
       final start = agreed

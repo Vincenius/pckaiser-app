@@ -62,6 +62,16 @@ const Map<String, String> miscDe = {
       'gemeinsamen Zeitpunkt — sonst nach Ablauf der '
       'Vorbereitungsfrist. Ohne Auswahl gilt die Frist.',
   'dec.warStartNow': 'Sofort (diese Stunde)',
+  // Was der Gegner angeboten hat (2026-08-09): ohne diesen Hinweis mussten
+  // zwei Spieler blind raten, welche Stunde sie noch hinzunehmen sollen.
+  'dec.warStartEnemyPending':
+      'Dein Gegner hat noch nicht gewählt.',
+  'dec.warStartEnemyTimes':
+      'Die mit ✓ markierten Zeiten passen deinem Gegner.',
+  'dec.warStartEnemyNoTimes':
+      'Dein Gegner hat keine Zeit vorgeschlagen — dann gilt die '
+      'Vorbereitungsfrist.',
+  'dec.warStartEnemyFits': 'Diese Zeit passt deinem Gegner',
   // An agreed start that already lies in the past — the server starts the
   // duel on its next sweep (within a minute), so it is not "20:00 Uhr"
   // but "any moment now".
@@ -73,6 +83,7 @@ const Map<String, String> miscDe = {
       'siehst du den Termin — gibt es keinen gemeinsamen, beginnt der '
       'Krieg nach Ablauf der Vorbereitungsfrist.',
   'dec.confirm': 'Bestätigen',
+  'dec.cancel': 'Abbrechen',
   'dec.ok': 'OK',
   'dec.yes': 'Ja',
   'dec.no': 'Nein',
@@ -141,6 +152,12 @@ const Map<String, String> miscEn = {
       'preparation deadline expires. With no selection, the deadline '
       'applies.',
   'dec.warStartNow': 'Immediately (this hour)',
+  'dec.warStartEnemyPending': 'Your opponent has not chosen yet.',
+  'dec.warStartEnemyTimes': 'The times marked ✓ suit your opponent.',
+  'dec.warStartEnemyNoTimes':
+      'Your opponent proposed no time — then the preparation deadline '
+      'applies.',
+  'dec.warStartEnemyFits': 'This time suits your opponent',
   'dec.warStartImminent': 'any moment now',
   'dec.warStartNoProposal': 'No time proposal',
   'dec.warStartConfirmed': 'War start fixed: {time}.',
@@ -149,6 +166,7 @@ const Map<String, String> miscEn = {
       'the appointment — if there is no shared one, the war begins when '
       'the preparation deadline expires.',
   'dec.confirm': 'Confirm',
+  'dec.cancel': 'Cancel',
   'dec.ok': 'OK',
   'dec.yes': 'Yes',
   'dec.no': 'No',

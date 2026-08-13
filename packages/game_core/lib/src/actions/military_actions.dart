@@ -467,6 +467,47 @@ class WarEndRound extends PlayerAction {
   Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
 }
 
+/// `[DESIGNED 2026-08-09, user request]` REVISES this side's war-start plan
+/// during the preparation window: live command vs. stance autopilot
+/// ([auto]), and the proposed duel start times ([slots], epoch ms UTC on
+/// full hours). Same payload as the `warPlan` decision answer — but usable
+/// as often as the player likes for as long as the preparation runs, so a
+/// commander can switch to manual control before the duel begins and two
+/// sides that found no common time can widen their offers until they do.
+///
+/// Allowed OUT OF TURN for both combatants (like [SetTroopStance] in the
+/// preparation window): the defender is never the awaited player there.
+class WarPrepPlan extends PlayerAction {
+  WarPrepPlan({required super.slot, required this.auto, this.slots});
+
+  factory WarPrepPlan.fromJson(Map<String, dynamic> json) => WarPrepPlan(
+        slot: json['slot'] as int,
+        auto: json['auto'] as bool,
+        slots: (json['slots'] as List?)?.cast<int>(),
+      );
+
+  static const kind = 'warPrepPlan';
+
+  /// True hands THIS war to the stance autopilot, false commands it live.
+  final bool auto;
+
+  /// The side's full list of acceptable start instants (epoch ms UTC);
+  /// null leaves the stored proposal untouched, an EMPTY list withdraws it.
+  /// Ignored for `auto` (a delegated side never schedules).
+  final List<int>? slots;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'auto': auto,
+        if (slots != null) 'slots': slots,
+      };
+}
+
 /// Naval transport during war: moves a unit from a land tile adjacent to an
 /// own harbor to any sea-reachable land tile, using all remaining moves.
 class WarNavalTransport extends PlayerAction {

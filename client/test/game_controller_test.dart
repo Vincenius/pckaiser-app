@@ -288,6 +288,71 @@ void main() {
     expect(controller.handoffToSlot, 1);
   });
 
+  // `[DESIGNED 2026-08-09, user request]` The war-start plan stays revisable
+  // during the preparation window — hot-seat exercises the same engine path
+  // the online panel uses (`WarPrepPlan` through applyWarAction).
+  test('the war-start plan can be revised until the duel begins', () async {
+    final controller = await twoPlayerGame();
+    controller.confirmHandoff();
+    final state = controller.state;
+    state.year = 1010;
+    for (final slot in [1, 5]) {
+      final realm = state.realm(slot);
+      realm.troops.add(
+        Troop(
+          name: 'Heer$slot',
+          men: 50,
+          troopClass: TroopClass.infanterie,
+          quality: TroopQuality.regular,
+          garrisonCounted: false,
+          x: realm.capitalX,
+          y: realm.capitalY,
+        ),
+      );
+    }
+    final map = state.map;
+    final (bx, by) = claimableTile(state, 1);
+    map.owner[map.index(bx, by)] = 5;
+    state.realm(5).tileCount[Building.none]++;
+
+    await controller.applyIrreversible(DeclareWar(slot: 1, targetSlot: 5));
+    final plan = controller.state.pendingDecisions.singleWhere(
+      (d) => d.type == 'warPlan' && d.decidingSlot == 1,
+    );
+    // The attacker delegates — and immediately regrets it.
+    await controller.resolveDecision(plan.id, 1, {'auto': true});
+    expect(controller.state.activeWar!.autoSlots, {1});
+    expect(
+      controller.state.activeWar!.planAnsweredSlots,
+      {1},
+      reason: 'the opponent can see that this side has chosen',
+    );
+    if (controller.handoffPending) controller.confirmHandoff();
+
+    await controller.applyWarAction(WarPrepPlan(slot: 1, auto: false));
+    expect(
+      controller.state.activeWar!.autoSlots,
+      isEmpty,
+      reason: 'taking command again before the war starts',
+    );
+    if (controller.handoffPending) controller.confirmHandoff();
+
+    // Both live: hot-seat starts the rounds as soon as the second answers.
+    final defenderPlan = controller.state.pendingDecisions.singleWhere(
+      (d) => d.type == 'warPlan' && d.decidingSlot == 5,
+    );
+    await controller.resolveDecision(defenderPlan.id, 5, {'auto': false});
+    if (controller.handoffPending) controller.confirmHandoff();
+    expect(controller.state.activeWar!.phase, WarPhase.rounds);
+
+    // Once the rounds run the plan is frozen (the engine rejects it; the
+    // controller surfaces the ActionException like any other war action).
+    await expectLater(
+      controller.applyWarAction(WarPrepPlan(slot: 1, auto: true)),
+      throwsA(isA<ActionException>()),
+    );
+  });
+
   test(
     'gameOver sees the game-end event behind redacted placeholders',
     () async {

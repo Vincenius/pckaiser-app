@@ -856,6 +856,144 @@ void main() {
           reason: 'no overlap → the full-turn fallback stands');
     });
 
+    // `[DESIGNED 2026-08-09, user request]` The war-start plan stays
+    // revisable for the whole preparation window (`WarPrepPlan`): both
+    // combatants may re-pick their times until they overlap, and switch
+    // between commanding live and the autopilot.
+    test('revised times fix the appointment and re-arm the deadline',
+        () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      final pushes = _RecordingPushService();
+      service = MatchService(store, pushes, clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      final at16 = start.add(const Duration(hours: 16)).millisecondsSinceEpoch;
+      final at17 = start.add(const Duration(hours: 17)).millisecondsSinceEpoch;
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [at16],
+      });
+      await answerPlan(match, b.id, 2, {
+        'auto': false,
+        'slots': [at17],
+      });
+      expect((await store.match(match.id))!.turnDeadline,
+          start.add(const Duration(hours: 24)),
+          reason: 'no overlap yet — the full-turn fallback stands');
+
+      // Berta adds Anna's hour — out of turn, hours into the window.
+      now = start.add(const Duration(hours: 2));
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson:
+            WarPrepPlan(slot: 2, auto: false, slots: [at17, at16]).toJson(),
+      );
+      var st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.phase, WarPhase.preparation);
+      expect(st.activeWar!.scheduledStartMs, at16);
+      expect((await store.match(match.id))!.turnDeadline,
+          start.add(const Duration(hours: 16)),
+          reason: 'the newly agreed instant becomes the deadline');
+      expect(pushes.kinds.where((k) => k == 'warStartFixed').length, 4,
+          reason: 'both sides are told about the fixed appointment again');
+
+      // Withdrawing it falls back to the window's ORIGINAL deadline — not
+      // to a fresh full turn timer (which a pair could push forever).
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarPrepPlan(slot: 2, auto: false, slots: [at17]).toJson(),
+      );
+      st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.scheduledStartMs, isNull);
+      expect((await store.match(match.id))!.turnDeadline,
+          start.add(const Duration(hours: 24)));
+    });
+
+    test('a delegated duelist may take command again before the war starts',
+        () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      // Berta delegates in a hurry — with one live side the early-start
+      // rule would normally begin the rounds at once...
+      await answerPlan(match, b.id, 2, {'auto': true});
+      // ...but Anna has not answered, so the window still runs.
+      var st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.phase, WarPhase.preparation);
+      expect(st.activeWar!.autoSlots, {2});
+
+      // Second thoughts, out of turn: Berta takes the field after all.
+      now = start.add(const Duration(hours: 1));
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarPrepPlan(slot: 2, auto: false, slots: const []).toJson(),
+      );
+      st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.autoSlots, isEmpty);
+
+      // Anna answers live: a both-live duel now waits for the deadline
+      // instead of having been fast-forwarded past Berta.
+      await answerPlan(match, a.id, 1, {'auto': false});
+      st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.phase, WarPhase.preparation);
+      now = start.add(const Duration(hours: 24, minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.phase, WarPhase.rounds);
+      expect(st.activeWar!.autoSlots, isEmpty);
+    });
+
+    test('a plan revision is rejected once the duel runs', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      await answerPlan(match, a.id, 1, {'auto': false});
+      await answerPlan(match, b.id, 2, {'auto': false});
+      now = now.add(const Duration(hours: 24, minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      // The rounds run: the defender is not the acting side, and the plan
+      // is no longer up for revision either way.
+      await expectLater(
+        service.submit(
+          matchId: match.id,
+          playerId: b.id,
+          actionJson: WarPrepPlan(slot: 2, auto: true).toJson(),
+        ),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
+      );
+    });
+
     test(
         'a duelist who never acted is handed to the autopilot when their '
         'first round clock expires', () async {

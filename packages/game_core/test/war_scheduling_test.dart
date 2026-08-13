@@ -17,6 +17,12 @@ void main() {
               slot: slot, decisionId: planOf(state, slot).id, choice: choice),
           Rng(1));
 
+  /// Revises an already-given plan (2026-08-09) — the same payload, but as
+  /// an action instead of a decision answer.
+  void plan(GameState state, int slot, {required bool auto, List<int>? slots}) =>
+      applyActionInPlace(
+          state, WarPrepPlan(slot: slot, auto: auto, slots: slots), Rng(1));
+
   test('the earliest common slot becomes the agreed start', () {
     final state = _game(humanSlots: const [1, 2]);
     _prepareWar(state, 1, 2);
@@ -143,11 +149,155 @@ void main() {
     final legacyJson = war.toJson()
       ..remove('planSlots')
       ..remove('scheduledStartMs')
-      ..remove('actedSlots');
+      ..remove('actedSlots')
+      ..remove('planAnsweredSlots');
     final legacy = ActiveWar.fromJson(legacyJson);
     expect(legacy.planSlots, isEmpty);
     expect(legacy.scheduledStartMs, isNull);
     expect(legacy.actedSlots, isEmpty);
+    expect(legacy.planAnsweredSlots, isEmpty);
+
+    // planAnsweredSlots (2026-08-09) is DERIVED for a save from a build
+    // that predates it: a side that had proposed times (or delegated)
+    // obviously answered its warPlan.
+    final midLegacy =
+        ActiveWar.fromJson(war.toJson()..remove('planAnsweredSlots'));
+    expect(midLegacy.planAnsweredSlots, {1});
+  });
+
+  // `[DESIGNED 2026-08-09, user request]` The plan stays REVISABLE for the
+  // whole preparation window (`WarPrepPlan`): switch between live command
+  // and autopilot, and widen/narrow the offered times until they overlap.
+  group('revising the plan during the preparation window', () {
+    test('both sides widen their offers until a time matches', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+
+      answer(state, 1, {
+        'auto': false,
+        'slots': [1000],
+      });
+      answer(state, 2, {
+        'auto': false,
+        'slots': [2000],
+      });
+      expect(war.scheduledStartMs, isNull, reason: 'no common time yet');
+      // Both answered, both live: online the duel waits for the fallback.
+      resolveWarPreparation(state, Rng(1), <GameEvent>[],
+          waitWhenAllManual: true);
+      expect(war.phase, WarPhase.preparation);
+
+      // The defender adds the attacker's time — now they agree.
+      plan(state, 2, auto: false, slots: [2000, 1000]);
+      expect(war.scheduledStartMs, 1000);
+
+      // ...and the attacker withdraws it again: back to the fallback.
+      plan(state, 1, auto: false, slots: const []);
+      expect(war.scheduledStartMs, isNull);
+    });
+
+    test('a delegated side may take the field again before the war starts',
+        () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+
+      answer(state, 1, {'auto': true}); // attacker delegates
+      expect(war.autoSlots, {1});
+      // Second thoughts: command live after all, with a time proposal.
+      plan(state, 1, auto: false, slots: [1000]);
+      expect(war.autoSlots, isEmpty);
+      expect(war.planSlots[1], [1000]);
+
+      answer(state, 2, {
+        'auto': false,
+        'slots': [1000],
+      });
+      expect(war.scheduledStartMs, 1000,
+          reason: 'the revised side counts as live and schedules');
+      resolveWarPreparation(state, Rng(1), <GameEvent>[],
+          waitWhenAllManual: true);
+      expect(war.phase, WarPhase.preparation,
+          reason: 'a both-live duel waits for its appointment');
+    });
+
+    test('delegating after an appointment was fixed keeps the start time',
+        () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+
+      answer(state, 1, {
+        'auto': false,
+        'slots': [1000],
+      });
+      answer(state, 2, {
+        'auto': false,
+        'slots': [1000],
+      });
+      expect(war.scheduledStartMs, 1000);
+
+      // The defender hands the war to the autopilot after the fact. The
+      // appointment must SURVIVE: the live attacker planned for it and
+      // would otherwise miss a duel started "right now".
+      plan(state, 2, auto: true);
+      expect(war.autoSlots, {2});
+      expect(war.scheduledStartMs, 1000);
+      expect(war.planSlots.containsKey(2), isFalse);
+      resolveWarPreparation(state, Rng(1), <GameEvent>[],
+          waitWhenAllManual: true);
+      expect(war.phase, WarPhase.preparation,
+          reason: 'the agreed start outranks the one-live-side early start');
+      resolveWarPreparation(state, Rng(1), <GameEvent>[], force: true);
+      expect(war.phase, WarPhase.rounds);
+    });
+
+    test('both sides see who has already chosen', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+
+      expect(war.planAnsweredSlots, isEmpty);
+      answer(state, 1, {'auto': false});
+      expect(war.planAnsweredSlots, {1});
+      // The flag lives in the shared war state, so it survives the
+      // hidden-information filter for the OPPONENT's view too (their
+      // pending decision itself is filtered out).
+      final asDefender = visibleStateFor(state, 2);
+      expect(asDefender.activeWar!.planAnsweredSlots, {1});
+      expect(asDefender.pendingDecisions.map((d) => d.decidingSlot), [2]);
+    });
+
+    test('a revision is rejected once the war rounds run', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+      answer(state, 1, {'auto': false});
+      answer(state, 2, {'auto': false});
+      resolveWarPreparation(state, Rng(1), <GameEvent>[]);
+      expect(war.phase, WarPhase.rounds);
+
+      expect(
+          () => applyActionInPlace(
+              state, WarPrepPlan(slot: 1, auto: true), Rng(1)),
+          throwsA(isA<ActionException>()));
+    });
+
+    test('the opponent\'s proposed times are visible to both sides', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      startWar(state, 1, 2, Rng(1));
+      answer(state, 1, {
+        'auto': false,
+        'slots': [1000, 2000],
+      });
+
+      // The defender's filtered view carries the attacker's offer, so the
+      // time picker can highlight the times the enemy already accepted.
+      final asDefender = visibleStateFor(state, 2);
+      expect(asDefender.activeWar!.planSlots[1], [1000, 2000]);
+    });
   });
 }
 

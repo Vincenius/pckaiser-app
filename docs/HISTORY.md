@@ -6,6 +6,47 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-09 — Online war scheduling becomes revisable (user request, v0.2.6)
+
+The war-start plan used to be a ONE-SHOT answer: whatever a player ticked
+in the `warPlan` dialog stood until the duel began. Three consequences, all
+reported as annoyances — you could not switch to manual control after
+delegating in a hurry, two players whose offered hours missed each other
+had no way to converge (they simply waited out the fallback deadline), and
+the time picker showed nothing about the opponent, so widening the offer
+was guesswork.
+
+**New `WarPrepPlan` action** (game_core) — same payload as the decision
+answer (`auto`, `slots`), re-submittable as often as wanted while
+`WarPhase.preparation` runs, by either combatant and OUT OF TURN (server:
+next to the existing `SetTroopStance` allowance; client: also through the
+read-only map viewer). `setWarPrepPlan` + `recomputeWarStart`
+(rules/war.dart) are now the single place where both the decision answer
+and the revision record a plan.
+
+**Two guards against the obvious abuse/foot-guns:**
+- an AGREED instant is never cleared by a LATER delegation, and
+  `resolveWarPreparation` keeps waiting for it instead of applying the
+  one-live-side early start — otherwise delegating after the appointment
+  was fixed would start the duel "now" and the live opponent, who planned
+  for the slot, would miss their own war;
+- withdrawing an agreement falls back to `match.war_prep_fallback_deadline`
+  (the window's FIXED declaration deadline, new additive match field), not
+  to a fresh full turn timer — a pair could otherwise postpone forever.
+
+**Transparency:** new `ActiveWar.planAnsweredSlots` (additive; derived for
+old saves from `autoSlots`/`planSlots`) plus the existing `planSlots` are
+now explicitly kept for the two COMBATANTS in `visibleStateFor` and
+cleared for bystanders. The time picker flags the hours the opponent
+accepted (and says when they have not chosen yet); the war panel names why
+there is no appointment — "X hat noch nicht gewählt" vs. "noch kein
+gemeinsamer Termin". The panel's old static "Wahl getroffen" line became a
+live/autopilot segmented button plus "Zeiten anpassen".
+
+`_commit` re-arms `turn_deadline` on every change of the agreed instant and
+re-sends `WAR_START_FIXED` to both sides then (only on a real change, so
+fiddling spams nobody).
+
 ## 2026-08-08 — Review round on the v0.2.5 branch + player-readable server rejections
 
 Findings of a full branch review (main…v0.2.5), all fixed the same day:

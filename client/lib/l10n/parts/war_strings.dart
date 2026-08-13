@@ -11,8 +11,21 @@ const Map<String, String> warDe = {
   'war.scheduledStart': 'Vereinbarter Beginn: {time}',
   'war.tapTroopHint': 'Tippe eine Truppe an, um ihre Haltung zu ändern.',
   'war.choose': 'Wählen',
-  'war.planChosen':
-      'Wahl getroffen — der Krieg beginnt, sobald beide Seiten bereit sind.',
+  // Revisable plan (2026-08-09): Führung umstellen + Zeiten anpassen,
+  // solange die Vorbereitung läuft.
+  'war.planLive': 'Selbst führen',
+  'war.planAuto': 'Computer führt',
+  'war.planLiveChosen':
+      'Du führst dein Heer selbst — der Krieg beginnt, sobald beide Seiten '
+      'bereit sind. Du kannst das hier noch ändern.',
+  'war.planAutoChosen':
+      'Der Computer führt dein Heer nach den Truppenhaltungen. Du kannst das '
+      'Kommando hier noch selbst übernehmen.',
+  'war.adjustTimes': 'Zeiten anpassen',
+  'war.noCommonTime':
+      'Noch kein gemeinsamer Termin — passe deine Zeiten an, dann beginnt '
+      'der Krieg früher als zum Ende der Vorbereitungsfrist.',
+  'war.enemyStillChoosing': '{realm} hat noch nicht gewählt.',
 
   // --- War panel: header & banners ---
   'war.headerVs': 'Krieg gegen {enemy}',
@@ -220,8 +233,19 @@ const Map<String, String> warEn = {
   'war.scheduledStart': 'Agreed start: {time}',
   'war.tapTroopHint': 'Tap a troop to change its stance.',
   'war.choose': 'Choose',
-  'war.planChosen':
-      'Choice made — the war begins as soon as both sides are ready.',
+  'war.planLive': 'Command myself',
+  'war.planAuto': 'Computer commands',
+  'war.planLiveChosen':
+      'You command your army yourself — the war begins as soon as both '
+      'sides are ready. You can still change this here.',
+  'war.planAutoChosen':
+      'The computer commands your army along the troop stances. You can '
+      'still take command yourself here.',
+  'war.adjustTimes': 'Adjust times',
+  'war.noCommonTime':
+      'No shared appointment yet — adjust your times and the war starts '
+      'earlier than the end of the preparation window.',
+  'war.enemyStillChoosing': '{realm} has not chosen yet.',
 
   // --- War panel: header & banners ---
   'war.headerVs': 'War against {enemy}',

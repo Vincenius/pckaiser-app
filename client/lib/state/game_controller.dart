@@ -220,12 +220,15 @@ class GameController extends ChangeNotifier {
     return null;
   }
 
-  /// War-preparation stance orders are the one action allowed through the
-  /// read-only viewer: online the DEFENDER lines up their troops while
-  /// another player's turn runs (the server accepts `SetTroopStance` out
-  /// of turn during the preparation window).
+  /// War-preparation orders are the actions allowed through the read-only
+  /// viewer: online the DEFENDER lines up their troops while another
+  /// player's turn runs, and either combatant may revise its start plan
+  /// (control mode + proposed times, `WarPrepPlan` — user request
+  /// 2026-08-09). The server accepts both out of turn while the
+  /// preparation window runs.
   bool _prepStanceAllowed(PlayerAction action) =>
-      action is SetTroopStance && action.slot == warPrepSlot;
+      (action is SetTroopStance || action is WarPrepPlan) &&
+      action.slot == warPrepSlot;
 
   /// The war ([attacker, defender, year] — §11.1 allows one war per realm
   /// per year) whose defender briefing already fired. An explicit marker:

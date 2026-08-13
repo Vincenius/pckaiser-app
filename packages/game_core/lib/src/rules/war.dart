@@ -170,6 +170,66 @@ bool warSideIsHuman(GameState state, ActiveWar war, int slot) =>
     state.dynasty(slot).status == DynastyStatus.human &&
     !war.autoSlots.contains(slot);
 
+/// `[DESIGNED 2026-08-09, user request]` Records [slot]'s war-start plan
+/// during the preparation window — the ONE place the `warPlan` decision
+/// answer and the revising [WarPrepPlan] action share:
+///  - `auto` hands this war to the stance autopilot (and withdraws any
+///    time proposal — a delegated side never schedules),
+///  - `auto: false` commands the side live; [slots] (epoch ms UTC on full
+///    hours) REPLACES its proposal, null leaves the stored one alone.
+/// Marks the side as having answered (`war.planAnsweredSlots`, visible to
+/// the opponent) and re-derives the agreed start ([recomputeWarStart]), so
+/// a revision immediately moves the appointment.
+void setWarPrepPlan(GameState state, ActiveWar war, int slot,
+    {required bool auto, List<int>? slots}) {
+  if (auto) {
+    war.autoSlots.add(slot);
+    war.planSlots.remove(slot);
+  } else {
+    // Switching BACK to live command is the point of the revision (user
+    // request): a player who delegated — or was defaulted to the
+    // autopilot by an earlier deadline pass — may take the field again as
+    // long as the war has not started.
+    war.autoSlots.remove(slot);
+    if (slots != null) {
+      if (slots.isEmpty) {
+        war.planSlots.remove(slot);
+      } else {
+        war.planSlots[slot] = slots.toSet().toList()..sort();
+      }
+    }
+  }
+  war.planAnsweredSlots.add(slot);
+  recomputeWarStart(state, war);
+}
+
+/// Re-derives `war.scheduledStartMs` from the current proposals: the
+/// earliest instant BOTH live sides offered, or null when they have not
+/// (yet) agreed — then the caller's fallback deadline governs, exactly as
+/// without scheduling. A revision that widens the offers can therefore
+/// still create an appointment, and one that narrows them withdraws it.
+///
+/// Only a BOTH-live duel schedules. Any other constellation leaves an
+/// already agreed instant ALONE: a side that switches to the autopilot
+/// after the two had settled on a time must not drag the duel forward to
+/// "right now" — the live opponent planned for that appointment and would
+/// miss the whole war (`[DESIGNED 2026-08-09, user request]`; see
+/// `resolveWarPreparation`, which keeps waiting for an agreed start even
+/// with only one live side).
+void recomputeWarStart(GameState state, ActiveWar war) {
+  final sides = [war.attackerSlot, war.defenderSlot];
+  final answered = sides.every((s) =>
+      war.planAnsweredSlots.contains(s) ||
+      state.dynasty(s).status != DynastyStatus.human);
+  if (!answered || !sides.every((s) => warSideIsHuman(state, war, s))) return;
+  final common = (war.planSlots[war.attackerSlot] ?? const <int>[])
+      .toSet()
+      .intersection((war.planSlots[war.defenderSlot] ?? const <int>[]).toSet())
+      .toList()
+    ..sort();
+  war.scheduledStartMs = common.isEmpty ? null : common.first;
+}
+
 /// The acting order of the CURRENT war round, `[DESIGNED 2026-07-19]`:
 /// initiative alternates — the attacker opens the even rounds (round 0,
 /// the declaration round, as in the original), the defender the odd ones.

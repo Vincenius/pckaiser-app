@@ -90,6 +90,7 @@ List<GameEvent> applyActionInPlace(
     WarPlunder() => applyWarPlunder(state, realm, action, rng),
     WarPeaceWish() => applyWarPeaceWish(state, realm, action),
     WarEndRound() => applyWarEndRound(state, realm, action, rng),
+    WarPrepPlan() => applyWarPrepPlan(state, realm, action),
     SettlementAnnex() => applySettlementAnnex(state, realm, action, rng),
     SettlementAnnexMany() =>
       applySettlementAnnexMany(state, realm, action, rng),
@@ -979,36 +980,20 @@ List<GameEvent> _resolveDecision(
           !war.isParticipant(decision.decidingSlot)) {
         break;
       }
-      if (choice['auto'] != false) {
-        war.autoSlots.add(decision.decidingSlot);
-      } else {
-        // `[DESIGNED 2026-07-08]` Online duel scheduling: a LIVE side may
-        // propose start times ('slots': epoch ms UTC on full hours). The
-        // first slot is "sofort" — the top of THIS side's current hour — so
-        // two sides only agree on it when both answer within the same hour.
-        final slots = (choice['slots'] as List?)?.cast<int>();
-        if (slots != null && slots.isNotEmpty) {
-          war.planSlots[decision.decidingSlot] = List.of(slots)..sort();
-        }
-      }
-      // Once every side has answered and BOTH play live, the earliest
-      // common proposal becomes the agreed start. No overlap (or no
-      // proposals) leaves it null — the caller's fallback deadline (the
-      // full turn timer online) governs, exactly as without scheduling. An
-      // agreed time may lie LATER than that fallback: both sides chose it.
-      // (The CURRENT decision is consumed after the switch — exclude it.)
-      if (!state.pendingDecisions
-              .any((d) => d.type == 'warPlan' && d.id != decision.id) &&
-          war_rules.warSideIsHuman(state, war, war.attackerSlot) &&
-          war_rules.warSideIsHuman(state, war, war.defenderSlot)) {
-        final common = (war.planSlots[war.attackerSlot] ?? const <int>[])
-            .toSet()
-            .intersection(
-                (war.planSlots[war.defenderSlot] ?? const <int>[]).toSet())
-            .toList()
-          ..sort();
-        war.scheduledStartMs = common.isEmpty ? null : common.first;
-      }
+      // `[DESIGNED 2026-07-08]` Online duel scheduling: a LIVE side may
+      // propose start times ('slots': epoch ms UTC on full hours). The
+      // first slot is "sofort" — the top of THIS side's current hour — so
+      // two sides only agree on it when both answer within the same hour.
+      // Recording the plan (and re-deriving the agreed start from both
+      // sides' proposals) is shared with the revising `WarPrepPlan` action
+      // — ONE definition in war_rules.setWarPrepPlan.
+      war_rules.setWarPrepPlan(
+        state,
+        war,
+        decision.decidingSlot,
+        auto: choice['auto'] != false,
+        slots: (choice['slots'] as List?)?.cast<int>() ?? const [],
+      );
 
     case 'warDefense':
       // Legacy (pre-preparation dev builds): `defend == false` hands THIS

@@ -196,7 +196,16 @@ Future<void> _promptDecision(
       // war starts as soon as both have chosen.
       List<int>? slots;
       if (live && controller.isOnline && context.mounted) {
-        slots = await _askWarStartSlots(context, controller.turnTimeoutHours);
+        // The opponent may have answered first — show which hours suit them
+        // so the second answer can actually match one (user request
+        // 2026-08-09). Both sides' proposals live in the shared war state.
+        final enemySlot = war.opponentOf(decision.decidingSlot);
+        slots = await askWarStartSlots(
+          context,
+          controller.turnTimeoutHours,
+          opponentSlots: war.planSlots[enemySlot] ?? const [],
+          opponentAnswered: war.planAnsweredSlots.contains(enemySlot),
+        );
       }
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         'auto': !live,
@@ -431,11 +440,22 @@ String formatWarStartTime(int epochMs) {
 /// is pinned to the current hour, two sides only agree on it when both
 /// answer within the same hour — a late answer can no longer start the duel
 /// at an arbitrary future instant. Returns epoch ms; an empty selection
-/// proposes nothing — the fallback deadline governs.
-Future<List<int>> _askWarStartSlots(
+/// proposes nothing — the fallback deadline governs. Null = cancelled (the
+/// re-scheduling path from the war panel leaves the stored offer alone).
+///
+/// `[DESIGNED 2026-08-09, user request]` Re-openable during the whole
+/// preparation window (war panel → "Zeiten anpassen"): [initial] pre-ticks
+/// this side's current offer, and [opponentSlots] marks the times the
+/// OPPONENT already accepted — without that hint two players who missed
+/// each other had to guess blindly which hour to add.
+Future<List<int>?> askWarStartSlots(
   BuildContext context,
-  int? turnTimeoutHours,
-) async {
+  int? turnTimeoutHours, {
+  Iterable<int> initial = const [],
+  Iterable<int> opponentSlots = const [],
+  bool opponentAnswered = false,
+  bool cancellable = false,
+}) async {
   final now = DateTime.now().toUtc();
   final currentHour = DateTime.utc(now.year, now.month, now.day, now.hour);
   final nowMs = currentHour.millisecondsSinceEpoch;
@@ -444,10 +464,13 @@ Future<List<int>> _askWarStartSlots(
     for (var i = 0; i < count; i++)
       currentHour.add(Duration(hours: i)).millisecondsSinceEpoch,
   ];
-  final picked = <int>{};
+  final enemy = opponentSlots.toSet();
+  // A previously offered hour that has since rolled out of the window can
+  // no longer be re-ticked — keep only what is still offerable.
+  final picked = initial.where(offered.contains).toSet();
   final result = await showDialog<List<int>>(
     context: context,
-    barrierDismissible: false,
+    barrierDismissible: cancellable,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
         title: Text(tr('dec.warStartTitle')),
@@ -460,6 +483,20 @@ Future<List<int>> _askWarStartSlots(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(tr('dec.warStartHint')),
               ),
+              // What the opponent offered, stated up front: "they have not
+              // chosen yet" vs. "these hours suit them" — the ticks below
+              // carry the same information per row.
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  !opponentAnswered
+                      ? tr('dec.warStartEnemyPending')
+                      : enemy.isEmpty
+                      ? tr('dec.warStartEnemyNoTimes')
+                      : tr('dec.warStartEnemyTimes'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
               for (final ms in offered)
                 CheckboxListTile(
                   dense: true,
@@ -469,6 +506,14 @@ Future<List<int>> _askWarStartSlots(
                         ? tr('dec.warStartNow')
                         : formatWarStartTime(ms),
                   ),
+                  // The opponent's accepted hours are flagged per row, so a
+                  // matching pick is one glance away.
+                  secondary: enemy.contains(ms)
+                      ? Tooltip(
+                          message: tr('dec.warStartEnemyFits'),
+                          child: const Icon(Icons.how_to_reg, size: 20),
+                        )
+                      : null,
                   onChanged: (v) => setState(
                     () => v == true ? picked.add(ms) : picked.remove(ms),
                   ),
@@ -477,6 +522,11 @@ Future<List<int>> _askWarStartSlots(
           ),
         ),
         actions: [
+          if (cancellable)
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(tr('dec.cancel')),
+            ),
           FilledButton(
             onPressed: () => Navigator.pop(context, picked.toList()..sort()),
             child: Text(
@@ -487,7 +537,7 @@ Future<List<int>> _askWarStartSlots(
       ),
     ),
   );
-  return result ?? const [];
+  return result;
 }
 
 Future<bool> _yesNo(BuildContext context, String title, String message) async {

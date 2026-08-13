@@ -126,6 +126,11 @@ GameState visibleStateFor(GameState state, int viewerSlot) {
       !ownSlots.contains(filteredWar.defenderSlot)) {
     filteredWar.snapshots.clear();
     filteredWar.movesLeft.clear();
+    // The duel appointment is the combatants' business too (2026-08-09):
+    // their proposed times would tell a bystander when both will be busy.
+    filteredWar.planSlots.clear();
+    filteredWar.planAnsweredSlots.clear();
+    filteredWar.scheduledStartMs = null;
   }
 
   // The map's troop markers would betray foreign army positions: rebuild

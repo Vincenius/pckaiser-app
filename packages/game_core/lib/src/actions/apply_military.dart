@@ -730,6 +730,21 @@ List<GameEvent> applyWarPeaceWish(
   ];
 }
 
+/// `[DESIGNED 2026-08-09, user request]` Revises this side's war-start plan
+/// while the preparation window runs: live command vs. stance autopilot,
+/// and the proposed duel start times. Free and repeatable — the player may
+/// switch to manual control right before the duel begins, and two sides who
+/// found no common time can widen their offers until they do. Outside the
+/// preparation phase (the war already started) it is rejected, so a
+/// revision can never flip a running duel's command mode.
+List<GameEvent> applyWarPrepPlan(
+    GameState state, Realm realm, WarPrepPlan action) {
+  final war = _warFor(state, realm.slot, phase: WarPhase.preparation);
+  setWarPrepPlan(state, war, realm.slot,
+      auto: action.auto, slots: action.slots);
+  return const [];
+}
+
 /// WARNING for drivers: this raw dispatch advances the round WITHOUT the
 /// AI sides' war movement (`runAiWarMovement` lives in the ai/ layer, which
 /// imports this one). Real drivers must call `endWarRoundFor` instead —
