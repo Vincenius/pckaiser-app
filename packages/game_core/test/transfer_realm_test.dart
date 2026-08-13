@@ -87,6 +87,30 @@ void main() {
     expect(result.events.any((e) => e.type == 'kurfuerstStripped'), isTrue);
   });
 
+  test('emits gameWon when the last rival transfers their realm', () {
+    final state = freshGame();
+    final target = transferableSlots(state, 1).first;
+
+    // Leave only the transferring human and the foreign recipient alive.
+    for (final realm in state.realms) {
+      if (realm.slot != 1 && realm.slot != target) {
+        realm.rulerId = null;
+        realm.tileCount.fillRange(0, realm.tileCount.length, 0);
+      }
+    }
+
+    final result = applyAction(
+      state,
+      TransferRealm(slot: 1, targetSlot: target),
+      Rng(state.rngSeed),
+    );
+
+    final won = result.events.where((event) => event.type == 'gameWon');
+    expect(won, hasLength(1));
+    expect(won.single.slot, target,
+        reason: 'the receiving player is the sole remaining ruler');
+  });
+
   test('refuses own-controlled and invalid targets', () {
     final state = freshGame();
     expect(

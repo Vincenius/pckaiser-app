@@ -13,3 +13,4 @@ packages/game_core/pubspec.lock
 backend/deploy/.env
 *service-account*.json
 .DS_Store
+.pi

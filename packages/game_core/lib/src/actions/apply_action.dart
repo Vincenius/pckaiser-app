@@ -5,6 +5,7 @@ import '../rules/dynasty.dart';
 import '../rules/offices.dart';
 import '../rules/realm_merge.dart';
 import '../rules/titles.dart' show regenderTitle, switchTitleLadder;
+import '../rules/victory.dart';
 import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
@@ -502,7 +503,8 @@ List<({int x, int y})> planFieldCultivation(
   // Seeds: own tiles and unowned tiles already bordering own territory,
   // in reading order (deterministic across client and server).
   for (final i in sel.toList()..sort()) {
-    if (map.owner[i] == slot || map.bordersSlot(i % map.width, i ~/ map.width, slot)) {
+    if (map.owner[i] == slot ||
+        map.bordersSlot(i % map.width, i ~/ map.width, slot)) {
       queued.add(i);
       queue.add(i);
     }
@@ -606,6 +608,21 @@ List<GameEvent> _transferRealm(
   }
   final events = <GameEvent>[];
   transferRealm(state, action.targetSlot, realm.slot, rng, events);
+
+  // A voluntary handover can eliminate the last distinct ruler just like a
+  // conquest. Emit the end-of-game event as part of the action result so the
+  // receiving player sees the victory immediately, rather than only when the
+  // former owner's turn is completed.
+  final winner = checkWinCondition(state);
+  if (winner != null) {
+    events.add(GameEvent(
+      year: state.year,
+      slot: winner,
+      type: 'gameWon',
+      visibility: EventVisibility.public,
+      payload: {'sourceSlot': realm.slot},
+    ));
+  }
   return events;
 }
 

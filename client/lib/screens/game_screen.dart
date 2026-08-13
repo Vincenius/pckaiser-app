@@ -242,7 +242,8 @@ class _GameScreenState extends State<GameScreen> {
   /// setState — the controller listener repaints after it.
   void _syncDragMode(GameController controller) {
     final war = controller.state.activeWar;
-    final settling = war != null &&
+    final settling =
+        war != null &&
         war.phase == gc.WarPhase.settlement &&
         war.winnerSlot == controller.warHumanSlot &&
         !controller.handoffPending &&
@@ -332,9 +333,11 @@ class _GameScreenState extends State<GameScreen> {
     final picked = <int>{};
     if (_dragMode == _DragMode.field) {
       picked.addAll(_fieldTilesInBox(controller, x0, y0, x1, y1));
-      setState(() => _selectedFields
-        ..clear()
-        ..addAll(picked));
+      setState(
+        () => _selectedFields
+          ..clear()
+          ..addAll(picked),
+      );
       return;
     }
     for (var y = y0; y <= y1; y++) {
@@ -352,7 +355,12 @@ class _GameScreenState extends State<GameScreen> {
   /// `planFieldCultivation`). Without the chain wave a box dragged into
   /// free land would only ever offer the first border row.
   Set<int> _fieldTilesInBox(
-      GameController controller, int x0, int y0, int x1, int y1) {
+    GameController controller,
+    int x0,
+    int y0,
+    int x1,
+    int y1,
+  ) {
     final map = controller.visibleState.map;
     final slot = controller.currentSlot;
     final candidates = <int>{};
@@ -413,7 +421,11 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
     if (!mounted) return;
-    final built = await showFieldBatchSheet(context, controller, _selectedFields);
+    final built = await showFieldBatchSheet(
+      context,
+      controller,
+      _selectedFields,
+    );
     if (built) _exitFieldMode(controller);
   }
 
@@ -762,8 +774,7 @@ class _GameScreenState extends State<GameScreen> {
                 // The category bar is hidden during a war: the war panel
                 // replaces it as THE bottom menu (the info menu stays
                 // reachable via the realm name in the status row).
-                if (controller.state.activeWar == null)
-                  _actionBar(controller),
+                if (controller.state.activeWar == null) _actionBar(controller),
               ],
             ),
           ),
@@ -1087,9 +1098,7 @@ class _GameScreenState extends State<GameScreen> {
         // Long briefing — must scroll on small screens / large text scale.
         content: SingleChildScrollView(
           child: Text(
-            tr('game.warBriefing', {
-              'attacker': realmName(war.attackerSlot),
-            }),
+            tr('game.warBriefing', {'attacker': realmName(war.attackerSlot)}),
           ),
         ),
         actions: [
@@ -1158,8 +1167,7 @@ class _GameScreenState extends State<GameScreen> {
       'realmInherited' => tr('game.defeatRealmInherited'),
       'rulerCaptured' => tr('game.defeatRulerCaptured'),
       'realmOverrun' => tr('game.defeatRealmOverrun'),
-      'dynastyExtinct' ||
-      'totalExtinction' => tr('game.defeatDynastyExtinct'),
+      'dynastyExtinct' || 'totalExtinction' => tr('game.defeatDynastyExtinct'),
       _ => null,
     };
     return cause == null ? tail : '$cause\n\n$tail';
@@ -1169,7 +1177,18 @@ class _GameScreenState extends State<GameScreen> {
     final event = controller.gameEndEvent!;
     final slot = event.slot;
     final draw = event.type == 'gameDraw';
-    final defeat = event.type == 'humansDefeated';
+    // A realm transfer ends the game in the same action that eliminates the
+    // former human seat. The resulting gameWon event is public so the
+    // recipient can see it online, but the player who gave up the last realm
+    // must see a defeat modal instead of a victory modal. During a local
+    // action the engine's currentPlayer remains the source slot; online the
+    // receiving player's filtered view is keyed to their own slot.
+    final transferredSource = event.payload['sourceSlot'];
+    final defeat =
+        event.type == 'humansDefeated' ||
+        (event.type == 'gameWon' &&
+            transferredSource is int &&
+            transferredSource == controller.currentSlot);
     return ColoredBox(
       color: Colors.black87,
       child: Center(
