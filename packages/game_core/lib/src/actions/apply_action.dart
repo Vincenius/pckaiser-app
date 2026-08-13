@@ -104,6 +104,7 @@ List<GameEvent> applyActionInPlace(
     SpyMission() => applySpyMission(state, realm, action, rng),
     OrderAssassination() => applyOrderAssassination(state, realm, action),
     AdjustGuards() => applyAdjustGuards(state, realm, action),
+    SetTaxRate() => _setTaxRate(state, realm, action),
   };
 }
 
@@ -868,6 +869,22 @@ List<GameEvent> _collectTribute(
     throw ActionException(coreMessage('stateTreasuryEmpty'));
   }
   return events;
+}
+
+/// "Steuern anpassen" (§7.1 tuning): set the realm's tax rate as a
+/// percentage of its base yield. Free and repeatable; the new rate governs
+/// the NEXT upkeep (taxes are collected at turn start). Range-checked only
+/// — the client's slider steps in [taxRateStep], but any rate within
+/// [taxRateMin]..[taxRateMax] is legal. Quiet like [AdjustGuards]: no
+/// event, the Handel menu and the turn report already surface the rate and
+/// its effect.
+List<GameEvent> _setTaxRate(GameState state, Realm realm, SetTaxRate action) {
+  if (action.rate < taxRateMin || action.rate > taxRateMax) {
+    throw ActionException(coreMessage('taxRateOutOfRange',
+        {'min': taxRateMin, 'max': taxRateMax}));
+  }
+  realm.taxRate = action.rate;
+  return const [];
 }
 
 /// "H(e)irat vorschlagen" (§14.1): validates eligibility, then either the

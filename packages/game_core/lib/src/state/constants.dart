@@ -154,3 +154,25 @@ const int wearinessDecayYears = 2;
 /// (the declaration penalty also escalates per war, see `applyDeclareWar`).
 /// The floor only guards against a single declaration zeroing the stat.
 const int warPopularityFloor = 10;
+
+/// §7.1 tax-rate tuning `[DESIGNED 2026-08-13, user request]`. The tax
+/// rate is a percentage of the realm's base tax yield: 100 is the original
+/// formula `[pop, 2×pop)` and the DEFAULT — existing games and foreign
+/// realms (whose rate is hidden) all read as 100. Raising it collects
+/// more Taler but costs popularity; lowering it collects less and wins
+/// goodwill. The rate steps in [taxRateStep] increments and is clamped to
+/// [taxRateMin]..[taxRateMax] (never below 0).
+const int taxRateDefault = 100;
+const int taxRateMin = 0;
+const int taxRateMax = 200;
+const int taxRateStep = 10;
+
+/// The per-turn popularity reaction to a tax rate deviating from the
+/// default: every [taxPopularityStep] points of rate below/above 100
+/// swings the mood ±1 point. Deliberately weak — at the extremes (±4 per
+/// turn) it stays under a single war declaration (−5, escalating) and well
+/// under the §8.4 food step cap (±8), so taxes can never outweigh war.
+/// The goodwill from low taxes is additionally WITHHELD while the realm is
+/// at war or war-weary (`Realm.recentWars > 0`), so a warring realm's mood
+/// keeps sinking even with low taxes.
+const int taxPopularityStep = 25;

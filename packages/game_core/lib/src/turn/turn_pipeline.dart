@@ -220,6 +220,7 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
       'tribute': economy.tribute,
       'harborIncome': economy.harborIncome,
       'wages': economy.wages,
+      'taxPopularity': economy.taxPopularity,
       'popularity': realm.popularity,
       'movementPoints': realm.movementPoints,
     },

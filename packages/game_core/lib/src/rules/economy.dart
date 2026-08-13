@@ -9,6 +9,10 @@ class EconomyReport {
   int tribute = 0;
   int harborIncome = 0;
   int wages = 0;
+
+  /// The popularity change the tax RATE caused this turn (positive =
+  /// goodwill from low taxes, negative = resentment from high taxes).
+  int taxPopularity = 0;
 }
 
 /// Economy upkeep (ORIGINAL_GAME.md §7), in order: taxes, tribute, harbor
@@ -22,12 +26,22 @@ class EconomyReport {
 EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
   final report = EconomyReport();
 
-  // §7.1 Tax: uniform [pop, 2×pop).
+  // §7.1 Tax: uniform [pop, 2×pop), scaled by the tax rate (§7.1 tuning).
+  // 100% is the original formula; a higher rate collects more, a lower one
+  // less (down to 0 at 0%).
   if (realm.population > 0) {
-    report.tax = rng.nextInt(realm.population) + realm.population;
+    final base = rng.nextInt(realm.population) + realm.population;
+    report.tax = base * realm.taxRate ~/ taxRateDefault;
     realm.treasury += report.tax;
   }
   realm.lastTax = report.tax;
+
+  // §7.1 tax-rate reaction: the people feel the burden every turn — high
+  // taxes breed resentment, low taxes buy goodwill. The goodwill is
+  // withheld while at war or war-weary (user rule: taxes may not outweigh
+  // a war's popularity cost), so a warring realm's mood still sinks even
+  // with low taxes.
+  report.taxPopularity = _taxPopularityEffect(state, realm);
 
   final isKaiser = state.kaiserId != null && realm.rulerId == state.kaiserId;
   final isSultan = state.sultanId != null && realm.rulerId == state.sultanId;
@@ -75,4 +89,25 @@ EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
   realm.treasury -= report.wages;
 
   return report;
+}
+
+/// The per-turn popularity reaction to [Realm.taxRate] (§7.1 tuning):
+/// every [taxPopularityStep] points of rate below/above [taxRateDefault]
+/// swings the mood ±1. Resentment (high taxes) always applies. Goodwill
+/// (low taxes) is withheld entirely while the realm is at war or
+/// war-weary (`Realm.recentWars > 0`) — taxes can never buy back the
+/// popularity a war costs, so a warring realm's mood keeps sinking even
+/// with rock-bottom taxes (user rule). Returns the applied change.
+int _taxPopularityEffect(GameState state, Realm realm) {
+  final delta = (taxRateDefault - realm.taxRate) ~/ taxPopularityStep;
+  if (delta == 0) return 0;
+  final before = realm.popularity;
+  if (delta < 0) {
+    realm.popularity = (realm.popularity + delta).clamp(0, 100);
+    return realm.popularity - before;
+  }
+  final atWar = state.activeWar?.isParticipant(realm.slot) ?? false;
+  if (atWar || realm.recentWars > 0) return 0;
+  realm.popularity = (realm.popularity + delta).clamp(0, 100);
+  return realm.popularity - before;
 }

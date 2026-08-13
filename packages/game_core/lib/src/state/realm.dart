@@ -1,3 +1,4 @@
+import 'constants.dart';
 import 'intel_report.dart';
 import 'pending_ship_return.dart';
 import 'ship.dart';
@@ -24,6 +25,7 @@ class Realm {
     this.debtTurns = 0,
     this.guardLevel = 0,
     this.popularity = 50,
+    this.taxRate = taxRateDefault,
     this.movementPoints = 0,
     this.lastTax = 0,
     this.lastTribute = 0,
@@ -80,6 +82,8 @@ class Realm {
         debtTurns: json['debtTurns'] as int? ?? 0,
         guardLevel: json['guardLevel'] as int? ?? 0,
         popularity: json['popularity'] as int? ?? 50,
+        // Additive field — older saves keep the original tax rate (100%).
+        taxRate: json['taxRate'] as int? ?? taxRateDefault,
         movementPoints: json['movementPoints'] as int? ?? 0,
         lastTax: json['lastTax'] as int? ?? 0,
         lastTribute: json['lastTribute'] as int? ?? 0,
@@ -193,6 +197,13 @@ class Realm {
   /// Popularity a.k.a. "weight" — ONE field, init 50, clamped 0–100,
   /// displayed up to 150 (§8.4).
   int popularity;
+
+  /// §7.1 tax rate in percent of the base yield — [taxRateDefault] (100) is
+  /// the original formula. Higher collects more but costs popularity each
+  /// turn; lower collects less and buys goodwill. Clamped to
+  /// [taxRateMin]..[taxRateMax]; hidden for foreign realms
+  /// (`visibleStateFor` zeroes it, like guard level).
+  int taxRate;
 
   /// Re-rolled per turn by title class (§6.3).
   int movementPoints;
@@ -309,6 +320,7 @@ class Realm {
         debtTurns: debtTurns,
         guardLevel: guardLevel,
         popularity: popularity,
+        taxRate: taxRate,
         movementPoints: movementPoints,
         lastTax: lastTax,
         lastTribute: lastTribute,
@@ -352,6 +364,7 @@ class Realm {
         'debtTurns': debtTurns,
         'guardLevel': guardLevel,
         'popularity': popularity,
+        'taxRate': taxRate,
         'movementPoints': movementPoints,
         'lastTax': lastTax,
         'lastTribute': lastTribute,

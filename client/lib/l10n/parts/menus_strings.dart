@@ -4,6 +4,19 @@
 const Map<String, String> menusDe = {
   // --- Commerce ---
   'menus.surplusMarketPrice': 'Überschuß: {surplus} — Marktpreis {price} T',
+  'menus.taxesTitle': 'Steuern: {rate} %',
+  'menus.taxesSubtitle':
+      'Mehr Steuern bringen mehr Geld, senken aber die Beliebtheit',
+  'menus.taxesDetailNormal':
+      '{pct} % — normale Einnahmen, Beliebtheit unverändert',
+  'menus.taxesDetailHigh':
+      '{pct} % — mehr Einnahmen, −{pop} Beliebtheit pro Jahr',
+  'menus.taxesDetailLow':
+      '{pct} % — weniger Einnahmen, +{pop} Beliebtheit pro Jahr',
+  'menus.taxesDetailHighNeutral':
+      '{pct} % — mehr Einnahmen, Beliebtheit unverändert',
+  'menus.taxesDetailLowNeutral':
+      '{pct} % — weniger Einnahmen, Beliebtheit unverändert',
   'menus.investMax': 'Maximal: {max} T (Häfen: {harbors})',
   'menus.sendMoney': 'Geld schicken',
   'menus.sendMoneySubtitle': 'Taler an ein anderes Land überweisen',
@@ -210,6 +223,17 @@ const Map<String, String> menusDe = {
 const Map<String, String> menusEn = {
   // --- Commerce ---
   'menus.surplusMarketPrice': 'Surplus: {surplus} — market price {price} T',
+  'menus.taxesTitle': 'Taxes: {rate}%',
+  'menus.taxesSubtitle':
+      'Higher taxes bring more money but lower popularity',
+  'menus.taxesDetailNormal': '{pct}% — normal income, popularity unchanged',
+  'menus.taxesDetailHigh':
+      '{pct}% — more income, −{pop} popularity per year',
+  'menus.taxesDetailLow': '{pct}% — less income, +{pop} popularity per year',
+  'menus.taxesDetailHighNeutral':
+      '{pct}% — more income, popularity unchanged',
+  'menus.taxesDetailLowNeutral':
+      '{pct}% — less income, popularity unchanged',
   'menus.investMax': 'Maximum: {max} T (harbors: {harbors})',
   'menus.sendMoney': 'Send money',
   'menus.sendMoneySubtitle': 'Transfer Taler to another realm',

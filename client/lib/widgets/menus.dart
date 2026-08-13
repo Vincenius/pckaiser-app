@@ -57,6 +57,14 @@ void showCommerceMenu(BuildContext context, GameController controller) {
         shrinkWrap: true,
         children: [
           ListTile(
+            title: Text(tr('menus.taxesTitle', {'rate': realm.taxRate})),
+            subtitle: Text(tr('menus.taxesSubtitle')),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _taxSheet(context, controller);
+            },
+          ),
+          ListTile(
             title: Text(tr('sellGrain')),
             subtitle: Text(
               tr('menus.surplusMarketPrice', {
@@ -166,6 +174,56 @@ void showCommerceMenu(BuildContext context, GameController controller) {
       ),
     ),
   );
+}
+
+/// Slider sheet for the tax rate (§7.1 tuning): opens on the CURRENT rate
+/// (the default is the current value), steps in [gc.taxRateStep], clamped
+/// to [gc.taxRateMin]..[gc.taxRateMax] (never below 0). The live caption
+/// explains the yield and the per-turn popularity reaction.
+void _taxSheet(BuildContext context, GameController controller) {
+  final slot = controller.currentSlot;
+  final realm = controller.currentRealm;
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: _AmountSlider(
+        title: tr('taxes'),
+        max: gc.taxRateMax,
+        min: gc.taxRateMin,
+        initial: realm.taxRate.toDouble(),
+        divisions: (gc.taxRateMax - gc.taxRateMin) ~/ gc.taxRateStep,
+        allowZero: true,
+        detail: _taxDetail,
+        onSubmit: (rate) {
+          Navigator.pop(sheetContext);
+          _tryAction(
+            context,
+            controller,
+            gc.SetTaxRate(slot: slot, rate: rate),
+            undoable: true,
+          );
+        },
+      ),
+    ),
+  );
+}
+
+/// Live caption for [_taxSheet]: what the chosen rate means for income and
+/// the per-turn popularity reaction (the same formula runEconomy applies,
+/// so the caption can never contradict the engine).
+String _taxDetail(int rate) {
+  final delta = (gc.taxRateDefault - rate) ~/ gc.taxPopularityStep;
+  if (rate > gc.taxRateDefault) {
+    return delta == 0
+        ? tr('menus.taxesDetailHighNeutral', {'pct': rate})
+        : tr('menus.taxesDetailHigh', {'pct': rate, 'pop': -delta});
+  }
+  if (rate < gc.taxRateDefault) {
+    return delta == 0
+        ? tr('menus.taxesDetailLowNeutral', {'pct': rate})
+        : tr('menus.taxesDetailLow', {'pct': rate, 'pop': delta});
+  }
+  return tr('menus.taxesDetailNormal', {'pct': rate});
 }
 
 /// Target picker + confirmation for "Reich übertragen" — hands the whole
@@ -2420,6 +2478,9 @@ class _AmountSlider extends StatefulWidget {
     required this.max,
     this.min = 0,
     this.detail,
+    this.initial,
+    this.divisions,
+    this.allowZero = false,
     required this.onSubmit,
   });
 
@@ -2432,6 +2493,20 @@ class _AmountSlider extends StatefulWidget {
   /// (PROJECT_REQUIREMENTS: sliders show their cost up front).
   final String Function(int value)? detail;
 
+  /// Starting value (the slider default is the midpoint). Used by the tax
+  /// sheet so it opens on the CURRENT rate — "the default is the current
+  /// value".
+  final double? initial;
+
+  /// Fixed slider divisions (null = one per unit, capped at 1000). The tax
+  /// sheet passes `(max - min) ~/ taxRateStep` so the rate snaps to whole
+  /// steps.
+  final int? divisions;
+
+  /// Whether the zero value is a valid submission (tax rate 0% is legal;
+  /// an amount of 0 is not).
+  final bool allowZero;
+
   final void Function(int) onSubmit;
 
   @override
@@ -2439,7 +2514,8 @@ class _AmountSlider extends StatefulWidget {
 }
 
 class _AmountSliderState extends State<_AmountSlider> {
-  late double _value = widget.max > 0 ? (widget.max / 2).ceilToDouble() : 0;
+  late double _value = widget.initial ??
+      (widget.max > 0 ? (widget.max / 2).ceilToDouble() : 0);
 
   @override
   Widget build(BuildContext context) {
@@ -2465,9 +2541,10 @@ class _AmountSliderState extends State<_AmountSlider> {
             value: _value.clamp(min, max),
             min: min,
             max: max <= min ? min + 1 : max,
-            divisions: (max - min) > 0 && (max - min) <= 1000
-                ? (max - min).round()
-                : null,
+            divisions: widget.divisions ??
+                ((max - min) > 0 && (max - min) <= 1000
+                    ? (max - min).round()
+                    : null),
             onChanged: (v) => setState(() => _value = v),
           ),
           Row(
@@ -2479,7 +2556,7 @@ class _AmountSliderState extends State<_AmountSlider> {
               ),
               const SizedBox(width: 12),
               FilledButton(
-                onPressed: _value.round() == 0
+                onPressed: (!widget.allowZero && _value.round() == 0)
                     ? null
                     : () => widget.onSubmit(_value.round()),
                 child: Text(tr('menus.ok')),

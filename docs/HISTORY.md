@@ -6,6 +6,27 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-13 — Adjustable tax rate (user request)
+
+New Handel-menu control to raise and lower taxes (§7.1). The default is
+the current value — 100% reproduces the original formula `[pop, 2×pop)`,
+so existing games (and foreign realms, whose rate is hidden) behave
+exactly as before.
+
+**Mechanic:** a new additive `Realm.taxRate` (percent, clamped
+0–200, UI steps in 10; never below 0). Each upkeep the tax yield scales
+linearly with the rate and the people react to the burden:
+`(100 − rate) ~/ 25` popularity per turn — higher taxes collect more but
+cost popularity, lower taxes collect less and buy goodwill. The goodwill
+from low taxes is withheld entirely while the realm is at war or
+war-weary (`recentWars > 0`), so a war's popularity cost can never be
+bought back with low taxes (the mood still sinks).
+
+The rate change itself is a quiet, free, repeatable `SetTaxRate` action
+(no event — like `AdjustGuards`) that governs the NEXT upkeep, since taxes
+are collected at turn start. AI realms never change the rate, so the
+full-AI smoke tests stay green. Tests in `tax_rate_test.dart`.
+
 ## 2026-08-09 — Online war scheduling becomes revisable (user request, v0.2.6)
 
 The war-start plan used to be a ONE-SHOT answer: whatever a player ticked

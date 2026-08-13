@@ -172,6 +172,8 @@ Realm _redactRealm(Realm realm, {bool keepTroops = false}) => Realm(
       tileCount: List.of(realm.tileCount),
       rulerId: realm.rulerId,
       popularity: 0,
+      // Tax rate is a domestic policy choice — hidden like guard level.
+      taxRate: 0,
       // A war opponent's units are kept but zeroed to class + position; every
       // other foreign realm's list is omitted (reads as army size 0 anyway).
       troops: keepTroops

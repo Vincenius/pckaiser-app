@@ -131,6 +131,7 @@ const Map<String, Map<String, String>> _messages = {
     'guardsNotArmy': 'Das ist keine Spionageabwehr, sondern eine Armee !!!',
     'notSoManyGuards': 'So viele Wachen hast du nicht !',
     'troopTooWeakToPlunder': 'Diese Truppe ist zum Plündern zu schwach !',
+    'taxRateOutOfRange': 'Der Steuersatz liegt zwischen {min} % und {max} % !',
   },
   'en': {
     'invalidRealm': 'Invalid realm {slot}!',
@@ -240,6 +241,7 @@ const Map<String, Map<String, String>> _messages = {
     'guardsNotArmy': 'That is not counter-espionage, that is an army!!!',
     'notSoManyGuards': 'You do not have that many guards!',
     'troopTooWeakToPlunder': 'This troop is too weak to plunder!',
+    'taxRateOutOfRange': 'The tax rate lies between {min}% and {max}%!',
   },
 };
 

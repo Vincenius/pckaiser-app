@@ -65,6 +65,7 @@ sealed class PlayerAction {
         SpyMission.kind => SpyMission.fromJson(json),
         OrderAssassination.kind => OrderAssassination.fromJson(json),
         AdjustGuards.kind => AdjustGuards.fromJson(json),
+        SetTaxRate.kind => SetTaxRate.fromJson(json),
         final t => throw ArgumentError('unknown action type: $t'),
       };
 
@@ -575,6 +576,33 @@ class CollectTribute extends PlayerAction {
 
   @override
   Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
+}
+
+/// "Steuern anpassen" `[DESIGNED 2026-08-13, user request]`: set the
+/// realm's tax rate as a percentage of its base tax yield (§7.1). 100 is
+/// the original formula; higher collects more but costs popularity each
+/// turn, lower collects less and wins goodwill. The rate is clamped to
+/// [taxRateMin]..[taxRateMax] (never below 0) and governs the NEXT upkeep
+/// — taxes are collected at turn start, so this turn's income is already
+/// in. Free and repeatable; no event (the Handel menu shows the rate).
+class SetTaxRate extends PlayerAction {
+  SetTaxRate({required super.slot, required this.rate});
+
+  factory SetTaxRate.fromJson(Map<String, dynamic> json) => SetTaxRate(
+        slot: json['slot'] as int,
+        rate: json['rate'] as int,
+      );
+
+  static const kind = 'setTaxRate';
+
+  final int rate;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'rate': rate};
 }
 
 /// Change the dynasty's religion (§4): katholisch free, evangelisch 500 T,
