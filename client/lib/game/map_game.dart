@@ -86,6 +86,12 @@ class MapGame extends FlameGame with ScaleDetector {
   /// for map-based picks like seat relocation.
   Set<int> highlightTiles = <int>{};
 
+  /// Tile indices (`y * width + x`) rendered with a dashed white-on-dark
+  /// contour around their union — used by the "Felder übertragen"
+  /// multi-select, which marks its picked tiles with the same dashed border
+  /// style as the box frame instead of a translucent fill.
+  Set<int> outlineSelection = <int>{};
+
   /// Base ARGB color of the selected-tile fill (green for fields, amber
   /// for annexation). The dashed box frame is always white-on-dark so it
   /// stays visible on same-hued terrain.
@@ -607,6 +613,7 @@ class _MapLayer extends PositionComponent with TapCallbacks {
     final picture = game._picture;
     if (picture != null) canvas.drawPicture(picture);
     _renderDragSelection(canvas);
+    _renderOutlineSelection(canvas);
     _renderSelection(canvas);
   }
 
@@ -657,26 +664,111 @@ class _MapLayer extends PositionComponent with TapCallbacks {
     );
   }
 
-  /// Dashed rectangle outline (Canvas has no dash support of its own).
-  void _drawDashedRect(Canvas canvas, Rect rect, Paint paint) {
-    const dash = 6.0;
-    const gap = 4.0;
-    void line(Offset from, Offset to) {
-      final total = (to - from).distance;
-      if (total == 0) return;
-      final dir = (to - from) / total;
-      var at = 0.0;
-      while (at < total) {
-        final end = math.min(at + dash, total);
-        canvas.drawLine(from + dir * at, from + dir * end, paint);
-        at = end + gap;
+  /// Dashed white-on-dark outline around the OUTER CONTOUR of the tiles in
+  /// [MapGame.outlineSelection] — the "Felder übertragen" multi-select marks
+  /// its picked tiles with the same dashed border style as the box frame,
+  /// so adjacent selected fields share one continuous border (no interior
+  /// lines between them). The outline sits on every edge that separates a
+  /// selected tile from a non-selected one; collinear edges are merged into
+  /// single dashed segments.
+  void _renderOutlineSelection(Canvas canvas) {
+    final selected = game.outlineSelection;
+    if (selected.isEmpty) return;
+    final map = game._state.map;
+    final width = map.width;
+    final height = map.height;
+    final dark = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..color = const Color(0xB3000000);
+    final white = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = const Color(0xFFFFFFFF);
+
+    // Horizontal boundary edges: between rows (y-1) and y, at column x.
+    for (var y = 0; y <= height; y++) {
+      final cols = <int>[];
+      for (var x = 0; x < width; x++) {
+        final above = y > 0 && selected.contains((y - 1) * width + x);
+        final below = y < height && selected.contains(y * width + x);
+        if (above != below) cols.add(x);
+      }
+      var start = 0;
+      for (var i = 0; i < cols.length; i++) {
+        if (i == 0 || cols[i] != cols[i - 1] + 1) start = cols[i];
+        final last = i == cols.length - 1 || cols[i + 1] != cols[i] + 1;
+        if (last) {
+          _drawOutlineSegment(
+            canvas,
+            Offset(start * tileSize, y * tileSize),
+            Offset((cols[i] + 1) * tileSize, y * tileSize),
+            dark,
+            white,
+          );
+        }
       }
     }
 
-    line(rect.topLeft, rect.topRight);
-    line(rect.topRight, rect.bottomRight);
-    line(rect.bottomRight, rect.bottomLeft);
-    line(rect.bottomLeft, rect.topLeft);
+    // Vertical boundary edges: between columns (x-1) and x, at row y.
+    for (var x = 0; x <= width; x++) {
+      final rows = <int>[];
+      for (var y = 0; y < height; y++) {
+        final left = x > 0 && selected.contains(y * width + (x - 1));
+        final right = x < width && selected.contains(y * width + x);
+        if (left != right) rows.add(y);
+      }
+      var start = 0;
+      for (var i = 0; i < rows.length; i++) {
+        if (i == 0 || rows[i] != rows[i - 1] + 1) start = rows[i];
+        final last = i == rows.length - 1 || rows[i + 1] != rows[i] + 1;
+        if (last) {
+          _drawOutlineSegment(
+            canvas,
+            Offset(x * tileSize, start * tileSize),
+            Offset(x * tileSize, (rows[i] + 1) * tileSize),
+            dark,
+            white,
+          );
+        }
+      }
+    }
+  }
+
+  /// One dashed outline segment: the dark underlay first, then the white
+  /// line over it — the same white-on-dark border style as the box frame.
+  void _drawOutlineSegment(
+    Canvas canvas,
+    Offset from,
+    Offset to,
+    Paint dark,
+    Paint white,
+  ) {
+    _drawDashedLine(canvas, from, to, dark);
+    _drawDashedLine(canvas, from, to, white);
+  }
+
+  /// Dashed rectangle outline (Canvas has no dash support of its own).
+  void _drawDashedRect(Canvas canvas, Rect rect, Paint paint) {
+    _drawDashedLine(canvas, rect.topLeft, rect.topRight, paint);
+    _drawDashedLine(canvas, rect.topRight, rect.bottomRight, paint);
+    _drawDashedLine(canvas, rect.bottomRight, rect.bottomLeft, paint);
+    _drawDashedLine(canvas, rect.bottomLeft, rect.topLeft, paint);
+  }
+
+  /// Dashed line from [from] to [to] using the same dash rhythm everywhere.
+  void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
+    const dash = 6.0;
+    const gap = 4.0;
+    final total = (to - from).distance;
+    if (total == 0) return;
+    final dir = (to - from) / total;
+    var at = 0.0;
+    while (at < total) {
+      final end = math.min(at + dash, total);
+      canvas.drawLine(from + dir * at, from + dir * end, paint);
+      at = end + gap;
+    }
   }
 
   /// Pulsing ring around the selected war unit.

@@ -24,7 +24,7 @@ const Map<String, String> menusDe = {
   'menus.transferTilesSubtitle':
       'Einzelne Felder an ein fremdes Reich abgeben',
   'menus.transferTilePickHint':
-      'Eigene Felder antippen, um sie auszuwählen',
+      'Felder antippen oder gedrückt halten und ziehen, um sie auszuwählen',
   'menus.transferTileHintCount': '{hint} — {n} ausgewählt',
   'menus.transferTileOwnOnly':
       'Nur eigene Felder können übertragen werden',
@@ -241,7 +241,7 @@ const Map<String, String> menusEn = {
   'menus.transferTilesSubtitle':
       'Hand individual tiles to a foreign realm',
   'menus.transferTilePickHint':
-      'Tap your own tiles to select them',
+      'Tap tiles, or long-press and drag to select them',
   'menus.transferTileHintCount': '{hint} — {n} selected',
   'menus.transferTileOwnOnly':
       'Only your own tiles can be transferred',

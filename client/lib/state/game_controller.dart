@@ -117,6 +117,14 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Bulk-replaces the transfer selection (box drag) — one notify.
+  void setTransferSelection(Iterable<int> tiles) {
+    transferSelection
+      ..clear()
+      ..addAll(tiles);
+    notifyListeners();
+  }
+
   /// Ends the transfer multi-select (and the tile pick beneath it).
   void cancelTransferSelection() {
     if (_transferTargetSlot == null) return;
@@ -577,16 +585,18 @@ class GameController extends ChangeNotifier {
   Completer<(int, int)?>? _seatPickCompleter;
 
   /// Opens a map pick for seat relocation: highlights [candidates] on the
-  /// map, shows a banner, and returns the tapped tile or null on cancel.
+  /// map (unless [highlightCandidates] is false), shows a banner, and
+  /// returns the tapped tile or null on cancel.
   Future<(int, int)?> pickSeatOnMap({
     required String hint,
     required Set<int> candidates,
     bool cancellable = false,
+    bool highlightCandidates = true,
   }) {
     _seatPickCompleter?.complete(null);
     final completer = Completer<(int, int)?>();
     _seatPickCompleter = completer;
-    seatPickCandidates = candidates;
+    seatPickCandidates = highlightCandidates ? candidates : const <int>{};
     final map = state.map;
     startTilePick(
       hint: hint,

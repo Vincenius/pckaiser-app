@@ -41,6 +41,25 @@ bool _mergeAtWar(gc.GameState state, int slot, int source) {
   return war != null && (war.isParticipant(slot) || war.isParticipant(source));
 }
 
+/// Menu sheets shrink the action descriptions (subtitle) so the menu stays
+/// compact and every entry fits on screen without scrolling.
+Widget _menuList(BuildContext context, {required List<Widget> children}) {
+  final base = Theme.of(context);
+  final subtitle = base.listTileTheme.subtitleTextStyle ??
+      base.textTheme.bodyMedium;
+  return Theme(
+    data: base.copyWith(
+      listTileTheme: base.listTileTheme.copyWith(
+        subtitleTextStyle: subtitle?.copyWith(fontSize: 12.5),
+      ),
+    ),
+    child: ListView(
+      shrinkWrap: true,
+      children: children,
+    ),
+  );
+}
+
 // --- Commerce ---------------------------------------------------------
 
 /// The Handel sheet — opened directly from the bottom action bar.
@@ -52,9 +71,11 @@ void showCommerceMenu(BuildContext context, GameController controller) {
   // context dies with the pop (see showMilitaryMenu).
   showModalBottomSheet<void>(
     context: context,
+    // Full height so every menu entry fits without scrolling on a phone.
+    isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
+      child: _menuList(
+        sheetContext,
         children: [
           ListTile(
             title: Text(tr('menus.taxesTitle', {'rate': realm.taxRate})),
@@ -190,8 +211,8 @@ void showCommerceMenu(BuildContext context, GameController controller) {
 
 /// Slider sheet for the tax rate (§7.1 tuning): opens on the CURRENT rate
 /// (the default is the current value), steps in [gc.taxRateStep], clamped
-/// to [gc.taxRateMin]..[gc.taxRateMax] (never below 0). No info caption
-/// above the slider (user request) — the header alone names the rate.
+/// to [gc.taxRateMin]..[gc.taxRateMax] (never below 0). The caption above
+/// the slider repeats the Handel menu's taxes subtitle ("Mehr Steuern …").
 void _taxSheet(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final realm = controller.currentRealm;
@@ -206,6 +227,7 @@ void _taxSheet(BuildContext context, GameController controller) {
         divisions: (gc.taxRateMax - gc.taxRateMin) ~/ gc.taxRateStep,
         allowZero: true,
         unit: tr('menus.percentSuffix'),
+        detail: (_) => tr('menus.taxesSubtitle'),
         onSubmit: (rate) {
           Navigator.pop(sheetContext);
           _tryAction(
@@ -377,6 +399,7 @@ void _transferTroopSheet(
                         tr('menus.transferTroopConfirmBody', {
                           'name': troop.name,
                           'men': troop.men,
+                          'realm': realmName(target.slot),
                         }),
                       ),
                       actions: [
@@ -465,9 +488,11 @@ void showMilitaryMenu(BuildContext context, GameController controller) {
 
   showModalBottomSheet<void>(
     context: context,
+    // Full height so every menu entry fits without scrolling on a phone.
+    isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
+      child: _menuList(
+        sheetContext,
         children: [
           ListTile(
             title: Text(tr('recruit')),
@@ -1361,9 +1386,11 @@ void showEspionageMenu(BuildContext context, GameController controller) {
   // sheet's own context dies with the pop (see showMilitaryMenu).
   showModalBottomSheet<void>(
     context: context,
+    // Full height so every menu entry fits without scrolling on a phone.
+    isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
+      child: _menuList(
+        sheetContext,
         children: [
           ListTile(
             title: Text(tr('menus.spyEconomy')),
@@ -1603,9 +1630,11 @@ void showMiscMenu(BuildContext context, GameController controller) {
   // context dies with the pop (see showMilitaryMenu).
   showModalBottomSheet<void>(
     context: context,
+    // Full height so every menu entry fits without scrolling on a phone.
+    isScrollControlled: true,
     builder: (sheetContext) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
+      child: _menuList(
+        sheetContext,
         children: [
           ListTile(
             leading: const Icon(Icons.people),

@@ -18,8 +18,32 @@ selection and the top banner confirms with "Abbrechen" / "Felder
 (`transferSelection`, `transferTargetSlot`, start/toggle/cancel) rides on
 the existing tile-pick plumbing; `_endTilePick` now tears both down so
 undo / end-turn / cancel can't leave a half-armed selection. The map
-paints the batch blue; the per-tile `transferTileConfirm*` strings are
+highlights the batch; the per-tile `transferTileConfirm*` strings are
 gone, replaced by `transferTilePickHint` (plural) + `transferTileHintCount`.
+
+## 2026-08-13 — "Felder übertragen": dashed contour instead of blue overlay (user request)
+
+The transfer multi-select no longer paints picked tiles with a translucent
+blue fill. It now draws a dashed white-on-dark contour around the OUTER
+boundary of the selection (`MapGame.outlineSelection`, drawn by a new
+`_renderOutlineSelection` pass) — collinear boundary edges are merged into
+single dashed segments, so adjacent selected fields share one continuous
+border with no interior lines between them, matching the build box frame.
+The blue `dragSelectColor = 0xFF1E88E5` override in `game_screen.dart` is
+gone.
+
+## 2026-08-13 — "Felder übertragen": long-press + drag box select (user request)
+
+The transfer multi-select now supports the same quick box select as field
+cultivation: long-press a tile and drag to select every transferable own
+tile inside the box (replacing the selection, one notify per resize). A
+new `_DragMode.transfer` joins the shared box-select plumbing; `_reselectBox`
+bulk-writes `controller.transferSelection` via a new
+`GameController.setTransferSelection`, gated by `_transferSelectable` (own,
+not the capital, no troops/ships — the engine's `TransferTile` gates). The
+box frame drops on release (the dashed white contour stays); taps still
+toggle single tiles, so the two input paths coexist. Hint reworded to
+mention both gestures.
 
 ## 2026-08-13 — Tax tuning follow-up (user request)
 

@@ -92,6 +92,29 @@ bool _sameHumanPlayer(gc.GameState state, int a, int b) {
       da.humanPlayer == db.humanPlayer;
 }
 
+/// Gender glyph for a dynasty member: ♂ / ♀, falling back to a neutral
+/// person icon when the member is unknown. Used wherever members are
+/// listed or offered (heir choice, elector vote, bribe electors) so the
+/// player always sees a member's gender.
+Widget _genderIcon(gc.Person? p, {double size = 24}) {
+  return Icon(
+    p == null ? Icons.person : (p.isMale ? Icons.male : Icons.female),
+    size: size,
+  );
+}
+
+/// A gender glyph followed by the member's label — the row body for
+/// [SimpleDialogOption]s that offer dynasty members.
+Widget _genderedOption(gc.Person? p, String text) {
+  return Row(
+    children: [
+      _genderIcon(p),
+      const SizedBox(width: 12),
+      Expanded(child: Text(text)),
+    ],
+  );
+}
+
 Future<void> _promptDecision(
   BuildContext context,
   GameController controller,
@@ -133,6 +156,9 @@ Future<void> _promptDecision(
           : await controller.pickSeatOnMap(
               hint: tr('dec.troopTransferMapHint'),
               candidates: candidateIndices,
+              // The recipient usually owns hundreds of tiles — a pulsing
+              // gold ring on every one of them is just noise.
+              highlightCandidates: false,
             );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         if (pick != null) 'x': pick.$1,
@@ -189,7 +215,8 @@ Future<void> _promptDecision(
             for (final id in candidates)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, id),
-                child: Text(
+                child: _genderedOption(
+                  state.persons[id],
                   tr('dec.personWithAge', {
                     'name': state.persons[id]!.name,
                     'age': state.persons[id]!.age,
@@ -316,7 +343,8 @@ Future<void> _promptDecision(
             for (final id in finalists)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, id),
-                child: Text(
+                child: _genderedOption(
+                  state.persons[id],
                   tr('dec.electionCandidate', {
                     'name': state.persons[id]?.name ?? '?',
                     'amount': bribes['$id'] ?? 0,
@@ -710,6 +738,11 @@ class _BribeDialogState extends State<_BribeDialog> {
                   children: [
                     Row(
                       children: [
+                        _genderIcon(
+                          widget.controller.state.persons[id],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             widget.controller.state.persons[id]?.name ?? '?',

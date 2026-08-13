@@ -22,10 +22,12 @@ import '../widgets/war_panel.dart';
 import '../widgets/war_report.dart';
 
 /// Which map drag-select is armed: none, cultivating fields (peacetime),
-/// or annexing enemy tiles in a post-war settlement. The two never overlap
-/// (one is peacetime-only, the other war-settlement-only), so they share
-/// the map's drag-select plumbing.
-enum _DragMode { none, field, annex }
+/// transferring own tiles (peacetime multi-select), or annexing enemy tiles
+/// in a post-war settlement. Field and transfer are both peacetime-only and
+/// never overlap (transfer rides on the armed tile pick, which blocks field
+/// mode); annex is war-settlement-only. They share the map's drag-select
+/// plumbing.
+enum _DragMode { none, field, transfer, annex }
 
 /// The in-game screen: Flame map + HUD + menus, with the hot-seat handoff
 /// blocker and pending-decision prompts layered on top.
@@ -122,11 +124,11 @@ class _GameScreenState extends State<GameScreen> {
           // setState below repaints — no nested setState needed here.
           _syncDragMode(controller);
           // The "Felder übertragen" multi-select paints its own selection
-          // on the map (the drag mode is none while its pick is armed).
-          if (controller.transferTargetSlot != null) {
-            game.dragSelection = controller.transferSelection;
-            game.dragSelectColor = 0xFF1E88E5; // blue
-          }
+          // on the map as a white-on-dark outline (the drag mode is none
+          // while its pick is armed).
+          game.outlineSelection = controller.transferTargetSlot != null
+              ? controller.transferSelection
+              : const <int>{};
           // Online: the turn went to another player — hand back to the
           // waiting lobby (once; guarded against re-entry).
           if (controller.isOnline &&
@@ -267,6 +269,11 @@ class _GameScreenState extends State<GameScreen> {
       case _DragMode.annex:
         game.dragSelection = controller.settlementSelection;
         game.dragSelectColor = 0xFFEF6C00; // amber
+      case _DragMode.transfer:
+        // No translucent fill — the transfer selection renders as the white
+        // dashed contour (MapGame.outlineSelection). The box frame stays
+        // visible while dragging (the anchor lives until the gesture ends).
+        game.dragSelection = const <int>{};
     }
   }
 
@@ -303,6 +310,9 @@ class _GameScreenState extends State<GameScreen> {
     } else if (_dragMode == _DragMode.annex) {
       _dragMode = _DragMode.none;
       controller.settlementSelection.clear();
+    } else if (_dragMode == _DragMode.transfer &&
+        controller.transferTargetSlot == null) {
+      _dragMode = _DragMode.none;
     } else if (_dragMode == _DragMode.field && !_canFieldMode(controller)) {
       _dragMode = _DragMode.none;
       _selectedFields.clear();
@@ -325,6 +335,13 @@ class _GameScreenState extends State<GameScreen> {
     }
     if (_dragMode == _DragMode.annex) {
       if (!_annexSelectable(controller, x, y)) return false;
+    } else if (controller.transferTargetSlot != null && !widget.tutorial) {
+      // Transfer multi-select: long-press anchors a box that drag-selects
+      // transferable own tiles (the pick stays armed for the banner).
+      if (_dragMode != _DragMode.transfer) {
+        _dragMode = _DragMode.transfer;
+        _applyDragMode(controller);
+      }
     } else if (_canFieldMode(controller) && !widget.tutorial) {
       if (_dragMode != _DragMode.field) {
         controller.cancelTilePick();
@@ -352,8 +369,9 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// Recomputes the active selection as every eligible tile inside the
-  /// anchor..corner box. Field mode owns [_selectedFields]; annex mode
-  /// writes the controller's settlement selection (one notify per resize).
+  /// anchor..corner box. Field mode owns [_selectedFields]; transfer and
+  /// annex mode write the controller's transfer/settlement selection
+  /// (one notify per resize).
   void _reselectBox(GameController controller) {
     final game = _game;
     final anchor = game?.boxAnchor;
@@ -372,6 +390,17 @@ class _GameScreenState extends State<GameScreen> {
           ..clear()
           ..addAll(picked),
       );
+      return;
+    }
+    if (_dragMode == _DragMode.transfer) {
+      for (var y = y0; y <= y1; y++) {
+        for (var x = x0; x <= x1; x++) {
+          if (_transferSelectable(controller, x, y)) {
+            picked.add(map.index(x, y));
+          }
+        }
+      }
+      controller.setTransferSelection(picked);
       return;
     }
     for (var y = y0; y <= y1; y++) {
@@ -430,6 +459,20 @@ class _GameScreenState extends State<GameScreen> {
     return picked;
   }
 
+  /// Whether ([x],[y]) may be drag-selected for transfer: an own tile that
+  /// is not the capital and carries no troops or ships — the exact gates of
+  /// the engine's `TransferTile` action (and of the tap pick).
+  bool _transferSelectable(GameController controller, int x, int y) {
+    final map = controller.visibleState.map;
+    final slot = controller.currentSlot;
+    if (map.ownerAt(x, y) != slot) return false;
+    final realm = controller.visibleState.realm(slot);
+    if (x == realm.capitalX && y == realm.capitalY) return false;
+    if (realm.troops.any((t) => t.x == x && t.y == y)) return false;
+    if (realm.ships.any((s) => s.x == x && s.y == y)) return false;
+    return true;
+  }
+
   /// Whether the field-cultivation drag-select may run right now: only on
   /// the seated player's own peacetime turn, never during a war, handoff,
   /// tile pick, off-turn view or after the game ended.
@@ -449,6 +492,12 @@ class _GameScreenState extends State<GameScreen> {
   /// simply dropped. Annex mode confirms via the war panel instead, so
   /// the lift does nothing there.
   Future<void> _onBoxSelectDone(GameController controller) async {
+    if (_dragMode == _DragMode.transfer) {
+      // Drop the dashed frame; the white contour stays on the selection and
+      // the banner's "Felder übertragen" commits it.
+      _game?.clearBox();
+      return;
+    }
     if (_dragMode != _DragMode.field) return;
     if (_selectedFields.isEmpty) {
       _exitFieldMode(controller);

@@ -118,6 +118,25 @@ void main() {
     },
   );
 
+  test('transfer box select bulk-replaces the selection', () async {
+    final controller = await twoPlayerGame();
+    controller.confirmHandoff();
+    final map = controller.state.map;
+    final (x, y) = claimableTile(controller.state, 1);
+    final idx = map.index(x, y);
+
+    controller.startTransferSelection(5);
+    controller.toggleTransferTile(idx);
+    expect(controller.transferSelection, {idx});
+
+    // A box drag replaces the whole selection in one notify.
+    controller.setTransferSelection(const {});
+    expect(controller.transferSelection, isEmpty);
+
+    controller.setTransferSelection({idx, idx + 1});
+    expect(controller.transferSelection, {idx, idx + 1});
+  });
+
   test(
     'undo restores the pre-action state; irreversible clears the stack',
     () async {
