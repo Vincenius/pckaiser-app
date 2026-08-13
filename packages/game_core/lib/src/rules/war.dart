@@ -1553,7 +1553,9 @@ void _returnTroops(GameState state, ActiveWar war, List<GameEvent> events) {
 /// counts as a living ruler, so the last player standing never "owns
 /// everything". Called at every cause of land loss: the war teardown
 /// (`_returnTroops` — settlement and conquest; plunder no longer destroys
-/// tiles since 2026-07-19), the earthquake and the bankruptcy seizure.
+/// tiles since 2026-07-19), the earthquake, the bankruptcy seizure and the
+/// voluntary tile handover (`TransferTile`, 2026-08-13 — a realm whose seat
+/// tile is already in foreign hands can give away its last field).
 /// No-op for a realm that still owns land or is already vacant, so
 /// repeated calls are safe.
 void checkLandLoss(GameState state, Realm loser, List<GameEvent> events) {

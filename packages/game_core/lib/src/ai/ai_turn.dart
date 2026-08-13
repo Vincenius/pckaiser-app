@@ -51,6 +51,14 @@ void _runAiTurnInPlace(
   final realm = state.realm(slot);
   if (realm.isVacant) return;
 
+  // `[FIX 2026-08-13]` The tax rate (§7.1 tuning) is a PLAYER policy — the
+  // AI script never touches it, so a slot that reaches AI hands carrying a
+  // human's setting would keep it forever: a realm inherited (or handed
+  // over, or lost to strife) at 200 % bleeds popularity every year with
+  // nobody able to lower it again, one at 0 % collects no taxes at all.
+  // An AI-run realm therefore always plays the original formula.
+  realm.taxRate = taxRateDefault;
+
   // How strongly this AI plays — per-game setup choice, see ai_tuning.dart.
   // Mittel is the faithful pre-difficulty script.
   final tuning = aiTuningFor(state.aiDifficulty);

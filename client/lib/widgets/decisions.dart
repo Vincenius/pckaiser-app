@@ -159,6 +159,12 @@ Future<void> _promptDecision(
               // The recipient usually owns hundreds of tiles — a pulsing
               // gold ring on every one of them is just noise.
               highlightCandidates: false,
+              // Skippable: the engine stations an unplaced gift at the
+              // capital. Without the banner's cancel button the "skip"
+              // branch below was unreachable — and since a tile pick also
+              // blocks "Zug beenden", the player was stuck until they
+              // tapped somewhere on their own land.
+              cancellable: true,
             );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         if (pick != null) 'x': pick.$1,

@@ -662,6 +662,28 @@ List<GameEvent> _transferTile(GameState state, Realm realm, TransferTile action)
   }
   final events = <GameEvent>[];
   transferTileVoluntary(state, action.targetSlot, action.x, action.y, events);
+
+  // `[FIX 2026-08-13]` A voluntary handover is a cause of LAND LOSS like any
+  // other (see [war_rules.checkLandLoss]). It is reachable whenever the seat
+  // tile is already in foreign hands — the capital gate above then protects
+  // nothing, so a realm could give away its very last field and live on as a
+  // landless "zombie": still a distinct living ruler, so [checkWinCondition]
+  // could never fire again and the match became unwinnable.
+  war_rules.checkLandLoss(state, realm, events);
+  // Vacating the giver can leave the receiver as the sole ruler — surface
+  // the victory in this action, exactly as [_transferRealm] does.
+  if (realm.isVacant) {
+    final winner = checkWinCondition(state);
+    if (winner != null && !state.events.any((e) => e.type == 'gameWon')) {
+      events.add(GameEvent(
+        year: state.year,
+        slot: winner,
+        type: 'gameWon',
+        visibility: EventVisibility.public,
+        payload: {'sourceSlot': realm.slot},
+      ));
+    }
+  }
   return events;
 }
 
@@ -1158,7 +1180,13 @@ List<GameEvent> _resolveDecision(
         war,
         decision.decidingSlot,
         auto: choice['auto'] != false,
-        slots: (choice['slots'] as List?)?.cast<int>() ?? const [],
+        // `choice` is a free-form client payload: filter the entries instead
+        // of `cast<int>()`, whose lazy view would only throw much later,
+        // deep inside the war rules (see WarPrepPlan.fromJson).
+        slots: [
+          for (final ms in (choice['slots'] as List?) ?? const [])
+            if (ms is int) ms,
+        ],
       );
 
     case 'warDefense':

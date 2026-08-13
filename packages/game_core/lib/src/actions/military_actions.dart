@@ -511,7 +511,12 @@ class WarPrepPlan extends PlayerAction {
   factory WarPrepPlan.fromJson(Map<String, dynamic> json) => WarPrepPlan(
         slot: json['slot'] as int,
         auto: json['auto'] as bool,
-        slots: (json['slots'] as List?)?.cast<int>(),
+        // EAGER element cast (`[for … as int]`, not `cast<int>()`): a lazy
+        // cast view defers the type error to the first walk of the list —
+        // far outside this parse, where the server's "bad request" guard no
+        // longer covers it. Parsing here turns a malformed payload into the
+        // 400 it is.
+        slots: (json['slots'] as List?)?.map((v) => v as int).toList(),
       );
 
   static const kind = 'warPrepPlan';

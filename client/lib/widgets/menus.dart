@@ -384,7 +384,14 @@ void _transferTroopSheet(
             if (target.slot != slot && !target.isVacant)
               ListTile(
                 title: Text(realmName(target.slot)),
-                enabled: true,
+                // The engine's mid-war gate covers BOTH sides — a realm
+                // fighting someone else takes no reinforcements either.
+                // Mirrored here (like every other gate) so the entry is
+                // greyed out instead of toasting after the tap.
+                subtitle: _mergeAtWar(state, slot, target.slot)
+                    ? Text(tr('menus.notMidWar'))
+                    : null,
+                enabled: !_mergeAtWar(state, slot, target.slot),
                 onTap: () async {
                   Navigator.pop(sheetContext);
                   final sure = await showDialog<bool>(

@@ -29,6 +29,10 @@ import '../widgets/war_report.dart';
 /// plumbing.
 enum _DragMode { none, field, transfer, annex }
 
+/// How often the online hand-back retries its pop (200 ms apart) before it
+/// gives up — see `_GameScreenState._handBackToLobby`.
+const int _handBackAttempts = 300;
+
 /// The in-game screen: Flame map + HUD + menus, with the hot-seat handoff
 /// blocker and pending-decision prompts layered on top.
 class GameScreen extends StatefulWidget {
@@ -185,8 +189,14 @@ class _GameScreenState extends State<GameScreen> {
   /// dialog above it) and retries until the route has left the navigator —
   /// `isActive` turns false the moment the pop goes through, which also
   /// ends the loop while the exit animation still runs.
+  ///
+  /// Bounded ([_handBackAttempts] × 200 ms ≈ a minute): a pop that can never
+  /// succeed — this screen sitting at the bottom of the navigator, a route
+  /// that refuses to pop — must not leave a timer re-firing every 200 ms for
+  /// the rest of the session. The screen then simply stays put; the player
+  /// can leave it by hand.
   Future<void> _handBackToLobby() async {
-    while (true) {
+    for (var attempt = 0; attempt < _handBackAttempts; attempt++) {
       if (!mounted) return;
       final route = ModalRoute.of(context);
       if (route == null || !route.isActive) return; // gone already

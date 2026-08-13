@@ -1075,6 +1075,54 @@ void main() {
       expect(st.activeWar!.phase, WarPhase.rounds);
     });
 
+    test('a non-integer start proposal is dropped, not 500', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      final sofort = now.millisecondsSinceEpoch;
+      // `List.cast<int>()` is lazy: a garbage entry used to slip past both
+      // the action parser and the sanitizer and only blow up deep inside
+      // the engine — a 500. A decision answer's `choice` is free-form, so
+      // the bad entry is filtered out …
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': <dynamic>['morgen', sofort],
+      });
+      // … while the typed `WarPrepPlan.slots` is a plain bad request.
+      await expectLater(
+        service.submit(
+          matchId: match.id,
+          playerId: b.id,
+          actionJson: {
+            'type': 'warPrepPlan',
+            'slot': 2,
+            'auto': false,
+            'slots': <dynamic>[sofort, 'gleich'],
+          },
+        ),
+        throwsA(
+            isA<ApiException>().having((e) => e.statusCode, 'statusCode', 400)),
+      );
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarPrepPlan(slot: 2, auto: false, slots: [sofort]).toJson(),
+      );
+      final st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.planSlots[1], [sofort]);
+      expect(st.activeWar!.planSlots[2], [sofort]);
+      expect(st.activeWar!.scheduledStartMs, sofort);
+    });
+
     test('an absurd start proposal is dropped instead of poisoning the match',
         () async {
       var now = DateTime.utc(2026, 1, 1);

@@ -6,6 +6,47 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-13 — v0.2.6 review round (fixes)
+
+Review of the whole v0.2.6 branch against `main`. Five findings, all fixed;
+regression tests in `packages/game_core/test/bugfix_2026_08_13_review_test.dart`
+and `backend/test/match_service_test.dart`.
+
+**Landless giver stayed alive (engine, unwinnable match).** "Felder
+übertragen" was not wired into `checkLandLoss`, whose contract lists every
+cause of land loss. The capital gate protects nothing once the seat tile is
+already in foreign hands, so a realm could give away its last field and live
+on as a landless ruler — which blocks `checkWinCondition` forever (exactly
+the "zombie realm" the function exists to prevent). `_transferTile` now runs
+`checkLandLoss` and, like `_transferRealm`, surfaces a resulting `gameWon`.
+
+**Tax rate stranded in AI hands (engine).** The AI script never sets a tax
+rate, so any slot that reached AI control carrying a human's rate kept it
+forever: 200 % bled 10 popularity a year with nobody able to lower it, 0 %
+collected no taxes at all. Reachable through inheritance, "Reich
+übertragen", strife and the merchant/bankruptcy founder. An AI turn now
+normalizes the rate to `taxRateDefault`, and `foundReplacementDynasty`
+resets it with the rest of the new house's clean start.
+
+**Lazy `List.cast` defeated the war-plan sanitizer (server).**
+`MatchService._sanitizeWarPlanTimes` guarded `raw.cast<int>()` with a
+try/catch, but a cast view only throws where it is WALKED — outside the
+guard, deep in the engine (a 500 instead of a rejected value). The filter
+now tests each element (`is int`); `WarPrepPlan.fromJson` casts eagerly so a
+malformed typed payload is the 400 it is; the engine's `warPlan` answer
+filters its free-form `choice['slots']` the same way.
+
+**Unbounded hand-back retry (client).** `_handBackToLobby`'s `while (true)`
+re-fired every 200 ms for the rest of the session if the pop could never
+succeed. Bounded to `_handBackAttempts` tries (~1 min).
+
+**Unreachable "skip" on a troop gift (client).** The `troopTransfer` map
+pick was armed non-cancellable, so the documented "skip → station at the
+capital" branch could not be reached — and since a tile pick also blocks
+"Zug beenden", the recipient was stuck until they tapped their own land.
+Now cancellable. The troop-transfer target list also greys out realms at
+war (mirroring the engine gate) instead of toasting after the tap.
+
 ## 2026-08-13 — War preparation: frozen map after the war date, panel slimmed (user report)
 
 Two reports from the online duel flow.

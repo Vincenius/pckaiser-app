@@ -1424,12 +1424,18 @@ class MatchService {
   /// The past is allowed a small margin — "sofort" is the top of the
   /// answering side's CURRENT hour and so already lies behind us, plus
   /// whatever clock skew the device carries. Nothing else is touched.
+  ///
+  /// Non-integer entries are dropped here too. `List.cast<int>()` is LAZY —
+  /// it never throws where it is written, only where the list is later
+  /// walked — so a `'slots': ['x']` payload used to escape this guard and
+  /// blow up deep inside the engine (a 500 instead of a rejected value).
+  /// The filter therefore tests each element itself.
   PlayerAction _sanitizeWarPlanTimes(PlayerAction action) {
     final now = _clock().toUtc();
     final from = now.subtract(const Duration(hours: 2)).millisecondsSinceEpoch;
     final to = now.add(_warPlanHorizon).millisecondsSinceEpoch;
-    List<int> keep(List<int> slots) =>
-        [for (final ms in slots) if (ms >= from && ms <= to) ms];
+    List<int> keep(List<dynamic> slots) =>
+        [for (final ms in slots) if (ms is int && ms >= from && ms <= to) ms];
 
     if (action is WarPrepPlan) {
       final slots = action.slots;
@@ -1440,16 +1446,10 @@ class MatchService {
     if (action is ResolveDecision) {
       final raw = action.choice['slots'];
       if (raw is! List) return action;
-      final List<int> slots;
-      try {
-        slots = raw.cast<int>();
-      } on Object {
-        return action;
-      }
       return ResolveDecision(
         slot: action.slot,
         decisionId: action.decisionId,
-        choice: {...action.choice, 'slots': keep(slots)},
+        choice: {...action.choice, 'slots': keep(raw)},
       );
     }
     return action;

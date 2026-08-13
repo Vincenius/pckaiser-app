@@ -526,6 +526,9 @@ Person foundReplacementDynasty(
   realm.rulerId = founder.id;
   realm.titleClass = (muslim ? 9 : 1) + (gender == 1 ? 12 : 0);
   realm.popularity = 50;
+  // The old house's tax policy dies with it (§7.1 tuning, 2026-08-13) —
+  // the new one starts on the original formula.
+  realm.taxRate = taxRateDefault;
   // A whole new house answers for none of the old one's wars — weariness,
   // war history and truces all start clean with it (2026-08-08).
   realm.recentWars = 0;
