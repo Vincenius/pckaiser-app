@@ -254,6 +254,37 @@ void main() {
       expect(s.realm(3).popularity, lessThan(popBefore[3]!));
     });
 
+    test('a realm producing only one good gets no balance nudge', () {
+      // [FIX 2026-08-13] A fresh start whose cross landed on all-plains is
+      // all Kornfeld (zero livestock) and used to fail the §8.4 ratio test
+      // every turn — a permanent −1…3 drain regardless of tax rate. The
+      // nudge is now skipped while one side is absent: a well-fed realm
+      // climbs by the food step alone (target 100, gap 50 → +8).
+      final state = startGame(freshGame(), Rng(3)).state;
+      final realm = state.realm(2);
+      realm.grainHarvest = 100000; // surplus at the +15 cap, well fed
+      realm.livestockHarvest = 0; // only grain — no ratio to judge
+      realm.popularity = 50;
+
+      runFoodAndPopulation(state, realm, Rng(1), []);
+
+      expect(realm.popularity, 58,
+          reason: 'food step +8, no −1…3 balance drain');
+    });
+
+    test('a realm producing both goods still gets the balance nudge', () {
+      final state = startGame(freshGame(), Rng(3)).state;
+      final realm = state.realm(2);
+      realm.grainHarvest = 100000; // surplus at the +15 cap, well fed
+      realm.livestockHarvest = 100000; // balanced mix
+      realm.popularity = 50;
+
+      runFoodAndPopulation(state, realm, Rng(1), []);
+
+      expect(realm.popularity, inInclusiveRange(59, 61),
+          reason: 'food step +8, then the +1…3 balance nudge');
+    });
+
     test('towns get Marktrecht at 500 and Stadtrecht at 1000', () {
       final state = startGame(freshGame(), Rng(5)).state;
       final town2 = state.realm(2).towns.single;

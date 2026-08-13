@@ -237,11 +237,20 @@ FoodReport runFoodAndPopulation(
   _runTownTransitions(state, realm, events);
 
   // §8.4 update 2 — balance nudge, after town growth & famine.
+  // [DESIGNED 2026-08-13, user report] The ratio test also punished a realm
+  // producing only ONE good: a fresh start whose cross landed entirely on
+  // plains is all Kornfeld (zero livestock) and failed the ratio test every
+  // turn, draining −1…3 popularity forever regardless of its tax rate — a
+  // hidden, terrain-luck handicap. A balance ratio of two goods is
+  // undefined when one side is absent, so the nudge only applies while the
+  // realm actually produces both.
   final grain = realm.grainHarvest;
   final livestock = realm.livestockHarvest;
-  final balanced = grain <= 2 * livestock && livestock <= 2 * grain;
   final beforeNudge = realm.popularity;
-  realm.popularity += (balanced ? 1 : -1) * (rng.nextInt(3) + 1);
+  if (grain > 0 && livestock > 0) {
+    final balanced = grain <= 2 * livestock && livestock <= 2 * grain;
+    realm.popularity += (balanced ? 1 : -1) * (rng.nextInt(3) + 1);
+  }
   realm.popularity = realm.popularity.clamp(0, 100);
   // The nudge must not lift a war-weary realm past its ceiling either. A
   // realm already above the ceiling simply keeps what it had (the food step

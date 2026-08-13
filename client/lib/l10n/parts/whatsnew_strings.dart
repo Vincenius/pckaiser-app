@@ -13,6 +13,7 @@ const Map<String, String> whatsnewDe = {
   'whatsnew.0_2_6.1': 'Truppen können an andere Reiche verschenkt werden',
   'whatsnew.0_2_6.2': 'Einzelne Felder sind übertragen',
   'whatsnew.0_2_6.3': 'Kriegstermin bis zum Beginn änderbar',
+  'whatsnew.0_2_6.4': 'Geschlecht der Nachkommen wird angezeigt',
 };
 
 const Map<String, String> whatsnewEn = {
@@ -23,4 +24,5 @@ const Map<String, String> whatsnewEn = {
   'whatsnew.0_2_6.1': 'Gift troops, hand over tiles',
   'whatsnew.0_2_6.2': 'War start time stays changeable',
   'whatsnew.0_2_6.3': 'Reworked victory conditions, many fixes',
+  'whatsnew.0_2_6.4': 'Gender of offspring is displayed',
 };

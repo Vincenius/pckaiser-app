@@ -175,9 +175,11 @@ const int taxRateStep = 10;
 const int taxPopularityStep = 25;
 
 /// RESENTMENT (high taxes): every [taxPopularityHighStep] points of rate
-/// above 100 swings the mood −1. `[DESIGNED 2026-08-13, user request]`
-/// deliberately tighter than the goodwill side so heavy taxation grinds
-/// popularity down a little faster — at the extreme (−5 per turn at 200 %)
-/// it still stays within a single war declaration (−5, escalating) and
-/// well under the §8.4 food step cap (±8).
-const int taxPopularityHighStep = 20;
+/// above 100 swings the mood −1. `[DESIGNED 2026-08-13, user request;
+/// tightened again 2026-08-13]` deliberately tighter than the goodwill
+/// side so heavy taxation grinds popularity down faster. At the extreme
+/// (−10 per turn at 200 %) a maximum-tax realm can no longer ride the
+/// §8.4 food step (cap ±8) back to a high mood, so the rate is a real,
+/// visible trade-off instead of a rounding error next to the food and
+/// balance nudges.
+const int taxPopularityHighStep = 10;

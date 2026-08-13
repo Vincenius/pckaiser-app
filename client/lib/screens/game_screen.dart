@@ -130,14 +130,17 @@ class _GameScreenState extends State<GameScreen> {
               ? controller.transferSelection
               : const <int>{};
           // Online: the turn went to another player — hand back to the
-          // waiting lobby (once; guarded against re-entry).
+          // waiting lobby (once; guarded against re-entry). The repaint
+          // below still runs: the hand-back may WAIT (see _handBackToLobby)
+          // and the screen must not stay frozen on the last frame, which
+          // was painted while the submission was still in flight — with the
+          // full-screen busy spinner on top (`[FIX 2026-08-13]`).
           if (controller.isOnline &&
               controller.awaitingRemote &&
               !controller.gameOver &&
               !_poppedForRemote) {
             _poppedForRemote = true;
-            if (mounted) Navigator.of(context).maybePop();
-            return;
+            _handBackToLobby();
           }
           if (mounted) setState(() {});
         });
@@ -162,6 +165,37 @@ class _GameScreenState extends State<GameScreen> {
   void dispose() {
     _controller?.dispose();
     super.dispose();
+  }
+
+  /// Online: leaves the play screen once the turn has moved on to another
+  /// player, returning to the match view.
+  ///
+  /// `[FIX 2026-08-13, user report]` It waits until this screen is the
+  /// topmost route again. The turn regularly changes hands while a DIALOG
+  /// is still open on top of it — the attacker's war-plan prompt is the
+  /// reported case: answering it (live + war times) makes the DEFENDER the
+  /// awaited seat, and the "Kriegsbeginn" confirmation appears right after.
+  /// `Navigator.maybePop` then either closed that dialog instead of this
+  /// screen, or — when the dialog was pushed while it was still resolving —
+  /// silently dropped the pop ("something happened in the meantime"). The
+  /// player was left on a dead map behind the action spinner, with the
+  /// one-shot guard already spent.
+  ///
+  /// So it only ever pops while this screen is the top-most route (never a
+  /// dialog above it) and retries until the route has left the navigator —
+  /// `isActive` turns false the moment the pop goes through, which also
+  /// ends the loop while the exit animation still runs.
+  Future<void> _handBackToLobby() async {
+    while (true) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route == null || !route.isActive) return; // gone already
+      if (route.isCurrent) {
+        await Navigator.of(context).maybePop();
+        if (!route.isActive) return; // popped
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
   }
 
   Future<void> _onTileTap(GameController controller, int x, int y) async {

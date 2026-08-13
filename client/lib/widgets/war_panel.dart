@@ -28,6 +28,7 @@ class WarPanel extends StatefulWidget {
 
 class _WarPanelState extends State<WarPanel> {
   bool _collapsed = false;
+  bool _prepCollapsed = false;
   bool _settlementCollapsed = false;
 
   GameController get controller => widget.controller;
@@ -46,6 +47,13 @@ class _WarPanelState extends State<WarPanel> {
   /// picker to widen the offer when no common hour was found. The panel also
   /// states whether the opponent has chosen yet and which hours suit them,
   /// so nobody has to guess.
+  ///
+  /// `[REDESIGNED 2026-08-13, user request]` The window used to stack three
+  /// explanatory paragraphs above the controls — too much text over the map.
+  /// It now reads like the round panel: a header line (opponents, help ⓘ,
+  /// collapse), ONE color-coded status banner (start time / who is missing),
+  /// then the two controls (command mode + times, troop stances). The full
+  /// explanation moved behind the header's ⓘ.
   Widget _preparation(BuildContext context, gc.ActiveWar war, int slot) {
     final theme = Theme.of(context);
     final state = controller.state;
@@ -61,103 +69,201 @@ class _WarPanelState extends State<WarPanel> {
     final selectedTroop = selected != null && selected < realm.troops.length
         ? realm.troops[selected]
         : null;
-    // Online duel scheduling: once both sides answered, the agreed start
-    // (earliest common warPlan slot) is shown here — in local time.
-    final scheduled = war.scheduledStartMs;
+
+    final header = Padding(
+      padding: const EdgeInsets.only(left: 12, right: 4),
+      child: Row(
+        children: [
+          const Icon(Icons.military_tech, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              tr('war.prepVs', {
+                'attacker': realmName(war.attackerSlot),
+                'defender': realmName(war.defenderSlot),
+              }),
+              style: theme.textTheme.titleSmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            iconSize: 20,
+            tooltip: tr('war.prepHelpTooltip'),
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => _showPrepHelp(context),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            iconSize: 20,
+            tooltip: _prepCollapsed
+                ? tr('war.openMenuTooltip')
+                : tr('war.collapse'),
+            icon: Icon(_prepCollapsed ? Icons.expand_more : Icons.expand_less),
+            onPressed: () => setState(() => _prepCollapsed = !_prepCollapsed),
+          ),
+        ],
+      ),
+    );
+
     return Material(
       color: theme.colorScheme.surfaceContainerHigh,
       child: SizedBox(
         width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(tr('war.prepTitle'), style: theme.textTheme.titleSmall),
-              const SizedBox(height: 4),
-              Text(
-                tr('war.prepIntro', {
-                  'attacker': realmName(war.attackerSlot),
-                  'defender': realmName(war.defenderSlot),
-                }),
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium,
-              ),
-              if (scheduled != null && scheduled > 0) ...[
-                const SizedBox(height: 4),
-                Text(
-                  tr('war.scheduledStart', {
-                    'time': formatWarStartTime(scheduled),
-                  }),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleSmall,
-                ),
-              ] else if (controller.isOnline && !owesPlan) ...[
-                // No appointment (yet): say WHY — the opponent has not
-                // answered, or the two offers do not overlap and somebody
-                // has to widen theirs (user request 2026-08-09).
-                const SizedBox(height: 4),
-                Text(
-                  war.planAnsweredSlots.contains(enemySlot)
-                      ? tr('war.noCommonTime')
-                      : tr('war.enemyStillChoosing', {
-                          'realm': realmName(enemySlot),
-                        }),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-              const SizedBox(height: 4),
-              // Own units, individually selectable — same capped, scrolling
-              // chip list as during the war rounds.
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 124),
-                child: SingleChildScrollView(
-                  child: Wrap(
-                    spacing: 4,
-                    runSpacing: -8,
-                    children: [
-                      for (var i = 0; i < realm.troops.length; i++)
-                        _unitChip(
-                          theme,
-                          state,
-                          realm.troops[i],
-                          enemySlot,
-                          movesLeft: null, // no war moves yet
-                          selected: i == selected,
-                          // focusMap: the army may stand anywhere on the
-                          // map — picking it from the list scrolls there.
-                          onTap: () => controller.selectWarUnit(
-                            i == selected ? null : i,
-                            focusMap: true,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              if (selectedTroop != null && selected != null)
-                _stanceToggle(context, slot, selected, selectedTroop)
-              else if (realm.troops.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    tr('war.tapTroopHint'),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              const SizedBox(height: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            header,
+            _prepStatusBanner(theme, war, slot, owesPlan: owesPlan),
+            if (!_prepCollapsed) ...[
               if (owesPlan)
-                FilledButton(
-                  onPressed: () =>
-                      promptDecisionsFor(context, controller, slot),
-                  child: Text(tr('war.choose')),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 6),
+                  child: FilledButton(
+                    onPressed: () =>
+                        promptDecisionsFor(context, controller, slot),
+                    child: Text(tr('war.choose')),
+                  ),
                 )
               else
-                ..._planRevision(context, war, slot),
+                _planRevision(context, war, slot),
+              // Own units, individually selectable — same capped, scrolling
+              // chip list as during the war rounds.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tr('war.stanceSection'),
+                      style: theme.textTheme.labelMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 108),
+                      child: SingleChildScrollView(
+                        child: Wrap(
+                          spacing: 4,
+                          runSpacing: -8,
+                          children: [
+                            for (var i = 0; i < realm.troops.length; i++)
+                              _unitChip(
+                                theme,
+                                state,
+                                realm.troops[i],
+                                enemySlot,
+                                movesLeft: null, // no war moves yet
+                                selected: i == selected,
+                                // focusMap: the army may stand anywhere on
+                                // the map — picking it from the list
+                                // scrolls there.
+                                onTap: () => controller.selectWarUnit(
+                                  i == selected ? null : i,
+                                  focusMap: true,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (selectedTroop != null && selected != null)
+                      _stanceToggle(
+                        context,
+                        slot,
+                        selected,
+                        selectedTroop,
+                        label: selectedTroop.name,
+                      )
+                    else if (realm.troops.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          tr('war.tapTroopHint'),
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
-          ),
+          ],
         ),
+      ),
+    );
+  }
+
+  /// The one status line of the preparation window: the agreed start, who
+  /// is still missing, or — before this side answered — what to do. Same
+  /// color-coded banner the war rounds use, instead of the old paragraphs.
+  Widget _prepStatusBanner(
+    ThemeData theme,
+    gc.ActiveWar war,
+    int slot, {
+    required bool owesPlan,
+  }) {
+    // Online duel scheduling: once both sides answered, the agreed start
+    // (earliest common warPlan slot) is shown here — in local time.
+    final scheduled = war.scheduledStartMs;
+    if (owesPlan) {
+      return _banner(
+        theme,
+        Icons.flag_outlined,
+        tr('war.prepOwesPlan'),
+        background: theme.colorScheme.surface,
+        foreground: theme.colorScheme.onSurfaceVariant,
+      );
+    }
+    if (scheduled != null && scheduled > 0) {
+      return _banner(
+        theme,
+        Icons.schedule,
+        tr('war.scheduledStart', {'time': formatWarStartTime(scheduled)}),
+        background: Colors.green.shade100,
+        foreground: Colors.green.shade900,
+      );
+    }
+    if (!controller.isOnline) {
+      // Hot-seat: no appointment exists — the war starts once both
+      // players at this device have answered.
+      return _banner(
+        theme,
+        Icons.hourglass_top,
+        tr('war.prepWaitingBoth'),
+        background: theme.colorScheme.surface,
+        foreground: theme.colorScheme.onSurfaceVariant,
+      );
+    }
+    // No appointment (yet): say WHY — the opponent has not answered, or the
+    // two offers do not overlap and somebody has to widen theirs (user
+    // request 2026-08-09).
+    final enemySlot = war.opponentOf(slot);
+    final noOverlap = war.planAnsweredSlots.contains(enemySlot);
+    return _banner(
+      theme,
+      noOverlap ? Icons.warning_amber : Icons.hourglass_top,
+      noOverlap
+          ? tr('war.noCommonTime')
+          : tr('war.enemyStillChoosing', {'realm': realmName(enemySlot)}),
+      background: theme.colorScheme.surface,
+      foreground: theme.colorScheme.onSurfaceVariant,
+    );
+  }
+
+  /// The full preparation explanation — behind the header's ⓘ so the docked
+  /// panel itself stays a header line, a status line and two controls.
+  void _showPrepHelp(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tr('war.prepTitle')),
+        content: SingleChildScrollView(child: Text(tr('war.prepHelpBody'))),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr('war.done')),
+          ),
+        ],
       ),
     );
   }
@@ -171,13 +277,9 @@ class _WarPanelState extends State<WarPanel> {
   ///    current offer pre-ticked and the opponent's accepted hours marked,
   ///    so a pair that found no common hour can converge instead of waiting
   ///    out the fallback deadline.
-  /// Hidden while the read-only viewer is busy (`controller.busy`).
-  List<Widget> _planRevision(
-    BuildContext context,
-    gc.ActiveWar war,
-    int slot,
-  ) {
-    final theme = Theme.of(context);
+  /// One row (toggle + time button), no prose: what each mode means is in
+  /// the header's help dialog. Disabled while the panel is busy.
+  Widget _planRevision(BuildContext context, gc.ActiveWar war, int slot) {
     final auto = war.autoSlots.contains(slot);
     // The window can close under the player's finger — the opponent
     // answers, or the server's deadline sweep starts the duel, while this
@@ -197,49 +299,67 @@ class _WarPanelState extends State<WarPanel> {
         }
       }
     }
-    return [
-      Text(
-        auto ? tr('war.planAutoChosen') : tr('war.planLiveChosen'),
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodySmall,
-      ),
-      const SizedBox(height: 4),
-      SegmentedButton<bool>(
-        showSelectedIcon: false,
-        segments: [
-          ButtonSegment(value: false, label: Text(tr('war.planLive'))),
-          ButtonSegment(value: true, label: Text(tr('war.planAuto'))),
-        ],
-        selected: {auto},
-        onSelectionChanged: controller.busy
-            ? null
-            : (v) => submit(auto: v.first),
-      ),
-      if (controller.isOnline && !auto) ...[
-        const SizedBox(height: 4),
-        TextButton.icon(
-          icon: const Icon(Icons.schedule, size: 18),
-          label: Text(tr('war.adjustTimes')),
-          onPressed: controller.busy
-              ? null
-              : () async {
-                  final enemySlot = war.opponentOf(slot);
-                  final picked = await askWarStartSlots(
-                    context,
-                    controller.turnTimeoutHours,
-                    initial: war.planSlots[slot] ?? const [],
-                    opponentSlots: war.planSlots[enemySlot] ?? const [],
-                    opponentAnswered: war.planAnsweredSlots.contains(
-                      enemySlot,
-                    ),
-                    cancellable: true,
-                  );
-                  if (picked == null) return; // cancelled — offer unchanged
-                  await submit(auto: false, slots: picked);
-                },
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
+      // FittedBox: toggle + time button overflow very narrow phones in a
+      // fixed Row — scale down instead of clipping.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SegmentedButton<bool>(
+              showSelectedIcon: false,
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              segments: [
+                ButtonSegment(
+                  value: false,
+                  icon: const Icon(Icons.sports_kabaddi, size: 14),
+                  label: Text(tr('war.planLive')),
+                ),
+                ButtonSegment(
+                  value: true,
+                  icon: const Icon(Icons.smart_toy_outlined, size: 14),
+                  label: Text(tr('war.planAuto')),
+                ),
+              ],
+              selected: {auto},
+              onSelectionChanged: controller.busy
+                  ? null
+                  : (v) => submit(auto: v.first),
+            ),
+            if (controller.isOnline && !auto) ...[
+              const SizedBox(width: 4),
+              TextButton.icon(
+                icon: const Icon(Icons.schedule, size: 18),
+                label: Text(tr('war.adjustTimes')),
+                onPressed: controller.busy
+                    ? null
+                    : () async {
+                        final enemySlot = war.opponentOf(slot);
+                        final picked = await askWarStartSlots(
+                          context,
+                          controller.turnTimeoutHours,
+                          initial: war.planSlots[slot] ?? const [],
+                          opponentSlots: war.planSlots[enemySlot] ?? const [],
+                          opponentAnswered: war.planAnsweredSlots.contains(
+                            enemySlot,
+                          ),
+                          cancellable: true,
+                        );
+                        // Cancelled — the stored offer stays unchanged.
+                        if (picked == null) return;
+                        await submit(auto: false, slots: picked);
+                      },
+              ),
+            ],
+          ],
         ),
-      ],
-    ];
+      ),
+    );
   }
 
   @override
@@ -577,12 +697,17 @@ class _WarPanelState extends State<WarPanel> {
   /// Lets the player set the selected unit's autopilot stance (used if the
   /// war clock runs out before they finish — see [gc.TroopStance]). Its own
   /// thin row so it never crowds the move/plunder/peace actions.
+  ///
+  /// [label] replaces the leading "Bei Auto-Krieg:" caption — the
+  /// preparation window names the selected troop instead, where lining the
+  /// army up IS the task and the caption only repeated itself.
   Widget _stanceToggle(
     BuildContext context,
     int slot,
     int unitIndex,
-    gc.Troop troop,
-  ) {
+    gc.Troop troop, {
+    String? label,
+  }) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 4),
@@ -594,7 +719,12 @@ class _WarPanelState extends State<WarPanel> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(tr('war.autoWarStance'), style: theme.textTheme.bodySmall),
+            Text(
+              label == null ? tr('war.autoWarStance') : '$label: ',
+              style: theme.textTheme.bodySmall!.copyWith(
+                fontWeight: label == null ? null : FontWeight.w600,
+              ),
+            ),
             const SizedBox(width: 4),
             SegmentedButton<int>(
               showSelectedIcon: false,
@@ -753,12 +883,18 @@ class _WarPanelState extends State<WarPanel> {
                 color: theme.colorScheme.outline,
               ),
             ),
-            Text(
-              tr('war.unitChipLabel', {
-                'name': troop.name,
-                'men': troop.men,
-                'strength': gc.troopStrength(troop).round(),
-              }),
+            // Flexible: a long unit name must ellipsize inside the chip —
+            // the Wrap caps every chip at the panel's width, and an
+            // unconstrained label overflows it instead of shortening.
+            Flexible(
+              child: Text(
+                tr('war.unitChipLabel', {
+                  'name': troop.name,
+                  'men': troop.men,
+                  'strength': gc.troopStrength(troop).round(),
+                }),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),

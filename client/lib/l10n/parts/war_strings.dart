@@ -4,28 +4,34 @@
 const Map<String, String> warDe = {
   // --- War panel: preparation window ---
   'war.prepTitle': 'Kriegsvorbereitung',
-  'war.prepIntro':
-      '{attacker} gegen {defender} — stelle jede Truppe einzeln ein: '
-      '„Halten" verteidigt ihre Stellung, „Angreifen" marschiert auf den '
-      'feindlichen Sitz. Die Haltung gilt, wenn der Computer Truppen führt.',
-  'war.scheduledStart': 'Vereinbarter Beginn: {time}',
-  'war.tapTroopHint': 'Tippe eine Truppe an, um ihre Haltung zu ändern.',
-  'war.choose': 'Wählen',
+  'war.prepVs': '{attacker} gegen {defender}',
+  // Eine Statuszeile statt eines Absatzes (2026-08-13): kurz, mit Icon.
+  'war.scheduledStart': 'Beginn: {time}',
+  'war.prepWaitingBoth': 'Der Krieg beginnt, sobald beide Seiten bereit sind.',
+  'war.prepOwesPlan': 'Lege fest, wer dein Heer führt.',
+  'war.stanceSection': 'Truppenhaltung',
+  'war.tapTroopHint': 'Truppe wählen, um ihre Haltung zu setzen.',
+  'war.choose': 'Kriegsplan wählen',
   // Revisable plan (2026-08-09): Führung umstellen + Zeiten anpassen,
   // solange die Vorbereitung läuft.
   'war.planLive': 'Selbst führen',
   'war.planAuto': 'Computer führt',
-  'war.planLiveChosen':
-      'Du führst dein Heer selbst — der Krieg beginnt, sobald beide Seiten '
-      'bereit sind. Du kannst das hier noch ändern.',
-  'war.planAutoChosen':
-      'Der Computer führt dein Heer nach den Truppenhaltungen. Du kannst das '
-      'Kommando hier noch selbst übernehmen.',
   'war.adjustTimes': 'Zeiten anpassen',
-  'war.noCommonTime':
-      'Noch kein gemeinsamer Termin — passe deine Zeiten an, dann beginnt '
-      'der Krieg früher als zum Ende der Vorbereitungsfrist.',
-  'war.enemyStillChoosing': '{realm} hat noch nicht gewählt.',
+  'war.noCommonTime': 'Kein gemeinsamer Termin — passe deine Zeiten an.',
+  'war.enemyStillChoosing': 'Wartet auf {realm}',
+  // Die ausführliche Erklärung steckt hinter dem ⓘ des Panels, damit die
+  // Leiste über der Karte schlank bleibt (2026-08-13, Nutzerwunsch).
+  'war.prepHelpTooltip': 'Erklärung',
+  'war.prepHelpBody':
+      '• Führung: „Selbst führen" — du befiehlst jede Kriegsrunde selbst. '
+      '„Computer führt" — dein Heer kämpft nach den Truppenhaltungen.\n\n'
+      '• Haltung: Truppe antippen, dann „Halten" (verteidigt ihre Stellung) '
+      'oder „Angreifen" (marschiert auf den feindlichen Sitz). Sie gilt, '
+      'wenn der Computer führt oder deine Zeit abläuft.\n\n'
+      '• Beginn: Online schlagen beide Seiten Zeiten vor; die früheste '
+      'gemeinsame Stunde wird der Kriegsbeginn. Findet sich keine, beginnt '
+      'der Krieg am Ende der Vorbereitungsfrist.\n\n'
+      '• Bis dahin bleibt alles änderbar.',
 
   // --- War panel: header & banners ---
   'war.headerVs': 'Krieg gegen {enemy}',
@@ -226,26 +232,29 @@ const Map<String, String> warDe = {
 const Map<String, String> warEn = {
   // --- War panel: preparation window ---
   'war.prepTitle': 'Preparations for war',
-  'war.prepIntro':
-      '{attacker} against {defender} — set each troop individually: '
-      '"Hold" defends its position, "Attack" marches on the enemy seat. '
-      'The stance applies when the computer leads your troops.',
-  'war.scheduledStart': 'Agreed start: {time}',
-  'war.tapTroopHint': 'Tap a troop to change its stance.',
-  'war.choose': 'Choose',
+  'war.prepVs': '{attacker} against {defender}',
+  'war.scheduledStart': 'Start: {time}',
+  'war.prepWaitingBoth': 'The war begins as soon as both sides are ready.',
+  'war.prepOwesPlan': 'Decide who commands your army.',
+  'war.stanceSection': 'Troop stances',
+  'war.tapTroopHint': 'Pick a troop to set its stance.',
+  'war.choose': 'Choose war plan',
   'war.planLive': 'Command myself',
   'war.planAuto': 'Computer commands',
-  'war.planLiveChosen':
-      'You command your army yourself — the war begins as soon as both '
-      'sides are ready. You can still change this here.',
-  'war.planAutoChosen':
-      'The computer commands your army along the troop stances. You can '
-      'still take command yourself here.',
   'war.adjustTimes': 'Adjust times',
-  'war.noCommonTime':
-      'No shared appointment yet — adjust your times and the war starts '
-      'earlier than the end of the preparation window.',
-  'war.enemyStillChoosing': '{realm} has not chosen yet.',
+  'war.noCommonTime': 'No shared appointment — adjust your times.',
+  'war.enemyStillChoosing': 'Waiting for {realm}',
+  'war.prepHelpTooltip': 'Explanation',
+  'war.prepHelpBody':
+      '• Command: "Command myself" — you give the orders every war round. '
+      '"Computer commands" — your army fights along the troop stances.\n\n'
+      '• Stance: tap a troop, then "Hold" (defends its position) or '
+      '"Attack" (marches on the enemy seat). It applies when the computer '
+      'commands or your time runs out.\n\n'
+      '• Start: online both sides propose times; the earliest shared hour '
+      'becomes the start of the war. If there is none, the war starts at '
+      'the end of the preparation window.\n\n'
+      '• Everything stays changeable until then.',
 
   // --- War panel: header & banners ---
   'war.headerVs': 'War against {enemy}',

@@ -6,6 +6,56 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-13 — War preparation: frozen map after the war date, panel slimmed (user report)
+
+Two reports from the online duel flow.
+
+**Frozen map (fix).** After the attacker picked the war start times, the
+map stayed under the full-screen action spinner forever. The play screen
+hands back to the match view when the turn moves on (`awaitingRemote`),
+but the controller listener did that with a ONE-SHOT
+`Navigator.maybePop()` and then `return`ed — skipping its own `setState`.
+Answering the `warPlan` makes the DEFENDER the awaited seat, and the
+"Kriegsbeginn" confirmation dialog is pushed in the same moment:
+`maybePop` sees a different top route when it resolves, drops the pop
+("something happened in the meantime"), and the guard was already spent —
+so the screen neither popped nor ever repainted, leaving the last frame
+(painted while the submission was in flight, spinner on top) on screen.
+`_GameScreenState._handBackToLobby` now pops only while the screen is the
+top-most route and retries every 200 ms until its route left the
+navigator; the repaint always runs. Regression test:
+`client/test/online_hand_back_test.dart`.
+
+**Preparation panel (UI).** The window stacked three explanatory
+paragraphs above its controls — too much text over the map. It now reads
+like the round panel: header line (both realms, ⓘ, collapse), ONE
+color-coded status banner (agreed start / waiting for X / no common
+time / choose your plan), then the controls — command mode + "Zeiten
+anpassen" in one row, and the troop-stance list whose toggle is now
+labelled with the picked unit. The full explanation moved into the ⓘ
+dialog (`war.prepHelpBody`). Long unit names ellipsize inside their chip
+instead of overflowing. Test: `client/test/war_prep_panel_test.dart`.
+
+## 2026-08-13 — Tax & balance-nudge popularity fix (user report)
+
+A test game with one realm at 150 % tax and another at 100 % showed the
+150 % realm's popularity rising FASTER — the opposite of what the rate is
+meant to do. Root cause: the tax effect was correct but tiny (−2/turn at
+150 %), while two other per-turn drivers dwarfed it: the §8.4 food step
+(±8) and the §8.4 balance nudge, which was +1…3 for a realm producing
+both grain and livestock but −1…3 for one producing only a single good. A
+fresh start whose cross landed on all-plains was all Kornfeld and drained
+−1…3 every turn forever — a hidden, terrain-luck handicap that could
+outweigh any tax rate.
+
+**Engine.** Resentment now steps −1 per 10 points above 100 %
+(`taxPopularityHighStep` 20 → 10), so the 200 % extreme drops −10/turn
+instead of −5: a maximum-tax realm can no longer ride the food step back
+to a high mood. The balance nudge is skipped while a realm produces only
+one good (either harvest is 0) — a ratio of two goods is undefined when
+one side is absent, so no more permanent drain on single-crop realms.
+Low-tax goodwill is unchanged.
+
 ## 2026-08-13 — "Felder übertragen" multi-select (user request)
 
 Transferring tiles no longer asks per tile. Pick the target realm, then

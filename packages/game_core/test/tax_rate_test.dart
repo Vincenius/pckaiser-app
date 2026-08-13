@@ -114,8 +114,8 @@ void main() {
       expect(delta(0), 4);
       // Resentment: −1 per [taxPopularityHighStep] above 100 — tighter,
       // so high taxes grind popularity down a little faster.
-      expect(delta(180), -4);
-      expect(delta(taxRateMax), -5);
+      expect(delta(180), -8);
+      expect(delta(taxRateMax), -10);
     });
 
     test('a war withholds the low-tax goodwill but not the resentment', () {
