@@ -75,6 +75,50 @@ void main() {
   });
 
   test(
+    'transfer multi-select toggles tiles and cancel clears the armed pick',
+    () async {
+      final controller = await twoPlayerGame();
+      controller.confirmHandoff();
+      final map = controller.state.map;
+      final (x, y) = claimableTile(controller.state, 1);
+      final idx = map.index(x, y);
+
+      controller.startTransferSelection(5);
+      expect(controller.transferTargetSlot, 5);
+      expect(controller.transferSelection, isEmpty);
+
+      // Arm the pick the way _transferTilesSheet does: every tap toggles.
+      controller.startTilePick(
+        hint: 'pick',
+        onPick: (px, py) async {
+          controller.toggleTransferTile(map.index(px, py));
+          return false;
+        },
+      );
+      expect(controller.tilePickActive, isTrue);
+
+      await controller.resolveTilePick(x, y);
+      expect(controller.transferSelection, {idx});
+      expect(
+        controller.tilePickActive,
+        isTrue,
+        reason: 'multi-select stays armed for the batch confirm',
+      );
+
+      await controller.resolveTilePick(x, y);
+      expect(controller.transferSelection, isEmpty, reason: 'tap toggles off');
+
+      controller.cancelTransferSelection();
+      expect(controller.transferTargetSlot, isNull);
+      expect(
+        controller.tilePickActive,
+        isFalse,
+        reason: 'cancel ends the pick and the selection together',
+      );
+    },
+  );
+
+  test(
     'undo restores the pre-action state; irreversible clears the stack',
     () async {
       final controller = await twoPlayerGame();

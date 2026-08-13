@@ -276,8 +276,9 @@ void _transferRealmSheet(BuildContext context, GameController controller) {
 }
 
 /// Target picker for "Felder übertragen": pick a foreign realm, then tap
-/// one of your own tiles on the map to transfer it. No realm-wide warning
-/// (that belongs to the full transfer).
+/// your own tiles on the map to select them (multi-select). The banner
+/// confirms the whole batch with "Felder übertragen" / "Abbrechen" — no
+/// per-tile modal. (The realm-wide warning belongs to the full transfer.)
 void _transferTilesSheet(BuildContext context, GameController controller) {
   final state = controller.state;
   final slot = controller.currentSlot;
@@ -296,6 +297,7 @@ void _transferTilesSheet(BuildContext context, GameController controller) {
               enabled: !_mergeAtWar(state, slot, target),
               onTap: () {
                 Navigator.pop(sheetContext);
+                controller.startTransferSelection(target);
                 controller.startTilePick(
                   hint: tr('menus.transferTilePickHint'),
                   onPick: (x, y) async {
@@ -308,8 +310,8 @@ void _transferTilesSheet(BuildContext context, GameController controller) {
                       _toast(context, tr('menus.transferTileOwnOnly'));
                       return false;
                     }
-                    // Mirror the engine gates so the confirm dialog is only
-                    // shown for actually transferable tiles.
+                    // Mirror the engine gates so only transferable tiles
+                    // enter the selection (the batch confirm relies on it).
                     final realmNow = stateNow.realm(currentSlot);
                     if (x == realmNow.capitalX && y == realmNow.capitalY) {
                       _toast(context, gc.coreMessage('cannotTransferCapital'));
@@ -323,54 +325,9 @@ void _transferTilesSheet(BuildContext context, GameController controller) {
                       _toast(context, gc.coreMessage('tileHasShips'));
                       return false;
                     }
-                    final hasTown =
-                        realmNow.towns.any((t) => t.x == x && t.y == y);
-                    final sure = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: Text(
-                          tr('menus.transferTileConfirm',
-                              {'realm': realmName(target)}),
-                        ),
-                        content: Text(
-                          tr(
-                            hasTown
-                                ? 'menus.transferTileConfirmBodyTown'
-                                : 'menus.transferTileConfirmBody',
-                            {
-                              'x': x + 1,
-                              'y': y + 1,
-                              'realm': realmName(target),
-                            },
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: Text(tr('cancel')),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: Text(tr('menus.ok')),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (sure != true) return false;
-                    if (!context.mounted) return false;
-                    // Keep the pick alive when the engine rejects the tile
-                    // (target lost its ruler, became at war, …).
-                    try {
-                      await controller.applyUndoable(gc.TransferTile(
-                          slot: currentSlot, targetSlot: target, x: x, y: y));
-                    } on gc.ActionException catch (e) {
-                      if (context.mounted) _toast(context, e.message);
-                      return false;
-                    }
-                    // "FelDER übertragen": the pick stays armed so a border
-                    // strip can be handed over tile by tile without walking
-                    // the Handel → target round trip for each one. The
-                    // cancel button ends it.
+                    // Tap toggles the tile in/out of the batch; the pick
+                    // stays armed until the banner's confirm/cancel.
+                    controller.toggleTransferTile(map.index(x, y));
                     return false;
                   },
                 );

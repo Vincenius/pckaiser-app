@@ -91,6 +91,39 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Tiles (index `y * width + x`) selected for transfer in the
+  /// "Felder übertragen" multi-select — highlighted on the map while the
+  /// pick is armed. Confirmed once via the banner's "Felder übertragen"
+  /// button, not per tile.
+  final Set<int> transferSelection = <int>{};
+
+  /// Target realm of the active "Felder übertragen" multi-select; null
+  /// when no transfer selection is in progress.
+  int? _transferTargetSlot;
+  int? get transferTargetSlot => _transferTargetSlot;
+
+  /// Arms the "Felder übertragen" multi-select: subsequent map taps toggle
+  /// tiles in [transferSelection] (see [toggleTransferTile]). The actual
+  /// tile pick is armed separately via [startTilePick].
+  void startTransferSelection(int targetSlot) {
+    _transferTargetSlot = targetSlot;
+    transferSelection.clear();
+    notifyListeners();
+  }
+
+  /// Toggles a tile in/out of the transfer selection (tap).
+  void toggleTransferTile(int index) {
+    if (!transferSelection.remove(index)) transferSelection.add(index);
+    notifyListeners();
+  }
+
+  /// Ends the transfer multi-select (and the tile pick beneath it).
+  void cancelTransferSelection() {
+    if (_transferTargetSlot == null) return;
+    _endTilePick();
+    notifyListeners();
+  }
+
   /// Hint banner text while a map tile pick is active (e.g. "station the
   /// new troop"); null = no pick pending.
   String? tilePickHint;
@@ -117,13 +150,22 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void cancelTilePick() {
-    if (_tilePick == null) return;
+  /// Tears down any armed tile pick plus the transfer selection that rides
+  /// on it. Does NOT notify — callers notify (or are mid-flow, e.g. a
+  /// controller-listener repaint).
+  void _endTilePick() {
     _tilePick = null;
     tilePickHint = null;
     _seatPickCompleter?.complete(null);
     _seatPickCompleter = null;
     seatPickCandidates = const {};
+    _transferTargetSlot = null;
+    transferSelection.clear();
+  }
+
+  void cancelTilePick() {
+    if (_tilePick == null) return;
+    _endTilePick();
     notifyListeners();
   }
 
@@ -346,11 +388,7 @@ class GameController extends ChangeNotifier {
     if (_undoStack.isEmpty) return;
     // An armed tile pick captured indices from the pre-undo state (e.g.
     // "station troop n") — cancel it so it can't act on the reverted list.
-    _tilePick = null;
-    tilePickHint = null;
-    _seatPickCompleter?.complete(null);
-    _seatPickCompleter = null;
-    seatPickCandidates = const {};
+    _endTilePick();
     _session.restore(_undoStack.removeLast());
     notifyListeners();
   }
@@ -362,11 +400,7 @@ class GameController extends ChangeNotifier {
   Future<void> endTurn() async {
     if (_busy || readOnly) return;
     _busy = true;
-    _tilePick = null;
-    tilePickHint = null;
-    _seatPickCompleter?.complete(null);
-    _seatPickCompleter = null;
-    seatPickCandidates = const {};
+    _endTilePick();
     _undoStack.clear();
     markRecapSeen(currentSlot);
     notifyListeners();

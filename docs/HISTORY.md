@@ -6,6 +6,21 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-13 — "Felder übertragen" multi-select (user request)
+
+Transferring tiles no longer asks per tile. Pick the target realm, then
+tap own tiles to toggle them in/out of a batch; the map highlights the
+selection and the top banner confirms with "Abbrechen" / "Felder
+übertragen" (disabled while empty). Confirm applies one engine
+`TransferTile` per selected tile (each still locally undoable).
+
+**Client.** New `GameController` transfer-selection state
+(`transferSelection`, `transferTargetSlot`, start/toggle/cancel) rides on
+the existing tile-pick plumbing; `_endTilePick` now tears both down so
+undo / end-turn / cancel can't leave a half-armed selection. The map
+paints the batch blue; the per-tile `transferTileConfirm*` strings are
+gone, replaced by `transferTilePickHint` (plural) + `transferTileHintCount`.
+
 ## 2026-08-13 — Tax tuning follow-up (user request)
 
 Two tweaks to the §7.1 tax rate:

@@ -24,12 +24,8 @@ const Map<String, String> menusDe = {
   'menus.transferTilesSubtitle':
       'Einzelne Felder an ein fremdes Reich abgeben',
   'menus.transferTilePickHint':
-      'Eigenes Feld antippen, das übertragen werden soll',
-  'menus.transferTileConfirm': 'Feld an {realm} übertragen?',
-  'menus.transferTileConfirmBody':
-      'Das Feld ({x}, {y}) wechselt zu {realm}.',
-  'menus.transferTileConfirmBodyTown':
-      'Das Feld ({x}, {y}) samt Siedlung wechselt zu {realm}.',
+      'Eigene Felder antippen, um sie auszuwählen',
+  'menus.transferTileHintCount': '{hint} — {n} ausgewählt',
   'menus.transferTileOwnOnly':
       'Nur eigene Felder können übertragen werden',
   'menus.notMidWar': 'Nicht mitten im Krieg !',
@@ -245,12 +241,8 @@ const Map<String, String> menusEn = {
   'menus.transferTilesSubtitle':
       'Hand individual tiles to a foreign realm',
   'menus.transferTilePickHint':
-      'Tap one of your own tiles to transfer',
-  'menus.transferTileConfirm': 'Transfer tile to {realm}?',
-  'menus.transferTileConfirmBody':
-      'Tile ({x}, {y}) will belong to {realm}.',
-  'menus.transferTileConfirmBodyTown':
-      'Tile ({x}, {y}) with its settlement will belong to {realm}.',
+      'Tap your own tiles to select them',
+  'menus.transferTileHintCount': '{hint} — {n} selected',
   'menus.transferTileOwnOnly':
       'Only your own tiles can be transferred',
   'menus.notMidWar': 'Not in the midst of war!',

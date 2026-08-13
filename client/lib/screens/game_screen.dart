@@ -121,6 +121,12 @@ class _GameScreenState extends State<GameScreen> {
           // a war / handoff starts mid-selection. The listener's own
           // setState below repaints — no nested setState needed here.
           _syncDragMode(controller);
+          // The "Felder übertragen" multi-select paints its own selection
+          // on the map (the drag mode is none while its pick is armed).
+          if (controller.transferTargetSlot != null) {
+            game.dragSelection = controller.transferSelection;
+            game.dragSelectColor = 0xFF1E88E5; // blue
+          }
           // Online: the turn went to another player — hand back to the
           // waiting lobby (once; guarded against re-entry).
           if (controller.isOnline &&
@@ -204,6 +210,31 @@ class _GameScreenState extends State<GameScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Commits every selected tile to the transfer target, one engine action
+  /// per tile (the engine's `TransferTile` is single-tile). Stops on the
+  /// first rejection; the selection ends either way.
+  Future<void> _confirmTransferTiles(GameController controller) async {
+    final target = controller.transferTargetSlot;
+    final slot = controller.currentSlot;
+    if (target == null || target == slot) return;
+    final selection = controller.transferSelection.toList(growable: false);
+    if (selection.isEmpty) return;
+    final map = controller.state.map;
+    for (final idx in selection) {
+      final x = idx % map.width;
+      final y = idx ~/ map.width;
+      try {
+        await controller.applyUndoable(
+          gc.TransferTile(slot: slot, targetSlot: target, x: x, y: y),
+        );
+      } on gc.ActionException catch (e) {
+        _toast(e.message);
+        break;
+      }
+    }
+    controller.cancelTransferSelection();
   }
 
   /// Ends the turn with feedback on failure: online the submission can be
@@ -796,32 +827,73 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  /// Floating instruction card while a map tile pick is active.
+  /// Floating instruction card while a map tile pick is active. The
+  /// "Felder übertragen" multi-select additionally offers its two confirm
+  /// buttons (Abbrechen / Felder übertragen) on their own line.
   Widget _tilePickBanner(GameController controller) {
     final theme = Theme.of(context);
+    final transferring = controller.transferTargetSlot != null;
+    final hint = controller.tilePickHint ?? '';
+    final selected = controller.transferSelection.length;
+    final hintRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.touch_app, size: 20),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            transferring && selected > 0
+                ? tr('menus.transferTileHintCount', {
+                    'hint': hint,
+                    'n': selected,
+                  })
+                : hint,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      ],
+    );
     return Card(
       margin: const EdgeInsets.all(12),
       color: theme.colorScheme.surfaceContainerHigh,
       child: Padding(
-        padding: const EdgeInsets.only(left: 16),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.touch_app, size: 20),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                controller.tilePickHint ?? '',
-                style: theme.textTheme.bodyMedium,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: transferring
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  hintRow,
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: controller.cancelTransferSelection,
+                        child: Text(tr('cancel')),
+                      ),
+                      const SizedBox(width: 4),
+                      FilledButton(
+                        onPressed: selected == 0
+                            ? null
+                            : () => _confirmTransferTiles(controller),
+                        child: Text(tr('menus.transferTiles')),
+                      ),
+                    ],
+                  ),
+                ],
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  hintRow,
+                  if (controller.tilePickCancellable)
+                    TextButton(
+                      onPressed: controller.cancelTilePick,
+                      child: Text(tr('cancel')),
+                    ),
+                ],
               ),
-            ),
-            if (controller.tilePickCancellable)
-              TextButton(
-                onPressed: controller.cancelTilePick,
-                child: Text(tr('cancel')),
-              ),
-          ],
-        ),
       ),
     );
   }
