@@ -3,6 +3,7 @@ import '../state/dynasty.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
 import '../state/realm.dart';
+import 'population.dart' show cutGarrisonTroops;
 import 'troops.dart' show disbandJanissaries;
 
 /// "Reiche zusammenlegen" (§6.2): merge slot [sourceSlot] into
@@ -223,4 +224,43 @@ List<int> mergeableSlots(GameState state, int slot) {
           neighbors.contains(realm.slot))
         realm.slot,
   ];
+}
+
+/// "Felder übertragen" [DESIGNED, deviation]: voluntarily hand a single tile
+/// to a FOREIGN realm. Only the tile's ownership changes and — if the tile
+/// bears a town — the town moves to the target. NO treasury, NO harvest
+/// shares, NO troops or ships move. Garrison on the tile is cut at source.
+void transferTileVoluntary(GameState state, int targetSlot, int x, int y,
+    List<GameEvent> events) {
+  final map = state.map;
+  final sourceSlot = map.ownerAt(x, y);
+  final source = state.realm(sourceSlot);
+  final target = state.realm(targetSlot);
+  final building = map.buildingAt(x, y);
+
+  // Change ownership.
+  map.owner[map.index(x, y)] = targetSlot;
+  source.tileCount[building]--;
+  target.tileCount[building]++;
+
+  // Town transfer: if the tile has a town, move it to the target.
+  final i = source.towns.indexWhere((t) => t.x == x && t.y == y);
+  if (i >= 0) {
+    final town = source.towns.removeAt(i);
+    source.population -= town.population;
+    source.troopCapacity -= town.troopCapacity;
+    cutGarrisonTroops(source, town.garrison);
+    town.garrison = 0;
+    target.towns.add(town);
+    target.population += town.population;
+    target.troopCapacity += town.troopCapacity;
+  }
+
+  events.add(GameEvent(
+    year: state.year,
+    slot: targetSlot,
+    type: 'tileTransferred',
+    visibility: EventVisibility.public,
+    payload: {'x': x, 'y': y, 'building': building, 'from': sourceSlot},
+  ));
 }

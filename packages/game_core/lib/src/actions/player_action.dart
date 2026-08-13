@@ -36,6 +36,7 @@ sealed class PlayerAction {
         ResolveDecision.kind => ResolveDecision.fromJson(json),
         MergeRealms.kind => MergeRealms.fromJson(json),
         TransferRealm.kind => TransferRealm.fromJson(json),
+        TransferTile.kind => TransferTile.fromJson(json),
         RecruitTroops.kind => RecruitTroops.fromJson(json),
         HireSoeldner.kind => HireSoeldner.fromJson(json),
         ReinforceTroop.kind => ReinforceTroop.fromJson(json),
@@ -348,6 +349,34 @@ class TransferRealm extends PlayerAction {
   @override
   Map<String, dynamic> toJson() =>
       {'type': kind, 'slot': slot, 'targetSlot': targetSlot};
+}
+
+/// "Felder übertragen" [DESIGNED, deviation]: voluntarily hand a single
+/// map tile to a FOREIGN ruler. The tile's ownership changes; if it bears
+/// a town, the town moves too (with garrison cut at source). No treasury,
+/// harvest, troop or ship transfer. Costs nothing, no movement point.
+class TransferTile extends PlayerAction {
+  TransferTile({required super.slot, required this.targetSlot, required this.x, required this.y});
+
+  factory TransferTile.fromJson(Map<String, dynamic> json) => TransferTile(
+        slot: json['slot'] as int,
+        targetSlot: json['targetSlot'] as int,
+        x: json['x'] as int,
+        y: json['y'] as int,
+      );
+
+  static const kind = 'transferTile';
+
+  final int targetSlot;
+  final int x;
+  final int y;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': kind, 'slot': slot, 'targetSlot': targetSlot, 'x': x, 'y': y};
 }
 
 /// Buy a colony ship at an own Hafen: 700 T + 1 Zug, the ship

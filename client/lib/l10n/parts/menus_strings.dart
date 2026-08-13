@@ -29,6 +29,18 @@ const Map<String, String> menusDe = {
   'menus.transferConfirmBody':
       'Land, Städte, Truppen, Schiffe, Schatz und Dynastie gehen an den '
       'fremden Herrscher über. Das kann nicht rückgängig gemacht werden !',
+  'menus.transferTiles': 'Felder übertragen',
+  'menus.transferTilesSubtitle':
+      'Einzelne Felder an ein fremdes Reich abgeben',
+  'menus.transferTilePickHint':
+      'Eigenes Feld antippen, das übertragen werden soll',
+  'menus.transferTileConfirm': 'Feld an {realm} übertragen?',
+  'menus.transferTileConfirmBody':
+      'Das Feld ({x}, {y}) wechselt zu {realm}.',
+  'menus.transferTileConfirmBodyTown':
+      'Das Feld ({x}, {y}) samt Siedlung wechselt zu {realm}.',
+  'menus.transferTileOwnOnly':
+      'Nur eigene Felder können übertragen werden',
   'menus.notMidWar': 'Nicht mitten im Krieg !',
   'menus.yields': 'bringt {amount} T',
   'menus.investDetail':
@@ -245,6 +257,18 @@ const Map<String, String> menusEn = {
   'menus.transferConfirmBody':
       'Land, towns, troops, ships, treasury and dynasty pass to the foreign '
       'ruler. This cannot be undone!',
+  'menus.transferTiles': 'Transfer tiles',
+  'menus.transferTilesSubtitle':
+      'Hand individual tiles to a foreign realm',
+  'menus.transferTilePickHint':
+      'Tap one of your own tiles to transfer',
+  'menus.transferTileConfirm': 'Transfer tile to {realm}?',
+  'menus.transferTileConfirmBody':
+      'Tile ({x}, {y}) will belong to {realm}.',
+  'menus.transferTileConfirmBodyTown':
+      'Tile ({x}, {y}) with its settlement will belong to {realm}.',
+  'menus.transferTileOwnOnly':
+      'Only your own tiles can be transferred',
   'menus.notMidWar': 'Not in the midst of war!',
   'menus.yields': 'yields {amount} T',
   'menus.investDetail': 'Stake {amount} T — the returns arrive next turn',

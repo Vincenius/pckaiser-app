@@ -170,6 +170,18 @@ void showCommerceMenu(BuildContext context, GameController controller) {
                 _transferRealmSheet(context, controller);
               },
             ),
+          if (gc.transferableSlots(controller.state, slot).isNotEmpty)
+            ListTile(
+              title: Text(tr('menus.transferTiles')),
+              subtitle: (state.activeWar?.isParticipant(slot) ?? false)
+                  ? Text(tr('menus.notMidWar'))
+                  : Text(tr('menus.transferTilesSubtitle')),
+              enabled: !(state.activeWar?.isParticipant(slot) ?? false),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _transferTilesSheet(context, controller);
+              },
+            ),
         ],
       ),
     ),
@@ -272,6 +284,109 @@ void _transferRealmSheet(BuildContext context, GameController controller) {
                   context,
                   controller,
                   gc.TransferRealm(slot: slot, targetSlot: target),
+                );
+              },
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Target picker for "Felder übertragen": pick a foreign realm, then tap
+/// one of your own tiles on the map to transfer it. No realm-wide warning
+/// (that belongs to the full transfer).
+void _transferTilesSheet(BuildContext context, GameController controller) {
+  final state = controller.state;
+  final slot = controller.currentSlot;
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final target in gc.transferableSlots(state, slot))
+            ListTile(
+              title: Text(realmName(target)),
+              subtitle: _mergeAtWar(state, slot, target)
+                  ? Text(tr('menus.notMidWar'))
+                  : null,
+              enabled: !_mergeAtWar(state, slot, target),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                controller.startTilePick(
+                  hint: tr('menus.transferTilePickHint'),
+                  onPick: (x, y) async {
+                    // Re-read the slot at pick time: a war handoff may have
+                    // moved the turn between opening the sheet and the tap.
+                    final currentSlot = controller.currentSlot;
+                    final stateNow = controller.state;
+                    final map = stateNow.map;
+                    if (map.ownerAt(x, y) != currentSlot) {
+                      _toast(context, tr('menus.transferTileOwnOnly'));
+                      return false;
+                    }
+                    // Mirror the engine gates so the confirm dialog is only
+                    // shown for actually transferable tiles.
+                    final realmNow = stateNow.realm(currentSlot);
+                    if (x == realmNow.capitalX && y == realmNow.capitalY) {
+                      _toast(context, gc.coreMessage('cannotTransferCapital'));
+                      return false;
+                    }
+                    if (realmNow.troops.any((t) => t.x == x && t.y == y)) {
+                      _toast(context, gc.coreMessage('tileHasTroops'));
+                      return false;
+                    }
+                    if (realmNow.ships.any((s) => s.x == x && s.y == y)) {
+                      _toast(context, gc.coreMessage('tileHasShips'));
+                      return false;
+                    }
+                    final hasTown =
+                        realmNow.towns.any((t) => t.x == x && t.y == y);
+                    final sure = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text(
+                          tr('menus.transferTileConfirm',
+                              {'realm': realmName(target)}),
+                        ),
+                        content: Text(
+                          tr(
+                            hasTown
+                                ? 'menus.transferTileConfirmBodyTown'
+                                : 'menus.transferTileConfirmBody',
+                            {
+                              'x': x + 1,
+                              'y': y + 1,
+                              'realm': realmName(target),
+                            },
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: Text(tr('cancel')),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: Text(tr('menus.ok')),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (sure != true) return false;
+                    if (!context.mounted) return false;
+                    // Keep the pick alive when the engine rejects the tile
+                    // (target lost its ruler, became at war, …).
+                    try {
+                      await controller.applyUndoable(gc.TransferTile(
+                          slot: currentSlot, targetSlot: target, x: x, y: y));
+                    } on gc.ActionException catch (e) {
+                      if (context.mounted) _toast(context, e.message);
+                      return false;
+                    }
+                    return true;
+                  },
                 );
               },
             ),

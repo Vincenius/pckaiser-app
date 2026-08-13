@@ -77,6 +77,7 @@ List<GameEvent> applyActionInPlace(
     ResolveDecision() => _resolveDecision(state, realm, action, rng),
     MergeRealms() => _mergeRealms(state, realm, action, rng),
     TransferRealm() => _transferRealm(state, realm, action, rng),
+    TransferTile() => _transferTile(state, realm, action),
     RecruitTroops() => applyRecruitTroops(state, realm, action, rng),
     HireSoeldner() => applyHireSoeldner(state, realm, action),
     ReinforceTroop() => applyReinforceTroop(state, realm, action, rng),
@@ -628,6 +629,38 @@ List<GameEvent> _transferRealm(
       payload: {'sourceSlot': realm.slot},
     ));
   }
+  return events;
+}
+
+/// "Felder übertragen" [DESIGNED, deviation]: voluntarily hand a single
+/// map tile to a FOREIGN ruler. No cost, no movement point. The tile's
+/// ownership changes; if it bears a town, the town moves too. Treasury,
+/// harvests, troops and ships are NOT transferred.
+List<GameEvent> _transferTile(GameState state, Realm realm, TransferTile action) {
+  _requireOnMap(state.map, action.x, action.y);
+  if (state.map.ownerAt(action.x, action.y) != realm.slot) {
+    throw ActionException(coreMessage('tileNotYours'));
+  }
+  if (action.x == realm.capitalX && action.y == realm.capitalY) {
+    throw ActionException(coreMessage('cannotTransferCapital'));
+  }
+  if (realm.troops.any((t) => t.x == action.x && t.y == action.y)) {
+    throw ActionException(coreMessage('tileHasTroops'));
+  }
+  if (realm.ships.any((s) => s.x == action.x && s.y == action.y)) {
+    throw ActionException(coreMessage('tileHasShips'));
+  }
+  // Mid-war gate (identical to _transferRealm).
+  final war = state.activeWar;
+  if (war != null &&
+      (war.isParticipant(realm.slot) || war.isParticipant(action.targetSlot))) {
+    throw ActionException(coreMessage('notDuringWar'));
+  }
+  if (!transferableSlots(state, realm.slot).contains(action.targetSlot)) {
+    throw ActionException(coreMessage('cannotTransferTile'));
+  }
+  final events = <GameEvent>[];
+  transferTileVoluntary(state, action.targetSlot, action.x, action.y, events);
   return events;
 }
 

@@ -243,6 +243,13 @@ String describeEvent(gc.GameEvent e) {
       'realm': realm,
       'source': realmName(p['sourceSlot'] as int),
     }),
+    'tileTransferred' => tr('ev.tileTransferred', {
+      'realm': realm,
+      // 1-based like the confirm dialog and menus.tileAt.
+      'x': (p['x'] as int) + 1,
+      'y': (p['y'] as int) + 1,
+      'from': realmName(p['from'] as int),
+    }),
     'crowned' => tr('ev.crowned', {
       'realm': realm,
       'name': p['name'],
@@ -407,7 +414,7 @@ bool _isRelevant(gc.GameEvent e, int slot) {
   if (e.type == 'turnUpkeep') return false;
   if (e.slot != slot && _routineTypes.contains(e.type)) return false;
   if (e.type == 'battle' || e.type == 'peaceWish') return false;
-  if (e.type == 'tileConquered' || e.type == 'plunder') {
+  if (e.type == 'tileConquered' || e.type == 'plunder' || e.type == 'tileTransferred') {
     return e.slot == slot ||
         e.payload['from'] == slot ||
         e.payload['victim'] == slot;
@@ -702,6 +709,7 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'peasantRevolt' => (Icons.local_fire_department, Colors.deepOrange),
   'realmsMerged' => (Icons.merge_type, Colors.green),
   'realmTransferred' => (Icons.card_giftcard, Colors.green),
+  'tileTransferred' => (Icons.swap_horiz, Colors.green),
   'dynastyExtinct' ||
   'totalExtinction' => (Icons.heart_broken, Colors.blueGrey),
   'realmInherited' => (Icons.account_balance, Colors.amber),
