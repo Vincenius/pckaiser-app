@@ -223,6 +223,77 @@ void _transferRealmSheet(BuildContext context, GameController controller) {
   );
 }
 
+/// Target picker for transferring a single troop unit to another realm.
+void _transferTroopSheet(
+  BuildContext context,
+  GameController controller,
+  int unitIndex,
+) {
+  final state = controller.state;
+  final slot = controller.currentSlot;
+  final realm = controller.currentRealm;
+  final troop = unitIndex < realm.troops.length
+      ? realm.troops[unitIndex]
+      : null;
+  if (troop == null) return;
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          for (final target in state.realms)
+            if (target.slot != slot && !target.isVacant)
+              ListTile(
+                title: Text(realmName(target.slot)),
+                enabled: true,
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final sure = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text(
+                        tr('menus.transferTroopConfirm', {
+                          'realm': realmName(target.slot),
+                        }),
+                      ),
+                      content: Text(
+                        tr('menus.transferTroopConfirmBody', {
+                          'name': troop.name,
+                          'men': troop.men,
+                        }),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: Text(tr('cancel')),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: Text(tr('menus.ok')),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (sure != true || !context.mounted) return;
+                  await _tryAction(
+                    context,
+                    controller,
+                    gc.TransferTroop(
+                      slot: slot,
+                      unitIndex: unitIndex,
+                      targetSlot: target.slot,
+                    ),
+                    undoable: true,
+                  );
+                },
+              ),
+        ],
+      ),
+    ),
+  );
+}
+
 void _sellSheet(
   BuildContext context,
   GameController controller,
@@ -234,7 +305,8 @@ void _sellSheet(
     context,
     title: good == gc.MarketGood.grain ? tr('sellGrain') : tr('sellCattle'),
     max: stock,
-    detail: (amount) => tr('menus.yields', {'amount': (amount * price).round()}),
+    detail: (amount) =>
+        tr('menus.yields', {'amount': (amount * price).round()}),
     onSubmit: (amount) => _tryAction(
       context,
       controller,
@@ -777,6 +849,16 @@ void showTroopActions(
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.send),
+                title: Text(tr('menus.transferTroop')),
+                subtitle: Text(tr('menus.transferTroopSubtitle')),
+                enabled: !atWar,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _transferTroopSheet(screenContext, controller, index);
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.group_add),
                 title: Text(tr('menus.reinforceTroop')),
                 subtitle: Text(
@@ -868,9 +950,7 @@ void showTroopActions(
                       'men': realm.troops[other].men,
                     }),
                   ),
-                  subtitle: atWar
-                      ? Text(tr('menus.notMidWar'))
-                      : null,
+                  subtitle: atWar ? Text(tr('menus.notMidWar')) : null,
                   enabled: !atWar,
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -1082,62 +1162,67 @@ void _declareWarSheet(BuildContext context, GameController controller) {
               // `(_)`: the sheet's own context must NOT shadow [context] —
               // the confirmation below deliberately runs on the stable
               // screen context (see the comment there).
-              Builder(builder: (_) {
-                final blocked = gc.declareWarBlocker(
-                    controller.state, controller.currentRealm, realm.slot);
-                return ListTile(
-                  enabled: blocked == null,
-                  title: Text(realmName(realm.slot)),
-                  subtitle: Text(
-                    blocked ??
-                        state.person(realm.rulerId)?.name ??
-                        tr('menus.unknown'),
-                  ),
-                  onTap: () async {
-                    // Confirm on the stable screen [context]: the sheet's own
-                    // context is unmounted once its exit animation ends, so a
-                    // mounted-check on it after the dialog would silently
-                    // swallow the war declaration.
-                    Navigator.pop(sheetContext);
-                    final sure = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: Text(
-                          tr('menus.declareWarOn', {
-                            'realm': realmName(realm.slot),
-                          }),
+              Builder(
+                builder: (_) {
+                  final blocked = gc.declareWarBlocker(
+                    controller.state,
+                    controller.currentRealm,
+                    realm.slot,
+                  );
+                  return ListTile(
+                    enabled: blocked == null,
+                    title: Text(realmName(realm.slot)),
+                    subtitle: Text(
+                      blocked ??
+                          state.person(realm.rulerId)?.name ??
+                          tr('menus.unknown'),
+                    ),
+                    onTap: () async {
+                      // Confirm on the stable screen [context]: the sheet's own
+                      // context is unmounted once its exit animation ends, so a
+                      // mounted-check on it after the dialog would silently
+                      // swallow the war declaration.
+                      Navigator.pop(sheetContext);
+                      final sure = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text(
+                            tr('menus.declareWarOn', {
+                              'realm': realmName(realm.slot),
+                            }),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: Text(tr('cancel')),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: Text(tr('declareWar')),
+                            ),
+                          ],
                         ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: Text(tr('cancel')),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: Text(tr('declareWar')),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (sure == true && context.mounted) {
-                      await _tryAction(
-                        context,
-                        controller,
-                        gc.DeclareWar(slot: slot, targetSlot: realm.slot),
                       );
-                      // A human-vs-human war opens the preparation phase:
-                      // the attacker answers their own warPlan right away
-                      // (live vs autopilot + stance) instead of waiting for
-                      // the next handoff.
-                      if (context.mounted &&
-                          controller.state.activeWar?.phase ==
-                              gc.WarPhase.preparation) {
-                        await promptDecisionsFor(context, controller, slot);
+                      if (sure == true && context.mounted) {
+                        await _tryAction(
+                          context,
+                          controller,
+                          gc.DeclareWar(slot: slot, targetSlot: realm.slot),
+                        );
+                        // A human-vs-human war opens the preparation phase:
+                        // the attacker answers their own warPlan right away
+                        // (live vs autopilot + stance) instead of waiting for
+                        // the next handoff.
+                        if (context.mounted &&
+                            controller.state.activeWar?.phase ==
+                                gc.WarPhase.preparation) {
+                          await promptDecisionsFor(context, controller, slot);
+                        }
                       }
-                    }
-                  },
-                );
-              }),
+                    },
+                  );
+                },
+              ),
         ],
       ),
     ),
@@ -1182,9 +1267,7 @@ void showEspionageMenu(BuildContext context, GameController controller) {
           ),
           ListTile(
             title: Text(tr('menus.assassinate')),
-            subtitle: Text(
-              tr('menus.costPerAgent', {'cost': gc.assassinCost}),
-            ),
+            subtitle: Text(tr('menus.costPerAgent', {'cost': gc.assassinCost})),
             enabled: realm.treasury >= gc.assassinCost,
             onTap: () {
               Navigator.pop(sheetContext);
@@ -1309,7 +1392,9 @@ void _assassinSheet(BuildContext context, GameController controller) {
       final sure = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(tr('menus.assassinConfirm', {'realm': realmName(target)})),
+          title: Text(
+            tr('menus.assassinConfirm', {'realm': realmName(target)}),
+          ),
           // The odds are deliberately poor (see the espionage ladder in
           // game_core) — say so before the taler are gone.
           content: Text(tr('menus.assassinRisk')),
@@ -1554,24 +1639,25 @@ void showMiscMenu(BuildContext context, GameController controller) {
   );
 }
 
-/// "Sitz verlegen" (§6.2): pick one of the own Stadt/Burg/Palast tiles.
-/// Allowed any time — 5000 T voluntarily, free when the seat is lost.
-void _showRelocateCapital(BuildContext context, GameController controller) {
+/// "Sitz verlegen" (§6.2): pick one of the own Stadt/Burg/Palast tiles
+/// directly on the map (highlighted). Allowed any time — 5000 T
+/// voluntarily, free when the seat is lost.
+Future<void> _showRelocateCapital(
+  BuildContext context,
+  GameController controller,
+) async {
   final slot = controller.currentSlot;
   final state = controller.state;
   final map = state.map;
   final realm = state.realm(slot);
   final lost = map.ownerAt(realm.capitalX, realm.capitalY) != slot;
-  final costLabel = lost
-      ? tr('menus.free')
-      : '${gc.relocateCapitalCost} T';
-  final candidates = <(int, int, int)>[];
+  final candidates = <int>{};
   for (var y = 0; y < map.height; y++) {
     for (var x = 0; x < map.width; x++) {
       final building = map.buildingAt(x, y);
       // The engine's seat rule (§6.2): Stadt, Burg or Palast.
       if (map.ownerAt(x, y) == slot && gc.Building.isSeat(building)) {
-        candidates.add((x, y, building));
+        candidates.add(map.index(x, y));
       }
     }
   }
@@ -1579,34 +1665,22 @@ void _showRelocateCapital(BuildContext context, GameController controller) {
     _toast(context, tr('menus.needSeatBuilding'));
     return;
   }
-  showModalBottomSheet<void>(
-    context: context,
-    // The error toast must outlive the sheet: pop with the SHEET context,
-    // act (and toast) through the stable screen context — an engine
-    // rejection (e.g. treasury below 5000 T online) arrives after the
-    // sheet is unmounted and would otherwise vanish silently.
-    builder: (sheetContext) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        children: [
-          for (final (x, y, building) in candidates)
-            ListTile(
-              leading: const Icon(Icons.location_city),
-              title: Text('${buildingName(building)} (${x + 1}, ${y + 1})'),
-              trailing: Text(costLabel),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _tryAction(
-                  context,
-                  controller,
-                  gc.RelocateCapital(slot: slot, x: x, y: y),
-                  undoable: true,
-                );
-              },
-            ),
-        ],
-      ),
-    ),
+  // Map pick: highlight the eligible tiles and let the player tap one.
+  final pick = await controller.pickSeatOnMap(
+    hint: lost
+        ? tr('menus.relocateSeatMapHintLost')
+        : tr('menus.relocateSeatMapHint', {
+            'cost': gc.relocateCapitalCost,
+          }),
+    candidates: candidates,
+    cancellable: true,
+  );
+  if (pick == null || !context.mounted) return;
+  _tryAction(
+    context,
+    controller,
+    gc.RelocateCapital(slot: slot, x: pick.$1, y: pick.$2),
+    undoable: true,
   );
 }
 
@@ -2314,7 +2388,8 @@ void _targetThenAmount(
             if (realm.slot != controller.currentSlot && !realm.isVacant)
               ListTile(
                 title: Text(realmName(realm.slot)),
-                subtitle: disabledSlots.contains(realm.slot) && disabledNote != null
+                subtitle:
+                    disabledSlots.contains(realm.slot) && disabledNote != null
                     ? Text(disabledNote)
                     : null,
                 enabled: !disabledSlots.contains(realm.slot),

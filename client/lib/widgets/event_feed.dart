@@ -171,6 +171,17 @@ String describeEvent(gc.GameEvent e) {
       'realm': realm,
       'men': p['men'],
     }),
+    'troopsTransferred' => tr('ev.troopsTransferred', {
+      'realm': realm,
+      'target': realmName(p['targetSlot'] as int),
+      'men': p['men'],
+    }),
+    'troopsReceived' => tr('ev.troopsReceived', {
+      'realm': realm,
+      'source': realmName(p['sourceSlot'] as int),
+      'name': p['name'],
+      'men': p['men'],
+    }),
     'warDeclared' => tr('ev.warDeclared', {
       'realm': realm,
       'target': realmName(p['targetSlot'] as int),
@@ -189,10 +200,10 @@ String describeEvent(gc.GameEvent e) {
       'realm': realm,
       'loser': realmName(p['loserSlot'] as int),
     }),
-    'warWon' => tr(p['conquered'] == true ? 'ev.warWonConquered' : 'ev.warWon', {
-      'realm': realm,
-      'loser': realmName(p['loserSlot'] as int),
-    }),
+    'warWon' => tr(
+      p['conquered'] == true ? 'ev.warWonConquered' : 'ev.warWon',
+      {'realm': realm, 'loser': realmName(p['loserSlot'] as int)},
+    ),
     'warDraw' => tr('ev.warDraw'),
     'peaceAgreed' => tr('ev.peaceAgreed'),
     'winterEndsWar' => tr('ev.winterEndsWar'),
@@ -280,12 +291,13 @@ String describeEvent(gc.GameEvent e) {
           : 'ev.missionFailed',
       {'realm': realm, 'target': realmName(p['targetSlot'] as int)},
     ),
-    'religionChanged' => (p['popularityLost'] as int? ?? 0) > 0
-        ? tr('ev.religionChangedPopularity', {
-            'realm': realm,
-            'popularityLost': p['popularityLost'],
-          })
-        : tr('ev.religionChanged', {'realm': realm}),
+    'religionChanged' =>
+      (p['popularityLost'] as int? ?? 0) > 0
+          ? tr('ev.religionChangedPopularity', {
+              'realm': realm,
+              'popularityLost': p['popularityLost'],
+            })
+          : tr('ev.religionChanged', {'realm': realm}),
     'dynastyConverted' => tr('ev.dynastyConverted', {'realm': realm}),
     'dynastyExtinct' => tr('ev.dynastyExtinct', {'realm': realm}),
     'realmInherited' => tr('ev.realmInherited', {
@@ -707,7 +719,8 @@ bool _isHeadline(gc.GameEvent e, int slot) => switch (e.type) {
   'capitalLost' => (Icons.location_off, Colors.red),
   'townFounded' || 'townPromoted' => (Icons.home_work, Colors.brown),
   'townDied' => (Icons.home_work, Colors.blueGrey),
-  'troopsRecruited' || 'soeldnerHired' => (Icons.shield, null),
+  'troopsRecruited' || 'soeldnerHired' || 'troopsTransferred' || 'troopsReceived' =>
+      (Icons.shield, null),
   'goodsSold' ||
   'moneySent' ||
   'shipsReturned' ||

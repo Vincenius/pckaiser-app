@@ -114,6 +114,7 @@ class _GameScreenState extends State<GameScreen> {
         _syncDragMode(controller);
         controller.addListener(() {
           game.updateState(controller.visibleState);
+          game.highlightTiles = controller.seatPickCandidates;
           _syncWarOverlay(controller, game);
           // Keep the map drag-select in step with the phase: auto-arm annex
           // mode when the winner's settlement opens, and drop field mode if
@@ -157,6 +158,10 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _onTileTap(GameController controller, int x, int y) async {
     if (controller.handoffPending || controller.gameOver) return;
+    // An active tile pick (seat relocation, troop stationing) consumes the
+    // tap FIRST — even over field mode, which would otherwise exit the
+    // mode and swallow the pick's tap.
+    if (await controller.resolveTilePick(x, y)) return;
     // Field-cultivation mode: any tap leaves the selection mode — the box
     // is sized by dragging, confirmed via the sheet that opens on release.
     // (Annex mode taps flow through to the war handler below.)
@@ -164,8 +169,6 @@ class _GameScreenState extends State<GameScreen> {
       _exitFieldMode(controller);
       return;
     }
-    // An active tile pick (e.g. stationing a new troop) consumes the tap.
-    if (await controller.resolveTilePick(x, y)) return;
     final war = controller.state.activeWar;
     // War ROUNDS / settlement: taps drive the duel (select army, march…).
     if (war != null && war.phase != gc.WarPhase.preparation) {
@@ -812,10 +815,11 @@ class _GameScreenState extends State<GameScreen> {
                 style: theme.textTheme.bodyMedium,
               ),
             ),
-            TextButton(
-              onPressed: controller.cancelTilePick,
-              child: Text(tr('cancel')),
-            ),
+            if (controller.tilePickCancellable)
+              TextButton(
+                onPressed: controller.cancelTilePick,
+                child: Text(tr('cancel')),
+              ),
           ],
         ),
       ),
@@ -1002,7 +1006,9 @@ class _GameScreenState extends State<GameScreen> {
               ),
             const SizedBox(width: 4),
             FilledButton.icon(
-              onPressed: controller.state.activeWar == null
+              onPressed:
+                  controller.state.activeWar == null &&
+                      !controller.tilePickActive
                   ? () => _endTurn(controller)
                   : null,
               icon: const Icon(Icons.skip_next),
@@ -1024,7 +1030,7 @@ class _GameScreenState extends State<GameScreen> {
   /// realm's turn stands paused on the war.
   Widget _actionBar(GameController controller) {
     final theme = Theme.of(context);
-    final locked = controller.warPauseActive;
+    final locked = controller.warPauseActive || controller.tilePickActive;
     Widget item(
       IconData icon,
       String label,

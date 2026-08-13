@@ -59,6 +59,11 @@ const Map<String, String> menusDe = {
   'menus.moveTroop': 'Truppe verlegen',
   'menus.moveTroopSubtitle': 'Kostenlos — Zielfeld auf der Karte antippen',
   'menus.moveTroopHint': 'Zielfeld für „{name}" antippen',
+  'menus.transferTroop': 'Truppe übertragen',
+  'menus.transferTroopSubtitle': 'An ein anderes Reich übergeben',
+  'menus.transferTroopConfirm': 'Truppe an {realm} übertragen?',
+  'menus.transferTroopConfirmBody':
+      '„{name}" ({men} Mann) wird an {realm} übergeben.',
   'menus.reinforceTroop': 'Truppe verstärken',
   'menus.drillTroop': 'Truppe ausbilden',
   'menus.soeldnerNoDrill': 'Söldner können nicht ausgebildet werden',
@@ -127,6 +132,10 @@ const Map<String, String> menusDe = {
       'Sitz verloren — neue Stadt, Burg oder Palast wählen (gratis)',
   'menus.relocateSeatSubtitle':
       '{cost} T — eigene Stadt, Burg oder Palast wählen',
+  'menus.relocateSeatMapHint':
+      'Tippe eine Stadt, Burg oder einen Palast auf der Karte ({cost} T)',
+  'menus.relocateSeatMapHintLost':
+      'Tippe eine Stadt, Burg oder einen Palast auf der Karte (gratis)',
   'menus.religionCatholic': 'katholisch',
   'menus.religionProtestant': 'evangelisch',
   'menus.religionMuslim': 'moslemisch',
@@ -234,8 +243,7 @@ const Map<String, String> menusEn = {
       'You must station your troops on your own territory!',
   'menus.recruitsName': 'Recruits',
   'menus.troopNameLabel': 'Troop name',
-  'menus.levyExhausted':
-      'Your people can spare no more recruits this year!',
+  'menus.levyExhausted': 'Your people can spare no more recruits this year!',
   'menus.notEnoughTaler': 'You do not have enough Taler!',
   'menus.recruitCostDetail': 'costs {cost} T — strength {strength}',
   'menus.troopListTitle': 'Troop roster — army: {n} men',
@@ -251,6 +259,11 @@ const Map<String, String> menusEn = {
   'menus.moveTroop': 'Relocate troops',
   'menus.moveTroopSubtitle': 'Free — tap the destination tile on the map',
   'menus.moveTroopHint': 'Tap the destination tile for "{name}"',
+  'menus.transferTroop': 'Transfer troop',
+  'menus.transferTroopSubtitle': 'Hand over to another realm',
+  'menus.transferTroopConfirm': 'Transfer troop to {realm}?',
+  'menus.transferTroopConfirmBody':
+      '"{name}" ({men} men) will be handed over to {realm}.',
   'menus.reinforceTroop': 'Reinforce troops',
   'menus.drillTroop': 'Drill troops',
   'menus.soeldnerNoDrill': 'Söldner cannot be drilled',
@@ -316,6 +329,10 @@ const Map<String, String> menusEn = {
       'Seat lost — choose a new town, castle or palace (free)',
   'menus.relocateSeatSubtitle':
       '{cost} T — choose one of your towns, castles or palaces',
+  'menus.relocateSeatMapHint':
+      'Tap a town, castle or palace on the map ({cost} T)',
+  'menus.relocateSeatMapHintLost':
+      'Tap a town, castle or palace on the map (free)',
   'menus.religionCatholic': 'Catholic',
   'menus.religionProtestant': 'Protestant',
   'menus.religionMuslim': 'Muslim',
@@ -369,7 +386,8 @@ const Map<String, String> menusEn = {
   'menus.dynastiesTitle': 'Dynasties — realms by size',
   'menus.youTag': ' (you)',
   'menus.realmSizeLine': '{tiles} tiles — {towns} settlements',
-  'menus.ownRealmInfo': '{title} — {pop} inhabitants, {treasury} T, army {army}',
+  'menus.ownRealmInfo':
+      '{title} — {pop} inhabitants, {treasury} T, army {army}',
   'menus.noIntel': '{title} — no intelligence (send out spies!)',
   'menus.intelNoTroops': 'no troops',
   'menus.intelTroop': '{n} troop (visible on the map)',

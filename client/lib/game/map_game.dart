@@ -82,6 +82,10 @@ class MapGame extends FlameGame with ScaleDetector {
   /// screen (or controller), rendered here as a translucent highlight.
   Set<int> dragSelection = <int>{};
 
+  /// Tile indices highlighted with a pulsing gold ring — set by the screen
+  /// for map-based picks like seat relocation.
+  Set<int> highlightTiles = <int>{};
+
   /// Base ARGB color of the selected-tile fill (green for fields, amber
   /// for annexation). The dashed box frame is always white-on-dark so it
   /// stays visible on same-hued terrain.
@@ -678,7 +682,10 @@ class _MapLayer extends PositionComponent with TapCallbacks {
   /// Pulsing ring around the selected war unit.
   void _renderSelection(Canvas canvas) {
     final selected = game.selectedTile;
-    if (selected == null) return;
+    if (selected == null) {
+      _renderHighlightedTiles(canvas);
+      return;
+    }
     final (x, y) = selected;
     final pulse = 0.5 + 0.5 * math.sin(_time * 5);
     final rect = RRect.fromRectAndRadius(
@@ -697,6 +704,33 @@ class _MapLayer extends PositionComponent with TapCallbacks {
         ..strokeWidth = 3
         ..color = const Color(0xFFFFEB3B).withValues(alpha: 0.6 + 0.4 * pulse),
     );
+    _renderHighlightedTiles(canvas);
+  }
+
+  /// Pulsing gold ring on every tile in [MapGame.highlightTiles] — used
+  /// for map-based picks like seat relocation.
+  void _renderHighlightedTiles(Canvas canvas) {
+    if (game.highlightTiles.isEmpty) return;
+    final width = game._state.map.width;
+    final pulse = 0.5 + 0.5 * math.sin(_time * 4);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = const Color(0xFFFFD700).withValues(alpha: 0.5 + 0.5 * pulse);
+    for (final idx in game.highlightTiles) {
+      final x = idx % width;
+      final y = idx ~/ width;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          x * tileSize,
+          y * tileSize,
+          tileSize,
+          tileSize,
+        ).inflate(2 + pulse * 2),
+        const Radius.circular(6),
+      );
+      canvas.drawRRect(rect, paint);
+    }
   }
 
   /// True after a long-press anchored a selection box: the tap-up of that

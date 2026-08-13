@@ -44,6 +44,12 @@ const Map<String, String> miscDe = {
   'dec.convertOrDieTitle': 'Bekehrung oder Tod',
   'dec.convertOrDieBody': 'Sterben oder sich bekehren — bekehrst du dich?',
   'dec.relocateSeatTitle': 'Dein Sitz ist verloren — wähle einen neuen',
+  'dec.relocateSeatMapHint':
+      'Sitz verloren — tippe auf der Karte eine Stadt, Burg oder einen Palast',
+  'dec.troopTransferTitle': 'Truppen erhalten',
+  'dec.troopTransferBody':
+      '{source} hat dir {men} Soldaten ({name}) geschickt. Wähle einen Standort.',
+  'dec.troopTransferTile': 'Standort ({x}, {y})',
   'dec.today': 'Heute',
   'dec.tomorrow': 'Morgen',
   'dec.weekdayMon': 'Mo',
@@ -64,10 +70,8 @@ const Map<String, String> miscDe = {
   'dec.warStartNow': 'Sofort (diese Stunde)',
   // Was der Gegner angeboten hat (2026-08-09): ohne diesen Hinweis mussten
   // zwei Spieler blind raten, welche Stunde sie noch hinzunehmen sollen.
-  'dec.warStartEnemyPending':
-      'Dein Gegner hat noch nicht gewählt.',
-  'dec.warStartEnemyTimes':
-      'Die mit ✓ markierten Zeiten passen deinem Gegner.',
+  'dec.warStartEnemyPending': 'Dein Gegner hat noch nicht gewählt.',
+  'dec.warStartEnemyTimes': 'Die mit ✓ markierten Zeiten passen deinem Gegner.',
   'dec.warStartEnemyNoTimes':
       'Dein Gegner hat keine Zeit vorgeschlagen — dann gilt die '
       'Vorbereitungsfrist.',
@@ -135,6 +139,12 @@ const Map<String, String> miscEn = {
   'dec.convertOrDieTitle': 'Conversion or death',
   'dec.convertOrDieBody': 'Die or convert — do you convert?',
   'dec.relocateSeatTitle': 'Your seat is lost — choose a new one',
+  'dec.relocateSeatMapHint':
+      'Seat lost — tap a city, castle or palace on the map',
+  'dec.troopTransferTitle': 'Troops received',
+  'dec.troopTransferBody':
+      '{source} sent you {men} soldiers ({name}). Choose a position.',
+  'dec.troopTransferTile': 'Position ({x}, {y})',
   'dec.today': 'Today',
   'dec.tomorrow': 'Tomorrow',
   'dec.weekdayMon': 'Mon',

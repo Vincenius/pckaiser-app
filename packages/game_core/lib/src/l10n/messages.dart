@@ -51,8 +51,7 @@ const Map<String, Map<String, String>> _messages = {
     'alreadyInvestedThisTurn': 'Du hast diese Runde schon investiert !',
     'invalidTargetRealm': 'Ungültiges Zielreich !',
     'alreadyYourSeat': 'Das ist bereits dein Sitz !',
-    'seatOnOwnTerritory':
-        'Der neue Sitz muss auf deinem Territorium liegen !',
+    'seatOnOwnTerritory': 'Der neue Sitz muss auf deinem Territorium liegen !',
     'seatNeedsSeatBuilding':
         'Der neue Sitz braucht eine Stadt, Burg oder einen Palast !',
     'onlyKaiserOrSultan': 'Nur der Kaiser oder Sultan darf das !',
@@ -73,6 +72,7 @@ const Map<String, Map<String, String>> _messages = {
     'reformationNotYet': 'Die Reformation hat noch nicht stattgefunden !',
     'islamNotYet': 'Der Islam ist noch nicht verfügbar !',
     'noSuchTroop': 'Diese Truppe gibt es nicht !',
+    'troopCannotTransfer': 'Diese Truppe kann nicht übertragen werden !',
     'noRecruitsThisYear':
         'Deine Bevölkerung gibt dieses Jahr keine weiteren Rekruten her !',
     'fewRecruitsThisYear':
@@ -87,15 +87,13 @@ const Map<String, Map<String, String>> _messages = {
     'troopNeedsName': 'Die Truppe braucht einen Namen !',
     'unknownTroopStance': 'Unbekannte Truppenhaltung !',
     'chooseTwoDifferentTroops': 'Wähle zwei verschiedene Truppen !',
-    'onlySameKindMerge':
-        'Nur gleichartige Truppen können vereinigt werden !',
+    'onlySameKindMerge': 'Nur gleichartige Truppen können vereinigt werden !',
     'warTooEarly': 'Kriege sind erst ab dem Jahr {year} erlaubt !',
     'warAlreadyThisYear': 'Du hast dieses Jahr schon einmal Krieg geführt !',
     'notEnoughTroops': 'Du hast nicht genug Truppen !',
     'anotherWarActive': 'Es tobt bereits ein anderer Krieg !',
     'invalidWarTarget': 'Ungültiges Kriegsziel !',
-    'realmAlreadyYourRulers':
-        'Dieses Reich gehört bereits deinem Herrscher !',
+    'realmAlreadyYourRulers': 'Dieses Reich gehört bereits deinem Herrscher !',
     'noSharedBorder': 'Du hast keine gemeinsame Grenze !',
     'truceActive': 'Waffenruhe bis zum Jahr {year} !',
     'notAtWar': 'Du führst keinen Krieg !',
@@ -119,8 +117,7 @@ const Map<String, Map<String, String>> _messages = {
     'plunderOwnLand': 'Wollen sie wirklich ihr eigenes Land plündern !',
     'notYourWarEnemy': 'Das gehört nicht deinem Kriegsgegner !',
     'noTroopsOnTile': 'Keine Truppen auf diesem Feld !',
-    'armyAlreadyPlundered':
-        'Diese Armee hat diese Runde schon geplündert !',
+    'armyAlreadyPlundered': 'Diese Armee hat diese Runde schon geplündert !',
     'onlyVictorClaims': 'Nur der Sieger stellt Ansprüche !',
     'notYourEnemy': 'Das gehört nicht deinem Feind !',
     'claimTooMuch': 'So viel steht dir nicht zu !',
@@ -131,8 +128,7 @@ const Map<String, Map<String, String>> _messages = {
     'assassinsAlreadySent':
         'Deine Attentäter sind dieses Jahr schon dorthin unterwegs !',
     'invalidTarget': 'Ungültiges Ziel !',
-    'guardsNotArmy':
-        'Das ist keine Spionageabwehr, sondern eine Armee !!!',
+    'guardsNotArmy': 'Das ist keine Spionageabwehr, sondern eine Armee !!!',
     'notSoManyGuards': 'So viele Wachen hast du nicht !',
     'troopTooWeakToPlunder': 'Diese Truppe ist zum Plündern zu schwach !',
   },
@@ -170,8 +166,7 @@ const Map<String, Map<String, String>> _messages = {
     'invalidTargetRealm': 'Invalid target realm!',
     'alreadyYourSeat': 'That is already your seat!',
     'seatOnOwnTerritory': 'The new seat must lie on your territory!',
-    'seatNeedsSeatBuilding':
-        'The new seat needs a city, castle or palace!',
+    'seatNeedsSeatBuilding': 'The new seat needs a city, castle or palace!',
     'onlyKaiserOrSultan': 'Only the Kaiser or the Sultan may do that!',
     'stateTreasuryEmpty': 'The state treasury is empty!',
     'alreadyProposedThisTurn':
@@ -182,16 +177,15 @@ const Map<String, Map<String, String>> _messages = {
     'noSuitablePartner': 'There is no suitable partner at this time!',
     'decisionNotFound': 'Decision not found!',
     'decisionNotYours': 'This decision is not yours to make!',
-    'notEnoughTalerBribe':
-        'You do not have enough Taler for this bribe!',
+    'notEnoughTalerBribe': 'You do not have enough Taler for this bribe!',
     'voteForCandidate': 'Vote for one of the candidates!',
     'unknownReligion': 'Unknown religion!',
     'alreadyYourReligion': 'That is already your religion!',
     'reformationNotYet': 'The Reformation has not yet taken place!',
     'islamNotYet': 'Islam is not yet available!',
     'noSuchTroop': 'There is no such troop!',
-    'noRecruitsThisYear':
-        'Your people can spare no more recruits this year!',
+    'troopCannotTransfer': 'This troop cannot be transferred!',
+    'noRecruitsThisYear': 'Your people can spare no more recruits this year!',
     'fewRecruitsThisYear':
         'Your people can spare only {left} more recruits this year!',
     'unknownTroopClass': 'Unknown troop class!',
@@ -210,8 +204,7 @@ const Map<String, Map<String, String>> _messages = {
     'notEnoughTroops': 'You do not have enough troops!',
     'anotherWarActive': 'Another war is already raging!',
     'invalidWarTarget': 'Invalid war target!',
-    'realmAlreadyYourRulers':
-        'That realm already belongs to your ruler!',
+    'realmAlreadyYourRulers': 'That realm already belongs to your ruler!',
     'noSharedBorder': 'You share no common border!',
     'truceActive': 'Truce until the year {year}!',
     'notAtWar': 'You are not waging a war!',
@@ -234,8 +227,7 @@ const Map<String, Map<String, String>> _messages = {
     'plunderOwnLand': 'Do you really wish to plunder your own land!',
     'notYourWarEnemy': 'That does not belong to your war enemy!',
     'noTroopsOnTile': 'No troops on this tile!',
-    'armyAlreadyPlundered':
-        'This army has already plundered this round!',
+    'armyAlreadyPlundered': 'This army has already plundered this round!',
     'onlyVictorClaims': 'Only the victor makes claims!',
     'notYourEnemy': 'That does not belong to your enemy!',
     'claimTooMuch': 'You are not entitled to that much!',
@@ -245,8 +237,7 @@ const Map<String, Map<String, String>> _messages = {
     'assassinsAlreadySent':
         'Your assassins are already on their way there this year!',
     'invalidTarget': 'Invalid target!',
-    'guardsNotArmy':
-        'That is not counter-espionage, that is an army!!!',
+    'guardsNotArmy': 'That is not counter-espionage, that is an army!!!',
     'notSoManyGuards': 'You do not have that many guards!',
     'troopTooWeakToPlunder': 'This troop is too weak to plunder!',
   },

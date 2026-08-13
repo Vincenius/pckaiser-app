@@ -101,6 +101,50 @@ Future<void> _promptDecision(
   final p = decision.payload;
 
   switch (decision.type) {
+    case 'troopTransfer':
+      final troop = gc.Troop.fromJson(
+        (p['sourceTroop'] as Map).cast<String, dynamic>(),
+      );
+      final map = state.map;
+      final candidates = <(int, int)>[];
+      for (var y = 0; y < map.height; y++) {
+        for (var x = 0; x < map.width; x++) {
+          if (map.ownerAt(x, y) == decision.decidingSlot) {
+            candidates.add((x, y));
+          }
+        }
+      }
+      final pick = await showDialog<(int, int)>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => SimpleDialog(
+          title: Text(tr('dec.troopTransferTitle')),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                tr('dec.troopTransferBody', {
+                  'source': realmName(p['sourceSlot'] as int),
+                  'name': troop.name,
+                  'men': troop.men,
+                }),
+              ),
+            ),
+            for (final (x, y) in candidates.take(100))
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, (x, y)),
+                child: Text(
+                  tr('dec.troopTransferTile', {'x': x + 1, 'y': y + 1}),
+                ),
+              ),
+          ],
+        ),
+      );
+      await controller.resolveDecision(decision.id, decision.decidingSlot, {
+        if (pick != null) 'x': pick.$1,
+        if (pick != null) 'y': pick.$2,
+      });
+
     case 'marriageConsent':
       final proposer = state.persons[p['proposerId'] as int];
       final target = state.persons[p['targetId'] as int];
@@ -184,7 +228,9 @@ Future<void> _promptDecision(
       );
       final live = await _yesNo(
         context,
-        attackerRole ? tr('dec.warDeclaredTitle') : tr('dec.warDeclarationTitle'),
+        attackerRole
+            ? tr('dec.warDeclaredTitle')
+            : tr('dec.warDeclarationTitle'),
         tr('dec.warPlanBody', {
           'declaration': attackerRole
               ? tr('dec.warPlanYouDeclared', {'realm': opponent})
@@ -313,10 +359,7 @@ Future<void> _promptDecision(
       final captured = state.persons[p['capturedRulerId'] as int];
       // Full-sentence keys per option: the verb phrase sits at the end in
       // German but mid-sentence in English, so a shared template won't do.
-      final params = {
-        'name': captured?.name ?? '?',
-        'option': p['option'],
-      };
+      final params = {'name': captured?.name ?? '?', 'option': p['option']};
       final question = switch (p['option']) {
         'convertOrDie' => tr('dec.coerceConvertOrDie', params),
         'forcedMarriage' => tr('dec.coerceForcedMarriage', params),
@@ -345,6 +388,7 @@ Future<void> _promptDecision(
       // seatless is not an option.
       final map = state.map;
       final candidates = <(int, int, int)>[];
+      final candidateIndices = <int>{};
       for (var y = 0; y < map.height; y++) {
         for (var x = 0; x < map.width; x++) {
           final building = map.buildingAt(x, y);
@@ -352,6 +396,7 @@ Future<void> _promptDecision(
           if (map.ownerAt(x, y) == decision.decidingSlot &&
               gc.Building.isSeat(building)) {
             candidates.add((x, y, building));
+            candidateIndices.add(map.index(x, y));
           }
         }
       }
@@ -364,19 +409,11 @@ Future<void> _promptDecision(
         );
         return;
       }
-      final pick = await showDialog<(int, int)>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => SimpleDialog(
-          title: Text(tr('dec.relocateSeatTitle')),
-          children: [
-            for (final (x, y, building) in candidates)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, (x, y)),
-                child: Text('${buildingName(building)} (${x + 1}, ${y + 1})'),
-              ),
-          ],
-        ),
+      // Map-based pick: highlight the eligible tiles, let the player tap
+      // one on the map instead of selecting from a coordinate list.
+      final pick = await controller.pickSeatOnMap(
+        hint: tr('dec.relocateSeatMapHint'),
+        candidates: candidateIndices,
       );
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
         if (pick != null) 'x': pick.$1,

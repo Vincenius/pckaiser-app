@@ -54,6 +54,8 @@ const Map<String, String> eventsDe = {
   'ev.titlePromoted': '{realm}: neuer Titel {title}',
   'ev.troopsRecruited': '{realm} bildet {men} Rekruten aus',
   'ev.soeldnerHired': '{realm} wirbt {men} Söldner an',
+  'ev.troopsTransferred': '{realm} überträgt {men} Soldaten an {target}',
+  'ev.troopsReceived': '{realm} erhält {men} Soldaten von {source} ({name})',
   'ev.warDeclared': '{realm} erklärt {target} den Krieg!',
   'ev.battle':
       'Schlacht: {attackerUnit} (−{attackerLosses}) '
@@ -71,8 +73,7 @@ const Map<String, String> eventsDe = {
   'ev.peaceWish': '{realm} wünscht ein Ende des Krieges',
   'ev.tileConquered': '{realm} erobert ({x}, {y}) von {from}',
   'ev.plunder': '{realm} plündert ({x}, {y}) — Opfer: {victim}',
-  'ev.claimPaidOut':
-      '{realm} erhält {amount} T Kriegsentschädigung von {from}',
+  'ev.claimPaidOut': '{realm} erhält {amount} T Kriegsentschädigung von {from}',
   'ev.realmOverrun': '{realm} hat sein gesamtes Land verloren !',
   'ev.humansDefeated':
       'Keine menschliche Dynastie hält mehr die Macht — das Spiel ist aus',
@@ -114,8 +115,7 @@ const Map<String, String> eventsDe = {
       '{realm} wechselt die Religion (−{popularityLost} Beliebtheit)',
   'ev.dynastyConverted': '{realm}: die Dynastie konvertiert',
   'ev.dynastyExtinct': '{realm}: die Dynastie ist erloschen',
-  'ev.realmInherited':
-      'Durch Erbfolge fällt {realms} an {heir} von {realm}',
+  'ev.realmInherited': 'Durch Erbfolge fällt {realms} an {heir} von {realm}',
   'ev.islamicSuccessionCrisis':
       '{realm}: Erbfolgekrise — {heir} setzt sich durch',
   'ev.islamicSuccessionCrisisHuman':
@@ -151,10 +151,10 @@ const Map<String, String> eventsDe = {
   'ev.reformation': 'Die Reformation! ',
   'ev.ottomanInvasion':
       'Die Osmanen erreichen {realm}: Das Reich tritt zum Islam über, '
-          'die Janitscharen ({men} Mann) beziehen die Hauptstadt!',
+      'die Janitscharen ({men} Mann) beziehen die Hauptstadt!',
   'ev.janissariesDisbanded':
       'Die Janitscharen von {realm} lösen sich auf — '
-          'einem neuen Herrn dienen sie nicht.',
+      'einem neuen Herrn dienen sie nicht.',
   'ev.buildingDemolished': '{realm} reißt ({x}, {y}) ab',
   'ev.gameWon': '{realm} ist der alleinige Herrscher des ganzen Landes!',
   'ev.gameDraw': 'Alle Dynastien sind erloschen — das Land bleibt herrenlos',
@@ -305,7 +305,9 @@ const Map<String, String> eventsEn = {
   'ev.succession': '{realm}: the elders choose {heir} as heir',
   'ev.titlePromoted': '{realm}: new title {title}',
   'ev.troopsRecruited': '{realm} trains {men} recruits',
-  'ev.soeldnerHired': '{realm} hires {men} Söldner',
+  'ev.troopsTransferred': '{realm} transfers {men} soldiers to {target}',
+  'ev.troopsReceived': '{realm} receives {men} soldiers from {source} ({name})',
+  'ev.soeldnerHired': '{realm} hires {men} mercenaries',
   'ev.warDeclared': '{realm} declares war on {target}!',
   'ev.battle':
       'Battle: {attackerUnit} (−{attackerLosses}) '
@@ -343,7 +345,8 @@ const Map<String, String> eventsEn = {
   'ev.interregnum': 'Interregnum — the throne remains vacant',
   'ev.tributeCollectedSultan':
       "{realm} plunders the Sultan's treasury: +{amount} T",
-  'ev.tributeCollectedKaiser': '{realm} plunders the crown treasury: '
+  'ev.tributeCollectedKaiser':
+      '{realm} plunders the crown treasury: '
       '+{amount} T',
   'ev.newKurfuerst': '{name} becomes Elector',
   'ev.kurfuerstStripped': '{name} is stripped of the electoral dignity',
@@ -351,8 +354,7 @@ const Map<String, String> eventsEn = {
   'ev.assassination': '{victim} of {realm} is treacherously murdered!!!',
   'ev.assassinationSucceeded':
       'Your assassins have murdered {victim} in {target}',
-  'ev.assassinationFailed':
-      'Attempt on {victim} foiled — sponsor: {sponsor}',
+  'ev.assassinationFailed': 'Attempt on {victim} foiled — sponsor: {sponsor}',
   'ev.assassinsDispatched': '{realm} dispatches {agents} assassins to {target}',
   'ev.intelGathered': '{realm}: spy report on {target} has arrived',
   'ev.missionFailedCaught':
@@ -365,8 +367,7 @@ const Map<String, String> eventsEn = {
   'ev.dynastyConverted': '{realm}: the dynasty converts',
   'ev.dynastyExtinct': '{realm}: the dynasty has died out',
   'ev.realmInherited': 'By succession, {realms} falls to {heir} of {realm}',
-  'ev.islamicSuccessionCrisis':
-      '{realm}: succession crisis — {heir} prevails',
+  'ev.islamicSuccessionCrisis': '{realm}: succession crisis — {heir} prevails',
   'ev.islamicSuccessionCrisisHuman':
       '{realm}: succession crisis — {heir} prevails; '
       'the player loses control of the realm!',
@@ -400,7 +401,7 @@ const Map<String, String> eventsEn = {
   'ev.reformation': 'The Reformation!',
   'ev.ottomanInvasion':
       'The Ottomans reach {realm}: the realm converts to Islam, '
-          'the Janissaries ({men} men) garrison the capital!',
+      'the Janissaries ({men} men) garrison the capital!',
   'ev.janissariesDisbanded':
       'The Janissaries of {realm} disband — they serve no new master.',
   'ev.buildingDemolished': '{realm} demolishes ({x}, {y})',
@@ -410,8 +411,7 @@ const Map<String, String> eventsEn = {
 
   // ---- Drama popups ----
   'ev.dramaAssassinationTitle': 'Assassination!!!',
-  'ev.dramaAssassinationBody':
-      '{victim} has been murdered by hired killers!',
+  'ev.dramaAssassinationBody': '{victim} has been murdered by hired killers!',
   'ev.dramaAssassinationSucceededTitle': 'Assassination successful!',
   'ev.dramaAssassinationSucceededBody':
       'Your assassins have murdered {victim} in {target} — '
@@ -423,8 +423,7 @@ const Map<String, String> eventsEn = {
       'The captured assassins confess under torture: '
       'the order came from {sponsor}!',
   'ev.dramaAssassinationFailedTitle': 'Attempt failed',
-  'ev.dramaAssassinationFailedBody':
-      'Your assassins did not get to {victim}.',
+  'ev.dramaAssassinationFailedBody': 'Your assassins did not get to {victim}.',
   'ev.dramaAssassinationFailedBodyCaught':
       'Your assassins did not get to {victim} — and were caught! '
       'Your order is now known!',

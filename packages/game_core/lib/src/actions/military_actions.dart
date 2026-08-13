@@ -304,6 +304,34 @@ class MoveTroop extends PlayerAction {
       };
 }
 
+/// Transfer a whole troop unit to another living realm. The recipient gets
+/// the unit at the beginning of their next turn and may then position it.
+class TransferTroop extends PlayerAction {
+  TransferTroop(
+      {required super.slot, required this.unitIndex, required this.targetSlot});
+
+  factory TransferTroop.fromJson(Map<String, dynamic> json) => TransferTroop(
+        slot: json['slot'] as int,
+        unitIndex: json['unitIndex'] as int,
+        targetSlot: json['targetSlot'] as int,
+      );
+
+  static const kind = 'transferTroop';
+  final int unitIndex;
+  final int targetSlot;
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'targetSlot': targetSlot,
+      };
+}
+
 /// "(K)rieg erklären" (§11.1): year ≥ 1010, once per year, needs troops.
 class DeclareWar extends PlayerAction {
   DeclareWar({required super.slot, required this.targetSlot});

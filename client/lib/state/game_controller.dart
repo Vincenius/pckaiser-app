@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:game_core/game_core.dart';
 
@@ -92,6 +94,11 @@ class GameController extends ChangeNotifier {
   /// Hint banner text while a map tile pick is active (e.g. "station the
   /// new troop"); null = no pick pending.
   String? tilePickHint;
+
+  /// Whether the active tile pick can be cancelled via the banner's
+  /// cancel button. False for forced picks (e.g. seat relocation).
+  bool tilePickCancellable = true;
+
   Future<bool> Function(int x, int y)? _tilePick;
 
   bool get tilePickActive => _tilePick != null;
@@ -102,8 +109,10 @@ class GameController extends ChangeNotifier {
   void startTilePick({
     required String hint,
     required Future<bool> Function(int x, int y) onPick,
+    bool cancellable = true,
   }) {
     tilePickHint = hint;
+    tilePickCancellable = cancellable;
     _tilePick = onPick;
     notifyListeners();
   }
@@ -112,6 +121,9 @@ class GameController extends ChangeNotifier {
     if (_tilePick == null) return;
     _tilePick = null;
     tilePickHint = null;
+    _seatPickCompleter?.complete(null);
+    _seatPickCompleter = null;
+    seatPickCandidates = const {};
     notifyListeners();
   }
 
@@ -336,6 +348,9 @@ class GameController extends ChangeNotifier {
     // "station troop n") — cancel it so it can't act on the reverted list.
     _tilePick = null;
     tilePickHint = null;
+    _seatPickCompleter?.complete(null);
+    _seatPickCompleter = null;
+    seatPickCandidates = const {};
     _session.restore(_undoStack.removeLast());
     notifyListeners();
   }
@@ -349,6 +364,9 @@ class GameController extends ChangeNotifier {
     _busy = true;
     _tilePick = null;
     tilePickHint = null;
+    _seatPickCompleter?.complete(null);
+    _seatPickCompleter = null;
+    seatPickCandidates = const {};
     _undoStack.clear();
     markRecapSeen(currentSlot);
     notifyListeners();
@@ -514,6 +532,42 @@ class GameController extends ChangeNotifier {
       _handoffPending = true;
       _handoffToSlot = state.currentPlayer;
     }
+  }
+
+  /// Tile indices (`y * width + x`) that should be highlighted on the
+  /// map — set during a seat pick, rendered as pulsing gold rings.
+  Set<int> seatPickCandidates = const <int>{};
+
+  /// Completer for the seat pick: resolved when the user taps a valid
+  /// tile or cancels.
+  Completer<(int, int)?>? _seatPickCompleter;
+
+  /// Opens a map pick for seat relocation: highlights [candidates] on the
+  /// map, shows a banner, and returns the tapped tile or null on cancel.
+  Future<(int, int)?> pickSeatOnMap({
+    required String hint,
+    required Set<int> candidates,
+    bool cancellable = false,
+  }) {
+    _seatPickCompleter?.complete(null);
+    final completer = Completer<(int, int)?>();
+    _seatPickCompleter = completer;
+    seatPickCandidates = candidates;
+    final map = state.map;
+    startTilePick(
+      hint: hint,
+      cancellable: cancellable,
+      onPick: (x, y) async {
+        if (candidates.contains(map.index(x, y))) {
+          _seatPickCompleter = null;
+          seatPickCandidates = const {};
+          completer.complete((x, y));
+          return true;
+        }
+        return false;
+      },
+    );
+    return completer.future;
   }
 
   /// Set by the screen that owns the Flame map: centers the view on a

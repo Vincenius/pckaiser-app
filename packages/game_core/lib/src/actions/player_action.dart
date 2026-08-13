@@ -46,6 +46,7 @@ sealed class PlayerAction {
         MergeTroops.kind => MergeTroops.fromJson(json),
         DisbandTroop.kind => DisbandTroop.fromJson(json),
         MoveTroop.kind => MoveTroop.fromJson(json),
+        TransferTroop.kind => TransferTroop.fromJson(json),
         DeclareWar.kind => DeclareWar.fromJson(json),
         WarMove.kind => WarMove.fromJson(json),
         WarMarch.kind => WarMarch.fromJson(json),

@@ -5,15 +5,18 @@ import '../rules/dynasty.dart';
 import '../rules/offices.dart';
 import '../rules/realm_merge.dart';
 import '../rules/titles.dart' show regenderTitle, switchTitleLadder;
+import '../rules/troops.dart' show releaseGarrison;
 import '../rules/victory.dart';
 import '../rules/war.dart' as war_rules;
 import '../state/constants.dart';
 import '../state/game_event.dart';
 import '../state/game_state.dart';
+import '../state/pending_decision.dart';
 import '../state/pending_ship_return.dart';
 import '../state/realm.dart';
 import '../state/ship.dart';
 import '../state/town.dart';
+import '../state/troop.dart';
 import '../state/war.dart' show WarPhase;
 import '../state/world_map.dart';
 import 'apply_military.dart';
@@ -84,6 +87,7 @@ List<GameEvent> applyActionInPlace(
     MergeTroops() => applyMergeTroops(state, realm, action),
     DisbandTroop() => applyDisbandTroop(state, realm, action),
     MoveTroop() => applyMoveTroop(state, realm, action),
+    TransferTroop() => applyTransferTroop(state, realm, action),
     DeclareWar() => applyDeclareWar(state, realm, action, rng),
     WarMove() => applyWarMove(state, realm, action, rng),
     WarMarch() => applyWarMarch(state, realm, action, rng),
@@ -710,6 +714,48 @@ List<GameEvent> _investShips(
 }
 
 /// "Geld schicken" (§6.2): transfer Taler to another living realm.
+List<GameEvent> applyTransferTroop(
+    GameState state, Realm realm, TransferTroop action) {
+  if (state.activeWar != null && state.activeWar!.isParticipant(realm.slot)) {
+    throw ActionException(coreMessage('notDuringWar'));
+  }
+  if (action.targetSlot < 1 ||
+      action.targetSlot > state.realmCount ||
+      action.targetSlot == realm.slot ||
+      state.realm(action.targetSlot).isVacant) {
+    throw ActionException(coreMessage('invalidTargetRealm'));
+  }
+  final troop = unitAt(realm, action.unitIndex);
+  if (troop.janissary)
+    throw ActionException(coreMessage('troopCannotTransfer'));
+  if (troop.men <= 0) throw ActionException(coreMessage('notPossible'));
+  final target = state.realm(action.targetSlot);
+  final transferred = troop.copy();
+  if (troop.garrisonCounted) releaseGarrison(realm, troop.men);
+  realm.troops.remove(troop);
+  state.rebuildTroopMarkers();
+  state.pendingDecisions.add(PendingDecision(
+    id: 'troopTransfer-${state.year}-${realm.slot}-${transferred.id}',
+    type: 'troopTransfer',
+    decidingSlot: target.slot,
+    payload: {
+      'sourceSlot': realm.slot,
+      'sourceTroop': transferred.toJson(),
+    },
+  ));
+  return [
+    GameEvent(
+      year: state.year,
+      slot: realm.slot,
+      type: 'troopsTransferred',
+      visibility: EventVisibility.participants,
+      participants: [realm.slot, target.slot],
+      payload: {'targetSlot': target.slot, 'men': transferred.men},
+    ),
+  ];
+}
+
+/// "Geld schicken" (§6.2): transfer Taler to another living realm.
 List<GameEvent> _sendMoney(GameState state, Realm realm, SendMoney action) {
   if (action.targetSlot < 1 ||
       action.targetSlot > state.realmCount ||
@@ -1025,6 +1071,34 @@ List<GameEvent> _resolveDecision(
           legacyWar.actingSlot = legacyWar.attackerSlot;
         }
       }
+
+    case 'troopTransfer':
+      final raw = (payload['sourceTroop'] as Map).cast<String, dynamic>();
+      final recipient = state.realm(decision.decidingSlot);
+      final x = choice['x'] as int?;
+      final y = choice['y'] as int?;
+      final position = x != null &&
+              y != null &&
+              state.map.inBounds(x, y) &&
+              state.map.ownerAt(x, y) == recipient.slot
+          ? (x, y)
+          : (recipient.capitalX, recipient.capitalY);
+      final troop = Troop.fromJson(raw)
+        ..x = position.$1
+        ..y = position.$2;
+      recipient.troops.add(troop);
+      state.map.troopMarker[state.map.index(troop.x, troop.y)] = 1;
+      events.add(GameEvent(
+        year: state.year,
+        slot: decision.decidingSlot,
+        type: 'troopsReceived',
+        visibility: EventVisibility.owner,
+        payload: {
+          'sourceSlot': payload['sourceSlot'],
+          'men': troop.men,
+          'name': troop.name,
+        },
+      ));
 
     case 'childName':
       final child = state.persons[payload['childId'] as int];
