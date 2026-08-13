@@ -6,6 +6,20 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-13 — Tax tuning follow-up (user request)
+
+Two tweaks to the §7.1 tax rate:
+
+**Engine.** High taxes now breed resentment a little faster: resentment
+steps in −1 popularity per 20 points above 100 % (new
+`taxPopularityHighStep`) instead of per 25, so the 200 % extreme drops
+−5/turn instead of −4. Low-tax goodwill is unchanged (+1 per 25 below
+100 %, still withheld at war / war-weary).
+
+**Client.** The tax sheet's info caption above the slider is gone (user
+request) — only the header names the rate. The now-dead `menus.taxesDetail*`
+strings were removed alongside `_taxDetail`.
+
 ## 2026-08-13 — Review round on v0.2.6 (branch vs. main)
 
 Bug hunt over everything v0.2.6 added (war-start plan revision, win

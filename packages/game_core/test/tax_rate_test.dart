@@ -98,6 +98,26 @@ void main() {
       expect(delta(0), greaterThan(0));
     });
 
+    test('resentment steps tighter than goodwill (user request)', () {
+      final started = startGame(state, Rng(7)).state;
+      final realm = started.realm(1);
+
+      int delta(int rate) {
+        realm.taxRate = rate;
+        realm.popularity = 50;
+        realm.recentWars = 0;
+        started.activeWar = null;
+        return runEconomy(started, realm, Rng(1)).taxPopularity;
+      }
+
+      // Goodwill: +1 per [taxPopularityStep] below 100 (unchanged).
+      expect(delta(0), 4);
+      // Resentment: −1 per [taxPopularityHighStep] above 100 — tighter,
+      // so high taxes grind popularity down a little faster.
+      expect(delta(180), -4);
+      expect(delta(taxRateMax), -5);
+    });
+
     test('a war withholds the low-tax goodwill but not the resentment', () {
       final started = startGame(state, Rng(7)).state;
       final realm = started.realm(1);

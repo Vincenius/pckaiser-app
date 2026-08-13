@@ -8,34 +8,19 @@
 const Map<String, String> whatsnewDe = {
   'whatsnew.title': 'Was ist neu?',
   'whatsnew.close': 'Schließen',
-  // --- v0.2.6 ---
-  'whatsnew.0_2_6.0':
-      'Steuern: Im Handel-Menü lässt sich der Steuersatz jetzt anpassen — '
-      'höhere Steuern füllen die Schatzkammer, senken aber die Beliebtheit.',
-  'whatsnew.0_2_6.1':
-      'Truppen & Gebiete: Schicke Truppen an andere Reiche und übertrage '
-      'einzelne Felder oder ganze Reiche.',
-  'whatsnew.0_2_6.2':
-      'Kriegstermin: Der vereinbarte Beginn einer Online-Schlacht lässt '
-      'sich bis zum Kriegsbeginn anpassen.',
-  'whatsnew.0_2_6.3':
-      'Weitere Verbesserungen: überarbeitete Siegbedingungen und viele '
-      'kleine Korrekturen.',
+  // --- v0.2.6 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_6.0': 'Steuern sind einstellbar (Geld gegen Beliebtheit)',
+  'whatsnew.0_2_6.1': 'Truppen können an andere Reiche verschenkt werden',
+  'whatsnew.0_2_6.2': 'Einzelne Felder sind übertragen',
+  'whatsnew.0_2_6.3': 'Kriegstermin bis zum Beginn änderbar',
 };
 
 const Map<String, String> whatsnewEn = {
   'whatsnew.title': "What's new?",
   'whatsnew.close': 'Close',
-  // --- v0.2.6 ---
-  'whatsnew.0_2_6.0':
-      'Taxes: the trade menu now lets you adjust your realm\'s tax rate — '
-      'higher taxes fill the treasury but lower popularity.',
-  'whatsnew.0_2_6.1':
-      'Troops & territory: send troops to other realms and hand over '
-      'single tiles or whole realms.',
-  'whatsnew.0_2_6.2':
-      'War start: the agreed start of an online battle can be changed '
-      'right up until the war begins.',
-  'whatsnew.0_2_6.3':
-      'More improvements: reworked victory conditions and many small fixes.',
+  // --- v0.2.6 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_6.0': 'Set your own tax rate',
+  'whatsnew.0_2_6.1': 'Gift troops, hand over tiles',
+  'whatsnew.0_2_6.2': 'War start time stays changeable',
+  'whatsnew.0_2_6.3': 'Reworked victory conditions, many fixes',
 };

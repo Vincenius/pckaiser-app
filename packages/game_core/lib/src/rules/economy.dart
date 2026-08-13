@@ -92,22 +92,30 @@ EconomyReport runEconomy(GameState state, Realm realm, Rng rng) {
 }
 
 /// The per-turn popularity reaction to [Realm.taxRate] (§7.1 tuning):
-/// every [taxPopularityStep] points of rate below/above [taxRateDefault]
-/// swings the mood ±1. Resentment (high taxes) always applies. Goodwill
-/// (low taxes) is withheld entirely while the realm is at war or
-/// war-weary (`Realm.recentWars > 0`) — taxes can never buy back the
-/// popularity a war costs, so a warring realm's mood keeps sinking even
-/// with rock-bottom taxes (user rule). Returns the applied change.
+/// resentment (high taxes) steps in every [taxPopularityHighStep] points
+/// above [taxRateDefault] — tighter than the goodwill side, so heavy
+/// taxation grinds mood down a little faster (user request). Goodwill
+/// (low taxes) accrues every [taxPopularityStep] points below the default
+/// but is withheld entirely while the realm is at war or war-weary
+/// (`Realm.recentWars > 0`) — taxes can never buy back the popularity a
+/// war costs, so a warring realm's mood keeps sinking even with
+/// rock-bottom taxes (user rule). Returns the applied change.
 int _taxPopularityEffect(GameState state, Realm realm) {
-  final delta = (taxRateDefault - realm.taxRate) ~/ taxPopularityStep;
-  if (delta == 0) return 0;
+  final rate = realm.taxRate;
   final before = realm.popularity;
-  if (delta < 0) {
+  if (rate > taxRateDefault) {
+    final delta = -((rate - taxRateDefault) ~/ taxPopularityHighStep);
+    if (delta == 0) return 0;
     realm.popularity = (realm.popularity + delta).clamp(0, 100);
     return realm.popularity - before;
   }
-  final atWar = state.activeWar?.isParticipant(realm.slot) ?? false;
-  if (atWar || realm.recentWars > 0) return 0;
-  realm.popularity = (realm.popularity + delta).clamp(0, 100);
-  return realm.popularity - before;
+  if (rate < taxRateDefault) {
+    final delta = (taxRateDefault - rate) ~/ taxPopularityStep;
+    if (delta == 0) return 0;
+    final atWar = state.activeWar?.isParticipant(realm.slot) ?? false;
+    if (atWar || realm.recentWars > 0) return 0;
+    realm.popularity = (realm.popularity + delta).clamp(0, 100);
+    return realm.popularity - before;
+  }
+  return 0;
 }

@@ -190,8 +190,8 @@ void showCommerceMenu(BuildContext context, GameController controller) {
 
 /// Slider sheet for the tax rate (§7.1 tuning): opens on the CURRENT rate
 /// (the default is the current value), steps in [gc.taxRateStep], clamped
-/// to [gc.taxRateMin]..[gc.taxRateMax] (never below 0). The live caption
-/// explains the yield and the per-turn popularity reaction.
+/// to [gc.taxRateMin]..[gc.taxRateMax] (never below 0). No info caption
+/// above the slider (user request) — the header alone names the rate.
 void _taxSheet(BuildContext context, GameController controller) {
   final slot = controller.currentSlot;
   final realm = controller.currentRealm;
@@ -206,7 +206,6 @@ void _taxSheet(BuildContext context, GameController controller) {
         divisions: (gc.taxRateMax - gc.taxRateMin) ~/ gc.taxRateStep,
         allowZero: true,
         unit: tr('menus.percentSuffix'),
-        detail: (rate) => _taxDetail(rate, controller.state, realm),
         onSubmit: (rate) {
           Navigator.pop(sheetContext);
           _tryAction(
@@ -219,32 +218,6 @@ void _taxSheet(BuildContext context, GameController controller) {
       ),
     ),
   );
-}
-
-/// Live caption for [_taxSheet]: what the chosen rate means for income and
-/// the per-turn popularity reaction (the same formula runEconomy applies,
-/// so the caption can never contradict the engine).
-///
-/// That includes the war caveat: `_taxPopularityEffect` WITHHOLDS the
-/// goodwill from low taxes while the realm fights or is still war-weary
-/// (`recentWars > 0`), so promising "+2 Beliebtheit pro Jahr" there would
-/// be a promise the engine does not keep.
-String _taxDetail(int rate, gc.GameState state, gc.Realm realm) {
-  final delta = (gc.taxRateDefault - rate) ~/ gc.taxPopularityStep;
-  if (rate > gc.taxRateDefault) {
-    return delta == 0
-        ? tr('menus.taxesDetailHighNeutral', {'pct': rate})
-        : tr('menus.taxesDetailHigh', {'pct': rate, 'pop': -delta});
-  }
-  if (rate < gc.taxRateDefault) {
-    final atWar = (state.activeWar?.isParticipant(realm.slot) ?? false) ||
-        realm.recentWars > 0;
-    if (atWar) return tr('menus.taxesDetailLowAtWar', {'pct': rate});
-    return delta == 0
-        ? tr('menus.taxesDetailLowNeutral', {'pct': rate})
-        : tr('menus.taxesDetailLow', {'pct': rate, 'pop': delta});
-  }
-  return tr('menus.taxesDetailNormal', {'pct': rate});
 }
 
 /// Target picker + confirmation for "Reich übertragen" — hands the whole
