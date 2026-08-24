@@ -529,6 +529,39 @@ void main() {
       expect(session.applyCount, 1);
     },
   );
+
+  test('the defender briefing is owed only in the war\'s first round', () async {
+    final controller = await twoPlayerGame();
+    controller.confirmHandoff();
+    final state = controller.state;
+    state.currentPlayer = 2;
+    state.activeWar = ActiveWar(attackerSlot: 2, defenderSlot: 1);
+
+    expect(controller.takeWarBriefing(1), isTrue);
+    expect(controller.takeWarBriefing(1), isFalse, reason: 'exactly once');
+    expect(
+      controller.takeWarBriefing(2),
+      isFalse,
+      reason: 'the attacker started the war and needs no briefing',
+    );
+
+    // Online every round enters through a FRESH controller — the in-memory
+    // marker is empty again, so the war state has to carry the answer.
+    final later = GameController(_GatedSession(state));
+    expect(
+      later.takeWarBriefing(1),
+      isTrue,
+      reason: 'still round 1, the defender has not acted yet',
+    );
+
+    // Once the side gave war input (server-kept `actedSlots`), or the war
+    // rolled into its second round, the opening briefing is over.
+    state.activeWar!.actedSlots.add(1);
+    expect(GameController(_GatedSession(state)).takeWarBriefing(1), isFalse);
+    state.activeWar!.actedSlots.clear();
+    state.activeWar!.round = 1;
+    expect(GameController(_GatedSession(state)).takeWarBriefing(1), isFalse);
+  });
 }
 
 /// A session whose [apply] hangs on a gate until [release] — lets a test

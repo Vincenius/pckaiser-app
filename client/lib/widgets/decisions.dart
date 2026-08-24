@@ -35,7 +35,7 @@ Future<void> showRecapAndDecisions(
   if (inWar) {
     await showWarReport(
       context,
-      controller.recapFor(slot),
+      roundReportEvents(war, controller.recapFor(slot)),
       viewerSlot: slot,
       title: tr('dec.roundReport'),
     );
@@ -52,6 +52,43 @@ Future<void> showRecapAndDecisions(
   await showDramaPopups(context, controller, slot);
   if (!context.mounted) return;
   await showRecapCard(context, controller, slot);
+}
+
+/// The subset of [events] that belongs to [war] — the round report must
+/// only carry the player's OWN war.
+///
+/// `[FIX 2026-08-24, user report]` The report used to render the whole
+/// recap, and half of its event types (`winterEndsWar`, `warDraw`,
+/// `warWon`, `peaceAgreed`, `realmOverrun`, …) are PUBLIC: any foreign
+/// war — an AI-vs-AI war fast-forwarded into its 20th round while the
+/// player was away — popped "Der Krieg musste wegen des hereinbrechenden
+/// Winters beendet werden" at the start of the player's own, still
+/// running war. Foreign war news belongs in the event feed, not in this
+/// round's battle report.
+///
+/// A war-ending event of the player's own war can never reach here (the
+/// war would no longer be in its rounds phase), so an event that names no
+/// participant at all — `winterEndsWar` carries neither slot nor payload —
+/// is by definition somebody else's.
+List<gc.GameEvent> roundReportEvents(
+  gc.ActiveWar war,
+  Iterable<gc.GameEvent> events,
+) => [
+  for (final e in events)
+    if (_partOfWar(war, e)) e,
+];
+
+bool _partOfWar(gc.ActiveWar war, gc.GameEvent event) {
+  if (war.isParticipant(event.slot)) return true;
+  if (event.participants.any(war.isParticipant)) return true;
+  // War-ending events report at world level (slot 0); their tally names
+  // the two sides.
+  final summary = (event.payload['summary'] as Map?)?.cast<String, dynamic>();
+  if (summary != null) {
+    return war.isParticipant(summary['attackerSlot'] as int? ?? 0) ||
+        war.isParticipant(summary['defenderSlot'] as int? ?? 0);
+  }
+  return false;
 }
 
 /// Prompts every pending decision addressed to [slot], in order. Used at

@@ -6,6 +6,44 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-24 — Two war-popup bugs (user report)
+
+User report: *"Das Krieg popup 'zu den Waffen' taucht bei mir manchmal immer
+noch jeden Zug (zumindest als Verteidiger) auf"* and *"ich hab in einem Krieg
+ein Mal in der ersten Runde vor dem 'zu den Waffen' Popup auch das Popup
+gesehen, dass der Krieg wegen hereinbrechendem Winter beendet werden musste.
+Danach ging der Krieg normal los."* Two independent client bugs.
+
+**The briefing re-fired every war round — online.** `takeWarBriefing`
+(`state/game_controller.dart`) guarded the one-time "Krieg !" defender
+briefing with an in-memory marker on the controller. That holds for hot-seat,
+where one controller outlives the whole game — but ONLINE every turn, and so
+every war round, is a fresh `GameScreen`/`GameController` (`_play()` pushes a
+new screen per turn), and the marker was empty again each time. The briefing
+is an OPENING briefing, so it is now anchored in the war state as well: it is
+owed only while `war.round == 0` and this side has given no war input yet
+(`war.actedSlots`, kept by the server; empty in local play, where the marker
+still does the job).
+
+**A foreign war's winter end popped inside your own war.** At a war turn's
+start `showRecapAndDecisions` (`widgets/decisions.dart`) renders the whole
+recap as the round report — and half the report's event types
+(`winterEndsWar`, `warDraw`, `warWon`, `peaceAgreed`, `realmOverrun`) are
+PUBLIC, i.e. emitted by every realm's war. An AI-vs-AI war fast-forwarded
+into its 20th round while the player was away therefore popped "Der Krieg
+musste wegen des hereinbrechenden Winters beendet werden" at the start of the
+player's own, still running war. The round report is now filtered to the
+player's own war (`roundReportEvents`): by event slot, by `participants`, or
+— for the world-level war-end events — by the two sides named in the tally
+`summary`. `winterEndsWar` names nobody at all, and a war-end of the player's
+OWN war can never reach this branch (the war would have left its rounds
+phase), so an unattributable one is by definition somebody else's. Foreign
+war news stays in the event feed / recap card, where it belongs.
+
+Tests: `client/test/game_controller_test.dart` (briefing owed once, and only
+in round 1 — proven across freshly built controllers) and the new
+`client/test/war_round_report_test.dart`.
+
 ## 2026-08-24 — War movement: one route planner for both sides (user request)
 
 User report, two halves: *"ich möchte in der Lage sein bei der Bewegung von

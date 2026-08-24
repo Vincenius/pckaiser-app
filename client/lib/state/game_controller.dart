@@ -320,6 +320,15 @@ class GameController extends ChangeNotifier {
 
   /// True exactly once per war for its defender: whether the "Krieg !"
   /// orientation popup is still owed. Marks the war as briefed.
+  ///
+  /// `[FIX 2026-08-24, user report]` The in-memory marker alone was not
+  /// enough: ONLINE every turn — and every war round — enters through a
+  /// freshly built GameScreen/GameController, so [_warBriefedKey] was
+  /// always null again and the defender got the briefing round after
+  /// round. It is an OPENING briefing, so it is anchored in the war state
+  /// too: only the first round owes it, and only while this side has not
+  /// yet given any war input (`actedSlots`, kept by the server; empty in
+  /// local hot-seat play, where the marker below already does the job).
   bool takeWarBriefing(int slot) {
     final war = state.activeWar;
     if (war == null ||
@@ -327,6 +336,7 @@ class GameController extends ChangeNotifier {
         war.defenderSlot != slot) {
       return false;
     }
+    if (war.round > 0 || war.actedSlots.contains(slot)) return false;
     final key = '${war.attackerSlot}-${war.defenderSlot}-${state.year}';
     if (_warBriefedKey == key) return false;
     _warBriefedKey = key;
