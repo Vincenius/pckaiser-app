@@ -232,3 +232,15 @@ const double combatDefencePopularityBonus = 0.20;
 /// is slowed to a crawl but never frozen out of playing at all.
 const int movementPointsMinimum = 1;
 const int movementPopularityDivisor = 20;
+
+/// `[DESIGNED 2026-08-24, user request]` How many overland steps a war
+/// march must SAVE before it takes a ship instead of walking: a voyage
+/// ("Seetransport", §11.2) spends the unit's whole war round however short
+/// the crossing, so a hop that only shaves a step or two is a waste of
+/// Züge. Sized at about one round's worth of movement — the sea wins when
+/// it saves at least a full round of marching. A destination with no land
+/// route at all ignores this: there the ship is the only way.
+///
+/// Both the player's march and the AI's use it (`marchWarUnit`), so the
+/// two sides pick their routes by the same yardstick.
+const int warSeaRouteAdvantage = 5;

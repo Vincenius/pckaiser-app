@@ -6,6 +6,69 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-24 — War movement: one route planner for both sides (user request)
+
+User report, two halves: *"ich möchte in der Lage sein bei der Bewegung von
+Truppen ein Feld auszuwählen was außerhalb der Reichweite liegt — dann soll
+die Truppe automatisch so weit laufen wie möglich mit den vorhandenen Zügen
+und die beste/kürzeste Route wählen"* and *"die KI-Truppen sind nicht schlau
+genug um die Häfen zu benutzen und finden oft auch nicht den besten Weg"*.
+Both came from the same place: routing was spread over three half-planners
+(the engine's per-step BFS, a client-side sea-route convenience, the AI's own
+BFS-plus-greedy loop) and none of them knew what the others did.
+
+**The bug behind "outside the range does nothing".** `applyWarMarch` walked
+its steps and then rethrew the out-of-moves `ActionException` whenever it had
+collected no events — and a plain step emits none. `applyAction` works on a
+copy, so the throw discarded the entire advance: ordering a unit to a tile
+further than the round's Züge left it standing where it was, with "Diese
+Truppe kann in dieser Runde nicht weiter ziehen!". A march now reports
+progress as `WarMarchOutcome.moved` (did the unit change tile) instead of
+inferring it from the event list, and only a march that could not move AT ALL
+is rejected.
+
+**`WarField` — one search, every answer** (`rules/movement.dart`). A
+single-source Dijkstra over the war-march land graph that answers "can I get
+there", "how far", "which way do I step" and "what is the whole path". Its
+cost is not a plain step count: tiles in `avoid` cost `warPathAvoidPenalty`
+(4) extra, which leaves the route the same length while steering it around an
+enemy stack that is not the destination — a unit sent to a far tile no longer
+blunders into an unordered battle when an equally short way around exists.
+`warPathStep` is now a thin convenience over it.
+
+**Approach by walking, not by air.** `closestReachableTile` (the retarget for
+a click no path reaches) ranked candidates by Manhattan distance, which names
+the wrong shore of a bay and, when every reachable tile is further from the
+click by air than the unit already is, gives up entirely — the order was
+refused even though a road around existed. It now measures with a second
+field rooted at the click (ownership ignored, so a third realm's fields still
+show which way it lies); air distance only breaks ties between tiles with no
+land connection at all.
+
+**`warSeaEmbark` — harbors as roads.** One sea flood from the destination
+finds every usable port at once (mirroring `canNavalTransport` exactly), and
+among their coast tiles picks the one with the shortest MARCH.
+`WorldMap.navalEmbarkTile` compared as the crow flies and could name a port
+on the far side of a mountain-locked coast.
+
+**`marchWarUnit` — THE movement brain** (`actions/apply_military.dart`),
+shared by the player's `WarMarch` and the AI's `runAiWarMovement`. It plans
+the route, takes a ship when the sea is genuinely faster (no land route at
+all, or the land walk both exceeds this round's Züge and is more than
+`warSeaRouteAdvantage` = 5 steps longer than the walk to the port — a voyage
+spends the whole round, so it must save a full round of marching), walks as
+far as the Züge reach, and stops without complaint. Ordering a LAND unit onto
+open water is refused up front rather than half-walked to a random shore
+(boarding stays the single step onto an adjacent Hafen).
+
+**Consequences.** The client's `_marchToward` is a plain forward of the tap
+(~120 lines of duplicated sea routing deleted) — the routing lived in the
+client, which is exactly why the AI never used a harbor. The AI's own loop is
+gone too; it calls `marchWarUnit` per unit, so AI armies now cross water,
+route around battles they were not sent to fight, and — in `_warTarget` — pick
+the intruder they can actually MARCH to instead of the one that is nearest by
+air across a bay. Tests: `war_movement_2026_08_24_test.dart`.
+
 ## 2026-08-24 — Missed war starts: more time, better notice, fewer notifications (user request)
 
 User report: "es gibt noch oft Probleme bei der Vereinbarung von Terminen beim

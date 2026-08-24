@@ -645,14 +645,14 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// Marches the selected unit toward (tx, ty): ONE engine `WarMarch`
-  /// walks the whole path — the engine plans each step and tracks the
-  /// unit by identity through any combat (the old client-side step loop
-  /// tracked units by name + expected position, a workaround for units
-  /// having had no stable identity). The client keeps only the sea-route
-  /// convenience: when no land path reaches the tap, ship via a harbor —
-  /// directly, or after marching to the nearest connecting harbor coast
-  /// first. With no sea route either, the engine march still runs and
-  /// gets the unit as close to the tap as the land allows.
+  /// walks the whole order — shortest passable route, as far as the round's
+  /// Züge reach, around enemy stacks it was not sent to fight, and by ship
+  /// through a harbor when the sea is the faster way (`marchWarUnit`).
+  ///
+  /// `[2026-08-24]` The routing used to be split: the engine walked the
+  /// land while the CLIENT decided the sea legs, so the AI — which cannot
+  /// run client code — never used a harbor at all. Both sides now share
+  /// the engine's planner, and the tap simply forwards the order.
   Future<void> _marchToward(
     GameController controller,
     int slot,
@@ -661,118 +661,15 @@ class _GameScreenState extends State<GameScreen> {
     int ty,
   ) async {
     final report = <gc.GameEvent>[];
-    final map = controller.state.map;
-    final troop = controller.state.realm(slot).troops[unitIndex];
-    final fromX = troop.x;
-    final fromY = troop.y;
-
-    Future<String?> march(int x, int y) async {
-      try {
-        final result = await controller.applyWarAction(
-          gc.WarMarch(slot: slot, unitIndex: unitIndex, x: x, y: y),
-        );
-        report.addAll(result.events);
-        return null;
-      } on gc.ActionException catch (e) {
-        return e.message;
-      }
-    }
-
-    // At war, the ENEMY's harbors serve the invader too (engine rule
-    // 2026-07-19) — route over both sides' ports.
-    final war = controller.state.activeWar;
-    final harborOwners = war != null && war.isParticipant(slot)
-        ? {slot, war.opponentOf(slot)}
-        : {slot};
-
-    // The engine approaches an unreachable land click as far as it can
-    // instead of failing (2026-07-24), so the sea-route convenience must
-    // be decided BEFORE marching: from land, a click no land path reaches
-    // ships via a connecting harbor when one exists — directly, or after
-    // marching to the nearest connecting harbor coast. Without a sea
-    // route the march runs anyway and simply gets as close as possible.
-    // At sea the unit is steered manually, no convenience routing.
-    final landReachable =
-        map.isWaterAt(fromX, fromY) ||
-        (fromX == tx && fromY == ty) ||
-        gc.warPathStep(
-              map,
-              fromX,
-              fromY,
-              tx,
-              ty,
-              allowedOwners: {...harborOwners, gc.World.niemand},
-            ) !=
-            null;
-
-    var seaRouted = false;
-    if (!landReachable && !map.isWaterAt(fromX, fromY)) {
-      if (map.canNavalTransport(
-        slot,
-        fromX,
-        fromY,
-        tx,
-        ty,
-        harborOwners: harborOwners,
-      )) {
-        // Standing next to a harbor that reaches the target → ship across.
-        seaRouted = true;
-        final navError = await _navalTransport(
-          controller,
-          slot,
-          unitIndex,
-          tx,
-          ty,
-          report,
-        );
-        if (navError != null) _toast(navError);
-      } else {
-        // Otherwise march to the nearest harbor coast that connects, then
-        // ship from there — unless a battle en route defers the hop.
-        final embark = map.navalEmbarkTile(
-          slot,
-          fromX,
-          fromY,
-          tx,
-          ty,
-          harborOwners: harborOwners,
-        );
-        if (embark != null && (embark.$1 != fromX || embark.$2 != fromY)) {
-          seaRouted = true;
-          final marchError = await march(embark.$1, embark.$2);
-          final troops = controller.state.realm(slot).troops;
-          final arrived =
-              unitIndex < troops.length &&
-              troops[unitIndex].x == embark.$1 &&
-              troops[unitIndex].y == embark.$2;
-          if (marchError != null) {
-            _toast(marchError);
-          } else if (arrived &&
-              report.isEmpty &&
-              map.canNavalTransport(
-                slot,
-                embark.$1,
-                embark.$2,
-                tx,
-                ty,
-                harborOwners: harborOwners,
-              )) {
-            final navError = await _navalTransport(
-              controller,
-              slot,
-              unitIndex,
-              tx,
-              ty,
-              report,
-            );
-            if (navError != null) _toast(navError);
-          }
-        }
-      }
-    }
-    if (!seaRouted) {
-      final error = await march(tx, ty);
-      if (error != null && report.isEmpty) _toast(error);
+    try {
+      final result = await controller.applyWarAction(
+        gc.WarMarch(slot: slot, unitIndex: unitIndex, x: tx, y: ty),
+      );
+      report.addAll(result.events);
+    } on gc.ActionException catch (e) {
+      // Only a march that could not move AT ALL throws; one that ran out
+      // of Züge part-way keeps the ground it won and reports nothing.
+      _toast(e.message);
     }
 
     // The march may have ended with the unit destroyed — drop a stale
@@ -787,28 +684,6 @@ class _GameScreenState extends State<GameScreen> {
       await controller.resumeAfterWar();
       // Coercion choices from a capture come immediately.
       if (mounted) await promptDecisionsFor(context, controller, slot);
-    }
-  }
-
-  /// Naval transport: ship the selected unit to [tx],[ty] via an own harbor.
-  /// Appends any landing-battle events to [report]. Returns null on success
-  /// or the engine's message on failure.
-  Future<String?> _navalTransport(
-    GameController controller,
-    int slot,
-    int unitIndex,
-    int tx,
-    int ty,
-    List<gc.GameEvent> report,
-  ) async {
-    try {
-      final result = await controller.applyWarAction(
-        gc.WarNavalTransport(slot: slot, unitIndex: unitIndex, x: tx, y: ty),
-      );
-      report.addAll(result.events);
-      return null;
-    } on gc.ActionException catch (e) {
-      return e.message;
     }
   }
 
