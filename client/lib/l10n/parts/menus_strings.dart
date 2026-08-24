@@ -185,6 +185,8 @@ const Map<String, String> menusDe = {
   // --- Info ---
   'menus.myRealm': 'Mein Reich — {realm}',
   'menus.armyStat': 'Armee: {n}',
+  'menus.moraleStat':
+      'Kampfmoral: +{attack} % Angriff / +{defence} % Verteidigung',
   'menus.settlements': 'Siedlungen ({n})',
   'menus.dynasties': 'Dynastien',
   'menus.dynastiesSubtitle': 'Alle Reiche und ihre Herrscherhäuser',
@@ -393,6 +395,7 @@ const Map<String, String> menusEn = {
   // --- Info ---
   'menus.myRealm': 'My realm — {realm}',
   'menus.armyStat': 'Army: {n}',
+  'menus.moraleStat': 'Morale: +{attack}% attack / +{defence}% defence',
   'menus.settlements': 'Settlements ({n})',
   'menus.dynasties': 'Dynasties',
   'menus.dynastiesSubtitle': 'All realms and their ruling houses',

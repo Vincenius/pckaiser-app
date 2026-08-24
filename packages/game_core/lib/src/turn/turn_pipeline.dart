@@ -197,7 +197,7 @@ void _beginTurn(GameState state, Rng rng, List<GameEvent> events) {
   final economy = runEconomy(state, realm, rng);
   checkTitlePromotion(state, realm, events); // §16.2: every turn
 
-  realm.movementPoints = rollMovementPoints(realm.titleClass, rng);
+  realm.movementPoints = rollMovementPoints(realm.popularity, rng);
   realm.soldGrainThisTurn = false;
   realm.soldCattleThisTurn = false;
   realm.investedThisTurn = false;

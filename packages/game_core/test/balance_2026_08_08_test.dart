@@ -66,11 +66,15 @@ void main() {
 
     test('the same neighbour is fair game once its grace year has passed', () {
       // Positive control: proves the silence above is the grace, not a
-      // blocker, mood or dice artefact.
+      // blocker, mood or dice artefact. The AI's spontaneous war roll is
+      // ~1/60 per seed (warChance × the 1-in-3 gate), so the seed budget
+      // has to be wide enough that an unlucky RNG stretch cannot fail the
+      // test — any change that shifts the RNG stream would otherwise flake
+      // it (as the 2026-08-24 movement-roll change did at 200 seeds).
       final state = warEagerGame();
       state.realm(soleNeighborOf(state)).lastDefendedYear = 1999;
       var declared = false;
-      for (var seed = 0; seed < 200 && !declared; seed++) {
+      for (var seed = 0; seed < 3000 && !declared; seed++) {
         final result = runAiTurn(state, 1, Rng(seed));
         declared = result.events.any((e) => e.type == 'warDeclared');
       }
@@ -87,7 +91,7 @@ void main() {
       neighbor.lastWarYear = 2001; // it declared a war this year …
       neighbor.lastDefendedYear = 0; // … but was never itself attacked
       var declared = false;
-      for (var seed = 0; seed < 200 && !declared; seed++) {
+      for (var seed = 0; seed < 3000 && !declared; seed++) {
         final result = runAiTurn(state, 1, Rng(seed));
         declared = result.events.any((e) => e.type == 'warDeclared');
       }

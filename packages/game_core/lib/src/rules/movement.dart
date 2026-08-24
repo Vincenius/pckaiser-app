@@ -1,16 +1,19 @@
+import 'dart:math' as math;
+
 import '../rng/rng.dart';
+import '../state/constants.dart';
 import '../state/world_map.dart';
-import 'titles.dart' show christianEquivalentClass;
 
-/// Christian-equivalent class for the movement roll (§6.3) — the shared
-/// ladder mapping from rules/titles.dart.
-int movementClassEquivalent(int titleClass) =>
-    christianEquivalentClass(titleClass);
-
-/// Movement-point roll (ORIGINAL_GAME.md §6.3):
-/// `points = classEquivalent + random(6)`.
-int rollMovementPoints(int titleClass, Rng rng) =>
-    movementClassEquivalent(titleClass) + rng.nextInt(6);
+/// Movement-point roll — the realm's Züge for the turn (and, per unit, for
+/// a war round): `max(minimum, popularity ~/ divisor) + random(6)`.
+///
+/// `[DEVIATION from §6.3, 2026-08-24 user request]` The original rolled
+/// `titleClass + random(6)`, tying the action budget to the prestige score
+/// and thus to realm size. It now rides on Beliebtheit — see
+/// [movementPopularityDivisor] for the why and the calibration.
+int rollMovementPoints(int popularity, Rng rng) =>
+    math.max(movementPointsMinimum, popularity ~/ movementPopularityDivisor) +
+    rng.nextInt(6);
 
 /// First step (dx, dy) of a shortest LAND path from ([x],[y]) to
 /// ([tx],[ty]); null when the target is the start itself or unreachable
@@ -62,8 +65,7 @@ int rollMovementPoints(int titleClass, Rng rng) =>
   final seen = List<bool>.filled(map.terrain.length, false);
   seen[start] = true;
   final queue = <int>[start];
-  int distTo(int i) =>
-      (i % map.width - tx).abs() + (i ~/ map.width - ty).abs();
+  int distTo(int i) => (i % map.width - tx).abs() + (i ~/ map.width - ty).abs();
   var best = start;
   var bestDist = distTo(start);
   for (var head = 0; head < queue.length; head++) {

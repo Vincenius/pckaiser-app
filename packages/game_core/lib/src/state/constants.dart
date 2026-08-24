@@ -183,3 +183,52 @@ const int taxPopularityStep = 25;
 /// visible trade-off instead of a rounding error next to the food and
 /// balance nudges.
 const int taxPopularityHighStep = 10;
+
+/// `[DESIGNED 2026-08-24, user request]` Beliebtheit as the counter-weight
+/// to size. Until now popularity was a pure RISK meter: it could kill a
+/// realm (§19.1 strife, peasant revolt) but being LOVED bought nothing,
+/// while both the action budget and the war machine scaled with realm size.
+/// The two constants below give the stat an upside that a big, war-weary
+/// realm structurally cannot have — the war-weariness ceiling
+/// ([warWearinessCeilingStep]) holds a serial aggressor near 30–50 while a
+/// peaceful realm sits at 80–100.
+///
+/// COMBAT: a unit fights at `1 + (popularity − 50)/50 × bonus` — men who
+/// believe in their ruler hold the line. Bonus ONLY above 50: a slump must
+/// never weaken the army that has to defend the realm (that spiral —
+/// unpopular → beaten → poorer → more unpopular — is exactly the runaway
+/// this change fights, only pointed downward). The side HOLDING the
+/// contested tile gets the larger share — the defender of the clash, the
+/// one being marched upon.
+/// Sized against the modifiers already in `resolveCombat` (fortification
+/// +15/25 %, Schere-Stein-Papier +15 %, fortune ±25 %) so morale tilts a
+/// close fight without ever eclipsing quality and terrain.
+const double combatAttackPopularityBonus = 0.12;
+const double combatDefencePopularityBonus = 0.20;
+
+/// ZÜGE (§6.3 movement roll — the per-turn action budget that pays for
+/// cultivating, claiming, building and steering colony ships, and per unit
+/// for a war round): the roll is
+/// `max([movementPointsMinimum], popularity ~/ [movementPopularityDivisor])
+/// + random(6)`.
+///
+/// `[DEVIATION from §6.3]` The original rolled `titleClass + random(6)`,
+/// and the title comes from the prestige score (population + treasury +
+/// buildings) — an UNBOUNDED, size-correlated input. A Kaiser therefore
+/// expanded at 8–13 tiles a turn while a Ritter crawled at 1–6: the biggest
+/// realm also grew the fastest, the definition of a runaway. Popularity is
+/// bounded 0–100, so the budget now has a ceiling every realm can reach and
+/// a small, well-run realm keeps pace with the largest. The title keeps its
+/// other duties (§19.2 bankruptcy limits, §17 elections, prestige).
+///
+/// The divisor is calibrated (`tool/balance_sim.dart`) so the AVERAGE roll
+/// across a long game stays near the old title-driven average — the point
+/// is to change WHO gets the Züge, not to hand the whole world more. It
+/// lands generous exactly where the old ladder was meanest: a fresh realm
+/// at the starting mood of 50 rolls 2–7 instead of a Ritter's 1–6, while
+/// the ceiling a giant used to enjoy (8–13) is gone.
+/// [movementPointsMinimum] is a FLOOR, not an addend: however hated a
+/// ruler is, one Zug per turn always remains, so a realm in a mood crisis
+/// is slowed to a crawl but never frozen out of playing at all.
+const int movementPointsMinimum = 1;
+const int movementPopularityDivisor = 20;

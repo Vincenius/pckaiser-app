@@ -10,6 +10,7 @@ import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 import 'decisions.dart' show promptDecisionsFor;
 import 'event_feed.dart';
+import 'turn_report.dart' show moraleBonus;
 
 void _toast(BuildContext context, String message) {
   if (!context.mounted) return;
@@ -2199,6 +2200,8 @@ class _SuspenseRevealDialogState extends State<_SuspenseRevealDialog> {
 void showInfoMenu(BuildContext context, GameController controller) {
   final state = controller.visibleState;
   final realm = controller.currentRealm;
+  // What the realm's Beliebtheit is worth in battle right now (2026-08-24).
+  final morale = moraleBonus(state, realm.slot);
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -2226,6 +2229,10 @@ void showInfoMenu(BuildContext context, GameController controller) {
                       '${tr('food')}: ${realm.grainHarvest + realm.livestockHarvest}',
                     ),
                     Text('${tr('popularity')}: ${realm.popularity}'),
+                    Text(tr('menus.moraleStat', {
+                      'attack': morale.attack,
+                      'defence': morale.defence,
+                    })),
                     Text(tr('menus.armyStat', {'n': realm.armySize})),
                     Text('${tr('guards')}: ${realm.guardLevel}'),
                     Text('${tr('moves')}: ${realm.movementPoints}'),

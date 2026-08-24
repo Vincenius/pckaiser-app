@@ -27,7 +27,7 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 
 ## Phase 5 — AI ✅
 - [x] AI turn script (§20) via the same action primitives; AI war movement (v7: defender fights back)
-- [x] 200-year full-AI smoke test + `tool/sim_report.dart`
+- [x] 200-year full-AI smoke test + `tool/sim_report.dart`; runaway-leader balance probe `tool/balance_sim.dart` (2026-08-24)
 
 ## Phase 6 — Flutter Client (V1 local) ✅
 - [x] Flame map (single rasterized Picture, color-blind-safe borders + captions), tile sheet, HUD, event feed + recap

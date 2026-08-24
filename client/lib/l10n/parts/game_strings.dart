@@ -100,6 +100,9 @@ const Map<String, String> gameDe = {
   'game.popularityTierDecent': 'Nicht gerade niedrig',
   'game.popularityTierHigh': 'Sehr hoch',
   'game.popularityTierVeryHigh': 'Unglaublich hoch',
+  'game.popularityMorale':
+      'Das Volk steht hinter dir: +{attack} % Angriff, '
+      '+{defence} % Verteidigung im Kampf.',
   'game.yourTurnGreeting': '{title} {name}, Ihr seid am Zug !',
   'game.taxesLine': 'Steuern: +{tax} T',
   'game.harborIncomeSuffix': ' — Häfen: +{income} T',
@@ -231,6 +234,9 @@ const Map<String, String> gameEn = {
   'game.popularityTierDecent': 'Not exactly low',
   'game.popularityTierHigh': 'Very high',
   'game.popularityTierVeryHigh': 'Unbelievably high',
+  'game.popularityMorale':
+      'The people are behind you: +{attack}% attack, '
+      '+{defence}% defence in battle.',
   'game.yourTurnGreeting': '{title} {name}, it is your turn!',
   'game.taxesLine': 'Taxes: +{tax} T',
   'game.harborIncomeSuffix': ' — harbors: +{income} T',

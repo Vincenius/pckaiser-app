@@ -5,6 +5,16 @@ import '../l10n/labels.dart';
 import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 
+/// The combat-morale bonus a realm's Beliebtheit currently buys, as whole
+/// percent for display — the same [gc.moraleFactor] the engine fights
+/// with, so the number shown is the number applied.
+({int attack, int defence}) moraleBonus(gc.GameState state, int slot) => (
+      attack:
+          ((gc.moraleFactor(state, slot, defending: false) - 1) * 100).round(),
+      defence:
+          ((gc.moraleFactor(state, slot, defending: true) - 1) * 100).round(),
+    );
+
 /// §21.2 popularity tier text for the turn report.
 String popularityTier(int value) => switch (value) {
   <= 10 => tr('game.popularityTierRevolt'),
@@ -49,6 +59,7 @@ Future<void> showTurnReport(
   // keep up.)
   final production = n('grainYield') + n('livestockYield');
   final foodShort = production < realm.population;
+  final morale = moraleBonus(state, slot);
   final theme = Theme.of(context);
 
   Widget row(IconData icon, String text, {Color? color, FontWeight? weight}) =>
@@ -187,6 +198,17 @@ Future<void> showTurnReport(
               '${popularityTier(realm.popularity)}',
               color: lowPopularity ? theme.colorScheme.error : null,
             ),
+            // The combat morale a high mood buys (2026-08-24). Only shown
+            // once there IS a bonus — at or below 50 the line would be a
+            // row of zeroes every single turn.
+            if (morale.attack > 0)
+              row(
+                Icons.military_tech,
+                tr('game.popularityMorale', {
+                  'attack': morale.attack,
+                  'defence': morale.defence,
+                }),
+              ),
             row(
               Icons.construction,
               tr(

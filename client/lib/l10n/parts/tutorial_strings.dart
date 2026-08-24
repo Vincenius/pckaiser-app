@@ -21,7 +21,7 @@ const Map<String, String> tutorialDe = {
       '("Mein Reich"). '
       'Bauen und Erweitern auf der Karte kostet einen Zug, Truppen '
       'verlegen ist kostenlos. Die Züge werden jede Runde neu '
-      'gewürfelt: je höher der Titel deines Herrschers, desto mehr. '
+      'gewürfelt: je beliebter du beim Volk bist, desto mehr. '
       'Der Pfeil unten rechts macht Aktionen innerhalb des Zuges '
       'rückgängig.',
   'tut.buildTitle': 'Bauen & Erweitern',
@@ -125,7 +125,7 @@ const Map<String, String> tutorialEn = {
       'moves (hammer) and your popularity (heart) — tap either for all '
       'of your realm\'s stats ("My realm"). Building and expanding on the map '
       'costs one move, moving troops is free. Your moves are re-rolled '
-      'every round: the higher your ruler\'s title, the more you get. '
+      'every round: the more your people love you, the more you get. '
       'The arrow at the bottom right undoes actions within the current '
       'turn.',
   'tut.buildTitle': 'Build & expand',

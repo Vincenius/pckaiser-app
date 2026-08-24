@@ -32,6 +32,7 @@ device; the AI plays the rest.
 | `packages/game_core/` | Pure Dart rules engine — all game logic, no Flutter deps |
 | `backend/` | V2 online server: Dart shelf REST API over game_core |
 | `packages/game_core/tool/sim_report.dart` | Headless 200-year simulation report (dev tool) |
+| `packages/game_core/tool/balance_sim.dart` | Runaway-leader balance probe over N seeded worlds (dev tool) |
 | `imgs/` | Original tile graphics (38 indices, see §24 of the spec) |
 | `store/` | Store-listing metadata (EN/DE) |
 | `ORIGINAL_GAME.md` | The traced spec of the original game — source of truth for all rules |
@@ -72,6 +73,7 @@ Useful during development:
 ```bash
 flutter run --profile            # realistic performance (60 fps target)
 dart run tool/sim_report.dart    # in packages/game_core: headless 200-year sim
+dart run tool/balance_sim.dart 20 mittel   # concentration/catch-up metrics over 20 worlds
 ```
 
 Client build-time flags (`--dart-define`), all optional:

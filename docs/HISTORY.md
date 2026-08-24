@@ -6,6 +6,85 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-24 — Beliebtheit as the counter-weight to size (user request)
+
+User report: "gegen ein großes Reich anzukommen ist schwierig — wer nicht in
+den ersten Kriegsrunden 1–2 Länder einnimmt, holt das größte Reich nie mehr
+ein." Two structural causes, both fixed here; the user explicitly scoped the
+change to these two and asked for the rest of the ideas to be left alone.
+
+**1. The Züge budget rode on realm size.** `rollMovementPoints` was
+`christianEquivalentClass(titleClass) + random(6)`, and the title comes from
+the §16.2 prestige score (population + treasury + buildings) — an unbounded,
+size-correlated input. A Kaiser expanded at 8–13 tiles a turn while a Ritter
+crawled at 1–6, so the biggest realm also grew the fastest. It now reads
+`max(movementPointsMinimum, popularity ~/ movementPopularityDivisor) +
+random(6)` (1 and 20), title-blind. Popularity is bounded 0–100, so the
+ceiling is one every realm can reach. Same roll still feeds the per-unit war
+round allowance (`_rollWarMoves` — "the owner's normal movement roll").
+`movementClassEquivalent` had no other caller and is gone; the title keeps
+§19.2 bankruptcy limits, §17 elections and prestige.
+
+**2. Beliebtheit was a pure risk meter.** It could kill a realm (§19.1
+strife, the 2026-08-08 peasant revolt) but being loved bought nothing beyond
+`10 × popularity` in a prestige score whose thresholds run to 100,000. New
+`moraleFactor(state, slot, defending:)` multiplies a unit's effective
+strength in `resolveCombat` by `1 + (popularity − 50)/50 × bonus` —
+`combatAttackPopularityBonus` 0.12 for the mover, `combatDefencePopularityBonus`
+0.20 for the unit holding the tile (defending your own people is worth more).
+Bonus ONLY above 50, never a malus: an unpopular realm losing battles it then
+cannot pay for is the same runaway pointed downward. Side A of `resolveCombat`
+is the mover at every call site, which is what makes the attack/defence split
+work without a new parameter.
+
+**Balance measured, not guessed.** New dev tool
+`packages/game_core/tool/balance_sim.dart` runs N seeded all-AI worlds
+(1000–1200) and reports the runaway metrics: top realm's land share, land
+gini, top/median ratio, whether the year-1100 leader is still #1 at the end,
+whether a bottom-half realm closed to 80 % of the top, plus wars/battles/
+conquests so a "fix" cannot pass by simply freezing the map. It also prints
+the old title-based vs new popularity-based Züge average side by side — the
+calibration that keeps the WORLD's expansion tempo roughly where it was.
+
+That calibration mattered: the first cut (`base 1 + pop ~/ 20`, i.e. an
+addend rather than a floor) nearly doubled the average budget on schwer
+(2.6 → 4.5) and made the runaway WORSE — everyone expanded faster, so the
+leader consolidated sooner. With the floor form (avg 3.5) the metrics move
+the right way; a morale sweep over 0/0, .06/.10, .12/.20, .20/.32, .30/.45
+settled on .12/.20 (bigger bonuses stop helping — they mostly reward
+whoever is popular already, which on schwer is the leader). Züge alone
+(morale 0/0) is NOT enough: on schwer it is worse than the baseline. Only
+the two together move the numbers.
+
+Confirmed over 40 seeds, 1000–1200, baseline → new:
+
+| | mittel | schwer |
+|---|---|---|
+| top realm's land share | 61.1 % → 55.6 % | 82.9 % → 80.9 % |
+| living realms | 7.0 → 7.9 | 2.1 → 2.0 |
+| year-1100 leader still #1 | 20 % → 18 % | 66 % → **51 %** |
+| a bottom-half realm closed to 80 % | 35 % → **45 %** | 5 % → **15 %** |
+| wars / conquests | 1266/17850 → 1109/16316 | 5245/82605 → 5199/80332 |
+| games decided (of 40) | 6 → 5 | 22 → 28 |
+
+`movementPopularityDivisor` 20 vs 25 was the last call. 25 keeps schwer's
+tempo exactly at the old level (Züge base 2.76 → 2.73) and with it the old
+count of decided games (23), but it compresses the popularity term to 2…4
+and gives back nearly all of the mittel gain (top share 60.8 %, laggard
+35 % — i.e. the baseline). 20 keeps the full 1…5 spread and wins on the two
+metrics the user actually reported (leader persistence, catch-up) at BOTH
+difficulties; the schwer side effect is that more games reach a conclusion
+at all, and more often for a realm that came from behind. Mittel is the
+default difficulty, so 20 it is.
+
+Also updated: the tutorial's "Deine Werte" text (Züge now follow the mood,
+not the title), "Mein Reich" and the turn report show the morale bonus
+(`moraleBonus` in `turn_report.dart`, the same `moraleFactor` the engine
+fights with), README tool list. Three probabilistic AI positive-control
+tests (`balance_2026_08_08_test.dart`, `ai_difficulty_test.dart`) went from
+200 to 3000 seeds: the AI's spontaneous war roll only hits ~1 seed in 60, so
+any change that shifts the RNG stream could flake them — this one did.
+
 ## 2026-08-24 — Reclaiming a no-show-delegated war side mid-war (user request)
 
 A player who misses an online war's start entirely has their side handed to
