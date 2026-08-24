@@ -962,6 +962,14 @@ class MatchService {
                 waitWhenAllManual: match.settings.turnTimeoutHours != null),
             emitted);
         state = _resumeAfterWarIfOver(state, emitted);
+      } else if (action is ResumeWarCommand &&
+          state.activeWar?.phase == WarPhase.rounds &&
+          state.activeWar!.isParticipant(action.slot)) {
+        // `[DESIGNED 2026-08-24, user request]` Taking command back from the
+        // no-show autopilot (war.autoSlots) is accepted OUT OF TURN, like
+        // WarPrepPlan during the preparation window: a delegated side is
+        // never the awaited player while it stays in autoSlots.
+        state = _apply(state, action, emitted);
       } else if (action is SetTroopStance &&
           state.activeWar?.phase == WarPhase.preparation &&
           state.activeWar!.isParticipant(action.slot)) {

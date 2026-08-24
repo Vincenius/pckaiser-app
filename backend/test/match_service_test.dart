@@ -1214,6 +1214,77 @@ void main() {
     });
 
     test(
+        'a no-show duelist may take command back mid-war, out of turn '
+        '(2026-08-24, user request)', () async {
+      var now = DateTime.utc(2026, 1, 1);
+      service = MatchService(store, LogPushService(), clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      final sofort = now.millisecondsSinceEpoch;
+      for (final (playerId, slot) in [(a.id, 1), (b.id, 2)]) {
+        await answerPlan(match, playerId, slot, {
+          'auto': false,
+          'slots': [sofort],
+        });
+      }
+      now = now.add(const Duration(minutes: 1));
+      expect(await service.sweepExpired(), 1);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: WarEndRound(slot: 1).toJson(),
+      );
+      // Berta never shows up: her first round clock expires and she is
+      // handed to the autopilot for the rest of the war.
+      now = now.add(const Duration(seconds: 601));
+      expect(await service.sweepExpired(), 1);
+      var st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.autoSlots, contains(2));
+
+      // Berta takes command back — accepted OUT OF TURN: the war's raw
+      // `actingSlot` never actually left her (round 2 opens with the
+      // defender per the per-round alternation, `endWarRound`'s
+      // `_firstHumanSide`/`warRoundOrder`) — nobody was awaiting her only
+      // because she was delegated. The instant she un-delegates, that
+      // becomes a real await instead of the autopilot quietly playing it.
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: ResumeWarCommand(slot: 2).toJson(),
+      );
+      st = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(st.activeWar!.autoSlots, isEmpty);
+      final afterResume = await service.view(match.id, b.id);
+      expect(afterResume['state'], isNotNull,
+          reason: 'the war is still running, not auto-resolved');
+      expect(afterResume['awaited_player_id'], b.id,
+          reason: 'Berta is genuinely awaited now, not silently autopiloted');
+      expect((await store.match(match.id))!.turnDeadline, isNotNull,
+          reason: 'Berta gets a live war-round clock, not a stale one');
+
+      // Proof she can act live: her own round input is now accepted where
+      // the autopilot would otherwise have played it for her.
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarEndRound(slot: 2).toJson(),
+      );
+      final afterHerMove = GameState.fromJson(
+          (await store.match(match.id))!.stateJson!);
+      expect(afterHerMove.activeWar, isNotNull);
+      expect(afterHerMove.activeWar!.autoSlots, isEmpty,
+          reason: 'she stays live for the rest of the war');
+    });
+
+    test(
         'a duel neither player ever touches resolves itself instead of '
         'dragging one turn timer per round (2026-08-08)', () async {
       var now = DateTime.utc(2026, 1, 1);

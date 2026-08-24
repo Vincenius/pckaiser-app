@@ -42,6 +42,10 @@ const Map<String, String> warDe = {
   'war.roundCounter': 'Runde {round}/20',
   'war.openMenuTooltip': 'Kriegsmenü öffnen',
   'war.collapse': 'Einklappen',
+  'war.autopilotBanner':
+      'Die KI führt gerade deine Truppen in diesem Krieg gegen {enemy}, weil '
+      'du den Beginn verpasst hast.',
+  'war.resumeCommand': 'Kontrolle übernehmen',
   'war.capitalHeldSealBanner':
       'Du hältst den gegnerischen Königssitz ! „Runde beenden" besiegelt '
       'jetzt den Sieg — halte das Feld bis dahin.',
@@ -265,6 +269,10 @@ const Map<String, String> warEn = {
   'war.roundCounter': 'Round {round}/20',
   'war.openMenuTooltip': 'Open war menu',
   'war.collapse': 'Collapse',
+  'war.autopilotBanner':
+      'The AI is currently commanding your troops in this war against '
+      '{enemy} because you missed its start.',
+  'war.resumeCommand': 'Take back control',
   'war.capitalHeldSealBanner':
       "You hold the enemy's royal seat! \"End round\" now seals the "
       'victory — hold the field until then.',

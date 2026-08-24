@@ -745,6 +745,21 @@ List<GameEvent> applyWarPrepPlan(
   return const [];
 }
 
+/// `[DESIGNED 2026-08-24, user request]` Takes this side's war command back
+/// from the no-show autopilot mid-war (`war.autoSlots`). `_warFor`'s
+/// "opponent is acting" guard never fires here: it only rejects a LIVE
+/// side's out-of-turn input, and a delegated side is never live by
+/// definition ([warSideIsHuman]).
+List<GameEvent> applyResumeWarCommand(
+    GameState state, Realm realm, ResumeWarCommand action) {
+  final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
+  if (!war.autoSlots.contains(realm.slot)) {
+    throw ActionException(coreMessage('notDelegated'));
+  }
+  war.autoSlots.remove(realm.slot);
+  return const [];
+}
+
 /// WARNING for drivers: this raw dispatch advances the round WITHOUT the
 /// AI sides' war movement (`runAiWarMovement` lives in the ai/ layer, which
 /// imports this one). Real drivers must call `endWarRoundFor` instead —

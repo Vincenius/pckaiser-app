@@ -6,6 +6,34 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-24 — Reclaiming a no-show-delegated war side mid-war (user request)
+
+A player who misses an online war's start entirely has their side handed to
+the stance autopilot for the rest of the war (`war.autoSlots`, the no-show
+rule, 2026-08-08). Until now that handover was one-way: `WarPrepPlan`
+explicitly rejects any revision once `WarPhase.rounds` has begun, so there
+was no way back once the rounds were running — the reported case being
+"missed the opening moves, the AI has been fighting for me ever since, I want
+my troops back."
+
+New action `ResumeWarCommand` (`packages/game_core/lib/src/actions/
+military_actions.dart`) reverses exactly the no-show handover, for one side,
+at any time — the one direction allowed mid-war (a live side still cannot
+delegate itself back through this action, only `WarPrepPlan` during
+preparation does that). It just removes the slot from `war.autoSlots`;
+`warSideIsHuman`/`warActingSlot` pick it up again immediately, including the
+round already in progress, since the no-show sweep never actually moves
+`war.actingSlot` away from the delegated side — it only routes the AWAIT
+around it. Accepted OUT OF TURN by the server like `WarPrepPlan`/
+`SetTroopStance` (`backend/lib/src/match_service.dart`), since a delegated
+side is never the awaited player while it stays in `autoSlots`.
+
+Client: `GameController.warAutoSlot` (mirrors `warPrepSlot`) finds the
+seated/viewing player's own delegated slot during the rounds phase;
+`MapViewerScreen` now also mounts `WarPanel` in that case (previously only
+during preparation), where a new "Kontrolle übernehmen" banner+button
+replaces the (otherwise empty) round controls.
+
 ## 2026-08-13 — v0.2.6 review round (fixes)
 
 Review of the whole v0.2.6 branch against `main`. Five findings, all fixed;

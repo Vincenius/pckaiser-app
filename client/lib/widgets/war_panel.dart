@@ -377,6 +377,14 @@ class _WarPanelState extends State<WarPanel> {
       return _preparation(context, war, prepSlot);
     }
 
+    if (war.phase == gc.WarPhase.rounds) {
+      // This side was handed to the no-show autopilot (war.autoSlots) —
+      // offer taking command back instead of the normal (unavailable)
+      // round controls (user request 2026-08-24).
+      final autoSlot = controller.warAutoSlot;
+      if (autoSlot != null) return _autopiloted(context, war, autoSlot);
+    }
+
     final slot = controller.warHumanSlot;
     if (slot == null) return const SizedBox.shrink();
     if (war.phase == gc.WarPhase.settlement) {
@@ -561,6 +569,43 @@ class _WarPanelState extends State<WarPanel> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// `[DESIGNED 2026-08-24, user request]` Shown instead of the normal round
+  /// controls when this side was handed to the no-show autopilot
+  /// (`war.autoSlots`, ARCHITECTURE.md "war clock"): explains that the AI is
+  /// currently fighting on the player's behalf and offers taking command
+  /// back at any time, mid-round included (`ResumeWarCommand`) — accepted
+  /// out of turn like the preparation controls above.
+  Widget _autopiloted(BuildContext context, gc.ActiveWar war, int slot) {
+    final theme = Theme.of(context);
+    final enemySlot = war.opponentOf(slot);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _banner(
+              theme,
+              Icons.smart_toy_outlined,
+              tr('war.autopilotBanner', {'enemy': realmName(enemySlot)}),
+              background: theme.colorScheme.surface,
+              foreground: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 4),
+            FilledButton.icon(
+              onPressed: () =>
+                  controller.applyWarAction(gc.ResumeWarCommand(slot: slot)),
+              icon: const Icon(Icons.military_tech),
+              label: Text(tr('war.resumeCommand')),
+            ),
+          ],
+        ),
       ),
     );
   }
