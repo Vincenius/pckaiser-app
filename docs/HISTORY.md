@@ -6,6 +6,58 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-24 — Missed war starts: more time, better notice, fewer notifications (user request)
+
+User report: "es gibt noch oft Probleme bei der Vereinbarung von Terminen beim
+Krieg — oft verpasst eine Seite den Start und wird dann von der KI
+übernommen." The clock was only half the story: the reaction window was short
+AND the player was told too little, too late.
+
+**1. Double clock for the opening move.** `_commit` now arms twice
+`settings.war_round_timeout` for a side that has not yet acted in this war
+(`war.actedSlots`), the normal clock for every later round. That is exactly
+the round the no-show rule hands over on, and the one players missed: the
+duel starts at an appointment made hours earlier, so the window has to cover
+"notice the war has begun", not "make your next move". At most once per side,
+so a live duel keeps its pace.
+
+**2. The waiting side is told the appointment is set — nobody else.**
+`WAR_START_FIXED` used to go to BOTH combatants. The one whose own submission
+fixed the appointment reads the matched time in the confirmation dialog the
+moment they tap "confirm", so the push was noise. `_commit` takes an
+`actorSlot` (the submitting realm; null on the sweep path, where both sides
+are told) and skips it. Keyed on who SUBMITTED rather than on the role: the
+attacker usually answers first and is usually the one waiting, but either
+side may be.
+
+**3. Who moves first is visible before the war starts.** New
+`warFirstActingSlot(state)` (rules/war.dart) exposes what `beginWarRounds`
+will pick — the first live side in `warRoundOrder`, i.e. the attacker unless
+they delegated. The preparation panel's status line appends it to the agreed
+start ("Beginn: 20:00 — du ziehst zuerst") and the warPlan confirmation
+dialog does the same, so a player who booked a slot knows whether they have
+to be at the device on the dot. It follows every plan revision.
+
+**4. The 15-minute reminder** (`WAR_START_SOON`, `_sendWarStartReminders`)
+already shipped with the duel scheduling and is unchanged — only ever sent
+for an AGREED start, never the fallback, and never for "sofort" (whose start
+already lies in the past, so the reminder window cannot open).
+
+**5. Optional notifications are now switchable (Options ▸
+Benachrichtigungen).** More notice is only welcome if the player can turn it
+down. Every kind is a `PushKind` string shared with the client
+(`push_kinds.dart`); `PushKind.optional` — `war_started`, `war_start_fixed`,
+`war_start_soon` — gets one switch each, all ON by default. `your_turn`,
+`your_decision` and `match_expiring` are deliberately NOT switchable: muting
+them means losing turns, or a whole match, without ever being told. Stored as
+an opt-OUT list so a kind added later starts out on; local mirror in
+`SettingsService`, authoritative copy on the player record, uploaded by
+`OnlineService.syncPushPrefs` on every toggle and again on launch with the
+FCM token (a failed upload snackbars — the switch has not taken effect until
+the server knows). The gate lives in ONE place, `MatchService._pushTarget`,
+and `updatePlayer` refuses to store anything outside `PushKind.optional`, so
+no client build can mute an essential push.
+
 ## 2026-08-24 — Beliebtheit as the counter-weight to size (user request)
 
 User report: "gegen ein großes Reich anzukommen ist schwierig — wer nicht in

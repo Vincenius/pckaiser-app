@@ -215,10 +215,25 @@ class _WarPanelState extends State<WarPanel> {
       );
     }
     if (scheduled != null && scheduled > 0) {
+      // `[DESIGNED 2026-08-24, user request]` Name the opening mover with
+      // the appointment: whoever booked a duel slot wants to know whether
+      // they have to be at the device on the dot (their move) or may
+      // arrive a moment later (the opponent moves first). Follows every
+      // plan revision — a side that delegates hands the opening over.
+      final firstSlot = gc.warFirstActingSlot(controller.state);
       return _banner(
         theme,
         Icons.schedule,
-        tr('war.scheduledStart', {'time': formatWarStartTime(scheduled)}),
+        switch (firstSlot) {
+          null => tr('war.scheduledStart',
+              {'time': formatWarStartTime(scheduled)}),
+          final s when s == slot => tr('war.scheduledStartYouFirst',
+              {'time': formatWarStartTime(scheduled)}),
+          final s => tr('war.scheduledStartEnemyFirst', {
+              'time': formatWarStartTime(scheduled),
+              'realm': realmName(s),
+            }),
+        },
         background: Colors.green.shade100,
         foreground: Colors.green.shade900,
       );

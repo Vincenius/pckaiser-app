@@ -82,14 +82,21 @@ class ApiClient {
     body: {'id': id, 'display_name': displayName, 'fcm_token': fcmToken},
   );
 
+  /// [pushOptOut] is the FULL set of muted notification kinds (Options ▸
+  /// Notifications); omitting it leaves the server's stored set alone.
   Future<Map<String, dynamic>> updatePlayer({
     required String id,
     String? displayName,
     String? fcmToken,
+    Set<String>? pushOptOut,
   }) => _request(
     'PATCH',
     '/api/v1/players/$id',
-    body: {'display_name': ?displayName, 'fcm_token': ?fcmToken},
+    body: {
+      'display_name': ?displayName,
+      'fcm_token': ?fcmToken,
+      if (pushOptOut != null) 'push_opt_out': pushOptOut.toList()..sort(),
+    },
   );
 
   Future<Map<String, dynamic>> createMatch({

@@ -109,6 +109,9 @@ class MatchService {
         id: id ?? uuidV4(),
         displayName: displayName.trim(),
         fcmToken: fcmToken ?? existing?.fcmToken,
+        // Carried over for the same reason as the token: a rename must not
+        // silently switch every notification the player turned off back on.
+        pushOptOut: existing?.pushOptOut,
         createdAt: existing?.createdAt,
       );
       await _store.savePlayer(player);
@@ -116,10 +119,15 @@ class MatchService {
     });
   }
 
+  /// [pushOptOut] REPLACES the stored opt-out set (the client sends the
+  /// full list from its options screen); null leaves it alone. Unknown or
+  /// non-optional kinds are dropped — a client build that offers a switch
+  /// this server does not know must not be able to mute `your_turn`.
   Future<PlayerRecord> updatePlayer(
     String id, {
     String? displayName,
     String? fcmToken,
+    Set<String>? pushOptOut,
   }) {
     return _locked(_playersKey, () async {
       final player = await _requirePlayer(id);
@@ -127,9 +135,26 @@ class MatchService {
         player.displayName = displayName.trim();
       }
       if (fcmToken != null) player.fcmToken = fcmToken;
+      if (pushOptOut != null) {
+        player.pushOptOut
+          ..clear()
+          ..addAll(pushOptOut.where(PushKind.optional.contains));
+      }
       await _store.savePlayer(player);
       return player;
     });
+  }
+
+  /// The player a push of [kind] should go to, or null when there is none
+  /// — no seat behind the slot, no such player, or (for an OPTIONAL kind)
+  /// this player switched it off in Options ▸ Notifications (`[DESIGNED
+  /// 2026-08-24, user request]`). The ONE place that gate is applied, so a
+  /// muted notification is never sent from any path.
+  Future<PlayerRecord?> _pushTarget(String? playerId, String kind) async {
+    if (playerId == null) return null;
+    final player = await _store.player(playerId);
+    if (player == null || !player.wantsPush(kind)) return null;
+    return player;
   }
 
   // --- Match lifecycle ---------------------------------------------------
@@ -896,6 +921,10 @@ class MatchService {
     // Events emitted by THIS submission — returned to the caller so the
     // client can show its result popups (battle reports, spy reveals).
     final emitted = <GameEvent>[];
+    // The realm this submission acts for — handed to `_commit` so a push
+    // announcing what the submission just did is not sent back to its own
+    // author (the fixed war appointment). Null for a plain end-turn.
+    int? actorSlot;
 
     if (endTurn) {
       if (awaited != playerId) throw ApiException(403, 'api.notYourTurn');
@@ -918,6 +947,7 @@ class MatchService {
         throw ApiException(400, 'api.badRequest');
       }
       final action = _sanitizeWarPlanTimes(rawAction);
+      actorSlot = action.slot;
       // The action must act for a realm this seat currently controls — not
       // only their home slot: control follows the ruler, so a player can
       // come to play several realms (conquest, inheritance).
@@ -1030,7 +1060,7 @@ class MatchService {
     // creator's kick-idle option keys off consecutive timed-out turns).
     seat.idleTurns = 0;
 
-    await _commit(match, state, notify: true);
+    await _commit(match, state, notify: true, actorSlot: actorSlot);
     await _store.saveMatch(match);
     final result = await view(matchId, playerId);
     // Filter the returned events against EVERY realm this seat controls, not
@@ -1169,9 +1199,8 @@ class MatchService {
         await _store.saveMatch(match);
         for (final slot in [war.attackerSlot, war.defenderSlot]) {
           if (war.autoSlots.contains(slot)) continue;
-          final id = _playerForSlot(match, state, slot);
-          if (id == null) continue;
-          final p = await _store.player(id);
+          final p = await _pushTarget(
+              _playerForSlot(match, state, slot), PushKind.warStartSoon);
           if (p != null) await _push.warStartSoon(p, match);
         }
       });
@@ -1531,6 +1560,7 @@ class MatchService {
     MatchRecord match,
     GameState state, {
     required bool notify,
+    int? actorSlot,
   }) async {
     final previous = match.stateJson == null ? null : _load(match);
     final previousAwaited =
@@ -1627,7 +1657,18 @@ class MatchService {
         // overlapped is a whole turn, not half of one (user design).
         timeout = turnTimeout;
       } else if (state.activeWar != null && _warIsHumanVsHuman(state)) {
-        timeout = Duration(seconds: match.settings.warRoundTimeoutSeconds);
+        // `[DESIGNED 2026-08-24, user request]` A side's FIRST move of the
+        // war gets a DOUBLE war clock. That is the round the no-show rule
+        // keys on (`_sweepMatch`: never acted + clock expired ⇒ handed to
+        // the autopilot for the rest of the war), and the one a player is
+        // most likely to be late for — the duel starts at an appointment
+        // made hours earlier, not off their own last move. Every later
+        // round runs on the normal clock, so a live duel keeps its pace
+        // and the extra grace is granted at most once per side.
+        final firstMove =
+            !state.activeWar!.actedSlots.contains(_awaitedSlot(state) ?? -1);
+        final rounds = match.settings.warRoundTimeoutSeconds;
+        timeout = Duration(seconds: firstMove ? rounds * 2 : rounds);
       } else {
         timeout = turnTimeout;
       }
@@ -1687,9 +1728,16 @@ class MatchService {
           ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
           : (match.turnDeadline ?? _clock());
       for (final slot in [war.attackerSlot, war.defenderSlot]) {
-        final id = _playerForSlot(match, state, slot);
-        if (id == null) continue;
-        final p = await _store.player(id);
+        // `[DESIGNED 2026-08-24, user request]` Only the WAITING side is
+        // pushed. The appointment is fixed by a submission — the side that
+        // just sent it (normally the defender, who answers second) reads
+        // the matched time in the confirmation dialog the moment they tap
+        // "confirm", so a push to them is pure noise. `actorSlot` is null
+        // on the sweep path, where nobody submitted anything and both
+        // sides are told.
+        if (slot == actorSlot) continue;
+        final p = await _pushTarget(
+            _playerForSlot(match, state, slot), PushKind.warStartFixed);
         if (p != null) {
           await _push.warStartFixed(p, match, start,
               agreed: agreed, toAttacker: slot == war.attackerSlot);
@@ -1704,9 +1752,8 @@ class MatchService {
       // their next round to the clock or play it live.
       final war = state.activeWar!;
       for (final slot in [war.attackerSlot, war.defenderSlot]) {
-        final id = _playerForSlot(match, state, slot);
-        if (id == null) continue;
-        final p = await _store.player(id);
+        final p = await _pushTarget(
+            _playerForSlot(match, state, slot), PushKind.warStarted);
         if (p != null) await _push.warStarted(p, match);
       }
     } else if (awaited != previousAwaited) {

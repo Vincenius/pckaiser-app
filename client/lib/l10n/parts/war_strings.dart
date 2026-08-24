@@ -7,6 +7,11 @@ const Map<String, String> warDe = {
   'war.prepVs': '{attacker} gegen {defender}',
   // Eine Statuszeile statt eines Absatzes (2026-08-13): kurz, mit Icon.
   'war.scheduledStart': 'Beginn: {time}',
+  // Wer die erste Kriegsrunde eröffnet, schon während der Vorbereitung
+  // (2026-08-24, Nutzerwunsch) — damit klar ist, ob man zum Termin
+  // selbst am Zug ist.
+  'war.scheduledStartYouFirst': 'Beginn: {time} — du ziehst zuerst',
+  'war.scheduledStartEnemyFirst': 'Beginn: {time} — {realm} zieht zuerst',
   'war.prepWaitingBoth': 'Der Krieg beginnt, sobald beide Seiten bereit sind.',
   'war.prepOwesPlan': 'Lege fest, wer dein Heer führt.',
   'war.stanceSection': 'Truppenhaltung',
@@ -238,6 +243,8 @@ const Map<String, String> warEn = {
   'war.prepTitle': 'Preparations for war',
   'war.prepVs': '{attacker} against {defender}',
   'war.scheduledStart': 'Start: {time}',
+  'war.scheduledStartYouFirst': 'Start: {time} — you move first',
+  'war.scheduledStartEnemyFirst': 'Start: {time} — {realm} moves first',
   'war.prepWaitingBoth': 'The war begins as soon as both sides are ready.',
   'war.prepOwesPlan': 'Decide who commands your army.',
   'war.stanceSection': 'Troop stances',

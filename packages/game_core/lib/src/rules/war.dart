@@ -259,6 +259,24 @@ int? _firstHumanSide(GameState state, ActiveWar war) {
   return null;
 }
 
+/// `[DESIGNED 2026-08-24, user request]` Which side will move FIRST once
+/// the rounds begin — the answer the preparation window shows next to the
+/// agreed start ("{realm} zieht zuerst"), so a player who booked an
+/// appointment knows whether the opening move is theirs. It is exactly
+/// what [beginWarRounds] will pick: the first LIVE side in the current
+/// round's initiative order ([warRoundOrder]) — the attacker opens, unless
+/// they handed their side to the autopilot. Null when no side is played
+/// live (the war then fast-forwards without anyone moving).
+///
+/// Valid during the preparation window as well as mid-war; it reads the
+/// CURRENT plan, so it follows every revision (a side switching to the
+/// autopilot moves the opening to its opponent).
+int? warFirstActingSlot(GameState state) {
+  final war = state.activeWar;
+  if (war == null) return null;
+  return _firstHumanSide(state, war);
+}
+
 /// The war side whose interactive input is awaited right now, or null
 /// (no war, or no human has to act). Drives the local seat AND the
 /// server's awaited player (ARCHITECTURE.md "Human-vs-human wars

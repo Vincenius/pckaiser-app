@@ -110,6 +110,54 @@ void main() {
     expect(find.textContaining('Führung:'), findsOneWidget);
   });
 
+  // `[DESIGNED 2026-08-24, user request]` With an agreed appointment the
+  // status line also names WHO opens the war, so a player who booked a
+  // slot knows whether the first move is theirs.
+  testWidgets('an agreed start names the side that moves first', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 740);
+    addTearDown(tester.view.reset);
+
+    final controller = await prepController(tester);
+    final state = controller.state;
+    // A duel between two live humans with a fixed start.
+    state.dynasty(2).status = gc.DynastyStatus.human;
+    state.activeWar = gc.ActiveWar(
+      attackerSlot: 1,
+      defenderSlot: 2,
+      phase: gc.WarPhase.preparation,
+      planAnsweredSlots: {1, 2},
+      planSlots: {1: const [0], 2: const [0]},
+      scheduledStartMs: DateTime.utc(2026, 6, 1, 20).millisecondsSinceEpoch,
+    );
+    Future<void> pumpPanel() => tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) => Align(
+                  alignment: Alignment.bottomCenter,
+                  child: WarPanel(controller: controller),
+                ),
+              ),
+            ),
+          ),
+        );
+    await pumpPanel();
+
+    // Round 0 opens with the attacker — this seat.
+    expect(find.textContaining('du ziehst zuerst'), findsOneWidget);
+
+    // Handing the seat's own side to the autopilot moves the opening to
+    // the opponent, and the line follows.
+    controller.state.activeWar!.autoSlots.add(1);
+    await pumpPanel();
+    expect(find.textContaining('du ziehst zuerst'), findsNothing);
+    expect(find.textContaining('zieht zuerst'), findsOneWidget);
+  });
+
   testWidgets('picking a troop offers its stance under its name', (
     tester,
   ) async {

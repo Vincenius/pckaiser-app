@@ -292,13 +292,24 @@ Future<void> _promptDecision(
       // both, and the server's push carries the final "fixed" word.
       if (live && controller.isOnline && context.mounted) {
         final agreedMs = controller.state.activeWar?.scheduledStartMs;
+        // With the appointment comes the opening mover (`[DESIGNED
+        // 2026-08-24, user request]`): the side that answers second reads
+        // it here, the other one in the preparation panel's status line.
+        final firstSlot = gc.warFirstActingSlot(controller.state);
         await _info(
           context,
           tr('dec.warStartTitle'),
           agreedMs != null && agreedMs > 0
               ? tr('dec.warStartConfirmed', {
-                  'time': formatWarStartTime(agreedMs),
-                })
+                    'time': formatWarStartTime(agreedMs),
+                  }) +
+                  switch (firstSlot) {
+                    null => '',
+                    final s when s == decision.decidingSlot =>
+                      tr('dec.warStartYouFirst'),
+                    final s =>
+                      tr('dec.warStartEnemyFirst', {'realm': realmName(s)}),
+                  }
               : tr('dec.warStartSaved'),
         );
       }

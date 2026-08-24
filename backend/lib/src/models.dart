@@ -5,6 +5,35 @@ library;
 
 import 'dart:math';
 
+/// The notification kinds the server sends (the `kind` in every FCM data
+/// payload, and the wire keys of the client's notification settings —
+/// `[DESIGNED 2026-08-24, user request]`). Kinds listed in [optional] can
+/// be switched off per player (Options ▸ Notifications, all on by
+/// default); everything else is essential — a player must always learn
+/// that the game is waiting for THEM, and that a silent match is about to
+/// be deleted.
+///
+/// Keep the strings in sync with the client's `SettingsService`
+/// notification keys; they travel over `PATCH /players/:id`.
+abstract final class PushKind {
+  static const String yourTurn = 'your_turn';
+  static const String yourDecision = 'your_decision';
+  static const String warStarted = 'war_started';
+  static const String warStartFixed = 'war_start_fixed';
+  static const String warStartSoon = 'war_start_soon';
+  static const String matchExpiring = 'match_expiring';
+
+  /// Switchable in the client's options. All three are war-scheduling
+  /// courtesy pushes: the declaration, the fixed appointment and the
+  /// quarter-hour reminder. None of them is the only way to learn about
+  /// the war — the preparation window itself arrives as a decision.
+  static const Set<String> optional = {
+    warStarted,
+    warStartFixed,
+    warStartSoon,
+  };
+}
+
 /// RFC-4122 v4 UUID from a secure random source — avoids a package
 /// dependency for the one thing we need.
 String uuidV4() {
@@ -35,25 +64,48 @@ class PlayerRecord {
     required this.id,
     required this.displayName,
     this.fcmToken,
+    Set<String>? pushOptOut,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now().toUtc();
+  })  : pushOptOut = pushOptOut ?? <String>{},
+        createdAt = createdAt ?? DateTime.now().toUtc();
 
   factory PlayerRecord.fromJson(Map<String, dynamic> json) => PlayerRecord(
         id: json['id'] as String,
         displayName: json['display_name'] as String,
         fcmToken: json['fcm_token'] as String?,
+        // Additive field (2026-08-24): rows written before it default to
+        // "everything on", which is also the client's default.
+        pushOptOut: {
+          for (final k in (json['push_opt_out'] as List? ?? const []))
+            if (k is String) k,
+        },
         createdAt: DateTime.parse(json['created_at'] as String),
       );
 
   final String id;
   String displayName;
   String? fcmToken;
+
+  /// OPTIONAL notification kinds this player switched off (Options ▸
+  /// Notifications, `[DESIGNED 2026-08-24, user request]`) — [PushKind]
+  /// values. Stored as an opt-OUT list so a kind added by a later build is
+  /// on by default for everyone, exactly like a fresh install.
+  /// Kinds outside [PushKind.optional] are never suppressed: a player must
+  /// always learn that it is their move.
+  final Set<String> pushOptOut;
+
   final DateTime createdAt;
+
+  /// Whether [kind] may be sent to this player — the ONE gate every
+  /// optional push passes through (`MatchService._pushTarget`).
+  bool wantsPush(String kind) =>
+      !PushKind.optional.contains(kind) || !pushOptOut.contains(kind);
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'display_name': displayName,
         'fcm_token': fcmToken,
+        'push_opt_out': pushOptOut.toList()..sort(),
         'created_at': createdAt.toIso8601String(),
       };
 }

@@ -83,6 +83,10 @@ const Map<String, String> miscDe = {
   'dec.warStartImminent': 'jeden Moment',
   'dec.warStartNoProposal': 'Ohne Terminvorschlag',
   'dec.warStartConfirmed': 'Kriegstermin steht: {time}.',
+  // Angehängt an die Terminbestätigung (2026-08-24, Nutzerwunsch): wer
+  // die erste Kriegsrunde eröffnet, steht schon vor dem Beginn fest.
+  'dec.warStartYouFirst': ' Du ziehst zuerst.',
+  'dec.warStartEnemyFirst': ' {realm} zieht zuerst.',
   'dec.warStartSaved':
       'Deine Auswahl ist gespeichert. Sobald dein Gegner gewählt hat, '
       'siehst du den Termin — gibt es keinen gemeinsamen, beginnt der '
@@ -173,6 +177,8 @@ const Map<String, String> miscEn = {
   'dec.warStartImminent': 'any moment now',
   'dec.warStartNoProposal': 'No time proposal',
   'dec.warStartConfirmed': 'War start fixed: {time}.',
+  'dec.warStartYouFirst': ' You move first.',
+  'dec.warStartEnemyFirst': ' {realm} moves first.',
   'dec.warStartSaved':
       'Your choice is saved. Once your opponent has chosen you will see '
       'the appointment — if there is no shared one, the war begins when '
