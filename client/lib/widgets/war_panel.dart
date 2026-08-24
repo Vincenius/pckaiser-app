@@ -614,8 +614,23 @@ class _WarPanelState extends State<WarPanel> {
             ),
             const SizedBox(height: 4),
             FilledButton.icon(
-              onPressed: () =>
-                  controller.applyWarAction(gc.ResumeWarCommand(slot: slot)),
+              // The delegation can vanish under the tap (the war ends, or a
+              // stale view after a refresh): report the rejection like the
+              // other action paths instead of letting the exception escape
+              // the async callback.
+              onPressed: () async {
+                try {
+                  await controller.applyWarAction(
+                    gc.ResumeWarCommand(slot: slot),
+                  );
+                } on gc.ActionException catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(SnackBar(content: Text(e.message)));
+                  }
+                }
+              },
               icon: const Icon(Icons.military_tech),
               label: Text(tr('war.resumeCommand')),
             ),
