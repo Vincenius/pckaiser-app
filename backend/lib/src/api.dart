@@ -59,10 +59,19 @@ class Api {
   Future<Response> _updatePlayer(Request request, String id) =>
       _guard(request, ()async {
         final body = await _json(request);
+        final optOut = body['push_opt_out'];
         final player = await _service.updatePlayer(
           id,
           displayName: body['display_name'] as String?,
           fcmToken: body['fcm_token'] as String?,
+          // The client sends the FULL set of muted notification kinds
+          // (Options ▸ Notifications); absent = leave the stored one alone.
+          pushOptOut: optOut is List
+              ? {
+                  for (final k in optOut)
+                    if (k is String) k,
+                }
+              : null,
         );
         return player.toJson();
       });

@@ -6,7 +6,8 @@ library;
 import '../l10n/messages.dart';
 import '../rng/rng.dart';
 import '../rules/espionage.dart';
-import '../rules/movement.dart' show closestReachableTile, warPathStep;
+import '../rules/movement.dart'
+    show SeaEmbark, closestReachableTile, warField, warSeaEmbark;
 import '../rules/troops.dart';
 import '../rules/war.dart';
 import '../state/constants.dart';
@@ -519,70 +520,166 @@ List<GameEvent> applyWarMove(
   return events;
 }
 
-/// One whole march (§11.2): walks the unit step by step along the shortest
-/// passable LAND path toward the target — every step with the full
-/// [applyWarMove] semantics (combat, capture arming) — until it arrives,
-/// its round moves run out, a defender holds the tile, the unit is
-/// destroyed, or the war ends. A land target the path cannot reach is not
-/// an error: the march retargets to the reachable tile nearest the click
-/// and gets as close as it can. Throws only when no step is possible AT
-/// ALL (nowhere nearer to go, or the unit cannot move this round); once
-/// the unit moved, the march simply ends where it got to. Water crossings
-/// stay manual (single [WarMove] steps / [WarNavalTransport]).
+/// Outcome of one march ([marchWarUnit]): the events it produced, whether
+/// the unit actually left its tile, and — only when it did NOT — why.
+///
+/// The distinction matters because a march is a SEQUENCE of moves: "the
+/// last step was refused" is the normal end of a march that ran out of
+/// Züge, not a failure. `[FIXED 2026-08-24]` The old loop inferred this
+/// from the event list, and a plain step emits no event: a march to a tile
+/// beyond the round's reach walked its steps, hit the moves limit with an
+/// empty event list, rethrew — and `applyAction`, which works on a copy,
+/// then threw the whole advance away. Ordering a unit to a far tile left
+/// it standing where it was with "Diese Truppe kann in dieser Runde nicht
+/// weiter ziehen!".
+class WarMarchOutcome {
+  const WarMarchOutcome(this.events, {required this.moved, this.blocker});
+
+  final List<GameEvent> events;
+
+  /// Whether the unit changed tile (or spent its round on a voyage).
+  final bool moved;
+
+  /// Player-facing reason the unit could not move AT ALL, or null.
+  final String? blocker;
+}
+
+/// One whole march (§11.2) — THE movement brain, shared by the player's
+/// [WarMarch] action and the AI's war movement (`runAiWarMovement`), so
+/// both sides march by the same rules and the same map knowledge.
+///
+/// The unit walks the cheapest passable route toward ([tx],[ty]), every
+/// step with the full [applyWarMove] semantics (combat, capture arming),
+/// until it arrives, its round moves run out, a defender holds the tile,
+/// it is destroyed, or the war ends. Three things make the route smart:
+///
+///  * **Out of reach is fine.** A target further than the round's Züge is
+///    not an error — the unit spends every move it has getting there and
+///    stops, keeping the ground it won `[DESIGNED 2026-08-24, user
+///    request]`.
+///  * **Unreachable is fine too.** A land target no path reaches (an
+///    island, third-realm land) retargets to the tile that approaches it
+///    best ([closestReachableTile], 2026-07-24).
+///  * **Ships count as roads.** When the sea reaches the target and the
+///    land route is at least [warSeaRouteAdvantage] steps longer (or does
+///    not exist), the march walks to the right harbor coast and embarks
+///    ([warSeaEmbark]) — one order, one action. This used to be a
+///    client-side convenience the AI did not share, which is why AI
+///    armies never crossed water.
 ///
 /// The unit is tracked by OBJECT identity across the steps: combat
 /// compacts the troop list, so an index (or a name — they repeat) could
-/// silently come to mean a different unit mid-march. This used to live in
-/// the client as a 120-line loop with name+expected-position tracking.
-List<GameEvent> applyWarMarch(
-    GameState state, Realm realm, WarMarch action, Rng rng) {
-  final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
-  final troop = unitAt(realm, action.unitIndex);
+/// silently come to mean a different unit mid-march.
+WarMarchOutcome marchWarUnit(
+    GameState state, Realm realm, ActiveWar war, Troop troop, int tx, int ty,
+    Rng rng) {
   final map = state.map;
-  if (!map.inBounds(action.x, action.y)) {
-    throw ActionException(coreMessage('tileOffMap'));
+  final events = <GameEvent>[];
+  if (!map.inBounds(tx, ty)) {
+    return WarMarchOutcome(events,
+        moved: false, blocker: coreMessage('tileOffMap'));
   }
-  if (troop.x == action.x && troop.y == action.y) {
-    throw ActionException(coreMessage('troopAlreadyThere'));
+  if (troop.x == tx && troop.y == ty) {
+    return WarMarchOutcome(events,
+        moved: false, blocker: coreMessage('troopAlreadyThere'));
   }
+  final slot = realm.slot;
+  final enemySlot = war.opponentOf(slot);
+  final enemyRealm = state.realm(enemySlot);
   // Own land, the enemy's, and neutral unowned tiles are passable in war
   // (mirrors [applyWarMove]); only third realms block the march.
-  final enemySlot = war.opponentOf(realm.slot);
-  final warOwners = {realm.slot, enemySlot, World.niemand};
+  final warOwners = {slot, enemySlot, World.niemand};
 
-  // A LAND click with no passable path (an island, third-realm land, a
-  // pocket walled off by water) no longer rejects the march: the unit
-  // approaches instead — the goal is retargeted to the reachable tile
-  // nearest the click `[DESIGNED 2026-07-24, user request]`. Water clicks
-  // keep the manual sea-steering fallback below, and a unit at sea keeps
-  // steering tile by tile.
-  var goalX = action.x;
-  var goalY = action.y;
-  if (!map.isWaterAt(action.x, action.y) &&
-      !map.isWaterAt(troop.x, troop.y) &&
-      warPathStep(map, troop.x, troop.y, action.x, action.y,
-              allowedOwners: warOwners) ==
-          null) {
-    final near = closestReachableTile(map, troop.x, troop.y, action.x, action.y,
-        allowedOwners: warOwners);
-    if (near == null) {
-      throw ActionException(coreMessage('impassable'));
-    }
-    (goalX, goalY) = near;
+  // Enemy stacks the route should walk AROUND when it can — the ordered
+  // destination itself is never avoided (tapping an enemy unit IS the
+  // order to attack it).
+  Set<int> enemyStacks() => {
+        for (final e in enemyRealm.troops)
+          if (e.x != tx || e.y != ty) map.index(e.x, e.y),
+      };
+
+  // This unit's remaining Züge, or -1 once it is off the troop list.
+  int movesLeft() {
+    final index = realm.troops.indexOf(troop);
+    if (index < 0) return -1;
+    final moves = war.movesLeft[slot];
+    if (moves == null || index >= moves.length) return -1;
+    return moves[index];
   }
 
-  final events = <GameEvent>[];
+  // ---- plan the route -------------------------------------------------
+  var goalX = tx;
+  var goalY = ty;
+  SeaEmbark? sea;
+  String? blocker;
+  final atSea = map.isWaterAt(troop.x, troop.y);
+  // Ordering a LAND unit onto open water is not a march: there is no route
+  // over the sea to walk. The one legal case is boarding — a single step
+  // onto an adjacent own or captured Hafen (§11.2), after which the unit
+  // is steered tile by tile. Anything else is refused before a single Zug
+  // is spent (the unit must not wander to some random shore).
+  if (map.isWaterAt(tx, ty) && !atSea) {
+    final board = (tx - troop.x).abs() + (ty - troop.y).abs() == 1
+        ? warStepBlocker(state, slot, enemySlot, troop.x, troop.y, tx, ty)
+        : coreMessage('embarkViaHarborOnly');
+    if (board != null) {
+      return WarMarchOutcome(events, moved: false, blocker: board);
+    }
+  }
+  // Sea planning only applies between land tiles: a unit already at sea is
+  // steered tile by tile, and a water click is a manual steering order.
+  if (!atSea && !map.isWaterAt(tx, ty)) {
+    final field = warField(map, troop.x, troop.y,
+        allowedOwners: warOwners, avoid: enemyStacks());
+    final landWalk = field.stepsTo(tx, ty);
+    // A landing obeys the same ownership rule as an overland step, so a
+    // third realm's coast is no destination.
+    if (warOwners.contains(map.ownerAt(tx, ty))) {
+      final embark = warSeaEmbark(map, troop.x, troop.y, tx, ty,
+          harborOwners: {slot, enemySlot}, field: field);
+      // Walking wins whenever it can still finish the job: the voyage
+      // costs the unit's WHOLE round however short the crossing, so it
+      // only pays off when the land march could not arrive anyway and the
+      // detour to the port is much shorter than the overland route.
+      if (embark != null &&
+          (landWalk < 0 ||
+              (landWalk > movesLeft() &&
+                  landWalk > embark.walk + warSeaRouteAdvantage))) {
+        sea = embark;
+        goalX = embark.x;
+        goalY = embark.y;
+      }
+    }
+    if (sea == null && landWalk < 0) {
+      final near = closestReachableTile(map, troop.x, troop.y, tx, ty,
+          allowedOwners: warOwners);
+      if (near == null) {
+        return WarMarchOutcome(events,
+            moved: false, blocker: coreMessage('impassable'));
+      }
+      (goalX, goalY) = near;
+    }
+  }
+
+  // ---- walk it --------------------------------------------------------
+  var moved = false;
   var guard = 0;
   while (identical(state.activeWar, war) &&
       war.phase == WarPhase.rounds &&
-      guard++ < 60) {
+      guard++ < 200) {
     final index = realm.troops.indexOf(troop);
     if (index < 0) break; // destroyed in a step's combat
     if (troop.x == goalX && troop.y == goalY) break; // arrived
-    var step = warPathStep(map, troop.x, troop.y, goalX, goalY,
-        allowedOwners: warOwners);
+    if (movesLeft() < 1) {
+      // Out of Züge — the march simply ends here; next round continues it.
+      blocker ??= coreMessage('troopCannotMoveThisRound');
+      break;
+    }
+    var step = warField(map, troop.x, troop.y,
+            allowedOwners: warOwners, avoid: enemyStacks())
+        .firstStepTo(goalX, goalY);
     if (step == null) {
-      // No land path (water target, unit at sea, island shore): manual
+      // No land route (water target, unit at sea, island shore): manual
       // straight-line legs — primary axis first, then the secondary —
       // under the same per-step §11.2 rule ([warStepBlocker]) WarMove
       // enforces, so a planned step can never be rejected.
@@ -593,7 +690,7 @@ List<GameEvent> applyWarMarch(
           : [(0, remY.sign), (remX.sign, 0)];
       for (final (dx, dy) in candidates) {
         if (dx == 0 && dy == 0) continue;
-        if (warStepBlocker(state, realm.slot, enemySlot, troop.x, troop.y,
+        if (warStepBlocker(state, slot, enemySlot, troop.x, troop.y,
                 troop.x + dx, troop.y + dy) ==
             null) {
           step = (dx, dy);
@@ -602,33 +699,70 @@ List<GameEvent> applyWarMarch(
       }
     }
     if (step == null) {
-      if (events.isEmpty) {
-        throw ActionException(coreMessage('impassable'));
-      }
-      break; // combat reshaped the situation — stop where we stand
+      blocker ??= coreMessage('impassable');
+      break;
     }
     final beforeX = troop.x;
     final beforeY = troop.y;
-    try {
-      events.addAll(applyWarMove(
-          state,
-          realm,
-          WarMove(
-              slot: action.slot, unitIndex: index, dx: step.$1, dy: step.$2),
-          rng));
-    } on ActionException {
-      // Out of moves for this round (or the step became illegal): a march
-      // that never moved surfaces the reason, a partial march just ends.
-      if (events.isEmpty) rethrow;
+    events.addAll(applyWarMove(
+        state,
+        realm,
+        WarMove(slot: slot, unitIndex: index, dx: step.$1, dy: step.$2),
+        rng));
+    if (!realm.troops.contains(troop)) {
+      moved = true; // it marched into its death — the order was carried out
       break;
     }
-    if (realm.troops.contains(troop) &&
-        troop.x == beforeX &&
-        troop.y == beforeY) {
+    if (troop.x == beforeX && troop.y == beforeY) {
+      moved = moved || events.isNotEmpty; // a battle it did not win
       break; // combat: the defender held the tile
     }
+    moved = true;
   }
-  return events;
+
+  // ---- and ship it, if that was the plan ------------------------------
+  if (sea != null &&
+      identical(state.activeWar, war) &&
+      war.phase == WarPhase.rounds &&
+      troop.x == sea.x &&
+      troop.y == sea.y) {
+    final index = realm.troops.indexOf(troop);
+    if (index >= 0) {
+      if (movesLeft() < 1) {
+        // Walked to the port but has no Zug left to sail — it embarks next
+        // round; the walk still counts as progress.
+        blocker ??= coreMessage('troopCannotMoveThisRound');
+      } else {
+        try {
+          events.addAll(applyWarNavalTransport(
+              state,
+              realm,
+              WarNavalTransport(slot: slot, unitIndex: index, x: tx, y: ty),
+              rng));
+          moved = true;
+        } on ActionException catch (e) {
+          blocker ??= e.message;
+        }
+      }
+    }
+  }
+  return WarMarchOutcome(events, moved: moved, blocker: blocker);
+}
+
+/// The [WarMarch] action: validates the order, then hands it to
+/// [marchWarUnit]. Rejects only when the unit could not move AT ALL —
+/// a march that got part of the way is a success and keeps its ground
+/// (throwing would roll the whole advance back, see [WarMarchOutcome]).
+List<GameEvent> applyWarMarch(
+    GameState state, Realm realm, WarMarch action, Rng rng) {
+  final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
+  final troop = unitAt(realm, action.unitIndex);
+  final outcome =
+      marchWarUnit(state, realm, war, troop, action.x, action.y, rng);
+  if (!outcome.moved && outcome.blocker != null) {
+    throw ActionException(outcome.blocker!);
+  }
+  return outcome.events;
 }
 
 /// Seetransport im Krieg: embark a unit standing next to an own or ENEMY
@@ -742,6 +876,21 @@ List<GameEvent> applyWarPrepPlan(
   final war = _warFor(state, realm.slot, phase: WarPhase.preparation);
   setWarPrepPlan(state, war, realm.slot,
       auto: action.auto, slots: action.slots);
+  return const [];
+}
+
+/// `[DESIGNED 2026-08-24, user request]` Takes this side's war command back
+/// from the no-show autopilot mid-war (`war.autoSlots`). `_warFor`'s
+/// "opponent is acting" guard never fires here: it only rejects a LIVE
+/// side's out-of-turn input, and a delegated side is never live by
+/// definition ([warSideIsHuman]).
+List<GameEvent> applyResumeWarCommand(
+    GameState state, Realm realm, ResumeWarCommand action) {
+  final war = _warFor(state, realm.slot, phase: WarPhase.rounds);
+  if (!war.autoSlots.contains(realm.slot)) {
+    throw ActionException(coreMessage('notDelegated'));
+  }
+  war.autoSlots.remove(realm.slot);
   return const [];
 }
 

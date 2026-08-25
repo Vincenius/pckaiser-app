@@ -215,10 +215,25 @@ class _WarPanelState extends State<WarPanel> {
       );
     }
     if (scheduled != null && scheduled > 0) {
+      // `[DESIGNED 2026-08-24, user request]` Name the opening mover with
+      // the appointment: whoever booked a duel slot wants to know whether
+      // they have to be at the device on the dot (their move) or may
+      // arrive a moment later (the opponent moves first). Follows every
+      // plan revision — a side that delegates hands the opening over.
+      final firstSlot = gc.warFirstActingSlot(controller.state);
       return _banner(
         theme,
         Icons.schedule,
-        tr('war.scheduledStart', {'time': formatWarStartTime(scheduled)}),
+        switch (firstSlot) {
+          null => tr('war.scheduledStart',
+              {'time': formatWarStartTime(scheduled)}),
+          final s when s == slot => tr('war.scheduledStartYouFirst',
+              {'time': formatWarStartTime(scheduled)}),
+          final s => tr('war.scheduledStartEnemyFirst', {
+              'time': formatWarStartTime(scheduled),
+              'realm': realmName(s),
+            }),
+        },
         background: Colors.green.shade100,
         foreground: Colors.green.shade900,
       );
@@ -375,6 +390,14 @@ class _WarPanelState extends State<WarPanel> {
       final prepSlot = controller.warPrepSlot;
       if (prepSlot == null) return const SizedBox.shrink();
       return _preparation(context, war, prepSlot);
+    }
+
+    if (war.phase == gc.WarPhase.rounds) {
+      // This side was handed to the no-show autopilot (war.autoSlots) —
+      // offer taking command back instead of the normal (unavailable)
+      // round controls (user request 2026-08-24).
+      final autoSlot = controller.warAutoSlot;
+      if (autoSlot != null) return _autopiloted(context, war, autoSlot);
     }
 
     final slot = controller.warHumanSlot;
@@ -561,6 +584,58 @@ class _WarPanelState extends State<WarPanel> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// `[DESIGNED 2026-08-24, user request]` Shown instead of the normal round
+  /// controls when this side was handed to the no-show autopilot
+  /// (`war.autoSlots`, ARCHITECTURE.md "war clock"): explains that the AI is
+  /// currently fighting on the player's behalf and offers taking command
+  /// back at any time, mid-round included (`ResumeWarCommand`) — accepted
+  /// out of turn like the preparation controls above.
+  Widget _autopiloted(BuildContext context, gc.ActiveWar war, int slot) {
+    final theme = Theme.of(context);
+    final enemySlot = war.opponentOf(slot);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _banner(
+              theme,
+              Icons.smart_toy_outlined,
+              tr('war.autopilotBanner', {'enemy': realmName(enemySlot)}),
+              background: theme.colorScheme.surface,
+              foreground: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 4),
+            FilledButton.icon(
+              // The delegation can vanish under the tap (the war ends, or a
+              // stale view after a refresh): report the rejection like the
+              // other action paths instead of letting the exception escape
+              // the async callback.
+              onPressed: () async {
+                try {
+                  await controller.applyWarAction(
+                    gc.ResumeWarCommand(slot: slot),
+                  );
+                } on gc.ActionException catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(SnackBar(content: Text(e.message)));
+                  }
+                }
+              },
+              icon: const Icon(Icons.military_tech),
+              label: Text(tr('war.resumeCommand')),
+            ),
+          ],
+        ),
       ),
     );
   }

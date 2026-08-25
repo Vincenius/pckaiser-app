@@ -5,10 +5,12 @@ import 'dart:ui' as ui;
 import 'package:path_provider/path_provider.dart';
 
 import '../l10n/strings.dart';
+import 'push_kinds.dart';
 
 /// App-wide preferences, stored as one small JSON file in the
 /// application-documents directory (same pattern as [SaveService]).
-/// Holds the UI language and the last-seen "What's new" version.
+/// Holds the UI language, the last-seen "What's new" version and the
+/// optional-notification opt-outs.
 class SettingsService {
   SettingsService._(this._file, this._data, this.hadStoredSettings);
 
@@ -79,6 +81,35 @@ class SettingsService {
   Future<void> setLanguageChoice(String choice) async {
     _data['language'] = choice;
     appLocale.value = resolvedLocale;
+    await _persist();
+  }
+
+  /// `[DESIGNED 2026-08-24, user request]` The OPTIONAL online
+  /// notifications the player switched off — [optionalPushKinds] values.
+  /// Stored as an opt-OUT list (all notifications are on by default, and a
+  /// kind added by a later build starts out on, exactly as on a fresh
+  /// install). The server holds the authoritative copy on the player
+  /// record — this is the local mirror the options screen renders and
+  /// `OnlineService.syncPushPrefs` uploads.
+  Set<String> get pushOptOut => {
+        for (final k in (_data['pushOptOut'] as List? ?? const []))
+          if (k is String && optionalPushKinds.contains(k)) k,
+      };
+
+  /// Whether [kind] is currently switched on (the default for every kind).
+  bool pushEnabled(String kind) => !pushOptOut.contains(kind);
+
+  /// Switches notification [kind] on/off. Persists locally; uploading the
+  /// new set to the server is the caller's job (`OnlineService`) so the
+  /// screen can report a failed sync.
+  Future<void> setPushEnabled(String kind, bool enabled) async {
+    final next = pushOptOut;
+    if (enabled) {
+      next.remove(kind);
+    } else {
+      next.add(kind);
+    }
+    _data['pushOptOut'] = next.toList()..sort();
     await _persist();
   }
 

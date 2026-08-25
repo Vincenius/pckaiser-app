@@ -8,6 +8,14 @@
 const Map<String, String> whatsnewDe = {
   'whatsnew.title': 'Was ist neu?',
   'whatsnew.close': 'Schließen',
+  // --- v0.2.7 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_7.0':
+      'Truppen laufen auch zu weit entfernten Feldern – beste Route automatisch',
+  'whatsnew.0_2_7.1': 'KI-Truppen nutzen Häfen und die kürzesten Wege',
+  'whatsnew.0_2_7.2': 'Beliebtheit bestimmt Züge und Kampfmoral',
+  'whatsnew.0_2_7.3':
+      'Mehr Zeit für den Kriegsstart, abschaltbare Benachrichtigungen',
+  'whatsnew.0_2_7.4': 'Kontrolle nach verpasstem Kriegsstart zurückholen',
   // --- v0.2.6 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_6.0': 'Steuern sind einstellbar (Geld gegen Beliebtheit)',
   'whatsnew.0_2_6.1': 'Truppen können an andere Reiche verschenkt werden',
@@ -19,6 +27,13 @@ const Map<String, String> whatsnewDe = {
 const Map<String, String> whatsnewEn = {
   'whatsnew.title': "What's new?",
   'whatsnew.close': 'Close',
+  // --- v0.2.7 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_7.0':
+      'March to distant tiles — troops take the best route on their own',
+  'whatsnew.0_2_7.1': 'AI troops use harbors and the shortest paths',
+  'whatsnew.0_2_7.2': 'Popularity now drives movement points and combat morale',
+  'whatsnew.0_2_7.3': 'More time for war starts, switchable notifications',
+  'whatsnew.0_2_7.4': 'Take your side back after a missed war start',
   // --- v0.2.6 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_6.0': 'Set your own tax rate',
   'whatsnew.0_2_6.1': 'Gift troops, hand over tiles',

@@ -93,6 +93,22 @@ const Map<String, String> _coreEn = {
   'languageSystemHint': 'German on German devices, otherwise English',
   'languageGerman': 'Deutsch',
   'languageEnglish': 'English',
+  // Options ▸ Notifications (2026-08-24): the optional online pushes.
+  // Everything not listed there — "your turn", a waiting decision, a match
+  // about to be deleted — is always sent.
+  'notifications': 'Notifications',
+  'notificationsHint':
+      'Optional messages for online games. Turn-of-play reminders are '
+      'always sent.',
+  'notifySyncFailed':
+      'Could not reach the server — the change applies on the next launch.',
+  'notify.war_started.title': 'Declaration of war',
+  'notify.war_started.subtitle': 'Someone has declared war on you.',
+  'notify.war_start_fixed.title': 'War appointment set',
+  'notify.war_start_fixed.subtitle':
+      'Both sides have chosen — the start time is fixed.',
+  'notify.war_start_soon.title': 'Reminder before the war',
+  'notify.war_start_soon.subtitle': 'About 15 minutes before an agreed start.',
   'endTurn': 'End turn',
   'undo': 'Undo',
   'treasury': 'Treasury',
@@ -168,6 +184,20 @@ const Map<String, String> _coreDe = {
   'languageSystemHint': 'Deutsch auf deutschen Geräten, sonst Englisch',
   'languageGerman': 'Deutsch',
   'languageEnglish': 'English',
+  'notifications': 'Benachrichtigungen',
+  'notificationsHint':
+      'Optionale Meldungen für Online-Partien. Dass du am Zug bist, wird '
+      'immer gemeldet.',
+  'notifySyncFailed':
+      'Server nicht erreichbar — die Änderung greift beim nächsten Start.',
+  'notify.war_started.title': 'Kriegserklärung',
+  'notify.war_started.subtitle': 'Jemand hat dir den Krieg erklärt.',
+  'notify.war_start_fixed.title': 'Kriegstermin steht',
+  'notify.war_start_fixed.subtitle':
+      'Beide Seiten haben gewählt — der Beginn steht fest.',
+  'notify.war_start_soon.title': 'Erinnerung vor dem Krieg',
+  'notify.war_start_soon.subtitle':
+      'Etwa 15 Minuten vor einem vereinbarten Beginn.',
   'endTurn': 'Zug beenden',
   'undo': 'Rückgängig',
   'treasury': 'Schatzkammer',

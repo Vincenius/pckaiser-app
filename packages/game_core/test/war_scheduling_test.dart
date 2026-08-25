@@ -309,6 +309,54 @@ void main() {
       expect(asDefender.activeWar!.planSlots[1], [1000, 2000]);
     });
   });
+
+  // `[DESIGNED 2026-08-24, user request]` The preparation panel names the
+  // opening mover next to the agreed start, so the answer must be
+  // available BEFORE the rounds begin — and must equal what
+  // `beginWarRounds` then actually picks.
+  group('warFirstActingSlot', () {
+    test('the attacker opens, and beginWarRounds agrees', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+      expect(war.phase, WarPhase.preparation);
+      expect(warFirstActingSlot(state), 1);
+
+      answer(state, 1, {'auto': false});
+      answer(state, 2, {'auto': false});
+      beginWarRounds(state, Rng(1));
+      expect(war.actingSlot, 1);
+      expect(warFirstActingSlot(state), 1);
+    });
+
+    test('a delegated attacker hands the opening to the defender', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+      answer(state, 1, {'auto': true});
+      expect(warFirstActingSlot(state), 2,
+          reason: 'the autopilot side is never awaited');
+
+      // ...and switching back takes it over again — the panel line follows
+      // every revision.
+      plan(state, 1, auto: false);
+      expect(warFirstActingSlot(state), 1);
+      expect(war.autoSlots, isEmpty);
+    });
+
+    test('a fully delegated war has no live opener', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      startWar(state, 1, 2, Rng(1));
+      answer(state, 1, {'auto': true});
+      answer(state, 2, {'auto': true});
+      expect(warFirstActingSlot(state), isNull);
+    });
+
+    test('no war, no opener', () {
+      expect(warFirstActingSlot(_game()), isNull);
+    });
+  });
 }
 
 GameState _game({List<int> humanSlots = const [1]}) => startGame(

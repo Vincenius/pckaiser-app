@@ -211,10 +211,12 @@ void main() {
     test('with a second unit the same realm still goes to war', () {
       // Positive control for the test above: proves the setup CAN declare
       // at all, so the lone-army silence is the troop-count gate — not a
-      // blocker, mood or dice artefact.
+      // blocker, mood or dice artefact. Wide seed budget: the spontaneous
+      // war roll only hits ~1 seed in 60, so a narrower loop flakes
+      // whenever a change shifts the RNG stream.
       final state = warEagerGame(troops: 2);
       var declared = false;
-      for (var seed = 0; seed < 200 && !declared; seed++) {
+      for (var seed = 0; seed < 3000 && !declared; seed++) {
         final result = runAiTurn(state, 1, Rng(seed));
         declared = result.events.any((e) => e.type == 'warDeclared');
       }

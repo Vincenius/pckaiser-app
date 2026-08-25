@@ -77,7 +77,7 @@ class FcmPushService implements PushService {
   Future<void> yourTurn(PlayerRecord player, MatchRecord match) => _send(
         player,
         match,
-        'YOUR_TURN',
+        PushKind.yourTurn,
         'PCKaiser',
         'Du bist am Zug !',
       );
@@ -86,7 +86,7 @@ class FcmPushService implements PushService {
   Future<void> yourDecision(PlayerRecord player, MatchRecord match) => _send(
         player,
         match,
-        'YOUR_DECISION',
+        PushKind.yourDecision,
         'PCKaiser',
         'Eine Entscheidung wartet auf dich.',
       );
@@ -95,7 +95,7 @@ class FcmPushService implements PushService {
   Future<void> warStarted(PlayerRecord player, MatchRecord match) => _send(
         player,
         match,
-        'WAR_STARTED',
+        PushKind.warStarted,
         'PCKaiser',
         'Krieg ! Dein Reich wird angegriffen.',
       );
@@ -107,7 +107,7 @@ class FcmPushService implements PushService {
       _send(
         player,
         match,
-        'WAR_START_FIXED',
+        PushKind.warStartFixed,
         'PCKaiser',
         // The exact time is shown in-app in the player's local timezone —
         // a push body can't carry it, so it only announces THAT it is set.
@@ -130,7 +130,7 @@ class FcmPushService implements PushService {
   Future<void> warStartSoon(PlayerRecord player, MatchRecord match) => _send(
         player,
         match,
-        'WAR_START_SOON',
+        PushKind.warStartSoon,
         'PCKaiser',
         'Dein Krieg beginnt in Kürze — mach dich bereit !',
       );
@@ -139,7 +139,7 @@ class FcmPushService implements PushService {
   Future<void> matchExpiring(PlayerRecord player, MatchRecord match) => _send(
         player,
         match,
-        'MATCH_EXPIRING',
+        PushKind.matchExpiring,
         'PCKaiser',
         'Eure Partie ruht seit langem und wird bald gelöscht — '
             'spielt einen Zug, um sie zu behalten.',

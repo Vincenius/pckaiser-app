@@ -541,6 +541,29 @@ class WarPrepPlan extends PlayerAction {
       };
 }
 
+/// `[DESIGNED 2026-08-24, user request]` Takes manual command back from the
+/// no-show autopilot (`war.autoSlots`) while the war ROUNDS are already
+/// running: a side that never acted before its first round clock expired is
+/// handed to the stance autopilot for the rest of the war
+/// (ARCHITECTURE.md "war clock") — this reverses exactly that handover, for
+/// this one side, at any point the player wants. The ONE direction allowed
+/// mid-war: unlike [WarPrepPlan] (preparation-only, both directions), a live
+/// side can never delegate itself back to the autopilot through this action.
+class ResumeWarCommand extends PlayerAction {
+  ResumeWarCommand({required super.slot});
+
+  factory ResumeWarCommand.fromJson(Map<String, dynamic> json) =>
+      ResumeWarCommand(slot: json['slot'] as int);
+
+  static const kind = 'resumeWarCommand';
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
+}
+
 /// Naval transport during war: moves a unit from a land tile adjacent to an
 /// own harbor to any sea-reachable land tile, using all remaining moves.
 class WarNavalTransport extends PlayerAction {

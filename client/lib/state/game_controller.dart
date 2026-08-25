@@ -287,10 +287,29 @@ class GameController extends ChangeNotifier {
   /// player's turn runs, and either combatant may revise its start plan
   /// (control mode + proposed times, `WarPrepPlan` — user request
   /// 2026-08-09). The server accepts both out of turn while the
-  /// preparation window runs.
+  /// preparation window runs. Taking command back from the no-show
+  /// autopilot mid-war (`ResumeWarCommand` — user request 2026-08-24) is
+  /// allowed the same way: the delegated side is never the awaited player
+  /// either.
   bool _prepStanceAllowed(PlayerAction action) =>
-      (action is SetTroopStance || action is WarPrepPlan) &&
-      action.slot == warPrepSlot;
+      ((action is SetTroopStance || action is WarPrepPlan) &&
+          action.slot == warPrepSlot) ||
+      (action is ResumeWarCommand && action.slot == warAutoSlot);
+
+  /// The war-participant slot the seated (or viewing) player controls that
+  /// is currently delegated to the no-show autopilot (`war.autoSlots`)
+  /// during the ROUNDS phase — they may take command back at any time
+  /// (`ResumeWarCommand`, user request 2026-08-24). Null outside an active
+  /// war's rounds, or when their side is not delegated.
+  int? get warAutoSlot {
+    final war = state.activeWar;
+    if (war == null || war.phase != WarPhase.rounds) return null;
+    final owned = ownedSlots;
+    for (final slot in [war.attackerSlot, war.defenderSlot]) {
+      if (owned.contains(slot) && war.autoSlots.contains(slot)) return slot;
+    }
+    return null;
+  }
 
   /// The war ([attacker, defender, year] — §11.1 allows one war per realm
   /// per year) whose defender briefing already fired. An explicit marker:
@@ -301,6 +320,15 @@ class GameController extends ChangeNotifier {
 
   /// True exactly once per war for its defender: whether the "Krieg !"
   /// orientation popup is still owed. Marks the war as briefed.
+  ///
+  /// `[FIX 2026-08-24, user report]` The in-memory marker alone was not
+  /// enough: ONLINE every turn — and every war round — enters through a
+  /// freshly built GameScreen/GameController, so [_warBriefedKey] was
+  /// always null again and the defender got the briefing round after
+  /// round. It is an OPENING briefing, so it is anchored in the war state
+  /// too: only the first round owes it, and only while this side has not
+  /// yet given any war input (`actedSlots`, kept by the server; empty in
+  /// local hot-seat play, where the marker below already does the job).
   bool takeWarBriefing(int slot) {
     final war = state.activeWar;
     if (war == null ||
@@ -308,6 +336,7 @@ class GameController extends ChangeNotifier {
         war.defenderSlot != slot) {
       return false;
     }
+    if (war.round > 0 || war.actedSlots.contains(slot)) return false;
     final key = '${war.attackerSlot}-${war.defenderSlot}-${state.year}';
     if (_warBriefedKey == key) return false;
     _warBriefedKey = key;

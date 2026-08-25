@@ -23,8 +23,11 @@ class _FakePathProvider extends PathProviderPlatform {
 void main() {
   test('the running app version has a release note', () {
     final note = releaseNotesFor(appVersion);
-    expect(note, isNotNull,
-        reason: 'bump appVersion without adding a ReleaseNote');
+    expect(
+      note,
+      isNotNull,
+      reason: 'bump appVersion without adding a ReleaseNote',
+    );
     expect(note!.items(), isNotEmpty);
   });
 
@@ -69,7 +72,7 @@ void main() {
     expect(find.text('Was ist neu?'), findsOneWidget);
     expect(find.textContaining(appVersion), findsOneWidget);
     // At least the first bullet is visible.
-    expect(find.textContaining('Steuern'), findsOneWidget);
+    expect(find.textContaining('Feldern'), findsOneWidget);
     await tester.tap(find.text('Schließen'));
     await tester.pumpAndSettle();
     expect(find.text('Was ist neu?'), findsNothing);

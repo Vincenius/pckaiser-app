@@ -2,13 +2,13 @@ import 'dart:math' as math;
 
 import '../actions/apply_action.dart';
 import '../actions/apply_military.dart'
-    show declareWarBlocker, warDeclarationBlocker;
+    show declareWarBlocker, marchWarUnit, warDeclarationBlocker;
 import '../actions/player_action.dart';
 import '../data/tables.dart';
 import '../rng/rng.dart';
 import '../rules/costs.dart';
 import '../rules/espionage.dart';
-import '../rules/movement.dart' show greedyStepToward, warPathStep;
+import '../rules/movement.dart' show warField;
 import '../rules/realm_merge.dart';
 import '../rules/troops.dart'
     show classSurcharge, drillCost, levyLeft, recruitCostPerMan, troopStrength;
@@ -716,17 +716,24 @@ void _maybeAssassinate(GameState state, Realm realm, Rng rng,
 }
 
 /// AI war-round movement (§11.2): the attacker's units march toward the
-/// enemy capital; the defender's units walk back to their snapshots.
+/// enemy capital; the defender's units intercept intruders or walk back to
+/// their snapshots.
 /// Returns when the side is out of moves (or the war ended).
 ///
 /// `[DESIGNED]`: the AI defender fights back — units intercept
 /// enemy units standing on own territory, and once the enemy army is
 /// wiped out or clearly outmatched they counter-march on the enemy
 /// capital (occupying tiles for war score, capturing the ruler if they
-/// reach it). Both sides also path around water with a BFS instead of
-/// the greedy axis step (which strands units on lake shores). Pre-v7
-/// the defender sat at home for the whole war — even with the enemy
-/// army annihilated.
+/// reach it). Pre-v7 the defender sat at home for the whole war — even
+/// with the enemy army annihilated.
+///
+/// `[FIXED 2026-08-24, user report]` The routing itself is no longer the
+/// AI's own: every unit is walked by [marchWarUnit], the SAME brain the
+/// player's [WarMarch] uses. The AI used to plan with a bare BFS plus a
+/// greedy axis fallback, which knew nothing about harbors (island and
+/// across-the-bay wars were simply never fought) and nothing about enemy
+/// stacks in the way. It now ships troops through ports and routes around
+/// battles it was not ordered to fight, exactly like a human's march.
 void runAiWarMovement(
     GameState state, int slot, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
@@ -750,13 +757,17 @@ void runAiWarMovement(
 
   for (var i = 0; i < realm.troops.length; i++) {
     var guard = 0;
+    // One [marchWarUnit] call spends the unit's whole remaining round
+    // unless it arrives or is stopped; the loop only re-runs when the
+    // situation changed under it (target reached, a battle won, an
+    // intruder killed) and Züge are left to exploit that.
     while (identical(state.activeWar, war) &&
         war.phase == WarPhase.rounds &&
         i < realm.troops.length &&
         (war.movesLeft[slot]?[i] ?? 0) > 0 &&
-        guard++ < 30) {
+        guard++ < 8) {
       final troop = realm.troops[i];
-      // Recomputed every step: kills and deaths reshape the troop list
+      // Recomputed every pass: kills and deaths reshape the troop list
       // and can change the nearest-intruder pick. The home guard's one
       // and only destination is the seat tile, where it holds.
       final target = identical(troop, homeGuard)
@@ -765,21 +776,11 @@ void runAiWarMovement(
       if (target == null) break;
       final (tx, ty) = target;
       if (troop.x == tx && troop.y == ty) break;
-
-      // Own land, the enemy's, and neutral unowned tiles are passable in
-      // war (mirrors [applyWarMove]); only third realms block the march.
-      final warOwners = {slot, war.opponentOf(slot), World.niemand};
-      final step = warPathStep(state.map, troop.x, troop.y, tx, ty,
-              allowedOwners: warOwners) ??
-          greedyStepToward(state.map, troop.x, troop.y, tx, ty,
-              allowedOwners: warOwners);
-      if (step == null) break;
-      // Planned over the same passability rules applyWarMove enforces —
-      // a rejection is a real pathing bug and must surface. (The old
-      // catch-and-ignore here also hid that _warFor rejected every
-      // autopilot move of a DELEGATED human side; see _warFor.)
-      events.addAll(applyActionInPlace(state,
-          WarMove(slot: slot, unitIndex: i, dx: step.$1, dy: step.$2), rng));
+      final outcome = marchWarUnit(state, realm, war, troop, tx, ty, rng);
+      events.addAll(outcome.events);
+      // Nothing moved — blocked, out of Züge, or held by a defender.
+      // Retrying with the same target would spin.
+      if (!outcome.moved) break;
     }
     if (state.activeWar == null) return; // capture ended the war
   }
@@ -815,12 +816,23 @@ void runAiWarMovement(
     return (enemy.capitalX, enemy.capitalY);
   }
 
-  // Intercept the nearest intruder on own soil.
+  // Intercept the nearest intruder on own soil. `[FIXED 2026-08-24]`
+  // "Nearest" is the MARCH distance, not the air distance: measured as the
+  // crow flies, a defender would set off after an intruder five tiles away
+  // across a bay while ignoring one seven tiles away up the road it can
+  // actually walk — and then spend the war stuck on the shore. Intruders
+  // no march can reach at all (a landing party on an offshore holding)
+  // fall back to the air distance so the unit at least closes in.
+  final field = warField(state.map, troop.x, troop.y,
+      allowedOwners: {slot, war.opponentOf(slot), World.niemand});
   (int, int)? nearest;
   var best = 1 << 30;
   for (final e in enemy.troops) {
     if (state.map.ownerAt(e.x, e.y) != slot) continue;
-    final d = (e.x - troop.x).abs() + (e.y - troop.y).abs();
+    final walk = field.stepsTo(e.x, e.y);
+    final d = walk >= 0
+        ? walk
+        : (1 << 20) + (e.x - troop.x).abs() + (e.y - troop.y).abs();
     if (d < best) {
       best = d;
       nearest = (e.x, e.y);

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'api_client.dart';
 import 'push_service.dart';
+import 'settings_service.dart';
 
 /// Server URL baked in at build time:
 /// `flutter build --dart-define=PCKAISER_SERVER_URL=https://…` — when
@@ -101,6 +102,27 @@ class OnlineService {
     final token = await push.token();
     if (token != null) await upload(token);
     push.onTokenRefresh(upload);
+    // Converge the notification choices too: a PATCH that failed while the
+    // player was offline (or a device restored from a backup) would
+    // otherwise leave the server sending what they switched off.
+    await syncPushPrefs();
+  }
+
+  /// `[DESIGNED 2026-08-24, user request]` Uploads the player's optional
+  /// notification choices (Options ▸ Notifications, stored locally by
+  /// [SettingsService]) to their server player record — the server decides
+  /// what to send, so a muted kind only truly stops once this lands.
+  /// Returns false when it could not be delivered (no profile yet, or the
+  /// request failed); the next launch retries via [syncPushToken].
+  Future<bool> syncPushPrefs() async {
+    final settings = SettingsService.instance;
+    if (settings == null || !isConfigured) return false;
+    try {
+      await api.updatePlayer(id: playerId!, pushOptOut: settings.pushOptOut);
+      return true;
+    } on Object {
+      return false;
+    }
   }
 
   Future<void> _save() async {

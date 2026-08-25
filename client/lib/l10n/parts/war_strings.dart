@@ -7,6 +7,11 @@ const Map<String, String> warDe = {
   'war.prepVs': '{attacker} gegen {defender}',
   // Eine Statuszeile statt eines Absatzes (2026-08-13): kurz, mit Icon.
   'war.scheduledStart': 'Beginn: {time}',
+  // Wer die erste Kriegsrunde eröffnet, schon während der Vorbereitung
+  // (2026-08-24, Nutzerwunsch) — damit klar ist, ob man zum Termin
+  // selbst am Zug ist.
+  'war.scheduledStartYouFirst': 'Beginn: {time} — du ziehst zuerst',
+  'war.scheduledStartEnemyFirst': 'Beginn: {time} — {realm} zieht zuerst',
   'war.prepWaitingBoth': 'Der Krieg beginnt, sobald beide Seiten bereit sind.',
   'war.prepOwesPlan': 'Lege fest, wer dein Heer führt.',
   'war.stanceSection': 'Truppenhaltung',
@@ -42,6 +47,10 @@ const Map<String, String> warDe = {
   'war.roundCounter': 'Runde {round}/20',
   'war.openMenuTooltip': 'Kriegsmenü öffnen',
   'war.collapse': 'Einklappen',
+  'war.autopilotBanner':
+      'Die KI führt gerade deine Truppen in diesem Krieg gegen {enemy}, weil '
+      'du den Beginn verpasst hast.',
+  'war.resumeCommand': 'Kontrolle übernehmen',
   'war.capitalHeldSealBanner':
       'Du hältst den gegnerischen Königssitz ! „Runde beenden" besiegelt '
       'jetzt den Sieg — halte das Feld bis dahin.',
@@ -234,6 +243,8 @@ const Map<String, String> warEn = {
   'war.prepTitle': 'Preparations for war',
   'war.prepVs': '{attacker} against {defender}',
   'war.scheduledStart': 'Start: {time}',
+  'war.scheduledStartYouFirst': 'Start: {time} — you move first',
+  'war.scheduledStartEnemyFirst': 'Start: {time} — {realm} moves first',
   'war.prepWaitingBoth': 'The war begins as soon as both sides are ready.',
   'war.prepOwesPlan': 'Decide who commands your army.',
   'war.stanceSection': 'Troop stances',
@@ -265,6 +276,10 @@ const Map<String, String> warEn = {
   'war.roundCounter': 'Round {round}/20',
   'war.openMenuTooltip': 'Open war menu',
   'war.collapse': 'Collapse',
+  'war.autopilotBanner':
+      'The AI is currently commanding your troops in this war against '
+      '{enemy} because you missed its start.',
+  'war.resumeCommand': 'Take back control',
   'war.capitalHeldSealBanner':
       "You hold the enemy's royal seat! \"End round\" now seals the "
       'victory — hold the field until then.',

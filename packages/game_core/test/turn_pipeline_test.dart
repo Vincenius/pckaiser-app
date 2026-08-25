@@ -451,21 +451,29 @@ void main() {
   });
 
   group('movement (§6.3)', () {
-    test('rolls classEquivalent + random(6) for every ladder', () {
-      const expected = {
-        1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, // Christian
-        9: 1, 10: 3, 11: 6, 12: 8, // Muslim equivalents
-      };
+    test('rolls max(minimum, popularity/divisor) + random(6), title-blind', () {
       final rng = Rng(42);
-      for (final entry in expected.entries) {
+      for (final popularity in [0, 20, 50, 75, 100]) {
+        final quotient = popularity ~/ movementPopularityDivisor;
+        final base =
+            quotient < movementPointsMinimum ? movementPointsMinimum : quotient;
         for (var i = 0; i < 50; i++) {
-          expect(rollMovementPoints(entry.key, rng),
-              inInclusiveRange(entry.value, entry.value + 5));
-          // Female form: same roll range.
-          expect(rollMovementPoints(entry.key + 12, rng),
-              inInclusiveRange(entry.value, entry.value + 5));
+          expect(rollMovementPoints(popularity, rng),
+              inInclusiveRange(base, base + 5));
         }
       }
+    });
+
+    test('the turn budget follows the mood, not the title', () {
+      var state = startGame(freshGame(), Rng(3)).state;
+      final realm = state.realm(state.currentPlayer);
+      realm.titleClass = 8; // Kaiser …
+      realm.popularity = 10; // … but the people are done with him
+      final poor = rollMovementPoints(realm.popularity, Rng(11));
+      realm.titleClass = 1; // Ritter …
+      realm.popularity = 100; // … beloved
+      final rich = rollMovementPoints(realm.popularity, Rng(11));
+      expect(rich, greaterThan(poor));
     });
   });
 

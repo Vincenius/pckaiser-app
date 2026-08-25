@@ -6,6 +6,266 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-24 — Two war-popup bugs (user report)
+
+User report: *"Das Krieg popup 'zu den Waffen' taucht bei mir manchmal immer
+noch jeden Zug (zumindest als Verteidiger) auf"* and *"ich hab in einem Krieg
+ein Mal in der ersten Runde vor dem 'zu den Waffen' Popup auch das Popup
+gesehen, dass der Krieg wegen hereinbrechendem Winter beendet werden musste.
+Danach ging der Krieg normal los."* Two independent client bugs.
+
+**The briefing re-fired every war round — online.** `takeWarBriefing`
+(`state/game_controller.dart`) guarded the one-time "Krieg !" defender
+briefing with an in-memory marker on the controller. That holds for hot-seat,
+where one controller outlives the whole game — but ONLINE every turn, and so
+every war round, is a fresh `GameScreen`/`GameController` (`_play()` pushes a
+new screen per turn), and the marker was empty again each time. The briefing
+is an OPENING briefing, so it is now anchored in the war state as well: it is
+owed only while `war.round == 0` and this side has given no war input yet
+(`war.actedSlots`, kept by the server; empty in local play, where the marker
+still does the job).
+
+**A foreign war's winter end popped inside your own war.** At a war turn's
+start `showRecapAndDecisions` (`widgets/decisions.dart`) renders the whole
+recap as the round report — and half the report's event types
+(`winterEndsWar`, `warDraw`, `warWon`, `peaceAgreed`, `realmOverrun`) are
+PUBLIC, i.e. emitted by every realm's war. An AI-vs-AI war fast-forwarded
+into its 20th round while the player was away therefore popped "Der Krieg
+musste wegen des hereinbrechenden Winters beendet werden" at the start of the
+player's own, still running war. The round report is now filtered to the
+player's own war (`roundReportEvents`): by event slot, by `participants`, or
+— for the world-level war-end events — by the two sides named in the tally
+`summary`. `winterEndsWar` names nobody at all, and a war-end of the player's
+OWN war can never reach this branch (the war would have left its rounds
+phase), so an unattributable one is by definition somebody else's. Foreign
+war news stays in the event feed / recap card, where it belongs.
+
+Tests: `client/test/game_controller_test.dart` (briefing owed once, and only
+in round 1 — proven across freshly built controllers) and the new
+`client/test/war_round_report_test.dart`.
+
+## 2026-08-24 — War movement: one route planner for both sides (user request)
+
+User report, two halves: *"ich möchte in der Lage sein bei der Bewegung von
+Truppen ein Feld auszuwählen was außerhalb der Reichweite liegt — dann soll
+die Truppe automatisch so weit laufen wie möglich mit den vorhandenen Zügen
+und die beste/kürzeste Route wählen"* and *"die KI-Truppen sind nicht schlau
+genug um die Häfen zu benutzen und finden oft auch nicht den besten Weg"*.
+Both came from the same place: routing was spread over three half-planners
+(the engine's per-step BFS, a client-side sea-route convenience, the AI's own
+BFS-plus-greedy loop) and none of them knew what the others did.
+
+**The bug behind "outside the range does nothing".** `applyWarMarch` walked
+its steps and then rethrew the out-of-moves `ActionException` whenever it had
+collected no events — and a plain step emits none. `applyAction` works on a
+copy, so the throw discarded the entire advance: ordering a unit to a tile
+further than the round's Züge left it standing where it was, with "Diese
+Truppe kann in dieser Runde nicht weiter ziehen!". A march now reports
+progress as `WarMarchOutcome.moved` (did the unit change tile) instead of
+inferring it from the event list, and only a march that could not move AT ALL
+is rejected.
+
+**`WarField` — one search, every answer** (`rules/movement.dart`). A
+single-source Dijkstra over the war-march land graph that answers "can I get
+there", "how far", "which way do I step" and "what is the whole path". Its
+cost is not a plain step count: tiles in `avoid` cost `warPathAvoidPenalty`
+(4) extra, which leaves the route the same length while steering it around an
+enemy stack that is not the destination — a unit sent to a far tile no longer
+blunders into an unordered battle when an equally short way around exists.
+`warPathStep` is now a thin convenience over it.
+
+**Approach by walking, not by air.** `closestReachableTile` (the retarget for
+a click no path reaches) ranked candidates by Manhattan distance, which names
+the wrong shore of a bay and, when every reachable tile is further from the
+click by air than the unit already is, gives up entirely — the order was
+refused even though a road around existed. It now measures with a second
+field rooted at the click (ownership ignored, so a third realm's fields still
+show which way it lies); air distance only breaks ties between tiles with no
+land connection at all.
+
+**`warSeaEmbark` — harbors as roads.** One sea flood from the destination
+finds every usable port at once (mirroring `canNavalTransport` exactly), and
+among their coast tiles picks the one with the shortest MARCH.
+`WorldMap.navalEmbarkTile` compared as the crow flies and could name a port
+on the far side of a mountain-locked coast.
+
+**`marchWarUnit` — THE movement brain** (`actions/apply_military.dart`),
+shared by the player's `WarMarch` and the AI's `runAiWarMovement`. It plans
+the route, takes a ship when the sea is genuinely faster (no land route at
+all, or the land walk both exceeds this round's Züge and is more than
+`warSeaRouteAdvantage` = 5 steps longer than the walk to the port — a voyage
+spends the whole round, so it must save a full round of marching), walks as
+far as the Züge reach, and stops without complaint. Ordering a LAND unit onto
+open water is refused up front rather than half-walked to a random shore
+(boarding stays the single step onto an adjacent Hafen).
+
+**Consequences.** The client's `_marchToward` is a plain forward of the tap
+(~120 lines of duplicated sea routing deleted) — the routing lived in the
+client, which is exactly why the AI never used a harbor. The AI's own loop is
+gone too; it calls `marchWarUnit` per unit, so AI armies now cross water,
+route around battles they were not sent to fight, and — in `_warTarget` — pick
+the intruder they can actually MARCH to instead of the one that is nearest by
+air across a bay. Tests: `war_movement_2026_08_24_test.dart`.
+
+## 2026-08-24 — Missed war starts: more time, better notice, fewer notifications (user request)
+
+User report: "es gibt noch oft Probleme bei der Vereinbarung von Terminen beim
+Krieg — oft verpasst eine Seite den Start und wird dann von der KI
+übernommen." The clock was only half the story: the reaction window was short
+AND the player was told too little, too late.
+
+**1. Double clock for the opening move.** `_commit` now arms twice
+`settings.war_round_timeout` for a side that has not yet acted in this war
+(`war.actedSlots`), the normal clock for every later round. That is exactly
+the round the no-show rule hands over on, and the one players missed: the
+duel starts at an appointment made hours earlier, so the window has to cover
+"notice the war has begun", not "make your next move". At most once per side,
+so a live duel keeps its pace.
+
+**2. The waiting side is told the appointment is set — nobody else.**
+`WAR_START_FIXED` used to go to BOTH combatants. The one whose own submission
+fixed the appointment reads the matched time in the confirmation dialog the
+moment they tap "confirm", so the push was noise. `_commit` takes an
+`actorSlot` (the submitting realm; null on the sweep path, where both sides
+are told) and skips it. Keyed on who SUBMITTED rather than on the role: the
+attacker usually answers first and is usually the one waiting, but either
+side may be.
+
+**3. Who moves first is visible before the war starts.** New
+`warFirstActingSlot(state)` (rules/war.dart) exposes what `beginWarRounds`
+will pick — the first live side in `warRoundOrder`, i.e. the attacker unless
+they delegated. The preparation panel's status line appends it to the agreed
+start ("Beginn: 20:00 — du ziehst zuerst") and the warPlan confirmation
+dialog does the same, so a player who booked a slot knows whether they have
+to be at the device on the dot. It follows every plan revision.
+
+**4. The 15-minute reminder** (`WAR_START_SOON`, `_sendWarStartReminders`)
+already shipped with the duel scheduling and is unchanged — only ever sent
+for an AGREED start, never the fallback, and never for "sofort" (whose start
+already lies in the past, so the reminder window cannot open).
+
+**5. Optional notifications are now switchable (Options ▸
+Benachrichtigungen).** More notice is only welcome if the player can turn it
+down. Every kind is a `PushKind` string shared with the client
+(`push_kinds.dart`); `PushKind.optional` — `war_started`, `war_start_fixed`,
+`war_start_soon` — gets one switch each, all ON by default. `your_turn`,
+`your_decision` and `match_expiring` are deliberately NOT switchable: muting
+them means losing turns, or a whole match, without ever being told. Stored as
+an opt-OUT list so a kind added later starts out on; local mirror in
+`SettingsService`, authoritative copy on the player record, uploaded by
+`OnlineService.syncPushPrefs` on every toggle and again on launch with the
+FCM token (a failed upload snackbars — the switch has not taken effect until
+the server knows). The gate lives in ONE place, `MatchService._pushTarget`,
+and `updatePlayer` refuses to store anything outside `PushKind.optional`, so
+no client build can mute an essential push.
+
+## 2026-08-24 — Beliebtheit as the counter-weight to size (user request)
+
+User report: "gegen ein großes Reich anzukommen ist schwierig — wer nicht in
+den ersten Kriegsrunden 1–2 Länder einnimmt, holt das größte Reich nie mehr
+ein." Two structural causes, both fixed here; the user explicitly scoped the
+change to these two and asked for the rest of the ideas to be left alone.
+
+**1. The Züge budget rode on realm size.** `rollMovementPoints` was
+`christianEquivalentClass(titleClass) + random(6)`, and the title comes from
+the §16.2 prestige score (population + treasury + buildings) — an unbounded,
+size-correlated input. A Kaiser expanded at 8–13 tiles a turn while a Ritter
+crawled at 1–6, so the biggest realm also grew the fastest. It now reads
+`max(movementPointsMinimum, popularity ~/ movementPopularityDivisor) +
+random(6)` (1 and 20), title-blind. Popularity is bounded 0–100, so the
+ceiling is one every realm can reach. Same roll still feeds the per-unit war
+round allowance (`_rollWarMoves` — "the owner's normal movement roll").
+`movementClassEquivalent` had no other caller and is gone; the title keeps
+§19.2 bankruptcy limits, §17 elections and prestige.
+
+**2. Beliebtheit was a pure risk meter.** It could kill a realm (§19.1
+strife, the 2026-08-08 peasant revolt) but being loved bought nothing beyond
+`10 × popularity` in a prestige score whose thresholds run to 100,000. New
+`moraleFactor(state, slot, defending:)` multiplies a unit's effective
+strength in `resolveCombat` by `1 + (popularity − 50)/50 × bonus` —
+`combatAttackPopularityBonus` 0.12 for the mover, `combatDefencePopularityBonus`
+0.20 for the unit holding the tile (defending your own people is worth more).
+Bonus ONLY above 50, never a malus: an unpopular realm losing battles it then
+cannot pay for is the same runaway pointed downward. Side A of `resolveCombat`
+is the mover at every call site, which is what makes the attack/defence split
+work without a new parameter.
+
+**Balance measured, not guessed.** New dev tool
+`packages/game_core/tool/balance_sim.dart` runs N seeded all-AI worlds
+(1000–1200) and reports the runaway metrics: top realm's land share, land
+gini, top/median ratio, whether the year-1100 leader is still #1 at the end,
+whether a bottom-half realm closed to 80 % of the top, plus wars/battles/
+conquests so a "fix" cannot pass by simply freezing the map. It also prints
+the old title-based vs new popularity-based Züge average side by side — the
+calibration that keeps the WORLD's expansion tempo roughly where it was.
+
+That calibration mattered: the first cut (`base 1 + pop ~/ 20`, i.e. an
+addend rather than a floor) nearly doubled the average budget on schwer
+(2.6 → 4.5) and made the runaway WORSE — everyone expanded faster, so the
+leader consolidated sooner. With the floor form (avg 3.5) the metrics move
+the right way; a morale sweep over 0/0, .06/.10, .12/.20, .20/.32, .30/.45
+settled on .12/.20 (bigger bonuses stop helping — they mostly reward
+whoever is popular already, which on schwer is the leader). Züge alone
+(morale 0/0) is NOT enough: on schwer it is worse than the baseline. Only
+the two together move the numbers.
+
+Confirmed over 40 seeds, 1000–1200, baseline → new:
+
+| | mittel | schwer |
+|---|---|---|
+| top realm's land share | 61.1 % → 55.6 % | 82.9 % → 80.9 % |
+| living realms | 7.0 → 7.9 | 2.1 → 2.0 |
+| year-1100 leader still #1 | 20 % → 18 % | 66 % → **51 %** |
+| a bottom-half realm closed to 80 % | 35 % → **45 %** | 5 % → **15 %** |
+| wars / conquests | 1266/17850 → 1109/16316 | 5245/82605 → 5199/80332 |
+| games decided (of 40) | 6 → 5 | 22 → 28 |
+
+`movementPopularityDivisor` 20 vs 25 was the last call. 25 keeps schwer's
+tempo exactly at the old level (Züge base 2.76 → 2.73) and with it the old
+count of decided games (23), but it compresses the popularity term to 2…4
+and gives back nearly all of the mittel gain (top share 60.8 %, laggard
+35 % — i.e. the baseline). 20 keeps the full 1…5 spread and wins on the two
+metrics the user actually reported (leader persistence, catch-up) at BOTH
+difficulties; the schwer side effect is that more games reach a conclusion
+at all, and more often for a realm that came from behind. Mittel is the
+default difficulty, so 20 it is.
+
+Also updated: the tutorial's "Deine Werte" text (Züge now follow the mood,
+not the title), "Mein Reich" and the turn report show the morale bonus
+(`moraleBonus` in `turn_report.dart`, the same `moraleFactor` the engine
+fights with), README tool list. Three probabilistic AI positive-control
+tests (`balance_2026_08_08_test.dart`, `ai_difficulty_test.dart`) went from
+200 to 3000 seeds: the AI's spontaneous war roll only hits ~1 seed in 60, so
+any change that shifts the RNG stream could flake them — this one did.
+
+## 2026-08-24 — Reclaiming a no-show-delegated war side mid-war (user request)
+
+A player who misses an online war's start entirely has their side handed to
+the stance autopilot for the rest of the war (`war.autoSlots`, the no-show
+rule, 2026-08-08). Until now that handover was one-way: `WarPrepPlan`
+explicitly rejects any revision once `WarPhase.rounds` has begun, so there
+was no way back once the rounds were running — the reported case being
+"missed the opening moves, the AI has been fighting for me ever since, I want
+my troops back."
+
+New action `ResumeWarCommand` (`packages/game_core/lib/src/actions/
+military_actions.dart`) reverses exactly the no-show handover, for one side,
+at any time — the one direction allowed mid-war (a live side still cannot
+delegate itself back through this action, only `WarPrepPlan` during
+preparation does that). It just removes the slot from `war.autoSlots`;
+`warSideIsHuman`/`warActingSlot` pick it up again immediately, including the
+round already in progress, since the no-show sweep never actually moves
+`war.actingSlot` away from the delegated side — it only routes the AWAIT
+around it. Accepted OUT OF TURN by the server like `WarPrepPlan`/
+`SetTroopStance` (`backend/lib/src/match_service.dart`), since a delegated
+side is never the awaited player while it stays in `autoSlots`.
+
+Client: `GameController.warAutoSlot` (mirrors `warPrepSlot`) finds the
+seated/viewing player's own delegated slot during the rounds phase;
+`MapViewerScreen` now also mounts `WarPanel` in that case (previously only
+during preparation), where a new "Kontrolle übernehmen" banner+button
+replaces the (otherwise empty) round controls.
+
 ## 2026-08-13 — v0.2.6 review round (fixes)
 
 Review of the whole v0.2.6 branch against `main`. Five findings, all fixed;

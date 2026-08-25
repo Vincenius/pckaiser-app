@@ -27,7 +27,7 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 
 ## Phase 5 — AI ✅
 - [x] AI turn script (§20) via the same action primitives; AI war movement (v7: defender fights back)
-- [x] 200-year full-AI smoke test + `tool/sim_report.dart`
+- [x] 200-year full-AI smoke test + `tool/sim_report.dart`; runaway-leader balance probe `tool/balance_sim.dart` (2026-08-24)
 
 ## Phase 6 — Flutter Client (V1 local) ✅
 - [x] Flame map (single rasterized Picture, color-blind-safe borders + captions), tile sheet, HUD, event feed + recap
@@ -58,9 +58,11 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] FCM HTTP-v1 push (`FIREBASE_SERVICE_ACCOUNT`, logged stub without it); Docker compose + Nginx example in `backend/deploy/` (backups = volume tar cron, see nginx.conf.example)
 - [x] Leave/delete matches (`POST /matches/:id/leave`): creator deletes a waiting match, leaving a running one hands the realm(s) to the AI (`playerLeft` event); lobby + match-screen UI; `--dart-define=PCKAISER_INSTANCE` for two clients on one desktop
 - [x] Client push (firebase_messaging): permission prompt on online setup/launch, token upload via `PATCH /players/:id`, notification tap opens the match; optional — app builds/runs without Firebase config (README "Push notifications")
+- [x] Missed war starts (2026-08-24, user request): DOUBLE war clock for a side's first move of the war, "Termin steht" push only to the waiting side, the opening mover named in the preparation panel and the warPlan confirmation (`warFirstActingSlot`), and per-player notification settings under Options ▸ Benachrichtigungen (optional kinds only — `your_turn`/`your_decision`/`match_expiring` stay on)
 - [x] Home screen lists running online matches ("Du bist am Zug !" first, 20 s poll)
 - [x] Off-turn read-only view ("Reich & Karte ansehen"): map + Info menu (Dynastien, Kaiserchronik, …) over ALL owned realms with realm switcher, actions disabled; `visibleStateFor` filters per player instead of per slot (2026-07-07)
 - [x] War takeover & preparation rework (2026-07-13, 0.1.18): key points = Stadt/Burg/Palast only; total conquest annexes the loser's whole territory into the winner's realm (loser slot vacated — no §19 aliasing); per-troop stance orders during the preparation window over the visible map (war panel + off-turn viewer; `SetTroopStance` accepted out of turn online); every involuntary human realm loss gets an explicit popup (`seatLost` event, `human` payload flags)
 - [x] Revisable online war scheduling (2026-08-09, user request, appVersion 0.2.6): `WarPrepPlan` lets either duelist change command mode (live ↔ autopilot) and its offered start times for as long as the preparation window runs, out of turn / from the off-turn viewer; the time picker shows which hours suit the OPPONENT and whether they have chosen (`ActiveWar.planAnsweredSlots`); an agreed appointment survives a later delegation, a withdrawn one falls back to the window's fixed deadline (`match.war_prep_fallback_deadline`)
+- [x] Reclaiming a no-show-delegated war side mid-war (2026-08-24, user request): `ResumeWarCommand` takes a duelist's side back from the no-show autopilot at any time once the rounds are running (one direction only — a live side still cannot delegate itself back this way), accepted out of turn like `WarPrepPlan`; surfaced as a "Kontrolle übernehmen" button in the off-turn map viewer's war panel
 - [x] Matchmaking rooms (2026-07-29, user-designed): the server permanently hosts one open **Blitz** / **Standard** / **Kaiserreich** room (`match_templates.dart`) — join without a room code, automatic start when full or on the 24 h fallback deadline, replaced the moment one starts; own lobby section (`widgets/room_card.dart`)
 - [ ] Real-device/system test of an online match (two devices against a deployed server, incl. push)

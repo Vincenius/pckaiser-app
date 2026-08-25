@@ -114,8 +114,12 @@ class _MapViewerScreenState extends State<MapViewerScreen> {
             // troop's stance individually while studying the own land
             // (the server accepts these out of turn during the
             // preparation window). Docked above the status row, like the
-            // war panel in the game screen.
-            if (_controller.warPrepSlot != null)
+            // war panel in the game screen. Also shown once the war is
+            // running if this seat's side was handed to the no-show
+            // autopilot — the panel then offers taking command back
+            // (user request 2026-08-24).
+            if (_controller.warPrepSlot != null ||
+                _controller.warAutoSlot != null)
               WarPanel(controller: _controller),
             _statusRow(ownedSlots),
             _menuBar(),

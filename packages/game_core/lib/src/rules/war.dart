@@ -259,6 +259,24 @@ int? _firstHumanSide(GameState state, ActiveWar war) {
   return null;
 }
 
+/// `[DESIGNED 2026-08-24, user request]` Which side will move FIRST once
+/// the rounds begin — the answer the preparation window shows next to the
+/// agreed start ("{realm} zieht zuerst"), so a player who booked an
+/// appointment knows whether the opening move is theirs. It is exactly
+/// what [beginWarRounds] will pick: the first LIVE side in the current
+/// round's initiative order ([warRoundOrder]) — the attacker opens, unless
+/// they handed their side to the autopilot. Null when no side is played
+/// live (the war then fast-forwards without anyone moving).
+///
+/// Valid during the preparation window as well as mid-war; it reads the
+/// CURRENT plan, so it follows every revision (a side switching to the
+/// autopilot moves the opening to its opponent).
+int? warFirstActingSlot(GameState state) {
+  final war = state.activeWar;
+  if (war == null) return null;
+  return _firstHumanSide(state, war);
+}
+
 /// The war side whose interactive input is awaited right now, or null
 /// (no war, or no human has to act). Drives the local seat AND the
 /// server's awaited player (ARCHITECTURE.md "Human-vs-human wars
@@ -330,9 +348,23 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
   for (final slot in [war.attackerSlot, war.defenderSlot]) {
     final realm = state.realm(slot);
     war.movesLeft[slot] = [
-      for (final _ in realm.troops) rollMovementPoints(realm.titleClass, rng),
+      for (final _ in realm.troops) rollMovementPoints(realm.popularity, rng),
     ];
   }
+}
+
+/// `[DESIGNED 2026-08-24, user request]` Morale multiplier a realm's units
+/// carry into battle: `1 + (popularity − 50)/50 × bonus`, clamped at 1 for
+/// any mood at or below 50. [defending] — the side HOLDING the contested
+/// tile, i.e. the one being marched upon — picks the larger
+/// [combatDefencePopularityBonus]. See the constants for the why and the
+/// sizing; exposed so the client can show the same number it fights with.
+double moraleFactor(GameState state, int slot, {required bool defending}) {
+  final above = state.realm(slot).popularity - 50;
+  if (above <= 0) return 1.0;
+  final bonus =
+      defending ? combatDefencePopularityBonus : combatAttackPopularityBonus;
+  return 1 + above / 50 * bonus;
 }
 
 /// Per-tile combat between two opposing units. Returns the events.
@@ -352,6 +384,9 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 ///  - Schere-Stein-Papier, ×1.15 against the countered class:
 ///    Infanterie schlägt Kavallerie, Kavallerie schlägt Artillerie,
 ///    Artillerie schlägt Infanterie;
+///  - MORALE `[DESIGNED 2026-08-24, user request]`: a well-loved ruler's
+///    men fight harder — `1 + (popularity − 50)/50 × bonus`, above 50 only
+///    and larger for the side holding the tile ([moraleFactor]);
 ///  - one shared fortune roll, [0.75, 1.25) vs its mirror.
 ///
 /// Casualties: each side loses its OWN men scaled by the ENEMY's share of
@@ -362,6 +397,9 @@ void _rollWarMoves(GameState state, ActiveWar war, Rng rng) {
 /// raw headcount. The side ahead on effective strength counts the battle
 /// as won. A remnant under 5 men is wiped; if both sides would be wiped
 /// the stronger keeps one man, so exactly one side can ever fall.
+/// Side A is the MOVER (the unit stepping onto the tile, or landing on
+/// it), side B the unit already standing there — every call site passes
+/// them that way round, and [moraleFactor] gives B the defender's share.
 List<GameEvent> resolveCombat(
     GameState state, int slotA, Troop a, int slotB, Troop b, Rng rng) {
   bool fortified(Troop t) => switch (state.map.buildingAt(t.x, t.y)) {
@@ -395,13 +433,22 @@ List<GameEvent> resolveCombat(
     return factor;
   }
 
+  final moraleA = moraleFactor(state, slotA, defending: false);
+  final moraleB = moraleFactor(state, slotB, defending: true);
+
   final r = rng.nextReal();
   final fortuneA = 0.75 + r / 2;
   final fortuneB = 1.25 - r / 2;
-  final effA =
-      troopStrength(a) * fortFactor(a, b) * attackFactor(a, b) * fortuneA;
-  final effB =
-      troopStrength(b) * fortFactor(b, a) * attackFactor(b, a) * fortuneB;
+  final effA = troopStrength(a) *
+      fortFactor(a, b) *
+      attackFactor(a, b) *
+      moraleA *
+      fortuneA;
+  final effB = troopStrength(b) *
+      fortFactor(b, a) *
+      attackFactor(b, a) *
+      moraleB *
+      fortuneB;
   final aWins = effA >= effB;
   final total = effA + effB;
 
@@ -1631,8 +1678,7 @@ String? warPlunderBlocker(GameState state, int slot, int x, int y) {
   }
   if (unit == null) {
     // Distinguish "no unit reached the tile" from "all present units spent".
-    final anyHere =
-        state.realm(slot).troops.any((t) => t.x == x && t.y == y);
+    final anyHere = state.realm(slot).troops.any((t) => t.x == x && t.y == y);
     return anyHere ? 'armyAlreadyPlundered' : 'noTroopsOnTile';
   }
   if (troopStrength(unit) < minPlunderStrength) return 'troopTooWeakToPlunder';
@@ -1676,8 +1722,7 @@ List<GameEvent> plunderTile(
 
   switch (building) {
     case Building.kornfeld || Building.weide:
-      map.devastatedUntil[map.index(x, y)] =
-          state.year + fieldDevastationYears;
+      map.devastatedUntil[map.index(x, y)] = state.year + fieldDevastationYears;
       devastated = true;
     case Building.dorf || Building.markt || Building.stadt:
       final town = victim.townAt(x, y);
@@ -1692,9 +1737,9 @@ List<GameEvent> plunderTile(
         // difference can be briefly negative between a population shrink
         // (capacity follows at ¼ rate) and the next §8.3 normalization —
         // the min/max clamps that to a no-op.
-        final capacityCut = rng.nextInt(math.max(
-                0, math.min(town.troopCapacity - town.garrison, killCap)) +
-            1);
+        final capacityCut = rng.nextInt(
+            math.max(0, math.min(town.troopCapacity - town.garrison, killCap)) +
+                1);
         plunderer.treasury += loot; // victim's treasury is NOT touched
         town.population -= killed;
         victim.population -= killed;

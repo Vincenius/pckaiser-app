@@ -8,6 +8,9 @@ library;
 
 import 'models.dart';
 
+/// Whether an optional notification is sent is decided BEFORE the service
+/// is called (`MatchService._pushTarget` / [PlayerRecord.wantsPush]) — an
+/// implementation here always sends what it is handed.
 abstract class PushService {
   Future<void> yourTurn(PlayerRecord player, MatchRecord match);
   Future<void> yourDecision(PlayerRecord player, MatchRecord match);
