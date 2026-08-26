@@ -282,6 +282,28 @@ The V2 online backend (Dart shelf + PostgreSQL, Docker + Nginx) is designed
 in `ARCHITECTURE.md` but not implemented yet; this section will grow when
 it lands.
 
+## Coding-agent benchmark
+
+`benchmark/` is a git submodule
+([Vincenius/pckaiser-benchmark](https://github.com/Vincenius/pckaiser-benchmark)):
+a self-contained benchmark for autonomous coding agents, cut from this
+repository's own history. 15 independent tasks, each a user-facing problem
+statement against a deterministic commit, scored by hidden tests that live
+outside the agent's workdir — plus wall-clock time and token spend as
+separate metrics.
+
+```bash
+git submodule update --init            # after cloning this repository
+
+benchmark/scripts/run-benchmark.sh --agent claude --model opus   # whole suite
+benchmark/scripts/setup-task.sh    task-004 /tmp/bench/task-004  # one task: start state
+benchmark/scripts/evaluate-task.sh task-004 /tmp/bench/task-004  # one task: score
+```
+
+It reads this repository's git history and never writes to it. Philosophy,
+task list, scoring, anti-gaming design, agent runners and how to add a
+task: `benchmark/README.md`.
+
 ## Status
 
 Phases 0–6 of `CHECKLIST.md` are implemented and tested (~240 tests across
