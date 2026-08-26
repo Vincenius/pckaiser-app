@@ -14,3 +14,5 @@ backend/deploy/.env
 *service-account*.json
 .DS_Store
 .pi
+# Local-only: benchmark repo lives here but is tracked separately
+benchmark/
