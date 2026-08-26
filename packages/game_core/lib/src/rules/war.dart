@@ -777,41 +777,58 @@ void applyConvertOrDie(GameState state, Person capturedRuler, int religion,
   }
 }
 
-/// The war side holding the enemy's (still enemy-owned) capital tile with
-/// at least one unit, or null. When both sides stand on each other's
-/// capital the higher war score wins. The tie-break must be STABLE across
-/// rounds — `endWarRound` seals a capture only when the same side occupies
-/// at two consecutive round ends, so a tie-break that flipped each round
-/// (e.g. off the alternating [warRoundOrder]) could never seal. On an exact
-/// score tie we therefore keep the already-armed side (`heldCapitalSlot`),
-/// falling back to the attacker (who opened the war). Surfaced to the war
-/// UI ("end the round to seal the victory").
-int? capitalOccupier(GameState state, ActiveWar war) {
-  bool occupies(int slot) {
-    final enemy = state.realm(war.opponentOf(slot));
-    return state.map.ownerAt(enemy.capitalX, enemy.capitalY) ==
-            war.opponentOf(slot) &&
-        state
-            .realm(slot)
-            .troops
-            .any((t) => t.x == enemy.capitalX && t.y == enemy.capitalY);
-  }
+/// Whether [slot] stands on the enemy's royal seat with at least one unit
+/// AND that seat tile is still enemy-owned (stale capital coordinates of
+/// an already-conquered tile never count). The building block of
+/// [capitalOccupier]; the war UI uses it to tell a mutual occupation from
+/// a one-sided one.
+bool holdsEnemyCapital(GameState state, ActiveWar war, int slot) {
+  final enemySlot = war.opponentOf(slot);
+  final enemy = state.realm(enemySlot);
+  return state.map.ownerAt(enemy.capitalX, enemy.capitalY) == enemySlot &&
+      state
+          .realm(slot)
+          .troops
+          .any((t) => t.x == enemy.capitalX && t.y == enemy.capitalY);
+}
 
-  final attacker = occupies(war.attackerSlot);
-  final defender = occupies(war.defenderSlot);
+/// The war side holding the enemy's (still enemy-owned) capital tile with
+/// at least one unit, or null.
+///
+/// `[DESIGNED 2026-08-26, user request]` When BOTH sides stand on each
+/// other's seat, the side that armed its capture FIRST keeps it
+/// (`heldCapitalSlot`) — a counter-occupation cannot steal the capture,
+/// only dislodging the occupier from the seat can stop it. Before that
+/// (both stepped on in the same round) the higher war score decides, an
+/// exact tie going to the attacker, who opened the war.
+///
+/// The old rule let the higher war score take the occupier role at ANY
+/// time: a defender who seized the seat first and held it lost the war to
+/// an attacker who simply marched onto their seat in the response round
+/// and outscored them — first-come counted for nothing and there is no
+/// draw on this path (user report 2026-08-26). Priority for the armed side
+/// also keeps the tie-break STABLE across rounds, which `endWarRound`
+/// needs: it seals a capture only when the same side occupies at two
+/// consecutive round ends, so a criterion that flipped every round (e.g.
+/// off the alternating [warRoundOrder]) could never seal. Surfaced to the
+/// war UI ("end the round to seal the victory").
+int? capitalOccupier(GameState state, ActiveWar war) {
+  final attacker = holdsEnemyCapital(state, war, war.attackerSlot);
+  final defender = holdsEnemyCapital(state, war, war.defenderSlot);
   if (attacker && defender) {
+    // Whoever armed first stays the occupier — and, both still standing,
+    // seals at this very round end.
+    if (war.heldCapitalSlot == war.attackerSlot ||
+        war.heldCapitalSlot == war.defenderSlot) {
+      return war.heldCapitalSlot;
+    }
+    // Nobody armed yet (simultaneous seizure): the war score decides.
     final attackerScore = warScore(state, war.attackerSlot);
     final defenderScore = warScore(state, war.defenderSlot);
     if (attackerScore != defenderScore) {
       return attackerScore > defenderScore
           ? war.attackerSlot
           : war.defenderSlot;
-    }
-    // Exact tie: stay on the side that already armed the capture so it can
-    // seal; before any capture is armed, the attacker decides.
-    if (war.heldCapitalSlot == war.attackerSlot ||
-        war.heldCapitalSlot == war.defenderSlot) {
-      return war.heldCapitalSlot;
     }
     return war.attackerSlot;
   }
@@ -1077,7 +1094,11 @@ void _endWarByCapitalOccupation(
 /// round — wins the war right here ([_endWarByCapitalOccupation]). The
 /// first round end only ARMS the capture (`war.heldCapitalSlot`, public
 /// `capitalHeld` event); an opponent with no troops left cannot respond,
-/// so the capture resolves immediately.
+/// so the capture resolves immediately. The response that counts is
+/// RETAKING the seat: marching onto the armed side's own seat in return
+/// does not unseat them ([capitalOccupier] keeps the side that armed
+/// first), it only means both rulers fall on the same round end — the
+/// first occupier's.
 void endWarRound(GameState state, Rng rng, List<GameEvent> events) {
   final war = state.activeWar;
   if (war == null || war.phase != WarPhase.rounds) return;

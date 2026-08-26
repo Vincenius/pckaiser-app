@@ -6,6 +6,48 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-08-26 — Wer zuerst auf dem Sitz steht, gewinnt (user report)
+
+User report: *"Bei einem online Krieg habe ich den Hauptsitz vom Gegner
+eingenommen. In der Runde danach hat der Gegner (der Angreifer) meinen Sitz
+eingenommen. Danach habe ich den Krieg verloren."* Correct per the old code,
+but the wrong rule.
+
+`capitalOccupier` (`rules/war.dart`) resolved a MUTUAL occupation — both
+sides standing on each other's royal seat — by war score, and only an exact
+score tie stayed with the side that had already armed its capture
+(`heldCapitalSlot`, the 2026-07-20 stability fix). So a defender who seized
+the seat first and held it through the response round still lost it: the
+attacker marched onto their seat in return, outscored them (both get the
++3,000 capital bonus, so battles won / other held tiles decided), took over
+the occupier role — and the defender's armed capture was silently dropped.
+First-come counted for nothing, and there is no draw on this path
+(`warDraw` only exists in the winter arbitration).
+
+**New rule (option A, user's pick):** the side that armed FIRST keeps the
+capture as long as it still stands on the seat. A counter-occupation cannot
+steal it — only dislodging the occupier from the seat stops the capture.
+Both still standing at the round end therefore seals the FIRST occupier's
+victory. Only a genuinely simultaneous seizure (nobody armed yet) still goes
+on war score, an exact tie to the attacker. The tie-break stays stable
+across rounds, which `endWarRound`'s two-round seal needs.
+
+- `holdsEnemyCapital(state, war, slot)` extracted from `capitalOccupier`'s
+  local closure and exported — the war panel needs to tell a mutual
+  occupation from a one-sided one.
+- War panel: when the enemy armed first and the player also holds the enemy
+  seat, the red banner is now `war.capitalRaceLostBanner` ("… und war zuerst
+  dort. Deine eigene Besetzung rettet dich nicht") instead of the generic
+  "retake the field" line, which read as if the standoff were symmetrical.
+  The `capitalSeizedBody`/`capitalLostBody` round-report popups say the same
+  in one clause.
+- Tests: counter-occupation by the higher-scoring side does not steal the
+  capture; a simultaneous seizure still goes on score (war_test.dart, group
+  "ruler capture must be HELD through a full round").
+
+Gameplay rules are not versioned — running online matches play the new rule
+from their next round end.
+
 ## 2026-08-24 — Two war-popup bugs (user report)
 
 User report: *"Das Krieg popup 'zu den Waffen' taucht bei mir manchmal immer

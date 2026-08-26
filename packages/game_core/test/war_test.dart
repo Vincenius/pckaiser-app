@@ -806,6 +806,51 @@ void main() {
       expect(s.activeWar!.heldCapitalSlot, isNull);
     });
 
+    test(
+        'a counter-occupation does NOT steal the capture — the side that '
+        'armed first wins (2026-08-26)', () {
+      var s = marchOntoCapital();
+      s = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed)).state;
+      expect(s.activeWar!.heldCapitalSlot, 1);
+
+      // The defender answers by marching onto slot 1's seat instead of
+      // retaking their own, and outscores the occupier (battles won).
+      final counter = s.realm(2).troops.single;
+      counter.x = s.realm(1).capitalX;
+      counter.y = s.realm(1).capitalY;
+      s.activeWar!.defenderBattlesWon += 4;
+      expect(warScore(s, 2), greaterThan(warScore(s, 1)),
+          reason: 'the counter-occupier leads on points');
+
+      expect(capitalOccupier(s, s.activeWar!), 1,
+          reason: 'first come, first served — score does not steal it');
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+      final captured =
+          result.events.firstWhere((e) => e.type == 'rulerCaptured');
+      expect(captured.slot, 1);
+      expect(captured.payload['loserSlot'], 2);
+      expect(s.activeWar!.winnerSlot, 1);
+    });
+
+    test('a SIMULTANEOUS seizure (nobody armed yet) goes on war score', () {
+      var s = marchOntoCapital();
+      // Both step onto the enemy seat in the same round — no capture is
+      // armed yet, so the leading side takes the occupier role.
+      final counter = s.realm(2).troops.single;
+      counter.x = s.realm(1).capitalX;
+      counter.y = s.realm(1).capitalY;
+      s.activeWar!.defenderBattlesWon += 4;
+      expect(s.activeWar!.heldCapitalSlot, isNull);
+      expect(capitalOccupier(s, s.activeWar!), 2);
+
+      final result = applyAction(s, WarEndRound(slot: 1), Rng(s.rngSeed));
+      s = result.state;
+      expect(result.events.any((e) => e.type == 'rulerCaptured'), isFalse,
+          reason: 'still only armed — the response round follows');
+      expect(s.activeWar!.heldCapitalSlot, 2);
+    });
+
     test('a troopless enemy cannot respond — capture resolves at once', () {
       var s = marchOntoCapital();
       s.realm(2).troops.clear();

@@ -432,6 +432,13 @@ class _WarPanelState extends State<WarPanel> {
         occupier != null &&
         (war.heldCapitalSlot == occupier ||
             state.realm(war.opponentOf(occupier)).troops.isEmpty);
+    // Both seats occupied while the ENEMY armed first (2026-08-26): the
+    // player holds the enemy seat too, but that no longer buys anything —
+    // only retaking their own seat stops the capture. Without this the
+    // generic "enemy holds your seat" banner reads as if the standoff were
+    // symmetrical.
+    final losingTheCapitalRace =
+        occupier == enemySlot && gc.holdsEnemyCapital(state, war, slot);
 
     final header = Padding(
       padding: const EdgeInsets.only(left: 12, right: 4),
@@ -488,7 +495,9 @@ class _WarPanelState extends State<WarPanel> {
         _banner(
           theme,
           Icons.warning_amber,
-          tr('war.capitalLostBanner'),
+          losingTheCapitalRace
+              ? tr('war.capitalRaceLostBanner')
+              : tr('war.capitalLostBanner'),
           background: theme.colorScheme.error,
           foreground: theme.colorScheme.onError,
         ),

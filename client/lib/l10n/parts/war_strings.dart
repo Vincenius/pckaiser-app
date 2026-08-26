@@ -60,6 +60,10 @@ const Map<String, String> warDe = {
   'war.capitalLostBanner':
       'Der Feind hält deinen Königssitz ! Erobere das Feld zurück — sonst '
       'ist der Krieg verloren.',
+  'war.capitalRaceLostBanner':
+      'Der Feind hält deinen Königssitz — und war zuerst dort. Deine '
+      'eigene Besetzung rettet dich nicht: erobere deinen Sitz zurück, '
+      'sonst ist der Krieg verloren.',
   'war.enemyWantsPeaceBanner':
       'Der Gegner wünscht Frieden ! „Frieden" und „Runde beenden" beendet '
       'den Krieg ohne Gebietsänderungen.',
@@ -184,13 +188,17 @@ const Map<String, String> warDe = {
   'war.capitalLostTitle': 'Dein Königssitz ist besetzt !',
   'war.capitalSeizedBody':
       'Deine Armee hält den Königssitz von {besieged} — übersteht sie dort '
-      'die nächste Runde, ist der Krieg gewonnen. Besetzen deine Armeen '
+      'die nächste Runde, ist der Krieg gewonnen — besetzt der Feind '
+      'derweil deinen eigenen Sitz, ändert das nichts, du warst zuerst '
+      'da. Besetzen deine Armeen '
       'dabei ALLE festen Plätze des Feindes (jede Stadt, Burg und jeden '
       'Palast), wird sein gesamtes Land deinem Reich einverleibt — sonst '
       'stellst du Ansprüche nach Punkten.',
   'war.capitalLostBody':
       '{realm} hält deinen Königssitz ! Erobere das Feld in der nächsten '
-      'Runde zurück — sonst ist der Krieg verloren. Sind dabei ALLE deine '
+      'Runde zurück — sonst ist der Krieg verloren. Seinen Sitz im '
+      'Gegenzug zu besetzen hilft dir nicht: er war zuerst da. Sind dabei '
+      'ALLE deine '
       'Städte, Burgen und Paläste besetzt, wird dein ganzes Land dem Feind '
       'einverleibt !',
   'war.warEndTitle': 'Kriegsende',
@@ -289,6 +297,9 @@ const Map<String, String> warEn = {
   'war.capitalLostBanner':
       'The enemy holds your royal seat! Retake the field — or the war '
       'is lost.',
+  'war.capitalRaceLostBanner':
+      'The enemy holds your royal seat — and got there first. Occupying '
+      'theirs will not save you: retake your own seat, or the war is lost.',
   'war.enemyWantsPeaceBanner':
       'The enemy wishes for peace! "Peace" and "End round" ends the war '
       'without territorial changes.',
@@ -411,13 +422,16 @@ const Map<String, String> warEn = {
   'war.capitalLostTitle': 'Your royal seat is occupied!',
   'war.capitalSeizedBody':
       'Your army holds the royal seat of {besieged} — if it survives the '
-      'next round there, the war is won. If your armies also occupy ALL '
+      'next round there, the war is won — the enemy occupying your own '
+      'seat meanwhile changes nothing, you got there first. If your '
+      'armies also occupy ALL '
       "of the enemy's strongholds (every town, castle and palace), his "
       'entire land is absorbed into your realm — otherwise you stake '
       'claims by points.',
   'war.capitalLostBody':
       '{realm} holds your royal seat! Retake the field in the next round '
-      '— or the war is lost. If ALL your towns, castles and palaces are '
+      '— or the war is lost. Occupying his seat in return will not help: '
+      'he got there first. If ALL your towns, castles and palaces are '
       'occupied as well, your whole land is absorbed by the enemy!',
   'war.warEndTitle': 'End of the war',
   'war.warWonConquered':
