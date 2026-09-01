@@ -219,7 +219,7 @@ const Map<String, String> menusDe = {
   'menus.intelLine': 'Spionage Anno {year}: {parts}',
   // --- Stammbaum (family tree modal) ---
   'menus.familyTree': 'Stammbaum',
-  'menus.familyTreeSubtitle': 'Dein Herrscherhaus als Baum — zoombar',
+  'menus.familyTreeSubtitle': 'Dein Herrscherhaus als Baum',
   'menus.familyTreeOf': 'Stammbaum — {realm}',
   'menus.familyTreeStats': '{n} Personen — {g} Generationen',
   'menus.familyTreeEmpty': 'Diese Dynastie ist erloschen.',
@@ -445,7 +445,7 @@ const Map<String, String> menusEn = {
   'menus.intelLine': 'Espionage Anno {year}: {parts}',
   // --- Stammbaum (family tree modal) ---
   'menus.familyTree': 'Family tree',
-  'menus.familyTreeSubtitle': 'Your ruling house as a tree — zoomable',
+  'menus.familyTreeSubtitle': 'Your ruling house as a tree',
   'menus.familyTreeOf': 'Family tree — {realm}',
   'menus.familyTreeStats': '{n} people — {g} generations',
   'menus.familyTreeEmpty': 'This dynasty has died out.',
