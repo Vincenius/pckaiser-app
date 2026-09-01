@@ -6,6 +6,19 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-09-01 — Capital-race banner fired on a simultaneous seizure (review fix)
+
+The war panel's `losingTheCapitalRace` flag (2026-08-26) keyed off
+`capitalOccupier(...) == enemySlot` — but the occupier is the enemy in TWO
+mutual-occupation states: the enemy armed first (`heldCapitalSlot`), which
+is what the banner text claims ("… und war zuerst dort"), AND a
+simultaneous seizure the enemy merely leads on war score. In the second
+state the banner was wrong twice over: nobody was there first, and the
+player can still take the occupier role by outscoring the enemy before the
+round ends (that round end would only ARM the enemy, not lose the war).
+Now keyed off `war.heldCapitalSlot == enemySlot`; the simultaneous case
+keeps the generic `capitalLostBanner`. Display only — no rules change.
+
 ## 2026-09-01 — Stammbaum: the dynasty as a family tree (feature)
 
 The Dynastie sheet only ever listed the house as flat `ListTile`s, so the

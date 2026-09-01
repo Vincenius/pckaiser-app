@@ -436,9 +436,13 @@ class _WarPanelState extends State<WarPanel> {
     // player holds the enemy seat too, but that no longer buys anything —
     // only retaking their own seat stops the capture. Without this the
     // generic "enemy holds your seat" banner reads as if the standoff were
-    // symmetrical.
+    // symmetrical. Keyed off heldCapitalSlot, NOT the occupier: in a
+    // simultaneous seizure (nobody armed yet) the enemy can be occupier on
+    // war score alone, and there "he was first" would be wrong — the player
+    // can still take the role by outscoring before the round ends.
     final losingTheCapitalRace =
-        occupier == enemySlot && gc.holdsEnemyCapital(state, war, slot);
+        war.heldCapitalSlot == enemySlot &&
+        gc.holdsEnemyCapital(state, war, slot);
 
     final header = Padding(
       padding: const EdgeInsets.only(left: 12, right: 4),
