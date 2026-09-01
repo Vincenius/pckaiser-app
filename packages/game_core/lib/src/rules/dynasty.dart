@@ -602,9 +602,13 @@ void handleDeath(
 /// eldest member, then the spouse — so a daughter inherits ahead of a
 /// distant male relative.
 Person? _chooseHeirByPriority(
-    GameState state, Person deceased, Dynasty dynasty, Rng rng) {
+    GameState state, Person deceased, Dynasty dynasty, Rng? rng) {
   Person? firstAlive(Iterable<int> ids, {bool? male}) {
     for (final id in ids) {
+      // [deceased] is already out of every list on the death path; the
+      // display query ([presumptiveHeir]) asks while they still live, so
+      // the subject is skipped explicitly — nobody inherits from themself.
+      if (id == deceased.id) continue;
       final p = state.persons[id];
       if (p != null && (male == null || p.isMale == male)) return p;
     }
@@ -647,7 +651,24 @@ Person? _chooseHeirByPriority(
           firstAlive(children) ??
           firstAlive(dynasty.memberIds);
   if (heir != null) return heir;
-  if (dynasty.memberIds.isEmpty) return null;
-  return state
-      .persons[dynasty.memberIds[rng.nextInt(dynasty.memberIds.length)]];
+  // The random fallback needs an RNG; the display query passes none and
+  // reports "no heir" instead of inventing one.
+  if (rng == null) return null;
+  final candidates = [
+    for (final id in dynasty.memberIds)
+      if (id != deceased.id) id,
+  ];
+  if (candidates.isEmpty) return null;
+  return state.persons[candidates[rng.nextInt(candidates.length)]];
+}
+
+/// The heir the §15.4 chain would crown if the ruler of [slot] died right
+/// now — a pure display query (Stammbaum, Dynastie sheet), never part of a
+/// rules path. Returns null when the chain lands on the engine's random
+/// fallback (no ranked candidate) or the realm has no living ruler.
+Person? presumptiveHeir(GameState state, int slot) {
+  final ruler = state.persons[state.realm(slot).rulerId];
+  if (ruler == null) return null;
+  return _chooseHeirByPriority(
+      state, ruler, state.dynasty(ruler.dynasty), null);
 }

@@ -28,6 +28,7 @@ const List<ReleaseNote> releaseNotes = [
     'whatsnew.0_2_8.0',
     'whatsnew.0_2_8.1',
     'whatsnew.0_2_8.2',
+    'whatsnew.0_2_8.3',
   ]),
   ReleaseNote('0.2.7', [
     'whatsnew.0_2_7.0',

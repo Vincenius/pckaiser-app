@@ -29,6 +29,7 @@ Multiple named game slots, each auto-saved after every completed turn (no manual
 - **Drama popups & headline recap**: assassination outcomes and coronations as own popups at turn start; recap renders big news as styled headline rows, the rest as one-liners
 - Setup defaults: Reformation 1020, Ottoman 1040 (editable, min 1011)
 - Language: German default, English optional
+- **Stammbaum** (2026-09-01): the Dynastie sheet (and every dynasty in Info → Dynastien, since houses are public information) opens the ruling house as a full-screen, pan/pinch-zoom family tree — couples in one box, children below, crown on the ruler, star on the presumptive heir (`gc.presumptiveHeir`, the §15.4 chain as a display query)
 - **What's new modal**: after an app update the home screen shows the release notes of the new version once per version (last-seen version stored in `settings.json`; see `release_notes.dart` / `whats_new_dialog.dart`)
 - Peacetime troop relocation (free) only via Militär → Truppenliste; war marches stay strictly 1 tile per Zug — a march order just spends several of them in a row along the planned route (2026-08-24)
 

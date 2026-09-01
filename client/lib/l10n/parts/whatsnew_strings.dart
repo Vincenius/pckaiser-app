@@ -12,6 +12,7 @@ const Map<String, String> whatsnewDe = {
   'whatsnew.0_2_8.0': 'Angriffsbefehl mit eigenem Marschziel auf der Karte',
   'whatsnew.0_2_8.1': 'Warnung, wenn noch Bauzüge offen sind',
   'whatsnew.0_2_8.2': 'KI lässt kein Land mehr unbebaut liegen',
+  'whatsnew.0_2_8.3': 'Stammbaum: die eigene Dynastie als zoombarer Baum',
   // --- v0.2.7 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_7.0':
       'Truppen laufen auch zu weit entfernten Feldern – beste Route automatisch',
@@ -35,6 +36,7 @@ const Map<String, String> whatsnewEn = {
   'whatsnew.0_2_8.0': 'Attack orders can name their own march target',
   'whatsnew.0_2_8.1': 'A warning when build moves are still unspent',
   'whatsnew.0_2_8.2': 'The AI no longer leaves its land uncultivated',
+  'whatsnew.0_2_8.3': 'Family tree: your dynasty as a zoomable tree',
   // --- v0.2.7 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_7.0':
       'March to distant tiles — troops take the best route on their own',

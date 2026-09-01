@@ -10,6 +10,7 @@ import '../l10n/strings.dart';
 import '../state/game_controller.dart';
 import 'decisions.dart' show promptDecisionsFor;
 import 'event_feed.dart';
+import 'family_tree.dart' show showFamilyTree;
 import 'turn_report.dart' show moraleBonus;
 
 void _toast(BuildContext context, String message) {
@@ -1732,6 +1733,15 @@ void showMiscMenu(BuildContext context, GameController controller) {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.account_tree),
+            title: Text(tr('menus.familyTree')),
+            subtitle: Text(tr('menus.familyTreeSubtitle')),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              showFamilyTree(context, controller.state, houseSlot);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.favorite_border),
             title: Text(tr('proposeMarriage')),
             subtitle: marriageBlocked == null ? null : Text(marriageBlocked),
@@ -1938,6 +1948,11 @@ void _showDynastyOf(BuildContext context, GameController controller, int slot) {
               title: Text(
                 tr('menus.dynastyOf', {'realm': realmName(slot)}),
                 style: Theme.of(context).textTheme.titleMedium,
+              ),
+              trailing: IconButton(
+                tooltip: tr('menus.familyTree'),
+                icon: const Icon(Icons.account_tree),
+                onPressed: () => showFamilyTree(context, state, slot),
               ),
             ),
             const Divider(height: 1),

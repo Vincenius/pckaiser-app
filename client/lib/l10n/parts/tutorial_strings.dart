@@ -76,8 +76,9 @@ const Map<String, String> tutorialDe = {
   'tut.dynastyBody':
       'Unter „{menu}" verwaltest du dein Herrscherhaus: Heirate in '
       'fremde Häuser ein oder bürgerlich — ohne Erben stirbt deine '
-      'Dynastie aus und das Spiel ist für dich verloren. Die Kurfürsten '
-      'wählen den Kaiser; Titel steigen mit der Größe deines Reichs.',
+      'Dynastie aus und das Spiel ist für dich verloren. Der „Stammbaum" '
+      'zeigt dein Haus mit Krone und Thronfolger. Die Kurfürsten wählen '
+      'den Kaiser; Titel steigen mit der Größe deines Reichs.',
   // {endTurn} = tr('endTurn').
   'tut.endTurnBody':
       'Mit „{endTurn}" unten rechts schließt du deinen Zug ab: die '
@@ -175,8 +176,9 @@ const Map<String, String> tutorialEn = {
   'tut.dynastyBody':
       'Under "{menu}" you manage your ruling house: marry into foreign '
       'houses or marry a commoner — without an heir your dynasty dies '
-      'out and the game is lost for you. The Electors choose the '
-      'Kaiser; titles rise with the size of your realm.',
+      'out and the game is lost for you. The "Family tree" shows your '
+      'house with its crown and heir. The Electors choose the Kaiser; '
+      'titles rise with the size of your realm.',
   'tut.endTurnBody':
       'With "{endTurn}" at the bottom right you complete your turn: '
       'the other realms play, a year passes, and harvest, taxes and '

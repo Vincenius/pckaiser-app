@@ -6,6 +6,49 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-09-01 — Stammbaum: the dynasty as a family tree (feature)
+
+The Dynastie sheet only ever listed the house as flat `ListTile`s, so the
+one thing that matters about a dynasty — who descends from whom, who is
+married in, who inherits — had to be pieced together from subtitles. New
+`client/lib/widgets/family_tree.dart`: a full-screen modal drawing the
+house as a generational tree inside an `InteractiveViewer` (drag to pan,
+pinch to zoom 0.15×–3×, "fit" button for the whole tree). Reachable from
+Dynastie → "Stammbaum" and from the header of every dynasty overview,
+including foreign houses — dynasty composition is public information
+(`PROJECT_REQUIREMENTS.md`, hidden-information table).
+
+**Reconstructing the tree.** The engine stores only the downward link
+(`Person.childrenIds`) and only LIVING people (`handleDeath` removes the
+person and every child link), so the tree is exactly the house as it
+stands today. `buildFamilyTree` inverts the child links into a child →
+parents index, pairs each married member with their spouse into ONE box,
+and hangs children under it. Three engine quirks drive the details:
+
+- a couple's children are double-linked onto BOTH parents (deliberate, for
+  this display — see `_chooseHeirByPriority`'s note), so the child sets are
+  unioned and deduplicated;
+- a §14.1 commoner spouse joins the member's OWN dynasty, so both partners
+  are members: the partner born into the line anchors the box (parent in
+  the house → ruler → lower id), the other is absorbed as their spouse;
+- with the common ancestor dead a house has several roots, so the layout is
+  a forest — a two-pass tidy layout (measure subtree widths, then place
+  each parent centred over its children) laid out left to right.
+
+A defensive cycle check keeps a malformed save from hanging the recursion.
+
+**Presumptive heir.** `presumptiveHeir(state, slot)` (new, in
+`rules/dynasty.dart`) answers "who inherits if the ruler died now" by
+running the §15.4 chain itself instead of the client re-implementing it.
+It is a display query, not a rules path: `_chooseHeirByPriority` now skips
+the subject explicitly (a no-op on the death path, where they are already
+removed — but the query asks while the ruler lives) and takes a nullable
+RNG, so with no RNG the random last resort reports "no heir" rather than
+inventing one. Tests: `presumptive_heir_2026_09_01_test.dart` (first son,
+gender-equal succession, spouse fallback, no random fallback) and
+`client/test/family_tree_test.dart` (the four tree shapes above plus the
+modal's crown/heir badges and its pan/zoom).
+
 ## 2026-09-01 — Bare AI land, unspent Züge, picked march targets (user reports)
 
 Four items from a played round:

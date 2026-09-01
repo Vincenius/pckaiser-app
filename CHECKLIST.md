@@ -34,6 +34,7 @@ Progress tracker. Spec: `ORIGINAL_GAME.md` (§-refs). Dated decisions/fixes:
 - [x] Undo stack, hidden-info views, menus, war panel + settlement UI, setup flow, hot-seat handoff, save slots
 - [x] Accessibility baseline (48dp targets, semantics); interactive tutorial (`client/lib/tutorial/`)
 - [x] Localization: full de/en UI translation (menus, events, war, tutorial, engine messages, realm exonyms); Options sub-menu language picker, device-language default (2026-07-20)
+- [x] Stammbaum modal (`widgets/family_tree.dart`, 2026-09-01): the ruling house as a pan/pinch-zoom family tree with crown and presumptive heir (`gc.presumptiveHeir`); open from Dynastie or any dynasty overview
 
 > Not yet run on a device/emulator (no Android toolchain here). Logic is test-covered; rendering/gestures need a visual pass.
 
