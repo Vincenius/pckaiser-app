@@ -267,6 +267,26 @@ List<GameEvent> applySetTroopStance(
       action.stance != TroopStance.attack) {
     throw ActionException(coreMessage('unknownTroopStance'));
   }
+  // The march target (2026-09-01) belongs to the attack stance: holding
+  // position always clears it, and an attack order without one restores the
+  // default target, the enemy capital.
+  final x = action.targetX;
+  final y = action.targetY;
+  if (action.stance == TroopStance.attack && x != null && y != null) {
+    if (!state.map.inBounds(x, y)) {
+      throw ActionException(coreMessage('tileOffMap'));
+    }
+    // Armies march over land only — a water tile would simply be
+    // unreachable, and the unit would stand still all war.
+    if (state.map.isWaterAt(x, y)) {
+      throw ActionException(coreMessage('stanceTargetOnLand'));
+    }
+    troop.stanceTargetX = x;
+    troop.stanceTargetY = y;
+  } else {
+    troop.stanceTargetX = null;
+    troop.stanceTargetY = null;
+  }
   troop.stance = action.stance;
   return const [];
 }
@@ -570,9 +590,8 @@ class WarMarchOutcome {
 /// The unit is tracked by OBJECT identity across the steps: combat
 /// compacts the troop list, so an index (or a name — they repeat) could
 /// silently come to mean a different unit mid-march.
-WarMarchOutcome marchWarUnit(
-    GameState state, Realm realm, ActiveWar war, Troop troop, int tx, int ty,
-    Rng rng) {
+WarMarchOutcome marchWarUnit(GameState state, Realm realm, ActiveWar war,
+    Troop troop, int tx, int ty, Rng rng) {
   final map = state.map;
   final events = <GameEvent>[];
   if (!map.inBounds(tx, ty)) {
@@ -704,11 +723,8 @@ WarMarchOutcome marchWarUnit(
     }
     final beforeX = troop.x;
     final beforeY = troop.y;
-    events.addAll(applyWarMove(
-        state,
-        realm,
-        WarMove(slot: slot, unitIndex: index, dx: step.$1, dy: step.$2),
-        rng));
+    events.addAll(applyWarMove(state, realm,
+        WarMove(slot: slot, unitIndex: index, dx: step.$1, dy: step.$2), rng));
     if (!realm.troops.contains(troop)) {
       moved = true; // it marched into its death — the order was carried out
       break;

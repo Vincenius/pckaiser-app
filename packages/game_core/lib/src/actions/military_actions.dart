@@ -193,30 +193,48 @@ class RenameTroop extends PlayerAction {
 /// "Verhalten im Krieg" — set a unit's autopilot war stance (see
 /// [TroopStance]). Free, and allowed during a war too: it only flips a flag
 /// the unattended round-resolution reads, never the troop list or moves.
+///
+/// [targetX]/[targetY] name the tile an [TroopStance.attack] unit marches
+/// on (2026-09-01); leaving them null restores the default target, the
+/// enemy capital. They are ignored for [TroopStance.holdPosition], which
+/// always clears a stored target.
 class SetTroopStance extends PlayerAction {
   SetTroopStance({
     required super.slot,
     required this.unitIndex,
     required this.stance,
+    this.targetX,
+    this.targetY,
   });
 
   factory SetTroopStance.fromJson(Map<String, dynamic> json) => SetTroopStance(
         slot: json['slot'] as int,
         unitIndex: json['unitIndex'] as int,
         stance: json['stance'] as int,
+        // Additive fields (2026-09-01) — an older client sends no target.
+        targetX: json['targetX'] as int?,
+        targetY: json['targetY'] as int?,
       );
 
   static const kind = 'setTroopStance';
 
   final int unitIndex;
   final int stance;
+  final int? targetX;
+  final int? targetY;
 
   @override
   String get type => kind;
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': kind, 'slot': slot, 'unitIndex': unitIndex, 'stance': stance};
+  Map<String, dynamic> toJson() => {
+        'type': kind,
+        'slot': slot,
+        'unitIndex': unitIndex,
+        'stance': stance,
+        if (targetX != null) 'targetX': targetX,
+        if (targetY != null) 'targetY': targetY,
+      };
 }
 
 /// "Truppen vereinigen" — merge unit [fromIndex] into [toIndex] (§10.2).

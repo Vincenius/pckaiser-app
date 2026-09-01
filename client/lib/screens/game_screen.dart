@@ -288,11 +288,42 @@ class _GameScreenState extends State<GameScreen> {
   /// — without a toast the button looks like a no-op while the turn
   /// silently stays open.
   Future<void> _endTurn(GameController controller) async {
+    if (!await _confirmUnusedMoves(controller)) return;
     try {
       await controller.endTurn();
     } on gc.ActionException catch (e) {
       _toast(e.message);
     }
+  }
+
+  /// Asks before throwing away build moves: unspent Zuege expire with the
+  /// round, and ending the turn on a full build budget is almost always a
+  /// mis-tap (user report). Returns true when the turn may end.
+  Future<bool> _confirmUnusedMoves(GameController controller) async {
+    final left = controller.currentRealm.movementPoints;
+    if (left < 1) return true;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tr('game.movesLeftQuestion')),
+        content: Text(
+          tr(left == 1 ? 'game.movesLeftOne' : 'game.movesLeftMany', {
+            'moves': left,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr('game.movesLeftBuild')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(tr('endTurn')),
+          ),
+        ],
+      ),
+    );
+    return go == true;
   }
 
   // --- Map box select (field cultivation + war annexation) -----------

@@ -946,6 +946,14 @@ void showTroopActions(
                             slot: slot,
                             unitIndex: index,
                             stance: selection.first,
+                            // The picked march target survives a re-set to
+                            // attack; "hold" drops it.
+                            targetX: selection.first == gc.TroopStance.attack
+                                ? troop.stanceTargetX
+                                : null,
+                            targetY: selection.first == gc.TroopStance.attack
+                                ? troop.stanceTargetY
+                                : null,
                           ),
                         );
                       } on gc.ActionException catch (e) {
@@ -965,6 +973,72 @@ void showTroopActions(
                     style: Theme.of(sheetContext).textTheme.bodySmall,
                   ),
                 ),
+                // The attack stance's march target — the enemy royal seat
+                // by default, any land tile the player picks otherwise
+                // (2026-09-01, user request).
+                if (troop.stance == gc.TroopStance.attack)
+                  ListTile(
+                    leading: const Icon(Icons.my_location),
+                    title: Text(
+                      tr('war.stanceTargetLabel') +
+                          (troop.stanceTargetX != null &&
+                                  troop.stanceTargetY != null
+                              ? tr('war.stanceTargetTile', {
+                                  'x': troop.stanceTargetX,
+                                  'y': troop.stanceTargetY,
+                                })
+                              : tr('war.stanceTargetSeat')),
+                    ),
+                    subtitle: Text(tr('war.stanceTargetPick')),
+                    trailing:
+                        troop.stanceTargetX != null &&
+                            troop.stanceTargetY != null
+                        ? TextButton(
+                            onPressed: () async {
+                              Navigator.pop(sheetContext);
+                              try {
+                                await controller.applyUndoable(
+                                  gc.SetTroopStance(
+                                    slot: slot,
+                                    unitIndex: index,
+                                    stance: gc.TroopStance.attack,
+                                  ),
+                                );
+                              } on gc.ActionException catch (e) {
+                                if (screenContext.mounted) {
+                                  _toast(screenContext, e.message);
+                                }
+                              }
+                            },
+                            child: Text(tr('war.stanceTargetReset')),
+                          )
+                        : null,
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      controller.startTilePick(
+                        hint: tr('war.stanceTargetHint', {'name': troop.name}),
+                        onPick: (x, y) async {
+                          try {
+                            await controller.applyUndoable(
+                              gc.SetTroopStance(
+                                slot: slot,
+                                unitIndex: index,
+                                stance: gc.TroopStance.attack,
+                                targetX: x,
+                                targetY: y,
+                              ),
+                            );
+                            return true;
+                          } on gc.ActionException catch (e) {
+                            if (screenContext.mounted) {
+                              _toast(screenContext, e.message);
+                            }
+                            return false;
+                          }
+                        },
+                      );
+                    },
+                  ),
               ],
               const Divider(height: 1),
               ListTile(

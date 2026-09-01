@@ -25,7 +25,9 @@ abstract final class TroopQuality {
 ///  - [holdPosition] (default): the unit walks back to its pre-war position
 ///    and defends the base. It only marches on the enemy capital once the
 ///    enemy has no troops left.
-///  - [attack]: the unit advances on the enemy capital straight away.
+///  - [attack]: the unit advances on the enemy capital straight away —
+///    or on the tile the player picked for it
+///    (`Troop.stanceTargetX/Y`, 2026-09-01).
 abstract final class TroopStance {
   static const int holdPosition = 0;
   static const int attack = 1;
@@ -43,6 +45,8 @@ class Troop {
     required this.y,
     this.id = 0,
     this.stance = TroopStance.holdPosition,
+    this.stanceTargetX,
+    this.stanceTargetY,
     this.plunderedThisRound = false,
     this.janissary = false,
   });
@@ -61,6 +65,10 @@ class Troop {
         // Additive field — units from older saves default to holding their
         // position (defending the base).
         stance: json['stance'] as int? ?? TroopStance.holdPosition,
+        // Additive fields (2026-09-01) — units from older saves march on
+        // the enemy capital, the unchanged default target.
+        stanceTargetX: json['stanceTargetX'] as int?,
+        stanceTargetY: json['stanceTargetY'] as int?,
         // Additive field — units from older saves have not plundered yet.
         plunderedThisRound: json['plunderedThisRound'] as bool? ?? false,
         // Additive field — only the §18.4 Ottoman guard carries it. Old
@@ -100,6 +108,15 @@ class Troop {
   /// Mutable: set per unit via the "Verhalten im Krieg" toggle.
   int stance;
 
+  /// `[DESIGNED 2026-09-01, user request]` Where an [TroopStance.attack]
+  /// unit marches on autopilot — null (the default) sends it at the enemy
+  /// capital. Set together with the stance via `SetTroopStance`, cleared
+  /// whenever the unit goes back to [TroopStance.holdPosition]. A tile
+  /// that has gone off the map (a smaller world in a migrated save) is
+  /// ignored by the war movement, which falls back to the capital.
+  int? stanceTargetX;
+  int? stanceTargetY;
+
   /// §11.5: each army plunders once per war round. Cleared at war start
   /// and on every round advance.
   bool plunderedThisRound;
@@ -121,6 +138,8 @@ class Troop {
         y: y,
         id: id,
         stance: stance,
+        stanceTargetX: stanceTargetX,
+        stanceTargetY: stanceTargetY,
         plunderedThisRound: plunderedThisRound,
         janissary: janissary,
       );
@@ -135,6 +154,8 @@ class Troop {
         'y': y,
         'id': id,
         'stance': stance,
+        if (stanceTargetX != null) 'stanceTargetX': stanceTargetX,
+        if (stanceTargetY != null) 'stanceTargetY': stanceTargetY,
         'plunderedThisRound': plunderedThisRound,
         'janissary': janissary,
       };

@@ -82,8 +82,9 @@ const Map<String, String> tutorialDe = {
   'tut.endTurnBody':
       'Mit „{endTurn}" unten rechts schließt du deinen Zug ab: die '
       'anderen Reiche spielen, ein Jahr vergeht, und Ernte, Steuern und '
-      'Ereignisse werden abgerechnet. Jeder abgeschlossene Zug wird '
-      'automatisch gespeichert, und zu Beginn des nächsten Zuges fasst '
+      'Ereignisse werden abgerechnet. Sind noch Bauzüge offen, fragt das '
+      'Spiel vorher nach — ungenutzte Züge verfallen. Jeder abgeschlossene '
+      'Zug wird automatisch gespeichert, und zu Beginn des nächsten Zuges fasst '
       'eine Übersicht zusammen, was seither geschah.',
   'tut.readyTitle': 'Bereit zur Herrschaft',
   // {info} = tr('info'), {finish} = tr('tut.finish').
@@ -179,7 +180,8 @@ const Map<String, String> tutorialEn = {
   'tut.endTurnBody':
       'With "{endTurn}" at the bottom right you complete your turn: '
       'the other realms play, a year passes, and harvest, taxes and '
-      'events are settled. Every completed turn is saved '
+      'events are settled. With build moves still unspent the game asks '
+      'first — unused moves expire. Every completed turn is saved '
       'automatically, and at the start of your next turn a summary '
       'recaps what has happened since.',
   'tut.readyTitle': 'Ready to rule',

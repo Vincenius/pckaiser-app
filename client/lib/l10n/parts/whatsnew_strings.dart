@@ -8,6 +8,10 @@
 const Map<String, String> whatsnewDe = {
   'whatsnew.title': 'Was ist neu?',
   'whatsnew.close': 'Schließen',
+  // --- v0.2.8 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_8.0': 'Angriffsbefehl mit eigenem Marschziel auf der Karte',
+  'whatsnew.0_2_8.1': 'Warnung, wenn noch Bauzüge offen sind',
+  'whatsnew.0_2_8.2': 'KI lässt kein Land mehr unbebaut liegen',
   // --- v0.2.7 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_7.0':
       'Truppen laufen auch zu weit entfernten Feldern – beste Route automatisch',
@@ -27,6 +31,10 @@ const Map<String, String> whatsnewDe = {
 const Map<String, String> whatsnewEn = {
   'whatsnew.title': "What's new?",
   'whatsnew.close': 'Close',
+  // --- v0.2.8 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_8.0': 'Attack orders can name their own march target',
+  'whatsnew.0_2_8.1': 'A warning when build moves are still unspent',
+  'whatsnew.0_2_8.2': 'The AI no longer leaves its land uncultivated',
   // --- v0.2.7 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_7.0':
       'March to distant tiles — troops take the best route on their own',

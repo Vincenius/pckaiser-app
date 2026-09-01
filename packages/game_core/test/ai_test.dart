@@ -208,6 +208,49 @@ void main() {
     });
   });
 
+  group('AI expansion is always cultivated (2026-09-01, user report)', () {
+    // The AI used to spend leftover Zuege on bare `ClaimTile` claims, so
+    // realms owned long stretches of untouched Ebene. Every claim now rides
+    // on a build (the player's own claim-on-build rule), so an AI-owned land
+    // tile always carries a building.
+    test('no AI realm ever owns an unbuilt land tile', () {
+      var state = aiOnlyGame(seed: 777);
+      var safety = 0;
+      while (state.year < 1060 && safety++ < 60 * 40) {
+        final slot = state.currentPlayer;
+        if (!state.realm(slot).isVacant &&
+            state.dynasty(slot).status == DynastyStatus.ai) {
+          state = runAiTurn(state, slot, Rng(state.rngSeed)).state;
+        }
+        state = completeTurn(state, Rng(state.rngSeed)).state;
+        final map = state.map;
+        for (var i = 0; i < map.terrain.length; i++) {
+          if (map.owner[i] == World.niemand) continue;
+          if (Terrain.isWater(map.terrain[i])) continue;
+          expect(map.building[i], isNot(Building.none),
+              reason: 'slot ${map.owner[i]} owns bare land at '
+                  '(${i % map.width}, ${i ~/ map.width}) in ${state.year}');
+        }
+      }
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('a settled AI still founds villages and raises castles', () {
+      var state = aiOnlyGame(seed: 4242, mapSize: MapSize.klein);
+      var safety = 0;
+      while (state.year < 1080 && safety++ < 80 * 40) {
+        final slot = state.currentPlayer;
+        if (!state.realm(slot).isVacant &&
+            state.dynasty(slot).status == DynastyStatus.ai) {
+          state = runAiTurn(state, slot, Rng(state.rngSeed)).state;
+        }
+        state = completeTurn(state, Rng(state.rngSeed)).state;
+      }
+      final towns = state.realms.fold(0, (n, r) => n + r.towns.length);
+      expect(towns, greaterThan(state.realms.where((r) => !r.isVacant).length),
+          reason: 'the build loop must still expand beyond the start village');
+    }, timeout: const Timeout(Duration(minutes: 3)));
+  });
+
   group('full-AI smoke test', () {
     test('30 AI realms, 200 years headless, no invariant violations', () {
       var state = aiOnlyGame(seed: 777);

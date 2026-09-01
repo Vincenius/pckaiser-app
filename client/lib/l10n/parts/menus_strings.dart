@@ -67,7 +67,8 @@ const Map<String, String> menusDe = {
       'Verteidigt die Basis; greift erst an, wenn der Gegner '
       'keine Truppen mehr hat.',
   'menus.stanceAttackDesc':
-      'Marschiert sofort auf den gegnerischen Königssitz.',
+      'Marschiert sofort auf das gewählte Marschziel — '
+      'ohne eigenes Ziel auf den gegnerischen Königssitz.',
   'menus.moveTroop': 'Truppe verlegen',
   'menus.moveTroopSubtitle': 'Kostenlos — Zielfeld auf der Karte antippen',
   'menus.moveTroopHint': 'Zielfeld für „{name}" antippen',
@@ -281,7 +282,9 @@ const Map<String, String> menusEn = {
   'menus.stanceAttack': 'Attack',
   'menus.stanceHoldDesc':
       'Defends the base; attacks only once the enemy has no troops left.',
-  'menus.stanceAttackDesc': 'Marches at once upon the enemy royal seat.',
+  'menus.stanceAttackDesc':
+      'Marches at once upon the chosen march target — '
+      'without one, upon the enemy royal seat.',
   'menus.moveTroop': 'Relocate troops',
   'menus.moveTroopSubtitle': 'Free — tap the destination tile on the map',
   'menus.moveTroopHint': 'Tap the destination tile for "{name}"',

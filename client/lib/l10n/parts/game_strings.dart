@@ -123,6 +123,14 @@ const Map<String, String> gameDe = {
       'Nahrung wird knapp — baue mehr Kornfelder/Weiden, sonst '
       'drohen Hungersnot und Desertion !',
   'game.famineLine': 'Hungersnot: {loss} Soldaten desertieren !',
+  'game.movesLeftQuestion': 'Zug beenden?',
+  'game.movesLeftOne':
+      'Du hast noch {moves} Zug zum Bauen übrig. Nicht genutzte '
+      'Züge verfallen am Ende der Runde.',
+  'game.movesLeftMany':
+      'Du hast noch {moves} Züge zum Bauen übrig. Nicht genutzte '
+      'Züge verfallen am Ende der Runde.',
+  'game.movesLeftBuild': 'Weiter bauen',
   'game.buildsThisRoundOne': 'Du kannst diese Runde {moves} Feld bebauen.',
   'game.buildsThisRoundMany': 'Du kannst diese Runde {moves} Felder bebauen.',
   'game.continueButton': 'Weiter',
@@ -257,6 +265,14 @@ const Map<String, String> gameEn = {
       'Food is running short — build more grain fields and pastures, '
       'or famine and desertion threaten!',
   'game.famineLine': 'Famine: {loss} soldiers desert!',
+  'game.movesLeftQuestion': 'End the turn?',
+  'game.movesLeftOne':
+      'You still have {moves} move left to build with. Unused moves '
+      'expire at the end of the round.',
+  'game.movesLeftMany':
+      'You still have {moves} moves left to build with. Unused moves '
+      'expire at the end of the round.',
+  'game.movesLeftBuild': 'Keep building',
   'game.buildsThisRoundOne': 'You can build on {moves} field this round.',
   'game.buildsThisRoundMany': 'You can build on {moves} fields this round.',
   'game.continueButton': 'Continue',

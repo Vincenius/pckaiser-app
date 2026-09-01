@@ -71,8 +71,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Was ist neu?'), findsOneWidget);
     expect(find.textContaining(appVersion), findsOneWidget);
-    // At least the first bullet is visible.
-    expect(find.textContaining('Feldern'), findsOneWidget);
+    // At least the first bullet is visible. Read from the note itself, so
+    // the next version bump does not have to touch this expectation.
+    expect(find.textContaining(note.items().first), findsOneWidget);
     await tester.tap(find.text('Schließen'));
     await tester.pumpAndSettle();
     expect(find.text('Was ist neu?'), findsNothing);

@@ -6,6 +6,50 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-09-01 — Bare AI land, unspent Züge, picked march targets (user reports)
+
+Four items from a played round:
+
+**1. AI realms owned unbuilt "Ebene".** The AI build loop's last resort was
+a bare `ClaimTile` — free, one Zug, no building — so any AI with a fed
+population and less than 1,000 T (no Dorf, no Hafen, no Burg) spent every
+remaining Zug claiming empty land. A 200-year probe peaked at **176**
+owned-but-bare land tiles (year 1009); the player only ever claims land
+THROUGH a build (`claimOnBuild`, §4 deviation), so the bare tiles were an
+AI-only artifact. `_pickBuildAction` now expands the same way the player
+does: every claim rides on a Kornfeld/Weide build (Ebene → Kornfeld 100 T,
+Berg → Weide 150 T), the Dorf/Burg/Palast branches may claim their spot on
+the build too (`findBuildSpot`), and a leftover bare tile of the realm's own
+is cultivated before new land is taken. The probe now reports 0 bare tiles
+in every year. Being BROKE no longer raises the §20.4 war flag either — only a
+real lack of room does (`_isBoxedIn`), so a poor AI does not talk itself into
+an invasion. Regression: `ai_test.dart` "no AI realm ever owns an unbuilt
+land tile" (+ "a settled AI still founds villages and raises castles", which
+guards the claim-on-build path for towns).
+
+**2. Where the troop and growth numbers come from** (question, no change):
+the recruit slider caps at `min(troopCapacity − armySize, treasury ÷ 5,
+levyLeft)` — quarters come from the towns (a Dorf starts at 25 and grows by
+`Δpopulation ÷ 4`), the levy limit is 10 % of the population per year
+(min. 100). Population growth is already per TOWN: `Δ = town.pop × g / 82`
+with `g` rolled from the food surplus, so villages are exactly what carries
+growth — but the food ceiling (90 % of the expected yield) caps it, so a new
+village only pays off once fields feed it.
+
+**3. Ending the turn with build moves left** now asks first
+(`game.movesLeftQuestion` + "Weiter bauen" / "Zug beenden"): unspent Züge
+expire with the round, and the mis-tap cost a whole year of building.
+
+**4. Attack stance with a picked march target.** `Troop.stanceTargetX/Y`
+(additive JSON, null = the enemy royal seat as before) steers the autopilot
+for a unit set to attack; `SetTroopStance` carries the tile (land only,
+in bounds; "hold position" clears it). Set it from the war panel
+("Marschziel: … · Auf Karte wählen") or the troop menu — both arm the
+controller's tile pick, which consumes the next map tap even during a war.
+
+App version → **0.2.8** (gameplay changed; the new action field needs every
+online seat on the same build), with matching "What's new" entries.
+
 ## 2026-08-26 — Wer zuerst auf dem Sitz steht, gewinnt (user report)
 
 User report: *"Bei einem online Krieg habe ich den Hauptsitz vom Gegner

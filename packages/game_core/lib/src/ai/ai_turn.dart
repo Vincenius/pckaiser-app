@@ -109,7 +109,7 @@ void _runAiTurnInPlace(
   while (realm.movementPoints > 0) {
     final action = _pickBuildAction(state, realm, rng, tuning);
     if (action == null) {
-      warFlag = true; // boxed in (§20.4)
+      warFlag = _isBoxedIn(state, realm); // §20.4 — no room, not no money
       break;
     }
     _act(state, action, rng, events);
@@ -204,45 +204,60 @@ PlayerAction? _pickBuildAction(
     return pickRandom(candidates);
   }
 
-  (int, int)? findClaimable() {
+  /// The field a land tile grows: Kornfeld on Ebene (100 T), Weide on Berg
+  /// (150 T) — the same terrain split the setup cross and the food branch
+  /// use.
+  int fieldFor(int x, int y) =>
+      map.terrainAt(x, y) == Terrain.berg ? Building.weide : Building.kornfeld;
+
+  bool canAffordField(int x, int y) =>
+      realm.treasury >= Building.cost[fieldFor(x, y)]!;
+
+  Build fieldBuild((int, int) spot) => Build(
+      slot: slot, x: spot.$1, y: spot.$2, building: fieldFor(spot.$1, spot.$2));
+
+  /// A free land tile on the realm's border that it can afford to
+  /// cultivate. `[FIX 2026-09-01, user report]` Expansion always goes
+  /// through a BUILD, never through a bare `ClaimTile`: building on an
+  /// unowned border tile claims it in the same Zug (`claimOnBuild`, the
+  /// player's own rule), so an AI realm never ends up owning stretches of
+  /// bare Ebene — and it pays one Zug for what used to cost two.
+  (int, int)? findFreeLand({bool affordableField = false}) {
     final candidates = <(int, int)>[];
     for (var y = 0; y < map.height; y++) {
       for (var x = 0; x < map.width; x++) {
         if (map.ownerAt(x, y) != World.niemand || map.isWaterAt(x, y)) {
           continue;
         }
+        if (affordableField && !canAffordField(x, y)) continue;
         if (map.bordersSlot(x, y, slot)) candidates.add((x, y));
       }
     }
     return pickRandom(candidates);
   }
 
+  /// An empty tile to put [building] on: an own bare tile first, otherwise
+  /// a free border tile the build claims on the spot. The realm's own bare
+  /// tiles are rare now that every claim is cultivated, so without the
+  /// second half a settled AI could never found another Dorf or raise a
+  /// Burg.
+  (int, int)? findBuildSpot() =>
+      findOwned((x, y, b) => b == Building.none) ?? findFreeLand();
+
   // Keep food up: tileCount[Kornfeld] × 9 ≳ population × foodFactor
   // (schwer keeps a buffer, leicht reacts only to acute shortage).
   if (realm.tileCount[Building.kornfeld] * 9 <
       realm.population * tuning.foodFactor) {
-    final field = findOwned((x, y, b) =>
-        b == Building.none &&
-        (map.terrainAt(x, y) == Terrain.ebene && realm.treasury >= 100 ||
-            map.terrainAt(x, y) == Terrain.berg && realm.treasury >= 150));
-    if (field != null) {
-      final (x, y) = field;
-      final berg = map.terrainAt(x, y) == Terrain.berg;
-      return Build(
-          slot: slot,
-          x: x,
-          y: y,
-          building: berg ? Building.weide : Building.kornfeld);
-    }
-    final claim = findClaimable();
-    if (claim != null) {
-      return ClaimTile(slot: slot, x: claim.$1, y: claim.$2);
-    }
+    final field =
+        findOwned((x, y, b) => b == Building.none && canAffordField(x, y));
+    if (field != null) return fieldBuild(field);
+    final free = findFreeLand(affordableField: true);
+    if (free != null) return fieldBuild(free);
   }
 
   // Found a Dorf.
   if (realm.treasury >= 1000) {
-    final spot = findOwned((x, y, b) => b == Building.none);
+    final spot = findBuildSpot();
     if (spot != null) {
       return Build(
           slot: slot,
@@ -277,25 +292,51 @@ PlayerAction? _pickBuildAction(
   // Burg / Palast at ≈ 1/burgChance per loop pass (mittel: the original
   // 1/20; schwer checks far more often, leicht barely ever).
   if (realm.treasury >= 5000 && rng.nextInt(tuning.burgChance) == 0) {
-    final spot = findOwned((x, y, b) => b == Building.none);
+    final spot = findBuildSpot();
     if (spot != null) {
       return Build(slot: slot, x: spot.$1, y: spot.$2, building: Building.burg);
     }
   }
   if (realm.treasury >= 10000 && rng.nextInt(tuning.burgChance) == 0) {
-    final spot = findOwned((x, y, b) => b == Building.none);
+    final spot = findBuildSpot();
     if (spot != null) {
       return Build(
           slot: slot, x: spot.$1, y: spot.$2, building: Building.palast);
     }
   }
 
-  // Otherwise expand.
-  final claim = findClaimable();
-  if (claim != null) {
-    return ClaimTile(slot: slot, x: claim.$1, y: claim.$2);
+  // Otherwise cultivate: first any own tile still lying bare (inherited
+  // land, a conquered field, an older save), then a free border tile —
+  // both as a field build, so no owned tile is ever left unbuilt.
+  final bare =
+      findOwned((x, y, b) => b == Building.none && canAffordField(x, y));
+  if (bare != null) return fieldBuild(bare);
+  final free = findFreeLand(affordableField: true);
+  if (free != null) return fieldBuild(free);
+  return null; // nothing left to build → see [_isBoxedIn]
+}
+
+/// Whether [realm] has run out of ROOM (§20.4 "boxed in"), as opposed to
+/// out of money: no free land on its border and no bare tile of its own.
+/// A realm that merely cannot pay for a field this turn must not raise the
+/// war flag — being broke is not a reason to invade.
+bool _isBoxedIn(GameState state, Realm realm) {
+  final map = state.map;
+  for (var i = 0; i < map.terrain.length; i++) {
+    final x = i % map.width;
+    final y = i ~/ map.width;
+    if (map.owner[i] == realm.slot) {
+      if (map.building[i] == Building.none && Terrain.isLand(map.terrain[i])) {
+        return false;
+      }
+      continue;
+    }
+    if (map.owner[i] != World.niemand || Terrain.isWater(map.terrain[i])) {
+      continue;
+    }
+    if (map.bordersSlot(x, y, realm.slot)) return false;
   }
-  return null; // boxed in → war flag
+  return true;
 }
 
 /// Default names for AI units. The original named every AI unit
@@ -807,6 +848,19 @@ void runAiWarMovement(
   // troops left. An attack unit advances straight away.
   if (state.dynasty(slot).status == DynastyStatus.human) {
     if (troop.stance == TroopStance.attack || enemy.troops.isEmpty) {
+      // `[DESIGNED 2026-09-01, user request]` An attacking unit marches on
+      // the tile its commander picked before handing the war over; only
+      // without one (and for a holdPosition unit left as the last hope
+      // once the enemy army is gone) does it head for the enemy capital.
+      final tx = troop.stanceTargetX;
+      final ty = troop.stanceTargetY;
+      if (troop.stance == TroopStance.attack &&
+          tx != null &&
+          ty != null &&
+          state.map.inBounds(tx, ty) &&
+          state.map.isLandAt(tx, ty)) {
+        return (tx, ty);
+      }
       return (enemy.capitalX, enemy.capitalY);
     }
     return homeSnapshot();

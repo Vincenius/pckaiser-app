@@ -795,60 +795,162 @@ class _WarPanelState extends State<WarPanel> {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      // FittedBox: the label + two-segment toggle overflows very narrow phones
-      // in a fixed Row — scale it down instead of clipping.
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label == null ? tr('war.autoWarStance') : '$label: ',
-              style: theme.textTheme.bodySmall!.copyWith(
-                fontWeight: label == null ? null : FontWeight.w600,
-              ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // FittedBox: the label + two-segment toggle overflows very
+          // narrow phones in a fixed Row — scale it down instead of
+          // clipping.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label == null ? tr('war.autoWarStance') : '$label: ',
+                  style: theme.textTheme.bodySmall!.copyWith(
+                    fontWeight: label == null ? null : FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  segments: [
+                    ButtonSegment(
+                      value: gc.TroopStance.holdPosition,
+                      icon: const Icon(Icons.shield_outlined, size: 14),
+                      label: Text(tr('war.stanceHold')),
+                    ),
+                    ButtonSegment(
+                      value: gc.TroopStance.attack,
+                      icon: const Icon(Icons.gps_fixed, size: 14),
+                      label: Text(tr('war.stanceAttack')),
+                    ),
+                  ],
+                  selected: {troop.stance},
+                  onSelectionChanged: (selection) async {
+                    try {
+                      await controller.applyWarAction(
+                        gc.SetTroopStance(
+                          slot: slot,
+                          unitIndex: unitIndex,
+                          stance: selection.first,
+                          // Keep the unit's picked march target when the
+                          // stance is (re-)set to attack — only "hold"
+                          // drops it.
+                          targetX: selection.first == gc.TroopStance.attack
+                              ? troop.stanceTargetX
+                              : null,
+                          targetY: selection.first == gc.TroopStance.attack
+                              ? troop.stanceTargetY
+                              : null,
+                        ),
+                      );
+                    } on gc.ActionException catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(SnackBar(content: Text(e.message)));
+                      }
+                    }
+                  },
+                ),
+              ],
             ),
-            const SizedBox(width: 4),
-            SegmentedButton<int>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(
+          ),
+          // Where the autopilot marches this unit — only meaningful while it
+          // is set to attack.
+          if (troop.stance == gc.TroopStance.attack)
+            _stanceTargetRow(context, slot, unitIndex, troop),
+        ],
+      ),
+    );
+  }
+
+  /// `[DESIGNED 2026-09-01, user request]` The attack stance's march target:
+  /// the enemy royal seat unless the commander picked a tile for this unit.
+  /// Picking routes the next map tap through the controller's tile pick, so
+  /// it works from the preparation window and mid-war alike.
+  Widget _stanceTargetRow(
+    BuildContext context,
+    int slot,
+    int unitIndex,
+    gc.Troop troop,
+  ) {
+    final theme = Theme.of(context);
+    final tx = troop.stanceTargetX;
+    final ty = troop.stanceTargetY;
+    final custom = tx != null && ty != null;
+    Future<void> set(int? x, int? y) async {
+      try {
+        await controller.applyWarAction(
+          gc.SetTroopStance(
+            slot: slot,
+            unitIndex: unitIndex,
+            stance: gc.TroopStance.attack,
+            targetX: x,
+            targetY: y,
+          ),
+        );
+      } on gc.ActionException catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(e.message)));
+        }
+      }
+    }
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            tr('war.stanceTargetLabel') +
+                (custom
+                    ? tr('war.stanceTargetTile', {'x': tx, 'y': ty})
+                    : tr('war.stanceTargetSeat')),
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(width: 4),
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(Icons.my_location, size: 14),
+            label: Text(tr('war.stanceTargetPick')),
+            onPressed: () => controller.startTilePick(
+              hint: tr('war.stanceTargetHint', {'name': troop.name}),
+              onPick: (x, y) async {
+                await set(x, y);
+                // The engine rejects water — stay armed so the next tap can
+                // correct it.
+                final t = controller.state.realm(slot).troops;
+                return unitIndex < t.length &&
+                    t[unitIndex].stanceTargetX == x &&
+                    t[unitIndex].stanceTargetY == y;
+              },
+            ),
+          ),
+          if (custom)
+            TextButton(
+              style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              segments: [
-                ButtonSegment(
-                  value: gc.TroopStance.holdPosition,
-                  icon: const Icon(Icons.shield_outlined, size: 14),
-                  label: Text(tr('war.stanceHold')),
-                ),
-                ButtonSegment(
-                  value: gc.TroopStance.attack,
-                  icon: const Icon(Icons.gps_fixed, size: 14),
-                  label: Text(tr('war.stanceAttack')),
-                ),
-              ],
-              selected: {troop.stance},
-              onSelectionChanged: (selection) async {
-                try {
-                  await controller.applyWarAction(
-                    gc.SetTroopStance(
-                      slot: slot,
-                      unitIndex: unitIndex,
-                      stance: selection.first,
-                    ),
-                  );
-                } on gc.ActionException catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                      ..hideCurrentSnackBar()
-                      ..showSnackBar(SnackBar(content: Text(e.message)));
-                  }
-                }
-              },
+              onPressed: () => set(null, null),
+              child: Text(tr('war.stanceTargetReset')),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
