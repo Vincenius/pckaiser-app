@@ -5,7 +5,7 @@ Always **30 realms**, up to **16** human players, rest AI. Goal: last dynasty st
 
 ## Platform & Tech
 
-- Android + iOS; Flutter + Flame (client)
+- Android + iOS + Linux desktop; Flutter + Flame (client)
 - Dart (shelf) + PostgreSQL backend (online only) — game logic is one shared Dart package (`game_core`)
 - FCM push (online only); self-hosted Docker + Nginx
 
@@ -18,7 +18,7 @@ Multiple named game slots, each auto-saved after every completed turn (no manual
 
 ## Input & UX
 
-- Touch-only; pinch-zoom/pan map; tap tile → action sheet with inline costs
+- Touch/pointer input; pinch-zoom/pan map; tap tile → action sheet with inline costs
 - Sliders for numeric inputs; every cost slider live-shows the Taler cost and never exceeds treasury/caps
 - Slim status row (treasury + Züge; popularity warning < 30; tap → "Mein Reich") + labeled bottom bar (Handel/Militär/Spionage/Sonstiges/Info). Leave game = red logout button (confirm; auto-save makes it safe)
 - Actions without visible results confirm in a modal (spy suspense beat, "Attentäter unterwegs", marriage answer)

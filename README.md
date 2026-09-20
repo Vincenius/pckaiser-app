@@ -3,14 +3,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Flutter](https://img.shields.io/badge/Flutter-%E2%89%A53.44-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-pure%20rules%20engine-0175C2?logo=dart&logoColor=white)](https://dart.dev)
-[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-3DDC84?logo=android&logoColor=white)](#prerequisites)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Linux-3DDC84?logo=flutter&logoColor=white)](#prerequisites)
 [![Flame](https://img.shields.io/badge/engine-Flame-FF6B00)](https://flame-engine.org)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#status)
 
 [Download via Play Store](https://play.google.com/store/apps/details?id=com.pckaiser.app)
 
 A mobile-first remake of the 1992 German strategy classic *PCKaiser++*
-(Martin Gelter & Lorenz Giefing) for Android and iOS — Flutter + Flame. Rule one of 30
+(Martin Gelter & Lorenz Giefing) for Android, iOS and Linux desktop — Flutter + Flame. Rule one of 30
 medieval realms: build, trade, marry, scheme, elect a Kaiser and conquer,
 until one dynasty rules the whole map. 1–16 human players hot-seat on one
 device; the AI plays the rest.
@@ -49,6 +49,8 @@ device; the AI plays the rest.
 - For Android builds: Android SDK + platform tools (easiest via Android
   Studio; `flutter doctor` walks you through it).
 - For iOS builds: a Mac with Xcode; standard Flutter iOS setup.
+- For Linux desktop builds on Debian/Ubuntu: `clang`, `cmake`, `ninja-build`,
+   `pkg-config`, `libgtk-3-dev` and `libstdc++-12-dev`.
 
 No other services are needed — the local game is fully offline. Online
 play (beta) additionally needs a running server (see below).
@@ -66,6 +68,7 @@ flutter devices
 # 3. Run (debug)
 flutter run                      # picks the default device
 flutter run -d <device-id>       # or pick one explicitly
+flutter run -d linux             # Linux desktop
 ```
 
 Useful during development:

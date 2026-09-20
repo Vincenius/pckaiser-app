@@ -1,9 +1,9 @@
 # CLAUDE Project Guide
 
-PCKaiser mobile clone (Flutter + Flame, Android/iOS). V1 = local hot-seat; V2 = online with the same state model and rules. Keep this file updated when scope/architecture changes.
+PCKaiser clone (Flutter + Flame, Android/iOS/Linux desktop). V1 = local hot-seat; V2 = online with the same state model and rules. Keep this file updated when scope/architecture changes.
 
 ## Key rules
-- Touch-only input, pinch-zoom map. Auto-save after every completed turn.
+- Touch/pointer input, pinch-zoom map. Auto-save after every completed turn.
 - First 10 in-game years: no random deaths or eliminations; deliberate assassinations still resolve.
 - ONE pure-Dart rules engine (`packages/game_core`) shared by client and the future Dart-shelf server; only persistence/orchestration differ. Logic is pure: `(state, action, rng) → state`, RNG injected.
 - World = up to 30 realms, up to 16 human. Setup option "Kartengröße" (since 2026-07-21): Groß 80×44 (default, 10–30 realms, def. 30), Mittel 64×36 (8–24, def. 20), Klein 48×28 (6–16, def. 12) — `MapSize` in game_core; realm count = `state.realmCount` (realms list length), never the `World.realmCount` constant (that is the 30-slot table maximum).
