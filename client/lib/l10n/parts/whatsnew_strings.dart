@@ -8,6 +8,10 @@
 const Map<String, String> whatsnewDe = {
   'whatsnew.title': 'Was ist neu?',
   'whatsnew.close': 'Schließen',
+  // --- v0.2.9 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_9.0':
+      'Bugfix: Lässt der Gegner den Computer führen, beginnt der Krieg nicht mehr sofort',
+  'whatsnew.0_2_9.1': 'Neu: „Krieg jetzt beginnen“',
   // --- v0.2.8 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_8.0': 'Angriffsbefehl mit eigenem Marschziel auf der Karte',
   'whatsnew.0_2_8.1': 'Warnung, wenn noch Bauzüge offen sind',
@@ -32,6 +36,10 @@ const Map<String, String> whatsnewDe = {
 const Map<String, String> whatsnewEn = {
   'whatsnew.title': "What's new?",
   'whatsnew.close': 'Close',
+  // --- v0.2.9 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_2_9.0':
+      'A war no longer starts at once when the opponent lets the computer command',
+  'whatsnew.0_2_9.1': 'New: "Start the war now"',
   // --- v0.2.8 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_8.0': 'Attack orders can name their own march target',
   'whatsnew.0_2_8.1': 'A warning when build moves are still unspent',

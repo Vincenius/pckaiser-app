@@ -1522,6 +1522,106 @@ void main() {
       expect(pushes.kinds.where((k) => k == 'warStartFixed'), isEmpty,
           reason: 'the sweep starts the war — no stale appointment push');
     });
+
+    // `[DESIGNED 2026-10-04, user request]` A side handing its war to the
+    // computer never starts it "now": the live side keeps its own time,
+    // with at least [MatchService.warStartNotice] of notice and a push.
+    test('a delegating opponent leaves the live side its time, with notice',
+        () async {
+      final start = DateTime.utc(2026, 1, 1, 14, 5);
+      var now = start;
+      final pushes = _RecordingPushService();
+      service = MatchService(store, pushes, clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      // Anna offers "sofort" (the top of her current hour) and 20:00.
+      final sofort = DateTime.utc(2026, 1, 1, 14).millisecondsSinceEpoch;
+      final at20 = DateTime.utc(2026, 1, 1, 20).millisecondsSinceEpoch;
+      await answerPlan(match, a.id, 1, {
+        'auto': false,
+        'slots': [sofort, at20],
+      });
+      // Hours later Berta lets the computer command.
+      now = DateTime.utc(2026, 1, 1, 14, 40);
+      await answerPlan(match, b.id, 2, {'auto': true});
+      var saved = (await store.match(match.id))!;
+      var state = GameState.fromJson(saved.stateJson!);
+      expect(state.activeWar!.phase, WarPhase.preparation,
+          reason: 'the old one-live-side rule started the war right here');
+      expect(state.activeWar!.scheduledStartMs, sofort);
+      expect(saved.turnDeadline, now.add(MatchService.warStartNotice),
+          reason: 'Anna\'s stale "sofort" gets the minimum notice');
+      expect(pushes.recipientsOf('warStartFixedDelegated'), [a.id]);
+
+      // An unrelated commit (a stance order) must not push the start out.
+      now = now.add(const Duration(minutes: 5));
+      await service.submit(
+        matchId: match.id,
+        playerId: b.id,
+        actionJson: WarPrepPlan(slot: 2, auto: true).toJson(),
+      );
+      saved = (await store.match(match.id))!;
+      expect(saved.turnDeadline,
+          DateTime.utc(2026, 1, 1, 14, 40).add(MatchService.warStartNotice));
+
+      // Anna does not want to wait: she starts the war at once.
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: StartWarNow(slot: 1).toJson(),
+      );
+      state = GameState.fromJson((await store.match(match.id))!.stateJson!);
+      expect(state.activeWar!.phase, WarPhase.rounds);
+    });
+
+    test('Live → Auto → Live keeps the fallback start and tells the opponent',
+        () async {
+      final start = DateTime.utc(2026, 1, 1);
+      var now = start;
+      final pushes = _RecordingPushService();
+      service = MatchService(store, pushes, clock: () => now);
+      final (a, b) = await twoPlayers();
+      final match = await twoHumanMatch(a, b,
+          settings: MatchSettings(
+              seed: 42, turnTimeoutHours: 24, warRoundTimeoutSeconds: 600));
+      await armWar(match);
+      await service.submit(
+        matchId: match.id,
+        playerId: a.id,
+        actionJson: DeclareWar(slot: 1, targetSlot: 2).toJson(),
+      );
+      // Live both, no times → the fallback deadline governs.
+      await answerPlan(match, a.id, 1, {'auto': false});
+      await answerPlan(match, b.id, 2, {'auto': false});
+      final fallback = (await store.match(match.id))!.turnDeadline;
+      expect(fallback, start.add(const Duration(hours: 24)));
+      pushes.sent.clear();
+
+      now = start.add(const Duration(hours: 2));
+      for (final auto in [true, false]) {
+        await service.submit(
+          matchId: match.id,
+          playerId: b.id,
+          actionJson: WarPrepPlan(slot: 2, auto: auto).toJson(),
+        );
+        final saved = (await store.match(match.id))!;
+        expect(GameState.fromJson(saved.stateJson!).activeWar!.phase,
+            WarPhase.preparation,
+            reason: 'auto=$auto must not start the war');
+        expect(saved.turnDeadline, fallback);
+      }
+      expect(pushes.recipientsOf('warStartFixedDelegated'), [a.id]);
+      expect(pushes.recipientsOf('warStartFixed'), [a.id],
+          reason: 'Berta taking the field again is announced as well');
+    });
   });
 
   group('timeouts', () {
@@ -2549,8 +2649,11 @@ class _RecordingPushService implements PushService {
   @override
   Future<void> warStartFixed(
           PlayerRecord player, MatchRecord match, DateTime start,
-          {required bool agreed, bool toAttacker = false}) async =>
-      _add('warStartFixed', player);
+          {required bool agreed,
+          bool toAttacker = false,
+          bool opponentDelegated = false}) async =>
+      _add(opponentDelegated ? 'warStartFixedDelegated' : 'warStartFixed',
+          player);
 
   @override
   Future<void> warStartSoon(PlayerRecord player, MatchRecord match) async =>

@@ -56,6 +56,7 @@ sealed class PlayerAction {
         WarEndRound.kind => WarEndRound.fromJson(json),
         WarPrepPlan.kind => WarPrepPlan.fromJson(json),
         ResumeWarCommand.kind => ResumeWarCommand.fromJson(json),
+        StartWarNow.kind => StartWarNow.fromJson(json),
         WarNavalTransport.kind => WarNavalTransport.fromJson(json),
         SettlementAnnex.kind => SettlementAnnex.fromJson(json),
         SettlementAnnexMany.kind => SettlementAnnexMany.fromJson(json),

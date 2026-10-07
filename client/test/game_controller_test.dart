@@ -580,6 +580,9 @@ class _GatedSession implements GameSession {
   bool get isOnline => true;
   @override
   int? get turnTimeoutHours => null;
+
+  @override
+  DateTime? get turnDeadline => null;
   @override
   bool get canUndo => false;
   @override

@@ -992,6 +992,14 @@ class MatchService {
                 waitWhenAllManual: match.settings.turnTimeoutHours != null),
             emitted);
         state = _resumeAfterWarIfOver(state, emitted);
+      } else if (action is StartWarNow &&
+          state.activeWar?.phase == WarPhase.preparation &&
+          state.activeWar!.isParticipant(action.slot)) {
+        // `[DESIGNED 2026-10-04, user request]` The sole live side starts
+        // the war at once instead of waiting for its start time — out of
+        // turn like WarPrepPlan (the engine checks the opponent delegated).
+        state = _apply(state, action, emitted);
+        state = _resumeAfterWarIfOver(state, emitted);
       } else if (action is ResumeWarCommand &&
           state.activeWar?.phase == WarPhase.rounds &&
           state.activeWar!.isParticipant(action.slot)) {
@@ -1503,6 +1511,15 @@ class MatchService {
   /// answering side's own hour and so always lies a little behind us —
   /// both sides asked for "now" and get it, and a fallback that has only
   /// just run out still fires at once.
+  /// `[DESIGNED 2026-10-04, user request]` The least notice a live side
+  /// gets when the OPPONENT's hand-over to the computer moves the war start
+  /// to the live side's own (possibly long past "sofort") time. Longer than
+  /// the 15-minute `WAR_START_SOON` lead, so that reminder still fits.
+  static const warStartNotice = Duration(minutes: 30);
+
+  static bool _sameSet(Set<int> a, Set<int> b) =>
+      a.length == b.length && a.containsAll(b);
+
   DateTime? _withPrepGrace(DateTime? deadline, MatchRecord match) {
     if (deadline == null) return null;
     final now = _clock();
@@ -1637,14 +1654,37 @@ class MatchService {
       match.warPrepFallbackDeadline =
           turnTimeout == null ? null : _clock().add(turnTimeout);
     }
+    // Whether this commit MOVED the start instant (also keys the
+    // re-announcement push below).
+    final scheduleChanged = prep &&
+        wasPrep &&
+        previous?.activeWar?.scheduledStartMs != scheduledMs;
     if (prep && scheduledMs != null && scheduledMs > 0) {
-      // The sides AGREED on a duel start (warPlan slot matching): the
-      // deadline IS the appointment. It may lie later than the full-turn
-      // fallback (both sides chose it) and also works in a match without
-      // a turn timer. Idempotent across commits — re-arming to the same
-      // instant never moves the start.
-      match.turnDeadline = _withPrepGrace(
-          DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true), match);
+      // The war has a start instant (the sides' agreed slot, or the sole
+      // live side's own time): the deadline IS the appointment. It may lie
+      // later than the full-turn fallback (the live side chose it) and also
+      // works in a match without a turn timer.
+      if (wasPrep && !scheduleChanged && match.turnDeadline != null) {
+        // Unchanged start: keep the armed deadline. Re-deriving it would
+        // re-apply the stale-instant grace / notice floor from "now" and
+        // push the start further out on every unrelated commit.
+      } else {
+        var deadline = _withPrepGrace(
+            DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true),
+            match)!;
+        // `[DESIGNED 2026-10-04, user request]` A start moved by the side
+        // that just handed its war to the computer is the LIVE opponent's
+        // own time — possibly a "sofort" picked hours ago. Never let it
+        // land sooner than [warStartNotice] from now: the live player gets
+        // the push below and must have time to show up.
+        if (wasPrep &&
+            actorSlot != null &&
+            state.activeWar!.autoSlots.contains(actorSlot)) {
+          final floor = _clock().add(warStartNotice);
+          if (deadline.isBefore(floor)) deadline = floor;
+        }
+        match.turnDeadline = deadline;
+      }
     } else if (prep && wasPrep) {
       // Still preparing, no (longer any) appointment: back to the window's
       // fixed fallback — a revision that withdraws an agreed time must not
@@ -1712,21 +1752,31 @@ class MatchService {
     // must learn their new appointment, and a withdrawn agreement must be
     // taken back. Only on a real change of the agreed instant, so
     // fiddling with the offers spams nobody.
-    final scheduleChanged = prep &&
+    //
+    // `[DESIGNED 2026-10-04, user request]` So does a side switching
+    // between live command and the computer: the opponent learns that the
+    // start is now theirs alone (or shared again), even when the instant
+    // itself stays the same.
+    final delegationChanged = prep &&
         wasPrep &&
-        previous?.activeWar?.scheduledStartMs != scheduledMs;
+        !_sameSet(previous?.activeWar?.autoSlots ?? const <int>{},
+            state.activeWar!.autoSlots);
     if (notify &&
         state.activeWar != null &&
         (prep || match.settings.turnTimeoutHours == null) &&
         previous != null &&
         (scheduleChanged ||
+            delegationChanged ||
             (previous.pendingDecisions.any((d) => d.type == 'warPlan') &&
                 !state.pendingDecisions.any((d) => d.type == 'warPlan')))) {
       final war = state.activeWar!;
       final agreed = scheduledMs != null && scheduledMs > 0;
-      final start = agreed
-          ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
-          : (match.turnDeadline ?? _clock());
+      // The armed deadline is the true start (it may carry the notice
+      // floor or the stale-instant grace on top of the slot itself).
+      final start = match.turnDeadline ??
+          (agreed
+              ? DateTime.fromMillisecondsSinceEpoch(scheduledMs, isUtc: true)
+              : _clock());
       for (final slot in [war.attackerSlot, war.defenderSlot]) {
         // `[DESIGNED 2026-08-24, user request]` Only the WAITING side is
         // pushed. The appointment is fixed by a submission — the side that
@@ -1740,7 +1790,10 @@ class MatchService {
             _playerForSlot(match, state, slot), PushKind.warStartFixed);
         if (p != null) {
           await _push.warStartFixed(p, match, start,
-              agreed: agreed, toAttacker: slot == war.attackerSlot);
+              agreed: agreed,
+              toAttacker: slot == war.attackerSlot,
+              opponentDelegated:
+                  war.autoSlots.contains(war.opponentOf(slot)));
         }
       }
     }

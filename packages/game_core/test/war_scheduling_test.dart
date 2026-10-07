@@ -19,7 +19,8 @@ void main() {
 
   /// Revises an already-given plan (2026-08-09) — the same payload, but as
   /// an action instead of a decision answer.
-  void plan(GameState state, int slot, {required bool auto, List<int>? slots}) =>
+  void plan(GameState state, int slot,
+          {required bool auto, List<int>? slots}) =>
       applyActionInPlace(
           state, WarPrepPlan(slot: slot, auto: auto, slots: slots), Rng(1));
 
@@ -39,8 +40,7 @@ void main() {
       'auto': false,
       'slots': [2000, 4000],
     });
-    expect(war.scheduledStartMs, 2000,
-        reason: 'earliest common proposal wins');
+    expect(war.scheduledStartMs, 2000, reason: 'earliest common proposal wins');
 
     // A scheduled (non-zero) agreement still WAITS online — the server
     // arms the deadline at the agreed instant and the sweep starts it.
@@ -52,8 +52,7 @@ void main() {
     expect(war.autoSlots, isEmpty);
   });
 
-  test('a "sofort" agreement (a current-hour instant) still waits online',
-      () {
+  test('a "sofort" agreement (a current-hour instant) still waits online', () {
     final state = _game(humanSlots: const [1, 2]);
     _prepareWar(state, 1, 2);
     final war = startWar(state, 1, 2, Rng(1));
@@ -83,8 +82,7 @@ void main() {
     expect(war.autoSlots, isEmpty);
   });
 
-  test('no overlap (or one-sided proposals) leaves the fallback in charge',
-      () {
+  test('no overlap (or one-sided proposals) leaves the fallback in charge', () {
     final state = _game(humanSlots: const [1, 2]);
     _prepareWar(state, 1, 2);
     final war = startWar(state, 1, 2, Rng(1));
@@ -104,8 +102,95 @@ void main() {
     expect(war.phase, WarPhase.rounds);
   });
 
-  test('a delegating side never schedules — one live side starts at once',
-      () {
+  // `[DESIGNED 2026-10-04, user request]` A delegated side has no say in
+  // the start: the live side's own times set it, and online the war never
+  // starts "right now" just because the opponent delegated.
+  test('one live side: its own earliest time is the start, online waits', () {
+    final state = _game(humanSlots: const [1, 2]);
+    _prepareWar(state, 1, 2);
+    final war = startWar(state, 1, 2, Rng(1));
+
+    answer(state, 1, {
+      'auto': false,
+      'slots': [3000, 1000],
+    });
+    // The defender delegates; their (nonsensical) slots are ignored.
+    answer(state, 2, {
+      'auto': true,
+      'slots': [2000],
+    });
+    expect(war.planSlots.containsKey(2), isFalse);
+    expect(war.scheduledStartMs, 1000,
+        reason: 'the live side\'s earliest offer becomes the start');
+
+    resolveWarPreparation(state, Rng(1), <GameEvent>[],
+        waitWhenAllManual: true);
+    expect(war.phase, WarPhase.preparation,
+        reason: 'the live player planned for 1000 — no start "now"');
+    resolveWarPreparation(state, Rng(1), <GameEvent>[], force: true);
+    expect(war.phase, WarPhase.rounds);
+  });
+
+  test('one live side without times waits for the fallback deadline', () {
+    final state = _game(humanSlots: const [1, 2]);
+    _prepareWar(state, 1, 2);
+    final war = startWar(state, 1, 2, Rng(1));
+
+    answer(state, 1, {'auto': true});
+    answer(state, 2, {'auto': false});
+    expect(war.scheduledStartMs, isNull);
+    resolveWarPreparation(state, Rng(1), <GameEvent>[],
+        waitWhenAllManual: true);
+    expect(war.phase, WarPhase.preparation);
+
+    // Without a turn timer (and without a time) it still starts at once.
+    resolveWarPreparation(state, Rng(1), <GameEvent>[]);
+    expect(war.phase, WarPhase.rounds);
+  });
+
+  group('StartWarNow (2026-10-04)', () {
+    test('the sole live side may start at once', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      final war = startWar(state, 1, 2, Rng(1));
+
+      answer(state, 1, {
+        'auto': false,
+        'slots': [5000],
+      });
+      expect(canStartWarNow(state, 1), isFalse,
+          reason: 'the defender may still choose to command live');
+      answer(state, 2, {'auto': true});
+      expect(canStartWarNow(state, 1), isTrue);
+      expect(canStartWarNow(state, 2), isFalse,
+          reason: 'the delegated side has no say in the start');
+      expect(() => applyActionInPlace(state, StartWarNow(slot: 2), Rng(1)),
+          throwsA(isA<ActionException>()));
+
+      applyActionInPlace(state, StartWarNow(slot: 1), Rng(1));
+      expect(war.phase, WarPhase.rounds);
+      expect(war.actingSlot, 1);
+    });
+
+    test('rejected while both command live', () {
+      final state = _game(humanSlots: const [1, 2]);
+      _prepareWar(state, 1, 2);
+      startWar(state, 1, 2, Rng(1));
+      answer(state, 1, {'auto': false});
+      answer(state, 2, {'auto': false});
+      expect(canStartWarNow(state, 1), isFalse);
+      expect(() => applyActionInPlace(state, StartWarNow(slot: 1), Rng(1)),
+          throwsA(isA<ActionException>()));
+    });
+
+    test('JSON roundtrip', () {
+      final a = PlayerAction.fromJson(StartWarNow(slot: 3).toJson());
+      expect(a, isA<StartWarNow>());
+      expect(a.slot, 3);
+    });
+  });
+
+  test('toggling Live/Auto never starts the war before its deadline', () {
     final state = _game(humanSlots: const [1, 2]);
     _prepareWar(state, 1, 2);
     final war = startWar(state, 1, 2, Rng(1));
@@ -114,23 +199,27 @@ void main() {
       'auto': false,
       'slots': [1000],
     });
-    // The defender delegates; their (nonsensical) slots are ignored.
     answer(state, 2, {
-      'auto': true,
-      'slots': [1000],
+      'auto': false,
+      'slots': [2000],
     });
-    expect(war.planSlots.containsKey(2), isFalse);
-    expect(war.scheduledStartMs, isNull,
-        reason: 'scheduling only matters for a BOTH-live duel');
+    expect(war.scheduledStartMs, isNull, reason: 'no common time');
 
-    resolveWarPreparation(state, Rng(1), <GameEvent>[],
-        waitWhenAllManual: true);
-    expect(war.phase, WarPhase.rounds,
-        reason: 'exactly one live side → early start, as before');
+    for (final auto in [true, false, true]) {
+      plan(state, 2, auto: auto);
+      resolveWarPreparation(state, Rng(1), <GameEvent>[],
+          waitWhenAllManual: true);
+      expect(war.phase, WarPhase.preparation,
+          reason: 'auto=$auto must not start the war early');
+    }
+    expect(war.scheduledStartMs, 1000,
+        reason: 'defender delegated → the attacker\'s own time counts');
+    plan(state, 2, auto: false);
+    expect(war.scheduledStartMs, isNull,
+        reason: 'both live again → only a common time counts');
   });
 
-  test('scheduling fields survive the JSON roundtrip; old saves default',
-      () {
+  test('scheduling fields survive the JSON roundtrip; old saves default', () {
     final state = _game(humanSlots: const [1, 2]);
     _prepareWar(state, 1, 2);
     final war = startWar(state, 1, 2, Rng(1));
@@ -197,8 +286,7 @@ void main() {
       expect(war.scheduledStartMs, isNull);
     });
 
-    test('a delegated side may take the field again before the war starts',
-        () {
+    test('a delegated side may take the field again before the war starts', () {
       final state = _game(humanSlots: const [1, 2]);
       _prepareWar(state, 1, 2);
       final war = startWar(state, 1, 2, Rng(1));
@@ -222,8 +310,7 @@ void main() {
           reason: 'a both-live duel waits for its appointment');
     });
 
-    test('delegating after an appointment was fixed keeps the start time',
-        () {
+    test('delegating after an appointment was fixed keeps the start time', () {
       final state = _game(humanSlots: const [1, 2]);
       _prepareWar(state, 1, 2);
       final war = startWar(state, 1, 2, Rng(1));

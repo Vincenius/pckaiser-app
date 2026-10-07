@@ -198,6 +198,10 @@ class GameController extends ChangeNotifier {
   /// bounds the duel start slots the warPlan dialog offers.
   int? get turnTimeoutHours => _session.turnTimeoutHours;
 
+  /// Online: the armed match deadline — during a war preparation the real
+  /// war start (scheduled time or fallback). Null locally / without timer.
+  DateTime? get turnDeadline => _session.turnDeadline;
+
   /// Online: another player is awaited — the play screen should hand
   /// back to the waiting lobby.
   bool get awaitingRemote => _session.awaitingRemote;
@@ -292,7 +296,9 @@ class GameController extends ChangeNotifier {
   /// allowed the same way: the delegated side is never the awaited player
   /// either.
   bool _prepStanceAllowed(PlayerAction action) =>
-      ((action is SetTroopStance || action is WarPrepPlan) &&
+      ((action is SetTroopStance ||
+              action is WarPrepPlan ||
+              action is StartWarNow) &&
           action.slot == warPrepSlot) ||
       (action is ResumeWarCommand && action.slot == warAutoSlot);
 

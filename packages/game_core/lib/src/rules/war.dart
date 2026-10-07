@@ -90,9 +90,10 @@ ActiveWar startWar(GameState state, int attackerSlot, int defenderSlot, Rng rng,
   // the stance autopilot, and may re-set their units' stance. Live sides
   // may also propose duel start times (`war.planSlots`, 2026-07-08): the
   // earliest common proposal becomes the agreed start. The rounds begin
-  // per `resolveWarPreparation`'s start rules (early start unless both
-  // play live; online deadline = the agreed start, else half the turn
-  // timer). Any other constellation starts the rounds immediately.
+  // per `resolveWarPreparation`'s start rules (online with a live side:
+  // the deadline = the scheduled start, else the turn-timer fallback;
+  // nobody live → at once). Any other constellation starts the rounds
+  // immediately.
   if (state.dynasty(attackerSlot).status == DynastyStatus.human &&
       state.dynasty(defenderSlot).status == DynastyStatus.human) {
     war.phase = WarPhase.preparation;
@@ -212,31 +213,64 @@ void setWarPrepPlan(GameState state, ActiveWar war, int slot,
   recomputeWarStart(state, war);
 }
 
-/// Re-derives `war.scheduledStartMs` from the current proposals: the
-/// earliest instant BOTH live sides offered, or null when they have not
-/// (yet) agreed — then the caller's fallback deadline governs, exactly as
-/// without scheduling. A revision that widens the offers can therefore
-/// still create an appointment, and one that narrows them withdraws it.
-///
-/// Only a BOTH-live duel schedules. Any other constellation leaves an
-/// already agreed instant ALONE: a side that switches to the autopilot
-/// after the two had settled on a time must not drag the duel forward to
-/// "right now" — the live opponent planned for that appointment and would
-/// miss the whole war (`[DESIGNED 2026-08-09, user request]`; see
-/// `resolveWarPreparation`, which keeps waiting for an agreed start even
-/// with only one live side).
+/// Re-derives `war.scheduledStartMs` from the current proposals once every
+/// side has answered:
+///  - BOTH live: the earliest instant both offered, or null when they have
+///    not agreed — then the caller's fallback deadline governs. A revision
+///    that widens the offers can still create an appointment, and one that
+///    narrows them withdraws it.
+///  - exactly ONE live side (`[DESIGNED 2026-10-04, user request]`): the
+///    delegated side has no say, so the live side's own offers set the
+///    start — the instant already set while the live side still offers it
+///    (a side delegating AFTER an agreement keeps the appointment the live
+///    opponent planned for, `[DESIGNED 2026-08-09]`), else its earliest
+///    offer, else null (fallback deadline).
+///  - nobody live: left alone — the war fast-forwards anyway.
 void recomputeWarStart(GameState state, ActiveWar war) {
   final sides = [war.attackerSlot, war.defenderSlot];
   final answered = sides.every((s) =>
       war.planAnsweredSlots.contains(s) ||
       state.dynasty(s).status != DynastyStatus.human);
-  if (!answered || !sides.every((s) => warSideIsHuman(state, war, s))) return;
+  if (!answered) return;
+  final live = sides.where((s) => warSideIsHuman(state, war, s)).toList();
+  if (live.isEmpty) return;
+  if (live.length == 1) {
+    war.scheduledStartMs = soleLiveWarStart(war, live.single);
+    return;
+  }
   final common = (war.planSlots[war.attackerSlot] ?? const <int>[])
       .toSet()
       .intersection((war.planSlots[war.defenderSlot] ?? const <int>[]).toSet())
       .toList()
     ..sort();
   war.scheduledStartMs = common.isEmpty ? null : common.first;
+}
+
+/// The start [liveSlot] gets as the SOLE live side of [war]'s preparation
+/// (the opponent delegated): the instant already set while [liveSlot]
+/// still offers it, else its earliest offer, else null (fallback
+/// deadline). ONE definition for [recomputeWarStart] and the client's
+/// "what happens if I hand over" preview.
+int? soleLiveWarStart(ActiveWar war, int liveSlot) {
+  final offers = war.planSlots[liveSlot] ?? const <int>[];
+  final current = war.scheduledStartMs;
+  if (current != null && offers.contains(current)) return current;
+  return offers.isEmpty ? null : offers.reduce(math.min);
+}
+
+/// `[DESIGNED 2026-10-04, user request]` Whether [slot] may start its war
+/// right now ([StartWarNow]): the preparation runs, both plans are in,
+/// [slot] commands live and its opponent let the computer command.
+bool canStartWarNow(GameState state, int slot) {
+  final war = state.activeWar;
+  if (war == null ||
+      war.phase != WarPhase.preparation ||
+      !war.isParticipant(slot) ||
+      state.pendingDecisions.any((d) => d.type == 'warPlan')) {
+    return false;
+  }
+  return warSideIsHuman(state, war, slot) &&
+      !warSideIsHuman(state, war, war.opponentOf(slot));
 }
 
 /// The acting order of the CURRENT war round, `[DESIGNED 2026-07-19]`:

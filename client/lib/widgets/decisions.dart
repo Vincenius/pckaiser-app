@@ -315,6 +315,7 @@ Future<void> _promptDecision(
           controller.turnTimeoutHours,
           opponentSlots: war.planSlots[enemySlot] ?? const [],
           opponentAnswered: war.planAnsweredSlots.contains(enemySlot),
+          opponentDelegated: war.autoSlots.contains(enemySlot),
         );
       }
       await controller.resolveDecision(decision.id, decision.decidingSlot, {
@@ -561,12 +562,17 @@ String formatWarStartTime(int epochMs) {
 /// this side's current offer, and [opponentSlots] marks the times the
 /// OPPONENT already accepted — without that hint two players who missed
 /// each other had to guess blindly which hour to add.
+///
+/// [opponentDelegated] (`[DESIGNED 2026-10-04, user request]`): the
+/// opponent let the computer command — their (kept) offer no longer
+/// matters, and this side's EARLIEST pick becomes the war start.
 Future<List<int>?> askWarStartSlots(
   BuildContext context,
   int? turnTimeoutHours, {
   Iterable<int> initial = const [],
   Iterable<int> opponentSlots = const [],
   bool opponentAnswered = false,
+  bool opponentDelegated = false,
   bool cancellable = false,
 }) async {
   final now = DateTime.now().toUtc();
@@ -577,7 +583,7 @@ Future<List<int>?> askWarStartSlots(
     for (var i = 0; i < count; i++)
       currentHour.add(Duration(hours: i)).millisecondsSinceEpoch,
   ];
-  final enemy = opponentSlots.toSet();
+  final enemy = opponentDelegated ? <int>{} : opponentSlots.toSet();
   // A previously offered hour that has since rolled out of the window can
   // no longer be re-ticked — keep only what is still offerable.
   final picked = initial.where(offered.contains).toSet();
@@ -604,6 +610,8 @@ Future<List<int>?> askWarStartSlots(
                 child: Text(
                   !opponentAnswered
                       ? tr('dec.warStartEnemyPending')
+                      : opponentDelegated
+                      ? tr('dec.warStartEnemyDelegated')
                       : enemy.isEmpty
                       ? tr('dec.warStartEnemyNoTimes')
                       : tr('dec.warStartEnemyTimes'),

@@ -19,6 +19,7 @@ class OnlineGameSession implements GameSession {
          (view['state'] as Map).cast<String, dynamic>(),
        ),
        _yourTurn = view['your_turn'] == true,
+       _turnDeadline = _deadlineOf(view),
        yourSlot = view['your_slot'] as int,
        turnTimeoutHours =
            (view['settings'] as Map?)?['turn_timeout_hours'] as int?;
@@ -37,6 +38,15 @@ class OnlineGameSession implements GameSession {
 
   GameState _state;
   bool _yourTurn;
+  DateTime? _turnDeadline;
+
+  @override
+  DateTime? get turnDeadline => _turnDeadline;
+
+  static DateTime? _deadlineOf(Map<String, dynamic> view) {
+    final iso = view['turn_deadline'] as String?;
+    return iso == null ? null : DateTime.tryParse(iso);
+  }
 
   /// Settlement taps applied optimistically to the local state (the pure
   /// engine validates them with the SAME rules the server runs) and
@@ -162,6 +172,7 @@ class OnlineGameSession implements GameSession {
       _state = GameState.fromJson((stateJson as Map).cast<String, dynamic>());
     }
     _yourTurn = view['your_turn'] == true;
+    _turnDeadline = _deadlineOf(view);
   }
 
   List<GameEvent> _eventsOf(Map<String, dynamic> view) => [

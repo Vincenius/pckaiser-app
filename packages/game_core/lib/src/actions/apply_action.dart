@@ -99,6 +99,7 @@ List<GameEvent> applyActionInPlace(
     WarEndRound() => applyWarEndRound(state, realm, action, rng),
     WarPrepPlan() => applyWarPrepPlan(state, realm, action),
     ResumeWarCommand() => applyResumeWarCommand(state, realm, action),
+    StartWarNow() => applyStartWarNow(state, realm, action, rng),
     SettlementAnnex() => applySettlementAnnex(state, realm, action, rng),
     SettlementAnnexMany() =>
       applySettlementAnnexMany(state, realm, action, rng),

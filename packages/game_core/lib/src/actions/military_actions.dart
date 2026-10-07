@@ -559,6 +559,29 @@ class WarPrepPlan extends PlayerAction {
       };
 }
 
+/// `[DESIGNED 2026-10-04, user request]` Starts the war NOW instead of at
+/// the scheduled start (or the fallback deadline): allowed only for the
+/// SOLE live side of a preparation whose opponent let the computer command
+/// — nobody else can miss the war then, and the match need not idle until
+/// the appointment. Both plans must be in (no pending `warPlan`), or the
+/// opponent could still choose to command live.
+///
+/// Allowed OUT OF TURN like [WarPrepPlan].
+class StartWarNow extends PlayerAction {
+  StartWarNow({required super.slot});
+
+  factory StartWarNow.fromJson(Map<String, dynamic> json) =>
+      StartWarNow(slot: json['slot'] as int);
+
+  static const kind = 'startWarNow';
+
+  @override
+  String get type => kind;
+
+  @override
+  Map<String, dynamic> toJson() => {'type': kind, 'slot': slot};
+}
+
 /// `[DESIGNED 2026-08-24, user request]` Takes manual command back from the
 /// no-show autopilot (`war.autoSlots`) while the war ROUNDS are already
 /// running: a side that never acted before its first round clock expired is

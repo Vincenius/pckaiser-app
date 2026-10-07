@@ -80,6 +80,9 @@ class LocalGameSession implements GameSession {
   int? get turnTimeoutHours => null;
 
   @override
+  DateTime? get turnDeadline => null;
+
+  @override
   bool get canUndo => true;
 
   @override

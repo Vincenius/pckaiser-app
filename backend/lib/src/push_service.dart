@@ -20,10 +20,14 @@ abstract class PushService {
   /// at [start] — [agreed] when the sides found a common slot, false when
   /// no proposals overlapped (the full-turn fallback stands). [toAttacker]
   /// tailors the wording for the attacker (who chose first and was waiting
-  /// on the defender) versus the defender.
+  /// on the defender) versus the defender. [opponentDelegated]: the
+  /// opponent let the computer command — the start is the recipient's own
+  /// time (or the fallback), and they may start the war at once (2026-10-04).
   Future<void> warStartFixed(
       PlayerRecord player, MatchRecord match, DateTime start,
-      {required bool agreed, bool toAttacker = false});
+      {required bool agreed,
+      bool toAttacker = false,
+      bool opponentDelegated = false});
 
   /// ~15 minutes before an AGREED duel start (never for the fallback).
   Future<void> warStartSoon(PlayerRecord player, MatchRecord match);
@@ -55,10 +59,13 @@ class LogPushService implements PushService {
   @override
   Future<void> warStartFixed(
           PlayerRecord player, MatchRecord match, DateTime start,
-          {required bool agreed, bool toAttacker = false}) async =>
+          {required bool agreed,
+          bool toAttacker = false,
+          bool opponentDelegated = false}) async =>
       _log(
           'WAR_START_FIXED(${agreed ? 'agreed' : 'fallback'}, '
-          '${toAttacker ? 'attacker' : 'defender'}, $start)',
+          '${toAttacker ? 'attacker' : 'defender'}, '
+          '${opponentDelegated ? 'opponent delegated, ' : ''}$start)',
           player,
           match);
 

@@ -21,8 +21,8 @@ const Map<String, String> miscDe = {
       'folgen ihrer Haltung. Bis zum Kriegsbeginn kannst du jede Truppe '
       'einzeln auf der Karte einstellen (Stellung halten oder '
       'angreifen) — im Kriegsvorbereitungs-Menü über der Karte. Der '
-      'Krieg beginnt, sobald beide Seiten gewählt haben — wollen beide '
-      'selbst steuern, online zum vereinbarten Zeitpunkt oder nach '
+      'Krieg beginnt, sobald beide Seiten gewählt haben — online, sobald '
+      'jemand selbst steuert, erst zum gewählten Zeitpunkt oder nach '
       'Ablauf der Vorbereitungsfrist.',
   'dec.warDefenseBody':
       '{realm} hat dir den Krieg erklärt ! Willst du deine Truppen '
@@ -76,6 +76,9 @@ const Map<String, String> miscDe = {
   'dec.warStartEnemyNoTimes':
       'Dein Gegner hat keine Zeit vorgeschlagen — dann gilt die '
       'Vorbereitungsfrist.',
+  'dec.warStartEnemyDelegated':
+      'Dein Gegner lässt den Computer führen — deine früheste Zeit wird '
+      'der Kriegsbeginn. Ohne Auswahl gilt die Vorbereitungsfrist.',
   'dec.warStartEnemyFits': 'Diese Zeit passt deinem Gegner',
   // An agreed start that already lies in the past — the server starts the
   // duel on its next sweep (within a minute), so it is not "20:00 Uhr"
@@ -123,8 +126,8 @@ const Map<String, String> miscEn = {
       'individually on the map (hold position or attack) — in the '
       'war-preparation menu above the map. The war begins as soon as '
       'both sides have chosen — if both want to command in person, '
-      'online at the agreed time or when the preparation deadline '
-      'expires.',
+      'online, once someone commands in person, only at the chosen time '
+      'or when the preparation deadline expires.',
   'dec.warDefenseBody':
       '{realm} has declared war on you! Do you want to command your '
       'troops yourself?\n\nIf you choose "No", the computer takes over '
@@ -172,6 +175,10 @@ const Map<String, String> miscEn = {
   'dec.warStartEnemyTimes': 'The times marked ✓ suit your opponent.',
   'dec.warStartEnemyNoTimes':
       'Your opponent proposed no time — then the preparation deadline '
+      'applies.',
+  'dec.warStartEnemyDelegated':
+      'Your opponent lets the computer command — your earliest time '
+      'becomes the start of the war. With no selection, the deadline '
       'applies.',
   'dec.warStartEnemyFits': 'This time suits your opponent',
   'dec.warStartImminent': 'any moment now',

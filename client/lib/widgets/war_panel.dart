@@ -202,8 +202,10 @@ class _WarPanelState extends State<WarPanel> {
     int slot, {
     required bool owesPlan,
   }) {
-    // Online duel scheduling: once both sides answered, the agreed start
-    // (earliest common warPlan slot) is shown here — in local time.
+    // Online duel scheduling: once both sides answered, the start is shown
+    // here — in local time. Online the armed match deadline IS the start
+    // (it may carry the server's notice floor on top of the slot itself,
+    // or be the fallback when no slot applies), so it wins over the slot.
     final scheduled = war.scheduledStartMs;
     if (owesPlan) {
       return _banner(
@@ -214,7 +216,33 @@ class _WarPanelState extends State<WarPanel> {
         foreground: theme.colorScheme.onSurfaceVariant,
       );
     }
+    final enemySlot = war.opponentOf(slot);
+    final enemyAnswered = war.planAnsweredSlots.contains(enemySlot);
+    final startMs = controller.isOnline
+        ? controller.turnDeadline?.millisecondsSinceEpoch
+        : null;
+    // `[DESIGNED 2026-10-04, user request]` The opponent let the computer
+    // command: the start is this side's own time (or the fallback) — say
+    // so, instead of "no shared appointment, adjust your times".
+    if (controller.isOnline &&
+        enemyAnswered &&
+        war.autoSlots.contains(enemySlot) &&
+        !war.autoSlots.contains(slot)) {
+      return _banner(
+        theme,
+        Icons.smart_toy_outlined,
+        startMs == null
+            ? tr('war.enemyDelegatedFallback', {'realm': realmName(enemySlot)})
+            : tr('war.enemyDelegatedStart', {
+                'realm': realmName(enemySlot),
+                'time': formatWarStartTime(startMs),
+              }),
+        background: Colors.green.shade100,
+        foreground: Colors.green.shade900,
+      );
+    }
     if (scheduled != null && scheduled > 0) {
+      final time = formatWarStartTime(startMs ?? scheduled);
       // `[DESIGNED 2026-08-24, user request]` Name the opening mover with
       // the appointment: whoever booked a duel slot wants to know whether
       // they have to be at the device on the dot (their move) or may
@@ -225,14 +253,14 @@ class _WarPanelState extends State<WarPanel> {
         theme,
         Icons.schedule,
         switch (firstSlot) {
-          null => tr('war.scheduledStart',
-              {'time': formatWarStartTime(scheduled)}),
-          final s when s == slot => tr('war.scheduledStartYouFirst',
-              {'time': formatWarStartTime(scheduled)}),
+          null => tr('war.scheduledStart', {'time': time}),
+          final s when s == slot => tr('war.scheduledStartYouFirst', {
+            'time': time,
+          }),
           final s => tr('war.scheduledStartEnemyFirst', {
-              'time': formatWarStartTime(scheduled),
-              'realm': realmName(s),
-            }),
+            'time': time,
+            'realm': realmName(s),
+          }),
         },
         background: Colors.green.shade100,
         foreground: Colors.green.shade900,
@@ -249,17 +277,31 @@ class _WarPanelState extends State<WarPanel> {
         foreground: theme.colorScheme.onSurfaceVariant,
       );
     }
-    // No appointment (yet): say WHY — the opponent has not answered, or the
-    // two offers do not overlap and somebody has to widen theirs (user
-    // request 2026-08-09).
-    final enemySlot = war.opponentOf(slot);
-    final noOverlap = war.planAnsweredSlots.contains(enemySlot);
+    if (!enemyAnswered) {
+      return _banner(
+        theme,
+        Icons.hourglass_top,
+        tr('war.enemyStillChoosing', {'realm': realmName(enemySlot)}),
+        background: theme.colorScheme.surface,
+        foreground: theme.colorScheme.onSurfaceVariant,
+      );
+    }
+    // Both answered, no slot: the fallback deadline governs. A delegated
+    // side simply learns when; a live one also why — the two offers do not
+    // overlap and somebody may widen theirs (user request 2026-08-09).
+    final delegated = war.autoSlots.contains(slot);
     return _banner(
       theme,
-      noOverlap ? Icons.warning_amber : Icons.hourglass_top,
-      noOverlap
-          ? tr('war.noCommonTime')
-          : tr('war.enemyStillChoosing', {'realm': realmName(enemySlot)}),
+      delegated ? Icons.schedule : Icons.warning_amber,
+      switch ((delegated, startMs)) {
+        (_, null) => tr('war.noCommonTime'),
+        (true, final ms?) => tr('war.scheduledStart', {
+          'time': formatWarStartTime(ms),
+        }),
+        (false, final ms?) => tr('war.noCommonTimeAt', {
+          'time': formatWarStartTime(ms),
+        }),
+      },
       background: theme.colorScheme.surface,
       foreground: theme.colorScheme.onSurfaceVariant,
     );
@@ -301,11 +343,9 @@ class _WarPanelState extends State<WarPanel> {
     // panel (or the time picker it opened) is still on screen. The engine
     // then rejects the revision; report it like every other action path
     // instead of letting the exception escape an async callback.
-    Future<void> submit({required bool auto, List<int>? slots}) async {
+    Future<void> send(gc.PlayerAction action) async {
       try {
-        await controller.applyWarAction(
-          gc.WarPrepPlan(slot: slot, auto: auto, slots: slots),
-        );
+        await controller.applyWarAction(action);
       } on gc.ActionException catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context)
@@ -314,7 +354,42 @@ class _WarPanelState extends State<WarPanel> {
         }
       }
     }
-    return Padding(
+
+    Future<void> submit({required bool auto, List<int>? slots}) =>
+        send(gc.WarPrepPlan(slot: slot, auto: auto, slots: slots));
+
+    final enemySlot = war.opponentOf(slot);
+    final enemyLive =
+        war.planAnsweredSlots.contains(enemySlot) &&
+        !war.autoSlots.contains(enemySlot);
+
+    // `[DESIGNED 2026-10-04, user request]` Handing over to the computer
+    // gives the start to the live opponent alone — say when the war then
+    // begins before the player commits to it.
+    Future<void> delegate() async {
+      if (controller.isOnline && enemyLive) {
+        final startMs = gc.soleLiveWarStart(war, enemySlot);
+        final ok = await _confirm(
+          context,
+          tr('war.delegateConfirmTitle'),
+          startMs == null
+              ? tr('war.delegateConfirmFallback')
+              : tr('war.delegateConfirmAt', {
+                  'realm': realmName(enemySlot),
+                  'time': formatWarStartTime(startMs),
+                }),
+        );
+        if (!ok) return;
+      }
+      await submit(auto: true);
+    }
+
+    // `[DESIGNED 2026-10-04, user request]` The sole live side need not
+    // wait for its own time — nobody else can miss the war.
+    final canStartNow =
+        controller.isOnline && gc.canStartWarNow(controller.state, slot);
+
+    final row = Padding(
       padding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
       // FittedBox: toggle + time button overflow very narrow phones in a
       // fixed Row — scale down instead of clipping.
@@ -344,7 +419,7 @@ class _WarPanelState extends State<WarPanel> {
               selected: {auto},
               onSelectionChanged: controller.busy
                   ? null
-                  : (v) => submit(auto: v.first),
+                  : (v) => v.first ? delegate() : submit(auto: false),
             ),
             if (controller.isOnline && !auto) ...[
               const SizedBox(width: 4),
@@ -354,7 +429,6 @@ class _WarPanelState extends State<WarPanel> {
                 onPressed: controller.busy
                     ? null
                     : () async {
-                        final enemySlot = war.opponentOf(slot);
                         final picked = await askWarStartSlots(
                           context,
                           controller.turnTimeoutHours,
@@ -363,6 +437,7 @@ class _WarPanelState extends State<WarPanel> {
                           opponentAnswered: war.planAnsweredSlots.contains(
                             enemySlot,
                           ),
+                          opponentDelegated: war.autoSlots.contains(enemySlot),
                           cancellable: true,
                         );
                         // Cancelled — the stored offer stays unchanged.
@@ -375,6 +450,53 @@ class _WarPanelState extends State<WarPanel> {
         ),
       ),
     );
+    if (!canStartNow) return row;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        row,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: FilledButton.tonalIcon(
+            icon: const Icon(Icons.play_arrow, size: 18),
+            label: Text(tr('war.startNow')),
+            onPressed: controller.busy
+                ? null
+                : () async {
+                    final ok = await _confirm(
+                      context,
+                      tr('war.startNowConfirmTitle'),
+                      tr('war.startNowConfirmBody', {
+                        'realm': realmName(enemySlot),
+                      }),
+                    );
+                    if (ok) await send(gc.StartWarNow(slot: slot));
+                  },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<bool> _confirm(BuildContext context, String title, String body) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr('dec.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(tr('dec.confirm')),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 
   @override

@@ -6,6 +6,35 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-10-04 — Autopilot side no longer starts the war at once (user report)
+
+Online, the "exactly one live side → start at once" rule fired whenever a
+side delegated — on its first `warPlan` answer or by toggling to "Computer
+führt" later (`WarPrepPlan`) — and the live player missed the war they had
+picked times for (with no common slot the announced fallback deadline was
+ignored too). Now: `recomputeWarStart` gives a sole live side its own
+schedule (the set instant while it still offers it, else its earliest
+offer, else null → fallback deadline), and `resolveWarPreparation` with a
+turn timer waits for the deadline whenever at least one side is live.
+Without a timer (hot-seat, timerless online) a sole live side without a
+time still starts at once; a fully delegated war still fast-forwards.
+No state change — gameplay rules are unversioned.
+
+Follow-ups the same day (user-approved):
+- `StartWarNow` action: the sole live side may start the war at once
+  (the waiting rule otherwise idles the match until its time). War panel
+  button "Krieg jetzt beginnen" with confirmation.
+- Server: a start moved by a now-delegated actor is floored at
+  `warStartNotice` (30 min) — a stale "sofort" could otherwise fire within
+  one war-round clock; an unchanged start keeps its armed deadline.
+  `WAR_START_FIXED` also fires when delegation flips, with dedicated
+  wording for "opponent lets the computer command".
+- Client: `GameSession.turnDeadline`; the preparation banner shows the
+  real start (armed deadline) incl. the fallback and a dedicated
+  "{realm} lässt den Computer führen — Beginn: …" line; the time picker
+  stops marking a delegated opponent's stale offers; switching to
+  "Computer führt" asks first, naming when the war will then begin.
+
 ## 2026-09-01 — Capital-race banner fired on a simultaneous seizure (review fix)
 
 The war panel's `losingTheCapitalRace` flag (2026-08-26) keyed off

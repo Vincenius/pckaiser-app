@@ -105,6 +105,8 @@ const Map<String, Map<String, String>> _messages = {
     'wrongWarPhase': 'Falsche Kriegsphase !',
     'opponentActing': 'Dein Gegner ist gerade am Zug !',
     'notDelegated': 'Deine Truppen werden nicht von der KI geführt !',
+    'cannotStartWarNow':
+        'Sofort beginnen geht nur, wenn dein Gegner den Computer führen lässt !',
     'impassable': 'Unpassierbar !',
     'embarkViaHarborOnly':
         'Truppen gehen nur über einen eigenen oder feindlichen '
@@ -223,6 +225,9 @@ const Map<String, Map<String, String>> _messages = {
     'wrongWarPhase': 'Wrong war phase!',
     'opponentActing': 'Your opponent is making their move!',
     'notDelegated': 'Your troops are not led by the AI!',
+    'cannotStartWarNow':
+        'You can only start at once while your opponent lets the computer '
+            'command!',
     'impassable': 'Impassable!',
     'embarkViaHarborOnly':
         'Troops can only embark through your own or an enemy harbor!',

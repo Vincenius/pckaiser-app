@@ -23,6 +23,27 @@ const Map<String, String> warDe = {
   'war.planAuto': 'Computer führt',
   'war.adjustTimes': 'Zeiten anpassen',
   'war.noCommonTime': 'Kein gemeinsamer Termin — passe deine Zeiten an.',
+  'war.noCommonTimeAt':
+      'Kein gemeinsamer Termin — Beginn: {time}. Passe deine Zeiten an, '
+      'um ihn zu verlegen.',
+  // Gegner lässt den Computer führen (2026-10-04): der Beginn gehört der
+  // Live-Seite allein, die ihn auch vorziehen darf.
+  'war.enemyDelegatedStart':
+      '{realm} lässt den Computer führen — Beginn: {time}.',
+  'war.enemyDelegatedFallback':
+      '{realm} lässt den Computer führen — Beginn am Ende der '
+      'Vorbereitungsfrist.',
+  'war.startNow': 'Krieg jetzt beginnen',
+  'war.startNowConfirmTitle': 'Krieg jetzt beginnen?',
+  'war.startNowConfirmBody':
+      '{realm} lässt den Computer führen. Der Krieg beginnt sofort, und du '
+      'ziehst zuerst.',
+  'war.delegateConfirmTitle': 'Dem Computer übergeben?',
+  'war.delegateConfirmAt':
+      'Dann beginnt der Krieg zur Zeit von {realm}: {time}.',
+  'war.delegateConfirmFallback':
+      'Dann beginnt der Krieg am Ende der Vorbereitungsfrist — oder früher, '
+      'wenn dein Gegner ihn selbst startet.',
   'war.enemyStillChoosing': 'Wartet auf {realm}',
   // Die ausführliche Erklärung steckt hinter dem ⓘ des Panels, damit die
   // Leiste über der Karte schlank bleibt (2026-08-13, Nutzerwunsch).
@@ -34,8 +55,9 @@ const Map<String, String> warDe = {
       'oder „Angreifen" (marschiert auf den feindlichen Sitz). Sie gilt, '
       'wenn der Computer führt oder deine Zeit abläuft.\n\n'
       '• Beginn: Online schlagen beide Seiten Zeiten vor; die früheste '
-      'gemeinsame Stunde wird der Kriegsbeginn. Findet sich keine, beginnt '
-      'der Krieg am Ende der Vorbereitungsfrist.\n\n'
+      'gemeinsame Stunde wird der Kriegsbeginn. Lässt der Gegner den '
+      'Computer führen, gilt deine früheste Zeit. Findet sich keine, '
+      'beginnt der Krieg am Ende der Vorbereitungsfrist.\n\n'
       '• Bis dahin bleibt alles änderbar.',
 
   // --- War panel: header & banners ---
@@ -268,6 +290,25 @@ const Map<String, String> warEn = {
   'war.planAuto': 'Computer commands',
   'war.adjustTimes': 'Adjust times',
   'war.noCommonTime': 'No shared appointment — adjust your times.',
+  'war.noCommonTimeAt':
+      'No shared appointment — start: {time}. Adjust your times to move '
+      'it.',
+  'war.enemyDelegatedStart':
+      '{realm} lets the computer command — start: {time}.',
+  'war.enemyDelegatedFallback':
+      '{realm} lets the computer command — start at the end of the '
+      'preparation window.',
+  'war.startNow': 'Start the war now',
+  'war.startNowConfirmTitle': 'Start the war now?',
+  'war.startNowConfirmBody':
+      '{realm} lets the computer command. The war begins at once, and you '
+      'move first.',
+  'war.delegateConfirmTitle': 'Hand over to the computer?',
+  'war.delegateConfirmAt':
+      'Then the war begins at the time of {realm}: {time}.',
+  'war.delegateConfirmFallback':
+      'Then the war begins at the end of the preparation window — or '
+      'earlier, if your opponent starts it.',
   'war.enemyStillChoosing': 'Waiting for {realm}',
   'war.prepHelpTooltip': 'Explanation',
   'war.prepHelpBody':
@@ -277,8 +318,9 @@ const Map<String, String> warEn = {
       '"Attack" (marches on the enemy seat). It applies when the computer '
       'commands or your time runs out.\n\n'
       '• Start: online both sides propose times; the earliest shared hour '
-      'becomes the start of the war. If there is none, the war starts at '
-      'the end of the preparation window.\n\n'
+      'becomes the start of the war. If the enemy lets the computer '
+      'command, your earliest time counts. If there is none, the war '
+      'starts at the end of the preparation window.\n\n'
       '• Everything stays changeable until then.',
 
   // --- War panel: header & banners ---

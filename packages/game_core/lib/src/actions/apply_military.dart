@@ -895,6 +895,18 @@ List<GameEvent> applyWarPrepPlan(
   return const [];
 }
 
+/// `[DESIGNED 2026-10-04, user request]` The sole live side starts the war
+/// at once instead of waiting for its start time ([canStartWarNow]).
+List<GameEvent> applyStartWarNow(
+    GameState state, Realm realm, StartWarNow action, Rng rng) {
+  _warFor(state, realm.slot, phase: WarPhase.preparation);
+  if (!canStartWarNow(state, realm.slot)) {
+    throw ActionException(coreMessage('cannotStartWarNow'));
+  }
+  beginWarRounds(state, rng);
+  return const [];
+}
+
 /// `[DESIGNED 2026-08-24, user request]` Takes this side's war command back
 /// from the no-show autopilot mid-war (`war.autoSlots`). `_warFor`'s
 /// "opponent is acting" guard never fires here: it only rejects a LIVE

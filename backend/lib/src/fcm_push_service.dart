@@ -103,7 +103,9 @@ class FcmPushService implements PushService {
   @override
   Future<void> warStartFixed(
           PlayerRecord player, MatchRecord match, DateTime start,
-          {required bool agreed, bool toAttacker = false}) =>
+          {required bool agreed,
+          bool toAttacker = false,
+          bool opponentDelegated = false}) =>
       _send(
         player,
         match,
@@ -112,7 +114,15 @@ class FcmPushService implements PushService {
         // The exact time is shown in-app in the player's local timezone —
         // a push body can't carry it, so it only announces THAT it is set.
         // The attacker (who chose first) is told the defender has now chosen.
-        agreed
+        opponentDelegated
+            ? (agreed
+                ? 'Dein Gegner lässt den Computer führen — der Krieg beginnt '
+                    'zu deiner gewählten Zeit. Im Spiel kannst du ihn auch '
+                    'sofort beginnen.'
+                : 'Dein Gegner lässt den Computer führen — der Krieg beginnt '
+                    'nach Ablauf der Vorbereitungsfrist. Im Spiel kannst du '
+                    'ihn auch sofort beginnen.')
+            : agreed
             ? (toAttacker
                 ? 'Kriegstermin steht ! Der Verteidiger hat gewählt — '
                     'die Uhrzeit siehst du im Spiel.'

@@ -33,6 +33,9 @@ class _FakeOnlineSession implements GameSession {
   int? get turnTimeoutHours => 24;
 
   @override
+  DateTime? get turnDeadline => null;
+
+  @override
   bool get awaitingRemote => _awaiting;
 
   @override

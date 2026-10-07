@@ -24,6 +24,10 @@ class ReleaseNote {
 /// dismissed are never re-shown (SettingsService stores the last-seen
 /// version), so only the *latest* entry is ever displayed.
 const List<ReleaseNote> releaseNotes = [
+  ReleaseNote('0.2.9', [
+    'whatsnew.0_2_9.0',
+    'whatsnew.0_2_9.1',
+  ]),
   ReleaseNote('0.2.8', [
     'whatsnew.0_2_8.0',
     'whatsnew.0_2_8.1',

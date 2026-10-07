@@ -20,6 +20,11 @@ abstract class GameSession {
   /// offered duel start slots from it.
   int? get turnTimeoutHours;
 
+  /// Online: the match's armed deadline (`turn_deadline`) — during a war
+  /// preparation that IS the war start (the scheduled time, or the
+  /// fallback), which the war panel announces. Null locally / no timer.
+  DateTime? get turnDeadline;
+
   /// False online: the server is authoritative, actions are final.
   bool get canUndo;
 

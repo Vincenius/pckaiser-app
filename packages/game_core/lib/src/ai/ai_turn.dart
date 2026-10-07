@@ -1007,11 +1007,13 @@ void fastForwardUnattendedWar(
 
 /// After a `warPlan` answer (or the online preparation deadline): begins
 /// the war rounds per the user-designed start rules (2026-07-06):
-///  - all answered, exactly ONE side plays live → start at once (the live
-///    player declared themself ready, the other delegated) — UNLESS the two
-///    had already agreed on a start time (2026-08-09: a side may delegate
-///    AFTER the appointment was fixed; the live opponent planned for it and
-///    must not have the duel pulled forward to "now"),
+///  - all answered, exactly ONE side plays live → online (with a turn
+///    timer) it waits for the deadline exactly like a both-live duel: the
+///    start the live side chose (`recomputeWarStart`), else the fallback
+///    (`[DESIGNED 2026-10-04, user request]` — the old "start at once"
+///    rule let a live player miss the war they had picked times for, as
+///    soon as the opponent delegated). Without a timer (hot-seat / no
+///    online clock) it starts at once unless a start time is set,
 ///  - all answered, NOBODY plays live → begin and fast-forward the whole
 ///    war like an AI-vs-AI war (both sides on the stance autopilot),
 ///  - all answered, BOTH play live → start only when [waitWhenAllManual]
@@ -1040,22 +1042,21 @@ void resolveWarPreparation(GameState state, Rng rng, List<GameEvent> events,
     return;
   }
   final liveSides = sides.where((s) => warSideIsHuman(state, war, s)).length;
-  if (!force && waitWhenAllManual && liveSides == 2) {
-    // Both live online: the duel starts on the server deadline (the agreed
-    // slot, or the full-turn fallback), never in this request — a "sofort"
-    // agreement is a past current-hour instant the sweep fires immediately.
+  if (!force && waitWhenAllManual && liveSides >= 1) {
+    // A live side online: the war starts on the server deadline (the
+    // scheduled slot, or the full-turn fallback), never in this request —
+    // a "sofort" slot is a past current-hour instant the sweep fires
+    // immediately. Applies just as well when the OTHER side delegated
+    // (2026-10-04): the live player was told a start time and plans for it.
     return;
   }
   if (!force && liveSides >= 1 && (war.scheduledStartMs ?? 0) > 0) {
     // `[DESIGNED 2026-08-09, user request]` An AGREED appointment outranks
     // every early-start rule: once the two sides settled on a time, the war
     // begins THEN (the server arms its deadline at the instant and the
-    // sweep fires it). Two cases reach this:
-    //  - a later revision delegates ONE side (`WarPrepPlan`): pulling the
-    //    duel forward to "now" would make the still-live opponent — who
-    //    planned for the appointment — miss their own war,
-    //  - a match without a turn timer (waitWhenAllManual false): the sides
-    //    still deserve the time they agreed on.
+    // sweep fires it). Only a match without a turn timer reaches this
+    // (waitWhenAllManual false): the sides still deserve the time they
+    // agreed on (or the one the sole live side chose).
     // Hot-seat never reaches it: local play proposes no times at all.
     return;
   }
