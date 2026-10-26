@@ -56,7 +56,7 @@ matches       (id TEXT PK,                -- 5-letter room code (legacy rows: UU
                winner UUID→players, created_at, updated_at)
 match_players (match_id, player_id, turn_order SMALLINT,
                dynasty_index SMALLINT,  -- realm slot 1–30
-               idle_turns SMALLINT,     -- consecutive timed-out turns; ≥3 ⇒ creator may kick
+               idle_turns SMALLINT,     -- consecutive timed-out turns; ≥3 ⇒ creator may kick (championship: auto-kick)
                PK (match_id, player_id))
 turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- audit/replay
 championships (year INT PK, match_id, announced_at, old_build_notice_at, finished_at,
@@ -74,7 +74,7 @@ championships (year INT PK, match_id, announced_at, old_build_notice_at, finishe
 | POST | `/matches/:id/join` | Join a waiting match (≤ 16 seats, no fixed count) |
 | POST | `/matches/:id/start` | Start the match — creator (first seat) only |
 | POST | `/matches/:id/leave` | Leave/delete: waiting + creator → match deleted, otherwise the seat is freed; in a running game the realm falls to the AI (`playerLeft` event, awaited input auto-resolves like the timeout sweep); an empty match is deleted |
-| POST | `/matches/:id/kick` | `{player_id, target_player_id}` — creator only, allowed once the target has missed ≥ 3 turns by timeout (`idle_turns`); the realm falls to the AI (`playerKicked` public event) |
+| POST | `/matches/:id/kick` | `{player_id, target_player_id}` — creator only, allowed once the target has missed ≥ 3 turns by timeout (`idle_turns`); the realm falls to the AI (`playerKicked` public event). Never in a championship (no creator — 403) |
 | GET | `/matches/:id?player_id=` | State **filtered for the requester**; each player row carries `idle_turns` |
 | POST | `/matches/:id/turn` | Submit turn action or pending decision (resets the seat's `idle_turns`) |
 | GET | `/players/:id/matches` | List player's matches (incl. `is_creator`) |
@@ -142,8 +142,11 @@ signed up (`backend/lib/src/championship.dart`).
   pushes `CHAMPIONSHIP_STARTED` to every participant; with nobody signed up
   the empty match is deleted. Joins close at the start instant.
 - **Server-hosted like a room** (`isServerHosted`): no creator while waiting,
-  `POST /start` rejected, leaving only frees the seat; once running the first
-  seat inherits the kick duty. The client sees `template: 'championship'`
+  `POST /start` rejected, leaving only frees the seat. It never has a creator,
+  not even once running (`creator_id` null, `POST /kick` → 403): instead the
+  timeout sweep kicks a seat itself the moment it has missed 3 turns in a row
+  (`_autoKickIdle`, reason `kicked`); kicking the last human ranks the
+  championship and deletes the match. The client sees `template: 'championship'`
   (views, settings) and renders it as a room — no start button, seat bar
   `n/16`, start line as a date. Waiting-retention never reaps it.
 - **Ranking:** every exit is recorded on the match as it happens

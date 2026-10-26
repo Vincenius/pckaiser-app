@@ -321,6 +321,9 @@ class MatchService {
 
     final matchId = record.matchId;
     if (now.isBefore(startsAt) || matchId == null) return false;
+    // Already played out — its match may since have been reaped by the
+    // retention sweep; the record must keep pointing at it.
+    if (record.finishedAt != null) return false;
     final started = await _locked(matchId, () async {
       final match = await _store.match(matchId);
       if (match == null || match.status != MatchStatus.waiting) return null;
@@ -339,7 +342,11 @@ class MatchService {
       if (await _store.match(matchId) == null) {
         await _locked(_championshipKey, () async {
           final current = await _store.championship(year);
-          if (current == null || current.matchId != matchId) return;
+          if (current == null ||
+              current.matchId != matchId ||
+              current.finishedAt != null) {
+            return;
+          }
           current.matchId = null;
           await _store.saveChampionship(current);
         });
@@ -700,15 +707,7 @@ class MatchService {
     }
 
     if (match.players.isEmpty) {
-      // The last human left a championship the game did not end on its
-      // own: rank it now — the match is deleted, the ranking must stay.
-      if (match.settings.championship != null &&
-          match.status == MatchStatus.active &&
-          match.stateJson != null) {
-        match.status = MatchStatus.finished;
-        await _finishChampionship(match, _load(match));
-      }
-      await _store.deleteMatch(match.id);
+      await _deleteEmptiedMatch(match);
       return true;
     }
     await _store.saveMatch(match);
@@ -732,8 +731,9 @@ class MatchService {
       if (match.status != MatchStatus.active) {
         throw ApiException(400, 'api.matchNotActive');
       }
-      if (match.players.isEmpty ||
-          match.players.first.playerId != requesterId) {
+      // The championship has no creator — its idle seats are removed by
+      // the timeout sweep instead.
+      if (_creatorId(match) != requesterId) {
         throw ApiException(403, 'api.onlyCreatorKicks');
       }
       final target = match.playerById(targetPlayerId);
@@ -951,6 +951,22 @@ class MatchService {
   /// server (see [templateFor]) — withhold it, or the client would present
   /// a room the server no longer treats as one (no `seats`, creator-owned,
   /// deletable) as a matchmaking room.
+  /// The first seat is the creator — they alone may start the match and
+  /// kick a permanently idle seat. A WAITING matchmaking room has no
+  /// creator at all (it starts on its own); once it runs, its first joiner
+  /// takes over the host duties that outlive the start, i.e. kicking. The
+  /// championship never has one: nobody holds power over the others, and
+  /// the timeout sweep removes idle seats itself ([_autoKickIdle]).
+  String? _creatorId(MatchRecord match) {
+    if (match.players.isEmpty || match.settings.championship != null) {
+      return null;
+    }
+    if (match.status == MatchStatus.waiting && isServerHosted(match.settings)) {
+      return null;
+    }
+    return match.players.first.playerId;
+  }
+
   Map<String, dynamic> _clientSettings(MatchSettings settings) {
     final json = settings.toJson(includeSeed: false);
     if (templateFor(settings) == null) json.remove('template');
@@ -989,15 +1005,8 @@ class MatchService {
       'id': match.id,
       'status': match.status.name,
       'human_count': match.humanCount,
-      // The first seat is the creator — they alone may start the match. A
-      // WAITING matchmaking room has no creator at all (it starts on its
-      // own); once it runs, its first joiner takes over the host duties
-      // that outlive the start, i.e. kicking a permanently idle seat.
-      'creator_id': match.players.isEmpty ||
-              (match.status == MatchStatus.waiting &&
-                  isServerHosted(match.settings))
-          ? null
-          : match.players.first.playerId,
+      // See [_creatorId] — null hides the start and kick buttons.
+      'creator_id': _creatorId(match),
       // Matchmaking room: how many seats start it, and when it starts even
       // if it never fills (null = not scheduled yet). The championship:
       // its 16 seats and its fixed start.
@@ -1101,9 +1110,7 @@ class MatchService {
         // by its creator — drives the lobby's delete/leave labels. A
         // waiting matchmaking room has no creator (see [view]): leaving it
         // only frees the seat, so the row must not offer "delete".
-        'is_creator': m.players.isNotEmpty &&
-            m.players.first.playerId == playerId &&
-            !(m.status == MatchStatus.waiting && isServerHosted(m.settings)),
+        'is_creator': _creatorId(m) == playerId,
         // Matchmaking room: type, start target and scheduled fallback start.
         // Via [templateFor], not the raw stored key: a template removed in
         // a later build degrades to an ordinary match server-side, and the
@@ -1588,8 +1595,17 @@ class MatchService {
         switch (match.status) {
           case MatchStatus.waiting:
             // The championship waits out its whole sign-up window, joins
-            // or not — its start is [sweepChampionship]'s business.
-            if (match.settings.championship != null) return false;
+            // or not — its start is [sweepChampionship]'s business. Only
+            // one whose start was missed for good (the sweep handles the
+            // current year only, e.g. the server was down past New Year)
+            // is reaped, a retention period after its date.
+            if (match.settings.championship != null) {
+              final startsAt = match.autoStartAt ??
+                  championshipStart(match.settings.championship!);
+              if (now.difference(startsAt) < waitingRetention) return false;
+              await _store.deleteMatch(match.id);
+              return true;
+            }
             if (age < waitingRetention) return false;
             // Matchmaking rooms take this path too, and should: a room
             // nobody joined for a week is stuck below its start threshold
@@ -1638,6 +1654,12 @@ class MatchService {
         now.difference(match.expiryWarnedAt!) < activeExpiryWarningLead) {
       return false;
     }
+    // A stalled championship is ranked as it stands — the match goes, the
+    // ranking must stay.
+    if (match.settings.championship != null && match.stateJson != null) {
+      match.status = MatchStatus.finished;
+      await _finishChampionship(match, _load(match));
+    }
     await _store.deleteMatch(match.id);
     return true;
   }
@@ -1645,6 +1667,7 @@ class MatchService {
   Future<void> _sweepMatch(MatchRecord match) async {
     var state = _load(match);
     final ignored = <GameEvent>[];
+    MatchPlayer? idleSeat;
     if (state.activeWar?.phase == WarPhase.preparation) {
       // The war-start reaction window expired: unanswered sides default
       // to the stance autopilot and the war begins — a both-live duel
@@ -1699,11 +1722,12 @@ class MatchService {
       final awaitedSlot = _awaitedSlot(state);
       if (awaitedSlot != null) {
         // The awaited seat never showed up — count this missed turn so the
-        // creator can replace a persistently idle player with the AI.
+        // creator can replace a persistently idle player with the AI (in
+        // the championship the sweep does so itself, below).
         final humanIndex = state.dynasty(awaitedSlot).humanPlayer;
-        final idleSeat =
+        idleSeat =
             humanIndex == null ? null : match.playerByTurnOrder(humanIndex);
-        if (idleSeat != null) idleSeat.idleTurns += 1;
+        idleSeat?.idleTurns += 1;
         // Resolve the idle player's pending decisions with their
         // defaults, then end the turn with no actions.
         for (final d in [...state.pendingDecisions]) {
@@ -1718,7 +1742,38 @@ class MatchService {
       }
     }
     await _commit(match, state, notify: true);
+    if (await _autoKickIdle(match, idleSeat)) return;
     await _store.saveMatch(match);
+  }
+
+  /// Championship only: a seat that missed [idleKickThreshold] turns in a
+  /// row is kicked automatically — nobody holds the kick button there
+  /// ([_creatorId]). Returns true when that emptied (and deleted) the match.
+  Future<bool> _autoKickIdle(MatchRecord match, MatchPlayer? seat) async {
+    if (match.settings.championship == null ||
+        match.status != MatchStatus.active ||
+        seat == null ||
+        !match.players.contains(seat) ||
+        seat.idleTurns < idleKickThreshold) {
+      return false;
+    }
+    await _dropSeatToAi(match, seat, eventType: 'playerKicked');
+    if (match.players.isNotEmpty) return false;
+    await _deleteEmptiedMatch(match);
+    return true;
+  }
+
+  /// Deletes a match nobody is seated in anymore. A championship the game
+  /// did not end on its own is ranked first — the match goes, the ranking
+  /// must stay.
+  Future<void> _deleteEmptiedMatch(MatchRecord match) async {
+    if (match.settings.championship != null &&
+        match.status == MatchStatus.active &&
+        match.stateJson != null) {
+      match.status = MatchStatus.finished;
+      await _finishChampionship(match, _load(match));
+    }
+    await _store.deleteMatch(match.id);
   }
 
   // --- Pipeline helpers ----------------------------------------------------

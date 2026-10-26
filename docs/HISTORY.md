@@ -39,6 +39,20 @@ comparator (compare(winner, winner) = −1). And if the last human leaves a
 championship whose game does not end on its own, it is ranked before the
 match is deleted, so no ranking can be lost.
 
+Second review pass: the retention sweep now ranks a stalled championship
+before deleting it (the ranking was lost), and reaps a waiting championship
+whose start was missed for good (server down past New Year — the sweep only
+handles the current year, so it lingered forever). `sweepChampionship` no
+longer unlinks a finished championship's `match_id` once retention reaps
+the match. The English announcement pads its date (`2026-11-01`).
+
+Championship kicks (user request): nobody holds the kick button in a
+championship any more (it went to whoever signed up first) — `creator_id`
+is always null there and `POST /kick` answers 403. Instead the timeout
+sweep kicks a seat automatically as soon as it has missed 3 turns in a row
+(the same `idle_turns` counter the manual kick used). The waiting-room text
+tells players about the rule.
+
 ## 2026-10-04 — Autopilot side no longer starts the war at once (user report)
 
 Online, the "exactly one live side → start at once" rule fired whenever a

@@ -204,7 +204,9 @@ class FcmPushService implements PushService {
       'championship_en',
       PushKind.championship,
       'PCKaiser World Championship $year',
-      'Sign-up is open! Starts ${de.year}-${de.month}-${de.day} at '
+      'Sign-up is open! Starts ${de.year}-'
+          '${de.month.toString().padLeft(2, '0')}-'
+          '${de.day.toString().padLeft(2, '0')} at '
           '${de.hour}:00 CET — 16 seats.',
     );
   }

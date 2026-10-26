@@ -2649,6 +2649,91 @@ void main() {
       expect(await store.match(id), isNotNull);
     });
 
+    test('a championship whose start was missed for good is reaped',
+        () async {
+      final id = await openChampionship();
+      await signUp(id, 'Anna', 1);
+      // The server was down from before the start until past New Year —
+      // the next year's sweep never looks at the old record.
+      now = DateTime.utc(2027, 1, 5);
+      expect(await service.sweepChampionship(), isFalse);
+      await service.sweepStale();
+      expect(await store.match(id), isNull);
+    });
+
+    test('a stalled championship reaped by retention is still ranked',
+        () async {
+      final id = await openChampionship();
+      await signUp(id, 'Anna', 1);
+      await signUp(id, 'Berta', 2);
+      now = DateTime.utc(2026, 11, 1, 17);
+      await service.sweepChampionship();
+      // Freeze the match: past the active retention, warned long enough.
+      final match = (await store.match(id))!;
+      match.updatedAt = now;
+      match.expiryWarnedAt = now.add(const Duration(days: 365));
+      await store.saveMatch(match);
+      now = now.add(const Duration(days: 400));
+      await service.sweepStale();
+
+      expect(await store.match(id), isNull);
+      final record = (await store.championship(2026))!;
+      expect(record.ranking, hasLength(2));
+      expect(record.matchId, id);
+      // The sweep must not unlink the reaped match from the finished record.
+      await service.sweepChampionship();
+      expect((await store.championship(2026))!.matchId, id);
+    });
+
+    test('nobody can kick — idle seats are kicked automatically', () async {
+      final id = await openChampionship();
+      final anna = await signUp(id, 'Anna', 1);
+      final berta = await signUp(id, 'Berta', 2);
+      now = DateTime.utc(2026, 11, 1, 17);
+      await service.sweepChampionship();
+
+      expect((await service.view(id, anna.id))['creator_id'], isNull,
+          reason: 'no kick button for anybody');
+      expect((await service.matchesForPlayer(anna.id)).single['is_creator'],
+          isFalse);
+
+      // Nobody plays: each missed turn is swept until Anna hits the limit.
+      var guard = 0;
+      while ((await store.match(id))?.playerById(anna.id) != null &&
+          guard++ < 40) {
+        final seat = (await store.match(id))!.playerById(anna.id)!;
+        expect(seat.idleTurns, lessThan(MatchService.idleKickThreshold),
+            reason: 'kicked by the very sweep that reaches the limit');
+        if (seat.idleTurns == MatchService.idleKickThreshold - 1) {
+          await expectLater(
+            service.kickPlayer(
+                matchId: id, requesterId: berta.id, targetPlayerId: anna.id),
+            throwsA(isA<ApiException>()
+                .having((e) => e.statusCode, 'status', 403)),
+          );
+        }
+        now = now.add(const Duration(hours: 25));
+        await service.sweepExpired();
+      }
+      final match = (await store.match(id))!;
+      expect(match.playerById(anna.id), isNull);
+      expect(match.championshipExits.single.reason, StandingReason.kicked);
+      final state = GameState.fromJson(match.stateJson!);
+      expect(state.dynasty(1).status, DynastyStatus.ai);
+
+      // Berta idles out too — the emptied championship is ranked, then gone.
+      guard = 0;
+      while (await store.match(id) != null && guard++ < 40) {
+        now = now.add(const Duration(hours: 25));
+        await service.sweepExpired();
+      }
+      expect(await store.match(id), isNull);
+      final ranking = (await store.championship(2026))!.ranking!;
+      expect([for (final s in ranking) s.name], ['Berta', 'Anna']);
+      expect([for (final s in ranking) s.reason],
+          everyElement(StandingReason.kicked));
+    });
+
     test('the final ranking orders players by how long they stayed in',
         () async {
       final id = await openChampionship();

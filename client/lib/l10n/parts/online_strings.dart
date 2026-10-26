@@ -165,7 +165,7 @@ const Map<String, String> onlineDe = {
   'championship.seatsLeft': 'Noch {n} Plätze frei',
   'championship.roomWaiting':
       'Startet am {time} mit allen Angemeldeten — die übrigen Reiche '
-      'führt der Computer.',
+      'führt der Computer. Wer 3 Züge in Folge verpasst, scheidet aus.',
   'championship.consentTitle': 'PCKaiser-Weltmeisterschaft',
   'championship.consentBody':
       'Einmal im Jahr spielen bis zu 16 Spieler online um den Titel. '
@@ -339,7 +339,7 @@ const Map<String, String> onlineEn = {
   'championship.seatsLeft': '{n} seats left',
   'championship.roomWaiting':
       'Starts on {time} with everyone signed up — the computer plays the '
-      'remaining realms.',
+      'remaining realms. Miss 3 turns in a row and you are out.',
   'championship.consentTitle': 'PCKaiser World Championship',
   'championship.consentBody':
       'Once a year, up to 16 players compete online for the title. '
