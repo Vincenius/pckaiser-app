@@ -25,6 +25,8 @@ class Api {
       ..post('/api/v1/players', _registerPlayer)
       ..patch('/api/v1/players/<id>', _updatePlayer)
       ..get('/api/v1/players/<id>/matches', _playerMatches)
+      ..get('/api/v1/championship', _currentChampionship)
+      ..get('/api/v1/championship/results', _championshipResults)
       ..post('/api/v1/matches', _createMatch)
       // Must precede `/matches/<id>` so "public" isn't taken as a match id.
       ..get('/api/v1/matches/public', _publicMatches)
@@ -64,6 +66,8 @@ class Api {
           id,
           displayName: body['display_name'] as String?,
           fcmToken: body['fcm_token'] as String?,
+          // Reported on launch since 0.3.0 (championship one-off targeting).
+          appVersion: body['app_version'] as String?,
           // The client sends the FULL set of muted notification kinds
           // (Options ▸ Notifications); absent = leave the stored one alone.
           pushOptOut: optOut is List
@@ -79,6 +83,20 @@ class Api {
   Future<Response> _playerMatches(Request request, String id) =>
       _guard(request, ()=> _service.matchesForPlayer(id));
 
+  /// `{championship}`: the Weltmeisterschaft open for sign-up, null
+  /// outside the window (wrapped — the client's envelope parser expects an
+  /// object). `player_id` is optional — the banner shows to players without
+  /// an online profile too; with it the answer says whether they joined.
+  Future<Response> _currentChampionship(Request request) =>
+      _guard(request, () async => {
+            'championship': await _service.currentChampionship(
+                playerId: request.url.queryParameters['player_id']),
+          });
+
+  /// Hall of fame: every finished championship with its full ranking.
+  Future<Response> _championshipResults(Request request) =>
+      _guard(request, () => _service.championshipResults());
+
   Future<Response> _publicMatches(Request request) =>
       _guard(request, ()=> _service.publicMatches());
 
@@ -93,6 +111,8 @@ class Api {
         // never deleted by leaving) — a client must not be able to open one
         // by claiming a template key.
         settingsJson.remove('template');
+        // Likewise the yearly championship (championship.dart).
+        settingsJson.remove('championship');
         // A wrong field TYPE inside a well-formed body is a client error —
         // report 400, not the catch-all 500.
         final MatchSettings settings;

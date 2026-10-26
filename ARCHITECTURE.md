@@ -38,6 +38,7 @@ Key API: `applyAction(GameState, PlayerAction, Rng)`, `runAiTurn`, `advanceUntil
 ```sql
 players       (id UUID PK, display_name TEXT, fcm_token TEXT,
                push_opt_out TEXT[],     -- optional notification kinds switched off
+               app_version TEXT,        -- build last launched (reported since 0.3.0; null = older)
                created_at)
 matches       (id TEXT PK,                -- 5-letter room code (legacy rows: UUID)
                current_turn UUID→players, state JSONB,
@@ -51,12 +52,15 @@ matches       (id TEXT PK,                -- 5-letter room code (legacy rows: UU
                expiry_warned_at TIMESTAMPTZ,  -- retention sweep: MATCH_EXPIRING warning sent
                war_prep_fallback_deadline TIMESTAMPTZ,  -- war preparation: fixed fallback start
                                        -- (the agreed duel time may be revised, this may not)
+               championship_exits JSONB, -- Weltmeisterschaft only: seats that dropped out, in order
                winner UUID→players, created_at, updated_at)
 match_players (match_id, player_id, turn_order SMALLINT,
                dynasty_index SMALLINT,  -- realm slot 1–30
                idle_turns SMALLINT,     -- consecutive timed-out turns; ≥3 ⇒ creator may kick
                PK (match_id, player_id))
 turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- audit/replay
+championships (year INT PK, match_id, announced_at, old_build_notice_at, finished_at,
+               ranking JSONB)          -- final placings, never pruned (FileStore: championships.json)
 ```
 
 ## API (`/api/v1`)
@@ -74,6 +78,8 @@ turns         (id UUID PK, match_id, player_id, action JSONB, created_at)  -- au
 | GET | `/matches/:id?player_id=` | State **filtered for the requester**; each player row carries `idle_turns` |
 | POST | `/matches/:id/turn` | Submit turn action or pending decision (resets the seat's `idle_turns`) |
 | GET | `/players/:id/matches` | List player's matches (incl. `is_creator`) |
+| GET | `/championship?player_id=` | `{championship}`: the Weltmeisterschaft open for sign-up (year, `match_id`, `starts_at`, joined/16, `joined_by_me`), `null` outside the sign-up window. `player_id` optional |
+| GET | `/championship/results` | Hall of fame: every finished championship with its full ranking, newest first |
 
 Match ids are 5-letter uppercase room codes (typed by hand; lowercase
 accepted on lookup). There is no fixed player count: players join via the
@@ -118,6 +124,59 @@ response time in the language of the request's `Accept-Language` header (the
 app sends it on every call; no header → German). The engine's rule
 rejections are already localized (`messageLocale`, from the submit body's
 `locale`) and pass through the catalog verbatim.
+
+### Weltmeisterschaft (2026-10-26, user-designed)
+
+Once a year the server hosts the **PCKaiser-Weltmeisterschaft**: ONE online
+match for up to 16 players that starts on a fixed date with everybody who
+signed up (`backend/lib/src/championship.dart`).
+
+- **Calendar = fixed rule, no config:** start every **1 November, 18:00
+  German time** (always CET → 17:00 UTC); sign-up opens 30 days before.
+  Settings: large map, 30 realms, 24 h turns, 10 min war clock, AI defaults.
+- **`sweepChampionship`** (minute sweep): when the window opens it creates
+  the match (`settings.championship = year`, `auto_start_at` = the start,
+  NOT public — the lobby list stays templates/player games) and sends the
+  sign-up announcement **once** (`championships.announced_at`). At the start
+  it starts the match with everybody signed up, the remaining realms AI, and
+  pushes `CHAMPIONSHIP_STARTED` to every participant; with nobody signed up
+  the empty match is deleted. Joins close at the start instant.
+- **Server-hosted like a room** (`isServerHosted`): no creator while waiting,
+  `POST /start` rejected, leaving only frees the seat; once running the first
+  seat inherits the kick duty. The client sees `template: 'championship'`
+  (views, settings) and renders it as a room — no start button, seat bar
+  `n/16`, start line as a date. Waiting-retention never reaps it.
+- **Ranking:** every exit is recorded on the match as it happens
+  (`championship_exits`: eliminated — detected in `_commit` as a seat that
+  ruled land before the commit and none after; left / kicked — in
+  `_dropSeatToAi`, before the seat is removed). At game end
+  `_finishChampionship` ranks the winner, then seats still ruling land, then
+  the exits from last to first (same commit → more tiles held first) and
+  stores the ranking in the `championships` store, which outlives the
+  match's 30-day retention. If no human wins, the human who lasted longest
+  is first.
+- **Announcement push = FCM topic**, not per player (it must reach players
+  who never played online): `championship_de` / `championship_en`. The
+  client subscribes to its UI language's topic only after an explicit yes to
+  a one-time in-app question (promotional push → opt-in), follows language
+  changes, and unsubscribes when **Options ▸ Benachrichtigungen ▸
+  Weltmeisterschaft** is switched off (`championship_topic.dart`). Deploy
+  note: the announcement fires on the first sweep inside the window — deploy
+  the server once the app build carrying the opt-in is live, or nobody is
+  subscribed yet.
+- **Old builds (< 0.3.0) never subscribe**, so they get a **one-off
+  per-player notice** instead (`bin/announce_championship.dart`, run by hand,
+  at most once a year via `championships.old_build_notice_at`): "update the
+  app to sign up", bilingual, to every player with a push token whose last
+  reported build is older or unknown and who has not muted `championship`.
+  The client reports its build (`app_version`) with its notification prefs
+  on every launch (`OnlineService.syncPushPrefs`); players on 0.3.0+ are
+  skipped — opted in, they got the topic push; declined, they asked not to
+  be told — so nobody is notified twice.
+- **Client:** sign-up banner (`widgets/championship_banner.dart`) on the
+  home screen and in the lobby — ONLY during sign-up; hall of fame
+  (`screens/championship_screen.dart`, trophy top-left on the home screen):
+  every year's full ranking, gold/silver/bronze trophies for the top three.
 
 ## Versioning & compatibility
 
@@ -192,7 +251,7 @@ HTTP v1 API via a Dart client (service-account creds from env). Send after state
 
 Client (`client/lib/services/push_service.dart`, firebase_messaging): permission is requested via the system dialog when the player uses online play (home screen with a configured profile, or right after online setup); the token is uploaded then and on every rotation. Tapping a notification (`data.match_id`) opens the match screen. Push is optional end to end — without the platform Firebase config `PushService.init()` yields nothing and the game runs unchanged (desktop dev builds included); setup steps in README "Push notifications".
 
-**Per-player notification settings (2026-08-24, user request).** Every notification kind is a `PushKind` string (`backend/lib/src/models.dart`, mirrored by `client/lib/services/push_kinds.dart` — the wire contract). `PushKind.optional` — `war_started`, `war_start_fixed`, `war_start_soon` — is switchable under **Options ▸ Benachrichtigungen**, all on by default; everything else (`your_turn`, `your_decision`, `match_expiring`) is essential and can never be muted, so nobody loses a turn or a match to a setting. The choice is stored as an **opt-OUT list** (a kind added by a later build therefore starts out on, exactly as on a fresh install): locally in `SettingsService.pushOptOut` for the screen, and authoritatively on the player record (`players.push_opt_out`), uploaded by `OnlineService.syncPushPrefs` on every change and again on launch with the token. The sending side reads it in ONE place — `MatchService._pushTarget(playerId, kind)` returns null for a muted kind, so no call site can bypass it — and `updatePlayer` drops anything outside `PushKind.optional` off the wire. A rename (`registerPlayer` upsert) carries the set over, like the token.
+**Per-player notification settings (2026-08-24, user request).** Every notification kind is a `PushKind` string (`backend/lib/src/models.dart`, mirrored by `client/lib/services/push_kinds.dart` — the wire contract). `PushKind.optional` — `war_started`, `war_start_fixed`, `war_start_soon`, and since 2026-10-26 `championship` (a topic broadcast, see "Weltmeisterschaft") — is switchable under **Options ▸ Benachrichtigungen**, all on by default; everything else (`your_turn`, `your_decision`, `match_expiring`, `championship_started`) is essential and can never be muted, so nobody loses a turn or a match to a setting. The choice is stored as an **opt-OUT list** (a kind added by a later build therefore starts out on, exactly as on a fresh install): locally in `SettingsService.pushOptOut` for the screen, and authoritatively on the player record (`players.push_opt_out`), uploaded by `OnlineService.syncPushPrefs` on every change and again on launch with the token. The sending side reads it in ONE place — `MatchService._pushTarget(playerId, kind)` returns null for a muted kind, so no call site can bypass it — and `updatePlayer` drops anything outside `PushKind.optional` off the wire. A rename (`registerPlayer` upsert) carries the set over, like the token.
 
 ## Project Structure
 

@@ -35,6 +35,19 @@ abstract class PushService {
   /// The retention sweep flagged a long-stalled active match: it will be
   /// deleted unless somebody plays (ARCHITECTURE.md "Retention").
   Future<void> matchExpiring(PlayerRecord player, MatchRecord match);
+
+  /// The Weltmeisterschaft sign-up of [year] is open (championship.dart):
+  /// one broadcast to the FCM topic of each UI language, reaching every
+  /// device that opted in — including players who never played online.
+  Future<void> championshipSignupOpen(int year, DateTime startsAt);
+
+  /// One-off to a player on a build without the announcement topic: the
+  /// championship of [year] is open for sign-up — update the app to join.
+  Future<void> championshipUpdateNotice(
+      PlayerRecord player, int year, DateTime startsAt);
+
+  /// The championship [match] has begun — to each participant.
+  Future<void> championshipStarted(PlayerRecord player, MatchRecord match);
 }
 
 class LogPushService implements PushService {
@@ -76,4 +89,21 @@ class LogPushService implements PushService {
   @override
   Future<void> matchExpiring(PlayerRecord player, MatchRecord match) async =>
       _log('MATCH_EXPIRING', player, match);
+
+  @override
+  Future<void> championshipSignupOpen(int year, DateTime startsAt) async =>
+      // ignore: avoid_print — the server's stdout IS the log.
+      print('[push:CHAMPIONSHIP topic] year=$year starts=$startsAt');
+
+  @override
+  Future<void> championshipUpdateNotice(
+          PlayerRecord player, int year, DateTime startsAt) async =>
+      // ignore: avoid_print — the server's stdout IS the log.
+      print('[push:CHAMPIONSHIP_UPDATE_NOTICE] player=${player.id} '
+          'year=$year build=${player.appVersion ?? 'old'}');
+
+  @override
+  Future<void> championshipStarted(
+          PlayerRecord player, MatchRecord match) async =>
+      _log('CHAMPIONSHIP_STARTED', player, match);
 }

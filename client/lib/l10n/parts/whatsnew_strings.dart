@@ -8,6 +8,13 @@
 const Map<String, String> whatsnewDe = {
   'whatsnew.title': 'Was ist neu?',
   'whatsnew.close': 'Schließen',
+  // --- v0.3.0 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_3_0.0':
+      'Neu: die PCKaiser-Weltmeisterschaft — eine Partie im Jahr für bis zu '
+      '16 Spieler. Anmeldung jetzt offen, Start am 1. November!',
+  'whatsnew.0_3_0.1':
+      'Neu: die Ruhmeshalle mit den Ranglisten aller Weltmeisterschaften '
+      '(Pokal oben links)',
   // --- v0.2.9 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_9.0':
       'Bugfix: Lässt der Gegner den Computer führen, beginnt der Krieg nicht mehr sofort',
@@ -36,6 +43,13 @@ const Map<String, String> whatsnewDe = {
 const Map<String, String> whatsnewEn = {
   'whatsnew.title': "What's new?",
   'whatsnew.close': 'Close',
+  // --- v0.3.0 --- Headlines only: the modal is a glance, not a changelog.
+  'whatsnew.0_3_0.0':
+      'New: the PCKaiser World Championship — one game a year for up to 16 '
+      'players. Sign-up is open, it starts on 1 November!',
+  'whatsnew.0_3_0.1':
+      'New: the hall of fame with the rankings of every championship '
+      '(trophy, top left)',
   // --- v0.2.9 --- Headlines only: the modal is a glance, not a changelog.
   'whatsnew.0_2_9.0':
       'A war no longer starts at once when the opponent lets the computer command',

@@ -7,6 +7,7 @@ import '../l10n/strings.dart' show formatTimestamp, tr;
 import '../services/api_client.dart';
 import '../services/match_setup.dart';
 import '../services/online_service.dart';
+import '../widgets/championship_banner.dart';
 import '../widgets/connection_error.dart';
 import '../widgets/decisions.dart' show formatWarStartTime;
 import '../widgets/room_card.dart';
@@ -412,6 +413,11 @@ class _OnlineScreenState extends State<OnlineScreen> {
               tr('online.signedInAs', {'name': service.displayName}),
               style: theme.textTheme.labelLarge,
             ),
+          ),
+          // The yearly Weltmeisterschaft, while its sign-up is open.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: ChampionshipBanner(onJoined: _reload),
           ),
           const Divider(height: 1),
           if (_matches.isEmpty)

@@ -42,6 +42,15 @@ Future<void> main() async {
     } on Object catch (e) {
       print('[rooms] failed: $e');
     }
+    // Yearly Weltmeisterschaft: open the sign-up (+ announce it once), and
+    // start it on its fixed date (championship.dart).
+    try {
+      if (await service.sweepChampionship()) {
+        print('[championship] started');
+      }
+    } on Object catch (e) {
+      print('[championship] failed: $e');
+    }
   });
 
   Future<void> retention() async {

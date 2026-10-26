@@ -6,6 +6,31 @@ was removed on 2026-06-23 (see that day's entry) — every game now always
 plays the latest rules. The deviations table lives in
 `PROJECT_REQUIREMENTS.md`; entries here only summarize.
 
+## 2026-10-26 — PCKaiser-Weltmeisterschaft (user request, v0.3.0)
+
+A yearly online championship: one server-hosted match for up to 16
+players, starting on a fixed date. User decisions: start 1 November
+(18:00 German time chosen), 24 h turns, no minimum player count, no more
+than 16 players (first come, first served), the banner only while sign-up
+is open, no "starts tomorrow" push, and a stored ranking of ALL players
+with gold/silver/bronze for the top three. Implementation choices: the
+calendar is a fixed rule (sign-up 30 days before) rather than config; the
+match is server-hosted like a matchmaking room but unlisted (banner
+instead); the ranking orders players by how long they stayed in (pure
+elimination has no score), recorded per exit because leaving/kicked seats
+are removed from the match record; the announcement goes to per-language
+FCM topics after an in-app opt-in, so it also reaches players who never
+played online. Hall of fame behind a trophy button on the home screen
+(the About page was the alternative). Details: ARCHITECTURE.md
+"Weltmeisterschaft".
+
+Follow-up the same day (user-approved): old builds never subscribe to the
+topic, and an auto-updated app runs no code until opened — so players on
+< 0.3.0 get a one-off "update the app to sign up" push instead
+(`bin/announce_championship.dart`, run by hand, once per year). To avoid
+double pushes the client now reports its build on launch
+(`players.app_version`) and the one-off skips 0.3.0+.
+
 ## 2026-10-04 — Autopilot side no longer starts the war at once (user report)
 
 Online, the "exactly one live side → start at once" rule fired whenever a

@@ -1446,7 +1446,13 @@ void main() {
         PushKind.yourTurn,
         'invented_by_a_newer_client',
       });
-      expect(saved.pushOptOut, PushKind.optional,
+      expect(
+          saved.pushOptOut,
+          {
+            PushKind.warStarted,
+            PushKind.warStartFixed,
+            PushKind.warStartSoon,
+          },
           reason: 'only optional kinds are storable');
 
       final match = await twoHumanMatch(a, b,
@@ -1482,7 +1488,7 @@ void main() {
       // A re-registration (the client's rename upsert) keeps the choices.
       final renamed =
           await service.registerPlayer(id: a.id, displayName: 'Annabel');
-      expect(renamed.pushOptOut, PushKind.optional);
+      expect(renamed.pushOptOut, saved.pushOptOut);
 
       // Essential pushes are never suppressed: the duel starts and Anna,
       // who opens the war rounds, is told it is her move.
@@ -2489,6 +2495,188 @@ void main() {
     });
   });
 
+  group('weltmeisterschaft', () {
+    late _RecordingPushService push;
+    late DateTime now;
+
+    setUp(() {
+      push = _RecordingPushService();
+      now = DateTime.utc(2026, 10, 26, 12);
+      service = MatchService(store, push, clock: () => now);
+    });
+
+    Future<String> openChampionship() async {
+      await service.sweepChampionship();
+      return (await store.championship(2026))!.matchId!;
+    }
+
+    Future<PlayerRecord> signUp(String matchId, String name, int slot) async {
+      final p = await service.registerPlayer(displayName: name);
+      await service.joinMatch(
+          matchId: matchId, playerId: p.id, setup: setupFor(name, slot));
+      return p;
+    }
+
+    test('nothing happens before the sign-up window', () async {
+      now = DateTime.utc(2026, 9, 30, 12);
+      expect(await service.sweepChampionship(), isFalse);
+      expect(await store.championship(2026), isNull);
+      expect(await service.currentChampionship(), isNull);
+      expect(push.kinds, isEmpty);
+    });
+
+    test('the sign-up opens once, is announced once and stays off the lobby',
+        () async {
+      final id = await openChampionship();
+      await service.sweepChampionship();
+      expect((await store.championship(2026))!.matchId, id,
+          reason: 'a second sweep must not open a second match');
+      expect(push.kinds, ['championshipSignupOpen']);
+
+      final current = (await service.currentChampionship())!;
+      expect(current['year'], 2026);
+      expect(current['match_id'], id);
+      expect(current['starts_at'], '2026-11-01T17:00:00.000Z');
+      expect(current['seats'], 16);
+      expect(current['joined'], 0);
+      expect(await service.publicMatches(), isEmpty,
+          reason: 'shown as a banner, not as a lobby entry');
+
+      final anna = await signUp(id, 'Anna', 1);
+      final mine = (await service.currentChampionship(playerId: anna.id))!;
+      expect(mine['joined'], 1);
+      expect(mine['joined_by_me'], isTrue);
+      final list = await service.matchesForPlayer(anna.id);
+      expect(list.single['template'], 'championship');
+      expect(list.single['seats'], 16);
+      expect(list.single['is_creator'], isFalse);
+    });
+
+    test('server-hosted: no manual start, leaving only frees the seat',
+        () async {
+      final id = await openChampionship();
+      final anna = await signUp(id, 'Anna', 1);
+      await signUp(id, 'Berta', 2);
+      expect((await service.view(id, anna.id))['creator_id'], isNull);
+      await expectLater(
+        service.startMatch(matchId: id, playerId: anna.id),
+        throwsA(isA<ApiException>()),
+      );
+      expect(await service.leaveMatch(matchId: id, playerId: anna.id),
+          isFalse);
+      expect((await store.match(id))!.players, hasLength(1));
+    });
+
+    test('starts on its fixed date with everybody signed up', () async {
+      final id = await openChampionship();
+      final anna = await signUp(id, 'Anna', 1);
+      final berta = await signUp(id, 'Berta', 2);
+
+      now = DateTime.utc(2026, 11, 1, 16, 59);
+      expect(await service.sweepChampionship(), isFalse);
+      expect((await store.match(id))!.status, MatchStatus.waiting);
+
+      now = DateTime.utc(2026, 11, 1, 17);
+      // Closed at the start instant, even before the sweep ran.
+      await expectLater(signUp(id, 'Clara', 3), throwsA(isA<ApiException>()));
+      expect(await service.sweepChampionship(), isTrue);
+      final match = (await store.match(id))!;
+      expect(match.status, MatchStatus.active);
+      expect(match.players, hasLength(2));
+      expect(push.recipientsOf('championshipStarted'),
+          unorderedEquals([anna.id, berta.id]));
+      expect(await service.currentChampionship(), isNull,
+          reason: 'the banner is for the sign-up only');
+      expect(await service.sweepChampionship(), isFalse);
+    });
+
+    test('a start without sign-ups drops the empty match', () async {
+      final id = await openChampionship();
+      now = DateTime.utc(2026, 11, 1, 17, 1);
+      expect(await service.sweepChampionship(), isFalse);
+      expect(await store.match(id), isNull);
+      expect((await store.championship(2026))!.matchId, isNull);
+      expect(await service.sweepChampionship(), isFalse);
+      expect(push.kinds, ['championshipSignupOpen']);
+    });
+
+    test('the old-build notice skips new builds, so nobody is told twice',
+        () async {
+      expect(await service.announceChampionshipToOldBuilds(), isNull,
+          reason: 'no sign-up open yet');
+      await openChampionship();
+
+      Future<PlayerRecord> player(String name,
+          {String? token = 'tok', String? version}) async {
+        final p = await service.registerPlayer(
+            displayName: name, fcmToken: token);
+        if (version != null) {
+          await service.updatePlayer(p.id, appVersion: version);
+        }
+        return p;
+      }
+
+      final legacy = await player('Legacy'); // never reported a build
+      final old = await player('Old', version: '0.2.9');
+      await player('New', version: '0.3.0'); // topic push instead
+      await player('Newer', version: '0.10.1');
+      await player('NoToken', token: null);
+      final muted = await player('Muted', version: '0.2.9');
+      await service.updatePlayer(muted.id,
+          pushOptOut: {PushKind.championship});
+
+      expect(await service.announceChampionshipToOldBuilds(), 2);
+      expect(push.recipientsOf('championshipUpdateNotice'),
+          unorderedEquals([legacy.id, old.id]));
+      expect(await service.announceChampionshipToOldBuilds(), isNull,
+          reason: 'sent at most once per year');
+      expect(push.recipientsOf('championshipUpdateNotice'), hasLength(2));
+    });
+
+    test('a rename keeps the reported build', () async {
+      final p = await service.registerPlayer(displayName: 'Anna');
+      await service.updatePlayer(p.id, appVersion: '0.3.0');
+      final renamed =
+          await service.registerPlayer(id: p.id, displayName: 'Annabel');
+      expect(renamed.appVersion, '0.3.0');
+    });
+
+    test('the retention sweep never reaps the waiting championship',
+        () async {
+      final id = await openChampionship();
+      now = now.add(const Duration(days: 8));
+      await service.sweepStale();
+      expect(await store.match(id), isNotNull);
+    });
+
+    test('the final ranking orders players by how long they stayed in',
+        () async {
+      final id = await openChampionship();
+      final anna = await signUp(id, 'Anna', 1);
+      final berta = await signUp(id, 'Berta', 2);
+      final clara = await signUp(id, 'Clara', 3);
+      now = DateTime.utc(2026, 11, 1, 17);
+      await service.sweepChampionship();
+
+      // Berta gives up first, then Clara; Anna is the last human left.
+      await service.leaveMatch(matchId: id, playerId: berta.id);
+      await service.leaveMatch(matchId: id, playerId: clara.id);
+      expect((await store.championship(2026))!.ranking, isNull,
+          reason: 'still running');
+      await service.leaveMatch(matchId: id, playerId: anna.id);
+
+      final results = await service.championshipResults();
+      expect(results.single['year'], 2026);
+      final ranking = (results.single['ranking'] as List).cast<Map>();
+      expect([for (final r in ranking) r['player_id']],
+          [anna.id, clara.id, berta.id]);
+      expect([for (final r in ranking) r['rank']], [1, 2, 3]);
+      expect(ranking.first['name'], 'Anna');
+      expect(ranking.first['slot'], 1);
+      expect([for (final r in ranking) r['reason']], everyElement('left'));
+    });
+  });
+
   group('retention (sweepStale)', () {
     late _RecordingPushService push;
     late DateTime now;
@@ -2662,4 +2850,18 @@ class _RecordingPushService implements PushService {
   @override
   Future<void> matchExpiring(PlayerRecord player, MatchRecord match) async =>
       _add('matchExpiring', player);
+
+  @override
+  Future<void> championshipSignupOpen(int year, DateTime startsAt) async =>
+      sent.add((kind: 'championshipSignupOpen', playerId: 'topic'));
+
+  @override
+  Future<void> championshipUpdateNotice(
+          PlayerRecord player, int year, DateTime startsAt) async =>
+      _add('championshipUpdateNotice', player);
+
+  @override
+  Future<void> championshipStarted(
+          PlayerRecord player, MatchRecord match) async =>
+      _add('championshipStarted', player);
 }

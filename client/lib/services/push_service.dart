@@ -47,6 +47,21 @@ class PushService {
     }
   }
 
+  /// FCM topic membership — the yearly championship announcement is a
+  /// topic broadcast (`championship_topic.dart`). Failures are swallowed
+  /// like everything push-related; the next launch converges again.
+  Future<void> setTopic(String topic, {required bool subscribed}) async {
+    try {
+      if (subscribed) {
+        await FirebaseMessaging.instance.subscribeToTopic(topic);
+      } else {
+        await FirebaseMessaging.instance.unsubscribeFromTopic(topic);
+      }
+    } on Object catch (e) {
+      debugPrint('[push] topic $topic: $e');
+    }
+  }
+
   Future<String?> token() async {
     try {
       return await FirebaseMessaging.instance.getToken();

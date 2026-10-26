@@ -84,6 +84,19 @@ class SettingsService {
     await _persist();
   }
 
+  /// Whether the one-time "notify me about the Weltmeisterschaft?" question
+  /// was answered (either way) — the topic is only ever subscribed after an
+  /// explicit yes (store guidelines: promotional pushes need opt-in).
+  bool get championshipPromptAnswered =>
+      _data['championshipPromptAnswered'] == true;
+
+  /// Stores the answer: [enabled] becomes the championship notification
+  /// switch, and the question is never asked again.
+  Future<void> answerChampionshipPrompt({required bool enabled}) async {
+    _data['championshipPromptAnswered'] = true;
+    await setPushEnabled(pushChampionship, enabled);
+  }
+
   /// `[DESIGNED 2026-08-24, user request]` The OPTIONAL online
   /// notifications the player switched off — [optionalPushKinds] values.
   /// Stored as an opt-OUT list (all notifications are on by default, and a

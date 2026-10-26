@@ -23,12 +23,20 @@ const String pushWarStartFixed = 'war_start_fixed';
 /// "Your war starts shortly" — ~15 minutes before an AGREED duel start.
 const String pushWarStartSoon = 'war_start_soon';
 
+/// "The Weltmeisterschaft sign-up is open" — once a year, to an FCM TOPIC
+/// rather than to the player record (it must reach players who never
+/// played online). Switching it off unsubscribes the device
+/// (`championship_topic.dart`); it is also uploaded like the others.
+const String pushChampionship = 'championship';
+
 /// Every switchable kind, in the order the options screen lists them
-/// (chronological along a war: declaration → appointment → reminder).
+/// (chronological along a war: declaration → appointment → reminder; the
+/// yearly championship announcement last).
 const List<String> optionalPushKinds = [
   pushWarStarted,
   pushWarStartFixed,
   pushWarStartSoon,
+  pushChampionship,
 ];
 
 /// The `notify.*` string-table keys for [kind]'s label and explanation.

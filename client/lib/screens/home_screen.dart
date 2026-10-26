@@ -6,14 +6,17 @@ import '../app_version.dart';
 import '../l10n/strings.dart';
 import '../release_notes.dart';
 import '../services/api_client.dart';
+import '../services/championship_topic.dart';
 import '../services/online_service.dart';
 import '../services/push_service.dart';
 import '../services/save_service.dart';
 import '../services/settings_service.dart';
+import '../widgets/championship_banner.dart';
 import '../widgets/connection_error.dart';
 import '../widgets/decisions.dart' show formatWarStartTime;
 import '../widgets/whats_new_dialog.dart';
 import 'about_screen.dart';
+import 'championship_screen.dart';
 import 'game_screen.dart';
 import 'online_match_screen.dart';
 import 'online_screen.dart';
@@ -45,6 +48,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // True while the first online-match fetch is in flight, so the home
   // screen can show a loading hint instead of silently nothing.
   bool _onlineLoading = false;
+
+  /// Reloaded with the rest of the screen (sign-up counts, "you're in").
+  final _championshipBanner = GlobalKey<ChampionshipBannerState>();
+  bool _championshipChecked = false;
 
   @override
   void initState() {
@@ -96,6 +103,15 @@ class _HomeScreenState extends State<HomeScreen> {
     // (see [_maybeShowWhatsNew]), so it runs here and not in initState.
     await _maybeShowWhatsNew(hasSaves: slots.isNotEmpty);
     if (!mounted) return;
+    // Once per launch: the one-time championship notification question,
+    // then converge the device's announcement-topic subscription.
+    if (!_championshipChecked) {
+      _championshipChecked = true;
+      await maybeAskChampionshipConsent(context);
+      unawaited(syncChampionshipTopic());
+      if (!mounted) return;
+    }
+    unawaited(_championshipBanner.currentState?.reload());
     await _refreshOnline();
   }
 
@@ -246,7 +262,13 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
             const SizedBox(height: 24),
             _header(theme),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
+            // The yearly Weltmeisterschaft — only while its sign-up is open.
+            ChampionshipBanner(
+              key: _championshipBanner,
+              onJoined: _reloadOnlineMatches,
+            ),
+            const SizedBox(height: 8),
             // The two ways to PLAY first (local, online), learning last —
             // the empty state below points newcomers at the tutorial.
             FilledButton.icon(
@@ -328,6 +350,20 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
               ],
+            ),
+            // Trophy in the top-left corner: the championship hall of fame.
+            Positioned(
+              top: 0,
+              left: 4,
+              child: IconButton(
+                icon: const Icon(Icons.emoji_events_outlined),
+                tooltip: tr('championship.hallOfFame'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ChampionshipScreen(),
+                  ),
+                ),
+              ),
             ),
             // Gear in the top-right corner: the Options sub-menu
             // (language, …) without taking a slot in the button column.

@@ -8,11 +8,15 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'championship.dart';
 import 'models.dart';
 
 abstract class GameStore {
   Future<PlayerRecord?> player(String id);
   Future<void> savePlayer(PlayerRecord player);
+
+  /// Every registered player — only for rare broadcast jobs.
+  Future<List<PlayerRecord>> allPlayers();
 
   Future<MatchRecord?> match(String id);
   Future<void> saveMatch(MatchRecord match);
@@ -27,12 +31,20 @@ abstract class GameStore {
 
   /// Public matches still waiting for players — the lobby's open-games list.
   Future<List<MatchRecord>> publicWaitingMatches();
+
+  /// The Weltmeisterschaft of [year] (championship.dart), or null.
+  Future<ChampionshipRecord?> championship(int year);
+  Future<void> saveChampionship(ChampionshipRecord record);
+
+  /// Every championship ever held — the hall of fame's input. Never pruned.
+  Future<List<ChampionshipRecord>> allChampionships();
 }
 
 /// Volatile store for tests and local development.
 class InMemoryStore implements GameStore {
   final Map<String, PlayerRecord> _players = {};
   final Map<String, MatchRecord> _matches = {};
+  final Map<int, ChampionshipRecord> _championships = {};
 
   @override
   Future<PlayerRecord?> player(String id) async => _players[id];
@@ -40,6 +52,9 @@ class InMemoryStore implements GameStore {
   @override
   Future<void> savePlayer(PlayerRecord player) async =>
       _players[player.id] = player;
+
+  @override
+  Future<List<PlayerRecord>> allPlayers() async => _players.values.toList();
 
   @override
   Future<MatchRecord?> match(String id) async => _matches[id];
@@ -73,6 +88,18 @@ class InMemoryStore implements GameStore {
 
   @override
   Future<List<MatchRecord>> allMatches() async => _matches.values.toList();
+
+  @override
+  Future<ChampionshipRecord?> championship(int year) async =>
+      _championships[year];
+
+  @override
+  Future<void> saveChampionship(ChampionshipRecord record) async =>
+      _championships[record.year] = record;
+
+  @override
+  Future<List<ChampionshipRecord>> allChampionships() async =>
+      _championships.values.toList();
 }
 
 /// Durable single-node store: one JSON file per match plus a players
@@ -85,6 +112,7 @@ class FileStore implements GameStore {
   final String directory;
 
   File get _playersFile => File('$directory/players.json');
+  File get _championshipsFile => File('$directory/championships.json');
   File _matchFile(String id) => File('$directory/matches/$id.json');
 
   Map<String, dynamic> _readJson(File file) => file.existsSync()
@@ -104,6 +132,12 @@ class FileStore implements GameStore {
     if (json == null) return null;
     return PlayerRecord.fromJson((json as Map).cast<String, dynamic>());
   }
+
+  @override
+  Future<List<PlayerRecord>> allPlayers() async => [
+        for (final json in _readJson(_playersFile).values)
+          PlayerRecord.fromJson((json as Map).cast<String, dynamic>()),
+      ];
 
   @override
   Future<void> savePlayer(PlayerRecord player) async {
@@ -169,5 +203,25 @@ class FileStore implements GameStore {
   Future<List<MatchRecord>> publicWaitingMatches() async => [
         for (final m in await allMatches())
           if (m.status == MatchStatus.waiting && m.settings.isPublic) m,
+      ];
+
+  @override
+  Future<ChampionshipRecord?> championship(int year) async {
+    final json = _readJson(_championshipsFile)['$year'];
+    if (json == null) return null;
+    return ChampionshipRecord.fromJson((json as Map).cast<String, dynamic>());
+  }
+
+  @override
+  Future<void> saveChampionship(ChampionshipRecord record) async {
+    final all = _readJson(_championshipsFile);
+    all['${record.year}'] = record.toJson();
+    await _writeAtomic(_championshipsFile, all);
+  }
+
+  @override
+  Future<List<ChampionshipRecord>> allChampionships() async => [
+        for (final json in _readJson(_championshipsFile).values)
+          ChampionshipRecord.fromJson((json as Map).cast<String, dynamic>()),
       ];
 }

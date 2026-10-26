@@ -89,12 +89,14 @@ class ApiClient {
     String? displayName,
     String? fcmToken,
     Set<String>? pushOptOut,
+    String? appVersion,
   }) => _request(
     'PATCH',
     '/api/v1/players/$id',
     body: {
       'display_name': ?displayName,
       'fcm_token': ?fcmToken,
+      'app_version': ?appVersion,
       if (pushOptOut != null) 'push_opt_out': pushOptOut.toList()..sort(),
     },
   );
@@ -172,6 +174,28 @@ class ApiClient {
         'GET',
         '/api/v1/matches/$matchId?player_id=$playerId&app_version=$appVersion',
       );
+
+  /// The yearly Weltmeisterschaft while its sign-up is open, else null.
+  /// [playerId] is optional (the banner shows without an online profile);
+  /// with it the answer carries `joined_by_me`.
+  Future<Map<String, dynamic>?> championship({String? playerId}) async =>
+      ((await _request(
+                'GET',
+                '/api/v1/championship'
+                    '${playerId == null ? '' : '?player_id=$playerId'}',
+              ))['championship']
+              as Map?)
+          ?.cast<String, dynamic>();
+
+  /// Hall of fame: every finished championship with its full ranking,
+  /// newest first.
+  Future<List<dynamic>> championshipResults() async =>
+      (await _request(
+            'GET',
+            '/api/v1/championship/results',
+            expectList: true,
+          ))['list']
+          as List<dynamic>;
 
   Future<List<dynamic>> myMatches(String playerId) async =>
       (await _request(

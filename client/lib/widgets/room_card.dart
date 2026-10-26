@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../l10n/strings.dart' show tr;
+import '../l10n/strings.dart' show formatTimestamp, tr;
 
 /// The server-hosted matchmaking rooms ("offizielle Partien"): permanently
 /// open matches anyone can drop into without a room code. The server sends
@@ -16,6 +16,8 @@ String? roomTitle(String? template) => switch (template) {
   'blitz' => tr('online.roomBlitz'),
   'standard' => tr('online.roomStandard'),
   'kaiserreich' => tr('online.roomKaiserreich'),
+  // The yearly Weltmeisterschaft (server-hosted, fixed start date).
+  'championship' => tr('championship.title'),
   _ => null,
 };
 
@@ -23,6 +25,7 @@ IconData roomIcon(String? template) => switch (template) {
   'blitz' => Icons.bolt,
   'standard' => Icons.shield_outlined,
   'kaiserreich' => Icons.castle_outlined,
+  'championship' => Icons.emoji_events,
   _ => Icons.public,
 };
 
@@ -74,6 +77,13 @@ String roomStartLine({
   required int seats,
   required String? autoStartAt,
 }) {
+  // Days away (the championship's fixed date): a date reads better than
+  // "143 h 20 min".
+  final target = autoStartAt == null ? null : DateTime.tryParse(autoStartAt);
+  if (target != null &&
+      target.difference(DateTime.now().toUtc()) > const Duration(hours: 48)) {
+    return tr('online.startsAt', {'time': formatTimestamp(autoStartAt!)});
+  }
   final countdown = formatCountdown(autoStartAt);
   if (countdown != null) return tr('online.startsIn', {'time': countdown});
   if (autoStartAt != null) return tr('online.startsMomentarily');

@@ -274,6 +274,25 @@ Xcode/Transporter to TestFlight.
    screenshots still need to be taken on a device.
 5. iOS: `flutter build ipa --release` → TestFlight.
 
+### Weltmeisterschaft (yearly, automatic)
+
+The server opens the sign-up every 2 October and starts the championship
+on 1 November, 18:00 German time, on its own (ARCHITECTURE.md
+"Weltmeisterschaft"). The sign-up announcement goes out once, on the
+server's first minute sweep inside the window, to devices that opted in on
+app 0.3.0+ — so on the release that introduces or changes it, **publish the
+app first, then deploy the server**.
+
+Players still on an app build older than 0.3.0 cannot get that
+announcement. Once per year, after the server opened the sign-up, send
+them a one-off "update the app to sign up" push (players on 0.3.0+ are
+skipped, so nobody is notified twice; a second run sends nothing):
+
+```bash
+docker compose -f backend/deploy/docker-compose.yml exec server /announce_championship
+# or locally: cd backend && STORE_DIR=… FIREBASE_SERVICE_ACCOUNT=… dart run bin/announce_championship.dart
+```
+
 App icons are generated from the original castle tile; regenerate after
 changing `client/assets/icon/*` with:
 

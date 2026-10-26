@@ -57,6 +57,10 @@ void main() {
     // init() resolves the locale from the (device) default — pin it after.
     await SettingsService.init();
     appLocale.value = 'de';
+    // Tall enough that the lazy list builds every switch.
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(const MaterialApp(home: OptionsScreen()));
     await tester.pumpAndSettle();
 

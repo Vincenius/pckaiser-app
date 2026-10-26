@@ -5,6 +5,8 @@ library;
 
 import 'dart:math';
 
+import 'championship.dart';
+
 /// The notification kinds the server sends (the `kind` in every FCM data
 /// payload, and the wire keys of the client's notification settings —
 /// `[DESIGNED 2026-08-24, user request]`). Kinds listed in [optional] can
@@ -23,14 +25,26 @@ abstract final class PushKind {
   static const String warStartSoon = 'war_start_soon';
   static const String matchExpiring = 'match_expiring';
 
-  /// Switchable in the client's options. All three are war-scheduling
-  /// courtesy pushes: the declaration, the fixed appointment and the
-  /// quarter-hour reminder. None of them is the only way to learn about
-  /// the war — the preparation window itself arrives as a decision.
+  /// "The Weltmeisterschaft sign-up is open" (championship.dart) — sent to
+  /// the FCM TOPIC every opted-in device subscribes to, not per player, so
+  /// it reaches players who never played online. The client switches it
+  /// off by unsubscribing; listed in [optional] so the opt-out still
+  /// round-trips through the player record like the other switches.
+  static const String championship = 'championship';
+
+  /// "The Weltmeisterschaft has begun" — to every participant at the start.
+  static const String championshipStarted = 'championship_started';
+
+  /// Switchable in the client's options: the war-scheduling courtesy
+  /// pushes (the declaration, the fixed appointment and the quarter-hour
+  /// reminder — none of them is the only way to learn about the war, the
+  /// preparation window itself arrives as a decision) and the yearly
+  /// championship announcement.
   static const Set<String> optional = {
     warStarted,
     warStartFixed,
     warStartSoon,
+    championship,
   };
 }
 
@@ -65,6 +79,7 @@ class PlayerRecord {
     required this.displayName,
     this.fcmToken,
     Set<String>? pushOptOut,
+    this.appVersion,
     DateTime? createdAt,
   })  : pushOptOut = pushOptOut ?? <String>{},
         createdAt = createdAt ?? DateTime.now().toUtc();
@@ -79,6 +94,8 @@ class PlayerRecord {
           for (final k in (json['push_opt_out'] as List? ?? const []))
             if (k is String) k,
         },
+        // Additive field (2026-10-26): builds before 0.3.0 never report it.
+        appVersion: json['app_version'] as String?,
         createdAt: DateTime.parse(json['created_at'] as String),
       );
 
@@ -94,6 +111,12 @@ class PlayerRecord {
   /// always learn that it is their move.
   final Set<String> pushOptOut;
 
+  /// The app build this player last launched with (reported since 0.3.0,
+  /// with the push token). Null = an older build. Lets a one-off notice
+  /// reach exactly the players an app-side feature cannot (see
+  /// `MatchService.announceChampionshipToOldBuilds`).
+  String? appVersion;
+
   final DateTime createdAt;
 
   /// Whether [kind] may be sent to this player — the ONE gate every
@@ -106,6 +129,7 @@ class PlayerRecord {
         'display_name': displayName,
         'fcm_token': fcmToken,
         'push_opt_out': pushOptOut.toList()..sort(),
+        if (appVersion != null) 'app_version': appVersion,
         'created_at': createdAt.toIso8601String(),
       };
 }
@@ -187,6 +211,7 @@ class MatchSettings {
     this.realmCount,
     this.isPublic = false,
     this.template,
+    this.championship,
     int? seed,
   }) : seed = seed ?? Random.secure().nextInt(1 << 31);
 
@@ -229,6 +254,9 @@ class MatchSettings {
         // carry no template. Never accepted off the wire — the API strips
         // it like the seed, so only the server can host a template room.
         template: json['template'] as String?,
+        // Additive (2026-10-26, Weltmeisterschaft): stripped off the wire
+        // like the template — only the server hosts a championship.
+        championship: json['championship'] as int?,
         seed: json['seed'] as int?,
       );
 
@@ -277,6 +305,12 @@ class MatchSettings {
   /// creator, start on their own and are replaced when they do.
   final String? template;
 
+  /// The year of the Weltmeisterschaft this match hosts
+  /// (`championship.dart`), or null. Server-hosted like a template room
+  /// (no creator, never deleted by leaving) but it starts on its fixed date
+  /// only, and its final ranking is recorded.
+  final int? championship;
+
   final int seed;
 
   /// [includeSeed] is for persistence only. Client-facing views must pass
@@ -296,6 +330,7 @@ class MatchSettings {
         if (realmCount != null) 'realm_count': realmCount,
         'is_public': isPublic,
         if (template != null) 'template': template,
+        if (championship != null) 'championship': championship,
         if (includeSeed) 'seed': seed,
       };
 }
@@ -318,9 +353,11 @@ class MatchRecord {
     this.warPrepFallbackDeadline,
     this.expiryWarnedAt,
     this.winnerPlayerId,
+    List<ChampionshipStanding>? championshipExits,
     DateTime? createdAt,
     DateTime? updatedAt,
-  })  : createdAt = createdAt ?? DateTime.now().toUtc(),
+  })  : championshipExits = championshipExits ?? [],
+        createdAt = createdAt ?? DateTime.now().toUtc(),
         updatedAt = updatedAt ?? DateTime.now().toUtc();
 
   factory MatchRecord.fromJson(Map<String, dynamic> json) => MatchRecord(
@@ -355,6 +392,11 @@ class MatchRecord {
             ? null
             : DateTime.parse(json['expiry_warned_at'] as String),
         winnerPlayerId: json['winner'] as String?,
+        // Additive field — only championship matches ever record exits.
+        championshipExits: [
+          for (final s in json['championship_exits'] as List? ?? const [])
+            ChampionshipStanding.fromJson((s as Map).cast<String, dynamic>()),
+        ],
         createdAt: DateTime.parse(json['created_at'] as String),
         updatedAt: DateTime.parse(json['updated_at'] as String),
       );
@@ -397,6 +439,13 @@ class MatchRecord {
   DateTime? expiryWarnedAt;
 
   String? winnerPlayerId;
+
+  /// Championship matches only: every seat that dropped out, in the order
+  /// it happened (eliminated, left or kicked) — the basis of the final
+  /// ranking. Kept here, not derived later: a leaving or kicked seat is
+  /// removed from [players].
+  final List<ChampionshipStanding> championshipExits;
+
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -437,6 +486,10 @@ class MatchRecord {
             warPrepFallbackDeadline?.toIso8601String(),
         'expiry_warned_at': expiryWarnedAt?.toIso8601String(),
         'winner': winnerPlayerId,
+        if (championshipExits.isNotEmpty)
+          'championship_exits': [
+            for (final s in championshipExits) s.toJson(),
+          ],
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
       };

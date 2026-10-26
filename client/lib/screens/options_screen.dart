@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/strings.dart';
+import '../services/championship_topic.dart';
 import '../services/online_service.dart';
 import '../services/push_kinds.dart';
 import '../services/settings_service.dart';
@@ -38,6 +39,9 @@ class _OptionsScreenState extends State<OptionsScreen> {
   Future<void> _setPush(String kind, bool enabled) async {
     await SettingsService.instance?.setPushEnabled(kind, enabled);
     if (mounted) setState(() {});
+    // The championship announcement is a topic broadcast — the switch acts
+    // on the device's subscription (no online profile needed).
+    if (kind == pushChampionship) await syncChampionshipTopic();
     final online = _online;
     if (online == null || !online.isConfigured) return;
     // The server is the one that decides what to send, so a failed upload
@@ -55,6 +59,8 @@ class _OptionsScreenState extends State<OptionsScreen> {
     // The app rebuilds via appLocale; setState refreshes the check marks
     // even when the resolved locale did not change.
     if (mounted) setState(() {});
+    // The announcement topic is per language — follow the switch.
+    await syncChampionshipTopic();
   }
 
   Widget _languageTile(

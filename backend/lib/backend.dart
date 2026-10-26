@@ -4,6 +4,7 @@
 library;
 
 export 'src/api.dart';
+export 'src/championship.dart';
 export 'src/fcm_push_service.dart';
 export 'src/match_service.dart';
 export 'src/match_templates.dart';

@@ -45,6 +45,7 @@ const Map<String, String> onlineDe = {
   'online.warMinutes': '{n} min Krieg',
   'online.seatsOf': '{n}/{max}',
   'online.startsIn': 'Startet in {time}',
+  'online.startsAt': 'Startet am {time}',
   'online.startsMomentarily': 'Startet jeden Moment …',
   'online.startsAtSeats': 'Startet bei {n} Spielern',
   'online.countdownHours': '{h} h',
@@ -149,6 +150,40 @@ const Map<String, String> onlineDe = {
   // Shown above the lobby / match list while the last refresh failed.
   'online.offlineBanner': 'Keine Verbindung zum Server',
   'online.retry': 'Erneut versuchen',
+  // Yearly Weltmeisterschaft (2026-10-26, user request) — sign-up banner
+  // (widgets/championship_banner.dart) and hall of fame
+  // (screens/championship_screen.dart).
+  'championship.title': 'Weltmeisterschaft',
+  'championship.titleYear': 'PCKaiser-Weltmeisterschaft {year}',
+  'championship.pitch':
+      'Einmal im Jahr: eine Partie, bis zu 16 Spieler — wer am längsten '
+      'durchhält, wird Weltmeister.',
+  'championship.startsAt': 'Start: {time}',
+  'championship.signUp': 'Anmelden',
+  'championship.signedUp': 'Du bist dabei',
+  'championship.full': 'Ausgebucht',
+  'championship.seatsLeft': 'Noch {n} Plätze frei',
+  'championship.roomWaiting':
+      'Startet am {time} mit allen Angemeldeten — die übrigen Reiche '
+      'führt der Computer.',
+  'championship.consentTitle': 'PCKaiser-Weltmeisterschaft',
+  'championship.consentBody':
+      'Einmal im Jahr spielen bis zu 16 Spieler online um den Titel. '
+      'Sollen wir dir Bescheid geben, wenn die Anmeldung öffnet? '
+      '(Höchstens einmal im Jahr — abschaltbar unter Optionen.)',
+  'championship.consentYes': 'Ja, Bescheid geben',
+  'championship.consentNo': 'Nein danke',
+  'championship.hallOfFame': 'Ruhmeshalle',
+  'championship.finishedOn': 'Beendet am {time}',
+  'championship.noResults': 'Noch keine Weltmeister',
+  'championship.noResultsHint':
+      'Jedes Jahr am 1. November startet die PCKaiser-Weltmeisterschaft. '
+      'Die Ranglisten aller Spieler erscheinen hier.',
+  'championship.reasonWinner': 'Weltmeister',
+  'championship.reasonSurvived': 'bis zum Ende dabei',
+  'championship.reasonEliminated': 'ausgeschieden {year}',
+  'championship.reasonLeft': 'aufgegeben {year}',
+  'championship.reasonKicked': 'wegen Inaktivität entfernt {year}',
 };
 
 const Map<String, String> onlineEn = {
@@ -194,6 +229,7 @@ const Map<String, String> onlineEn = {
   'online.warMinutes': '{n} min war',
   'online.seatsOf': '{n}/{max}',
   'online.startsIn': 'Starts in {time}',
+  'online.startsAt': 'Starts {time}',
   'online.startsMomentarily': 'Starting any moment …',
   'online.startsAtSeats': 'Starts at {n} players',
   'online.countdownHours': '{h} h',
@@ -290,4 +326,36 @@ const Map<String, String> onlineEn = {
   'online.errServerTitle': 'Message from the server',
   'online.offlineBanner': 'No connection to the server',
   'online.retry': 'Try again',
+  // Yearly championship (2026-10-26, user request).
+  'championship.title': 'World Championship',
+  'championship.titleYear': 'PCKaiser World Championship {year}',
+  'championship.pitch':
+      'Once a year: one game, up to 16 players — whoever lasts longest '
+      'becomes world champion.',
+  'championship.startsAt': 'Starts: {time}',
+  'championship.signUp': 'Sign up',
+  'championship.signedUp': "You're in",
+  'championship.full': 'Full',
+  'championship.seatsLeft': '{n} seats left',
+  'championship.roomWaiting':
+      'Starts on {time} with everyone signed up — the computer plays the '
+      'remaining realms.',
+  'championship.consentTitle': 'PCKaiser World Championship',
+  'championship.consentBody':
+      'Once a year, up to 16 players compete online for the title. '
+      'Shall we let you know when sign-up opens? '
+      '(At most once a year — switch it off any time in Options.)',
+  'championship.consentYes': 'Yes, notify me',
+  'championship.consentNo': 'No thanks',
+  'championship.hallOfFame': 'Hall of fame',
+  'championship.finishedOn': 'Finished {time}',
+  'championship.noResults': 'No champions yet',
+  'championship.noResultsHint':
+      'Every year on 1 November the PCKaiser World Championship begins. '
+      "Every player's final ranking appears here.",
+  'championship.reasonWinner': 'World champion',
+  'championship.reasonSurvived': 'lasted to the end',
+  'championship.reasonEliminated': 'eliminated in {year}',
+  'championship.reasonLeft': 'gave up in {year}',
+  'championship.reasonKicked': 'removed for inactivity in {year}',
 };

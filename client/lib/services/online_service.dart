@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../app_version.dart';
 import 'api_client.dart';
 import 'push_service.dart';
 import 'settings_service.dart';
@@ -118,7 +119,14 @@ class OnlineService {
     final settings = SettingsService.instance;
     if (settings == null || !isConfigured) return false;
     try {
-      await api.updatePlayer(id: playerId!, pushOptOut: settings.pushOptOut);
+      // The build rides along (since 0.3.0): the server skips players on
+      // a build with the championship topic when it sends the one-off
+      // notice to older builds — nobody is notified twice.
+      await api.updatePlayer(
+        id: playerId!,
+        pushOptOut: settings.pushOptOut,
+        appVersion: appVersion,
+      );
       return true;
     } on Object {
       return false;

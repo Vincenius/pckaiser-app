@@ -98,7 +98,7 @@ const Map<String, String> _coreEn = {
   // about to be deleted — is always sent.
   'notifications': 'Notifications',
   'notificationsHint':
-      'Optional messages for online games. Turn-of-play reminders are '
+      'Optional messages. Turn-of-play reminders for online games are '
       'always sent.',
   'notifySyncFailed':
       'Could not reach the server — the change applies on the next launch.',
@@ -109,6 +109,8 @@ const Map<String, String> _coreEn = {
       'Both sides have chosen — the start time is fixed.',
   'notify.war_start_soon.title': 'Reminder before the war',
   'notify.war_start_soon.subtitle': 'About 15 minutes before an agreed start.',
+  'notify.championship.title': 'World Championship',
+  'notify.championship.subtitle': 'Once a year, when sign-up opens.',
   'endTurn': 'End turn',
   'undo': 'Undo',
   'treasury': 'Treasury',
@@ -186,8 +188,8 @@ const Map<String, String> _coreDe = {
   'languageEnglish': 'English',
   'notifications': 'Benachrichtigungen',
   'notificationsHint':
-      'Optionale Meldungen für Online-Partien. Dass du am Zug bist, wird '
-      'immer gemeldet.',
+      'Optionale Meldungen. Dass du in einer Online-Partie am Zug bist, '
+      'wird immer gemeldet.',
   'notifySyncFailed':
       'Server nicht erreichbar — die Änderung greift beim nächsten Start.',
   'notify.war_started.title': 'Kriegserklärung',
@@ -198,6 +200,8 @@ const Map<String, String> _coreDe = {
   'notify.war_start_soon.title': 'Erinnerung vor dem Krieg',
   'notify.war_start_soon.subtitle':
       'Etwa 15 Minuten vor einem vereinbarten Beginn.',
+  'notify.championship.title': 'Weltmeisterschaft',
+  'notify.championship.subtitle': 'Einmal im Jahr, wenn die Anmeldung öffnet.',
   'endTurn': 'Zug beenden',
   'undo': 'Rückgängig',
   'treasury': 'Schatzkammer',

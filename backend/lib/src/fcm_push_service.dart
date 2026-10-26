@@ -41,9 +41,11 @@ class FcmPushService implements PushService {
   final ServiceAccountCredentials _credentials;
   AutoRefreshingAuthClient? _client;
 
+  /// [match] null: a message about no particular match (tapping it just
+  /// opens the app).
   Future<void> _send(
     PlayerRecord player,
-    MatchRecord match,
+    MatchRecord? match,
     String kind,
     String title,
     String body,
@@ -60,7 +62,7 @@ class FcmPushService implements PushService {
           'message': {
             'token': token,
             'notification': {'title': title, 'body': body},
-            'data': {'kind': kind, 'match_id': match.id},
+            'data': {'kind': kind, if (match != null) 'match_id': match.id},
           },
         }),
       );
@@ -70,6 +72,36 @@ class FcmPushService implements PushService {
     } on Object catch (e) {
       // Never fail the turn request over push (ARCHITECTURE.md).
       print('[push] FCM send failed: $e');
+    }
+  }
+
+  /// Broadcast to an FCM topic (no player, no match) — the client
+  /// subscribes to `championship_<de|en>` after opting in.
+  Future<void> _sendTopic(
+    String topic,
+    String kind,
+    String title,
+    String body,
+  ) async {
+    try {
+      _client ??= await clientViaServiceAccount(_credentials, _scopes);
+      final response = await _client!.post(
+        Uri.parse(
+            'https://fcm.googleapis.com/v1/projects/$_projectId/messages:send'),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode({
+          'message': {
+            'topic': topic,
+            'notification': {'title': title, 'body': body},
+            'data': {'kind': kind},
+          },
+        }),
+      );
+      if (response.statusCode != 200) {
+        print('[push] FCM topic ${response.statusCode}: ${response.body}');
+      }
+    } on Object catch (e) {
+      print('[push] FCM topic send failed: $e');
     }
   }
 
@@ -153,5 +185,53 @@ class FcmPushService implements PushService {
         'PCKaiser',
         'Eure Partie ruht seit langem und wird bald gelöscht — '
             'spielt einen Zug, um sie zu behalten.',
+      );
+
+  /// One message per language topic — a topic broadcast cannot be
+  /// localized per device, so each UI language has its own topic.
+  @override
+  Future<void> championshipSignupOpen(int year, DateTime startsAt) async {
+    // The start is always 1 Nov, 18:00 German time (championship.dart).
+    final de = startsAt.add(const Duration(hours: 1));
+    await _sendTopic(
+      'championship_de',
+      PushKind.championship,
+      'PCKaiser-Weltmeisterschaft $year',
+      'Die Anmeldung ist offen ! Start am ${de.day}.${de.month}.${de.year} '
+          'um ${de.hour}:00 Uhr — 16 Plätze.',
+    );
+    await _sendTopic(
+      'championship_en',
+      PushKind.championship,
+      'PCKaiser World Championship $year',
+      'Sign-up is open! Starts ${de.year}-${de.month}-${de.day} at '
+          '${de.hour}:00 CET — 16 seats.',
+    );
+  }
+
+  /// The player's UI language is unknown to the server (old builds never
+  /// report it), so the notice is bilingual.
+  @override
+  Future<void> championshipUpdateNotice(
+      PlayerRecord player, int year, DateTime startsAt) {
+    final de = startsAt.add(const Duration(hours: 1));
+    return _send(
+      player,
+      null,
+      PushKind.championship,
+      'PCKaiser-Weltmeisterschaft $year',
+      'Anmeldung offen bis ${de.day}.${de.month}. — App aktualisieren und '
+          'mitspielen ! / Sign-up is open — update the app to join!',
+    );
+  }
+
+  @override
+  Future<void> championshipStarted(PlayerRecord player, MatchRecord match) =>
+      _send(
+        player,
+        match,
+        PushKind.championshipStarted,
+        'PCKaiser-Weltmeisterschaft',
+        'Die Weltmeisterschaft hat begonnen — viel Erfolg !',
       );
 }

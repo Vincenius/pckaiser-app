@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:game_core/game_core.dart';
 
+import 'championship.dart';
 import 'match_templates.dart';
 import 'models.dart';
 import 'push_service.dart';
@@ -49,6 +50,23 @@ int seatCapFor(MatchSettings settings) {
   final template = templateFor(settings);
   return template != null && template.seats < cap ? template.seats : cap;
 }
+
+/// Matches the SERVER hosts — the matchmaking rooms and the yearly
+/// championship: no creator while waiting, never started by hand, and
+/// leaving only frees the seat.
+bool isServerHosted(MatchSettings settings) =>
+    templateFor(settings) != null || settings.championship != null;
+
+/// The room key the client renders a server-hosted match by (localized
+/// title + icon, see the client's `room_card.dart`), or null.
+String? roomKeyFor(MatchSettings settings) =>
+    templateFor(settings)?.key ??
+    (settings.championship != null ? 'championship' : null);
+
+/// Seats a server-hosted match is shown against ("9/16"), or null.
+int? roomSeatsFor(MatchSettings settings) =>
+    templateFor(settings)?.seats ??
+    (settings.championship != null ? championshipSeats : null);
 
 class MatchService {
   MatchService(this._store, this._push, {DateTime Function()? clock})
@@ -112,6 +130,7 @@ class MatchService {
         // Carried over for the same reason as the token: a rename must not
         // silently switch every notification the player turned off back on.
         pushOptOut: existing?.pushOptOut,
+        appVersion: existing?.appVersion,
         createdAt: existing?.createdAt,
       );
       await _store.savePlayer(player);
@@ -128,9 +147,13 @@ class MatchService {
     String? displayName,
     String? fcmToken,
     Set<String>? pushOptOut,
+    String? appVersion,
   }) {
     return _locked(_playersKey, () async {
       final player = await _requirePlayer(id);
+      if (appVersion != null && appVersion.isNotEmpty) {
+        player.appVersion = appVersion;
+      }
       if (displayName != null && displayName.trim().isNotEmpty) {
         player.displayName = displayName.trim();
       }
@@ -249,6 +272,277 @@ class MatchService {
     return started;
   }
 
+  // --- Weltmeisterschaft (championship.dart) -----------------------------
+
+  /// Lock key for the championships document — never held while waiting
+  /// on a match lock (the reverse nesting, match → championships, happens
+  /// when a finished championship match records its ranking).
+  static const String _championshipKey = 'championships';
+
+  /// The minute sweep's championship duty: once the year's sign-up window
+  /// opens it creates the championship match (not listed in the public
+  /// lobby — the client shows it as a banner) and broadcasts the sign-up
+  /// announcement ONCE; at the fixed start it starts the match with
+  /// everybody who signed up, the rest of the world AI. A start without a
+  /// single sign-up deletes the empty match instead. Returns true when the
+  /// championship started during this call.
+  Future<bool> sweepChampionship() async {
+    final now = _clock();
+    final year = now.year;
+    final startsAt = championshipStart(year);
+    if (now.isBefore(startsAt.subtract(championshipSignupWindow))) {
+      return false;
+    }
+    var announce = false;
+    final record = await _locked(_championshipKey, () async {
+      final stored = await _store.championship(year);
+      var changed = stored == null;
+      final record = stored ?? ChampionshipRecord(year: year);
+      final signupOpen = now.isBefore(startsAt);
+      if (signupOpen && record.matchId == null && record.finishedAt == null) {
+        final match = MatchRecord(
+          id: await _freshMatchId(),
+          settings: championshipSettings(year),
+          players: [],
+          autoStartAt: startsAt,
+        );
+        await _store.saveMatch(match);
+        record.matchId = match.id;
+        changed = true;
+      }
+      if (signupOpen && record.matchId != null && record.announcedAt == null) {
+        record.announcedAt = now;
+        announce = changed = true;
+      }
+      if (changed) await _store.saveChampionship(record);
+      return record;
+    });
+    if (announce) await _push.championshipSignupOpen(year, startsAt);
+
+    final matchId = record.matchId;
+    if (now.isBefore(startsAt) || matchId == null) return false;
+    final started = await _locked(matchId, () async {
+      final match = await _store.match(matchId);
+      if (match == null || match.status != MatchStatus.waiting) return null;
+      if (match.players.isEmpty) {
+        await _store.deleteMatch(matchId);
+        return null;
+      }
+      await _start(match);
+      match.updatedAt = _clock();
+      await _store.saveMatch(match);
+      return match;
+    });
+    if (started == null) {
+      // Nobody signed up — forget the deleted match so the record does not
+      // point at nothing.
+      if (await _store.match(matchId) == null) {
+        await _locked(_championshipKey, () async {
+          final current = await _store.championship(year);
+          if (current == null || current.matchId != matchId) return;
+          current.matchId = null;
+          await _store.saveChampionship(current);
+        });
+      }
+      return false;
+    }
+    for (final seat in started.players) {
+      final player =
+          await _pushTarget(seat.playerId, PushKind.championshipStarted);
+      if (player != null) await _push.championshipStarted(player, started);
+    }
+    return true;
+  }
+
+  /// One-off (`bin/announce_championship.dart`, run by hand after the app
+  /// update is live): the sign-up announcement for players the topic cannot
+  /// reach — every player with a push token whose last reported build
+  /// predates [championshipTopicSince] (or never reported one). Players on
+  /// a newer build are skipped: they got the topic push if they opted in,
+  /// and said no otherwise — so nobody is notified twice. A muted
+  /// championship kind is respected. Sent at most once per year; returns
+  /// the number of players notified, or null when nothing was sent (no
+  /// sign-up open, or already sent).
+  Future<int?> announceChampionshipToOldBuilds() async {
+    final now = _clock();
+    final year = now.year;
+    final startsAt = championshipStart(year);
+    final claimed = await _locked(_championshipKey, () async {
+      final record = await _store.championship(year);
+      if (record?.matchId == null || !now.isBefore(startsAt)) return false;
+      if (record!.oldBuildNoticeAt != null) return false;
+      record.oldBuildNoticeAt = now;
+      await _store.saveChampionship(record);
+      return true;
+    });
+    if (!claimed) return null;
+    var sent = 0;
+    for (final player in await _store.allPlayers()) {
+      final token = player.fcmToken;
+      if (token == null || token.isEmpty) continue;
+      if (!player.wantsPush(PushKind.championship)) continue;
+      if (!isOlderBuild(player.appVersion, championshipTopicSince)) continue;
+      await _push.championshipUpdateNotice(player, year, startsAt);
+      sent++;
+    }
+    return sent;
+  }
+
+  /// The championship currently open for sign-up — the client's banner —
+  /// or null outside the sign-up window (also once it started: the banner
+  /// is for signing up only).
+  Future<Map<String, dynamic>?> currentChampionship({String? playerId}) async {
+    final now = _clock();
+    final startsAt = championshipStart(now.year);
+    if (!now.isBefore(startsAt)) return null;
+    final matchId = (await _store.championship(now.year))?.matchId;
+    if (matchId == null) return null;
+    final match = await _store.match(matchId);
+    if (match == null || match.status != MatchStatus.waiting) return null;
+    return {
+      'year': now.year,
+      'match_id': match.id,
+      'starts_at': startsAt.toIso8601String(),
+      'joined': match.players.length,
+      'seats': championshipSeats,
+      'joined_by_me': playerId != null && match.playerById(playerId) != null,
+      'settings': _clientSettings(match.settings),
+    };
+  }
+
+  /// Every finished championship with its full ranking, newest first — the
+  /// client's hall of fame.
+  Future<List<Map<String, dynamic>>> championshipResults() async {
+    final finished = [
+      for (final r in await _store.allChampionships())
+        if (r.ranking != null) r,
+    ]..sort((a, b) => b.year.compareTo(a.year));
+    return [
+      for (final r in finished)
+        {
+          'year': r.year,
+          'finished_at': r.finishedAt?.toIso8601String(),
+          'ranking': [for (final s in r.ranking!) s.toClientJson()],
+        },
+    ];
+  }
+
+  bool _hasExited(MatchRecord match, String playerId) =>
+      match.championshipExits.any((s) => s.playerId == playerId);
+
+  /// Exits recorded in one go share a step; a later step ranks better.
+  int _nextExitStep(MatchRecord match) =>
+      match.championshipExits.fold(0, (m, s) => s.step > m ? s.step : m) + 1;
+
+  /// Map tiles held by the realms the seat [turnOrder] plays in [state].
+  int _tilesOf(GameState state, int turnOrder) {
+    final slots = _controlledSlots(state, turnOrder, 0).toSet();
+    var tiles = 0;
+    for (final owner in state.map.owner) {
+      if (slots.contains(owner)) tiles++;
+    }
+    return tiles;
+  }
+
+  Future<void> _addExit(
+    MatchRecord match,
+    MatchPlayer seat,
+    GameState before, {
+    required String reason,
+    required int step,
+  }) async {
+    match.championshipExits.add(ChampionshipStanding(
+      playerId: seat.playerId,
+      name: (await _store.player(seat.playerId))?.displayName ??
+          seat.founderName,
+      slot: seat.slot,
+      reason: reason,
+      year: before.year,
+      step: step,
+      tiles: _tilesOf(before, seat.turnOrder),
+    ));
+  }
+
+  /// Records every seat that ruled a realm in [before] and none in [after]
+  /// as eliminated (one shared step — they fell in the same commit).
+  Future<void> _noteChampionshipEliminations(
+      MatchRecord match, GameState before, GameState after) async {
+    final step = _nextExitStep(match);
+    for (final seat in match.players) {
+      if (_hasExited(match, seat.playerId)) continue;
+      if (_controlledSlots(before, seat.turnOrder, seat.slot).isEmpty) continue;
+      if (_controlledSlots(after, seat.turnOrder, seat.slot).isNotEmpty) {
+        continue;
+      }
+      await _addExit(match, seat, before,
+          reason: StandingReason.eliminated, step: step);
+    }
+  }
+
+  /// The championship match ended: ranks every participant — the winner,
+  /// then anybody still ruling land, then the exits from the last to drop
+  /// out to the first — and stores the ranking for good (the match itself
+  /// is deleted by the retention sweep a month later).
+  Future<void> _finishChampionship(MatchRecord match, GameState state) async {
+    final last = state.events.last;
+    final winnerOrder =
+        last.type == 'gameWon' ? state.dynasty(last.slot).humanPlayer : null;
+    final remaining = [
+      for (final seat in match.players)
+        if (!_hasExited(match, seat.playerId)) seat,
+    ];
+    final survivors = [
+      for (final seat in remaining)
+        if (_controlledSlots(state, seat.turnOrder, seat.slot).isNotEmpty)
+          seat,
+    ]..sort((a, b) {
+        if (a.turnOrder == winnerOrder) return -1;
+        if (b.turnOrder == winnerOrder) return 1;
+        return _tilesOf(state, b.turnOrder)
+            .compareTo(_tilesOf(state, a.turnOrder));
+      });
+    final ranking = <ChampionshipStanding>[
+      for (final seat in survivors)
+        ChampionshipStanding(
+          playerId: seat.playerId,
+          name: (await _store.player(seat.playerId))?.displayName ??
+              seat.founderName,
+          slot: seat.slot,
+          reason: seat.turnOrder == winnerOrder
+              ? StandingReason.winner
+              : StandingReason.survived,
+          tiles: _tilesOf(state, seat.turnOrder),
+        ),
+    ];
+    // Defensive: a seat without land that somehow was never recorded as an
+    // exit still gets a placing (behind the survivors, before the exits).
+    final unrecorded = [
+      for (final seat in remaining)
+        if (!survivors.contains(seat)) seat,
+    ];
+    final step = _nextExitStep(match);
+    for (final seat in unrecorded) {
+      await _addExit(match, seat, state,
+          reason: StandingReason.eliminated, step: step);
+    }
+    ranking.addAll([...match.championshipExits]..sort((a, b) {
+        final byStep = b.step.compareTo(a.step);
+        return byStep != 0 ? byStep : b.tiles.compareTo(a.tiles);
+      }));
+    for (var i = 0; i < ranking.length; i++) {
+      ranking[i].rank = i + 1;
+    }
+    final year = match.settings.championship!;
+    await _locked(_championshipKey, () async {
+      final record = await _store.championship(year) ??
+          ChampionshipRecord(year: year, matchId: match.id);
+      record
+        ..ranking = ranking
+        ..finishedAt = _clock();
+      await _store.saveChampionship(record);
+    });
+  }
+
   /// Joins a waiting match (up to 16 human seats). A matchmaking room
   /// starts on its own once full — and is replaced by a fresh open room.
   Future<MatchRecord> joinMatch({
@@ -267,6 +561,13 @@ class MatchService {
       }
       if (match.players.length >= seatCapFor(match.settings)) {
         throw ApiException(400, 'api.matchFull');
+      }
+      // The championship's sign-up closes at its fixed start, even in the
+      // up-to-a-minute before the sweep actually starts it.
+      if (match.settings.championship != null &&
+          match.autoStartAt != null &&
+          !_clock().isBefore(match.autoStartAt!)) {
+        throw ApiException(400, 'api.matchNotOpen');
       }
       _seat(match, playerId, setup);
       final template = templateFor(match.settings);
@@ -313,8 +614,9 @@ class MatchService {
         throw ApiException(400, 'api.matchAlreadyStarted');
       }
       // A matchmaking room has no host: it starts when it is full or when
-      // its fallback deadline passes, never by hand.
-      if (templateFor(match.settings) != null) {
+      // its fallback deadline passes, never by hand — the championship on
+      // its fixed date.
+      if (isServerHosted(match.settings)) {
         throw ApiException(400, 'api.matchStartsAutomatically');
       }
       if (match.players.isEmpty || match.players.first.playerId != playerId) {
@@ -349,17 +651,19 @@ class MatchService {
     }
 
     final template = templateFor(match.settings);
-    if (match.status == MatchStatus.waiting && template != null) {
-      // A matchmaking room belongs to the server, not to its first joiner:
-      // leaving only frees the seat, and even an emptied room stays open
-      // for the next player instead of being deleted.
+    if (match.status == MatchStatus.waiting &&
+        isServerHosted(match.settings)) {
+      // A matchmaking room (or the championship) belongs to the server, not
+      // to its first joiner: leaving only frees the seat, and even an
+      // emptied room stays open for the next player instead of being
+      // deleted.
       match.players.remove(seat);
       for (var i = 0; i < match.players.length; i++) {
         match.players[i].turnOrder = i;
       }
       // Back below the threshold that armed the fallback start — disarm it,
       // or the room would start understaffed at the old deadline.
-      if (match.players.length < template.fallbackSeats) {
+      if (template != null && match.players.length < template.fallbackSeats) {
         match.autoStartAt = null;
       }
       match.updatedAt = _clock();
@@ -450,6 +754,16 @@ class MatchService {
     required String eventType,
   }) async {
     var state = _load(match);
+    // A championship placing is decided by who stays in longest — leaving
+    // or being kicked ends this seat's run now, before the AI takes over.
+    if (match.settings.championship != null &&
+        !_hasExited(match, seat.playerId)) {
+      await _addExit(match, seat, state,
+          reason: eventType == 'playerKicked'
+              ? StandingReason.kicked
+              : StandingReason.left,
+          step: _nextExitStep(match));
+    }
     final ignored = <GameEvent>[];
     // Answer the seat's open decisions with their defaults while the
     // dynasty still counts as human (mirrors the timeout sweep).
@@ -626,6 +940,9 @@ class MatchService {
   Map<String, dynamic> _clientSettings(MatchSettings settings) {
     final json = settings.toJson(includeSeed: false);
     if (templateFor(settings) == null) json.remove('template');
+    // The championship renders like a matchmaking room on the client (no
+    // start button, seat bar, start line) — under its own room key.
+    if (settings.championship != null) json['template'] = 'championship';
     return json;
   }
 
@@ -664,12 +981,13 @@ class MatchService {
       // that outlive the start, i.e. kicking a permanently idle seat.
       'creator_id': match.players.isEmpty ||
               (match.status == MatchStatus.waiting &&
-                  templateFor(match.settings) != null)
+                  isServerHosted(match.settings))
           ? null
           : match.players.first.playerId,
       // Matchmaking room: how many seats start it, and when it starts even
-      // if it never fills (null = not scheduled yet).
-      'seats': templateFor(match.settings)?.seats,
+      // if it never fills (null = not scheduled yet). The championship:
+      // its 16 seats and its fixed start.
+      'seats': roomSeatsFor(match.settings),
       'auto_start_at': match.autoStartAt?.toIso8601String(),
       'players': [
         for (final p in match.players)
@@ -771,14 +1089,13 @@ class MatchService {
         // only frees the seat, so the row must not offer "delete".
         'is_creator': m.players.isNotEmpty &&
             m.players.first.playerId == playerId &&
-            !(m.status == MatchStatus.waiting &&
-                templateFor(m.settings) != null),
+            !(m.status == MatchStatus.waiting && isServerHosted(m.settings)),
         // Matchmaking room: type, start target and scheduled fallback start.
         // Via [templateFor], not the raw stored key: a template removed in
         // a later build degrades to an ordinary match server-side, and the
         // client must render it as one (delete/leave labels, no seat bar).
-        'template': templateFor(m.settings)?.key,
-        'seats': templateFor(m.settings)?.seats,
+        'template': roomKeyFor(m.settings),
+        'seats': roomSeatsFor(m.settings),
         'auto_start_at': m.autoStartAt?.toIso8601String(),
         'turn_deadline': m.turnDeadline?.toIso8601String(),
         'your_turn': awaited == playerId,
@@ -1256,6 +1573,9 @@ class MatchService {
         final age = now.difference(match.updatedAt);
         switch (match.status) {
           case MatchStatus.waiting:
+            // The championship waits out its whole sign-up window, joins
+            // or not — its start is [sweepChampionship]'s business.
+            if (match.settings.championship != null) return false;
             if (age < waitingRetention) return false;
             // Matchmaking rooms take this path too, and should: a room
             // nobody joined for a week is stuck below its start threshold
@@ -1594,6 +1914,9 @@ class MatchService {
 
     match.stateJson = state.toJson();
     match.updatedAt = _clock();
+    if (match.settings.championship != null && previous != null) {
+      await _noteChampionshipEliminations(match, previous, state);
+    }
 
     if (_gameOver(state)) {
       match.status = MatchStatus.finished;
@@ -1604,6 +1927,9 @@ class MatchService {
         final winner =
             humanIndex == null ? null : match.playerByTurnOrder(humanIndex);
         if (winner != null) match.winnerPlayerId = winner.playerId;
+      }
+      if (match.settings.championship != null) {
+        await _finishChampionship(match, state);
       }
       return;
     }

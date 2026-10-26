@@ -536,7 +536,12 @@ class _OnlineMatchScreenState extends State<OnlineMatchScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              tr('online.roomWaiting', {'n': roomSeats}),
+              // The championship starts on its date, not at a seat count.
+              template == 'championship' && view['auto_start_at'] != null
+                  ? tr('championship.roomWaiting', {
+                      'time': formatTimestamp(view['auto_start_at'] as String),
+                    })
+                  : tr('online.roomWaiting', {'n': roomSeats}),
               textAlign: TextAlign.center,
             ),
           )
