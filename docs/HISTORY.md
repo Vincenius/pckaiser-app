@@ -31,6 +31,14 @@ topic, and an auto-updated app runs no code until opened — so players on
 double pushes the client now reports its build on launch
 (`players.app_version`) and the one-off skips 0.3.0+.
 
+Review fixes the same day: the public hall of fame (`GET
+/championship/results`) no longer sends player ids — they are the
+players' credentials; the requester's own lines are marked `you` instead
+(optional `player_id` query). The survivor sort used an inconsistent
+comparator (compare(winner, winner) = −1). And if the last human leaves a
+championship whose game does not end on its own, it is ranked before the
+match is deleted, so no ranking can be lost.
+
 ## 2026-10-04 — Autopilot side no longer starts the war at once (user report)
 
 Online, the "exactly one live side → start at once" rule fired whenever a

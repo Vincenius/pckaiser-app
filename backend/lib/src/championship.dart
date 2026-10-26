@@ -134,10 +134,12 @@ class ChampionshipStanding {
         'tiles': tiles,
       };
 
-  /// What the client sees in the hall of fame.
-  Map<String, dynamic> toClientJson() => {
+  /// What the client sees in the hall of fame. Never the player id — it is
+  /// the player's credential and the hall of fame is public; [viewerId]
+  /// only marks the viewer's own line.
+  Map<String, dynamic> toClientJson({String? viewerId}) => {
         'rank': rank,
-        'player_id': playerId,
+        'you': viewerId != null && viewerId == playerId,
         'name': name,
         'slot': slot,
         'reason': reason,

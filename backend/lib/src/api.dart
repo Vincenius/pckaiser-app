@@ -94,8 +94,11 @@ class Api {
           });
 
   /// Hall of fame: every finished championship with its full ranking.
-  Future<Response> _championshipResults(Request request) =>
-      _guard(request, () => _service.championshipResults());
+  /// `player_id` optional — marks the requester's own lines (`you`).
+  Future<Response> _championshipResults(Request request) => _guard(
+      request,
+      () => _service.championshipResults(
+          playerId: request.url.queryParameters['player_id']));
 
   Future<Response> _publicMatches(Request request) =>
       _guard(request, ()=> _service.publicMatches());

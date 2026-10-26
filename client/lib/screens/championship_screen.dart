@@ -20,7 +20,6 @@ class ChampionshipScreen extends StatefulWidget {
 }
 
 class _ChampionshipScreenState extends State<ChampionshipScreen> {
-  OnlineService? _online;
   List<Map<String, dynamic>>? _results;
   ApiError? _error;
   bool _loading = true;
@@ -39,7 +38,9 @@ class _ChampionshipScreenState extends State<ChampionshipScreen> {
     if (online.serverUrl != null) {
       try {
         results = [
-          for (final r in await online.api.championshipResults())
+          for (final r in await online.api.championshipResults(
+            playerId: online.playerId,
+          ))
             (r as Map).cast<String, dynamic>(),
         ];
       } on ApiError catch (e) {
@@ -48,7 +49,6 @@ class _ChampionshipScreenState extends State<ChampionshipScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _online = online;
       _results = results;
       _error = error;
       _loading = false;
@@ -150,7 +150,7 @@ class _ChampionshipScreenState extends State<ChampionshipScreen> {
 
   Widget _standingTile(ThemeData theme, Map<String, dynamic> s) {
     final rank = s['rank'] as int? ?? 0;
-    final isYou = s['player_id'] == _online?.playerId;
+    final isYou = s['you'] == true;
     final year = s['year'];
     final status = switch (s['reason']) {
       'winner' => tr('championship.reasonWinner'),

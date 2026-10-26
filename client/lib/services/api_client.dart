@@ -188,11 +188,12 @@ class ApiClient {
           ?.cast<String, dynamic>();
 
   /// Hall of fame: every finished championship with its full ranking,
-  /// newest first.
-  Future<List<dynamic>> championshipResults() async =>
+  /// newest first. With [playerId] the player's own lines carry `you`.
+  Future<List<dynamic>> championshipResults({String? playerId}) async =>
       (await _request(
             'GET',
-            '/api/v1/championship/results',
+            '/api/v1/championship/results'
+                '${playerId == null ? '' : '?player_id=$playerId'}',
             expectList: true,
           ))['list']
           as List<dynamic>;

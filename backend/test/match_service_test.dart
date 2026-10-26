@@ -2665,11 +2665,15 @@ void main() {
           reason: 'still running');
       await service.leaveMatch(matchId: id, playerId: anna.id);
 
-      final results = await service.championshipResults();
+      final results = await service.championshipResults(playerId: clara.id);
       expect(results.single['year'], 2026);
       final ranking = (results.single['ranking'] as List).cast<Map>();
-      expect([for (final r in ranking) r['player_id']],
-          [anna.id, clara.id, berta.id]);
+      expect([for (final r in ranking) r['name']], ['Anna', 'Clara', 'Berta']);
+      // The hall of fame is public: player ids are credentials and never
+      // leave the server — only the viewer's own line is marked.
+      expect([for (final r in ranking) r.containsKey('player_id')],
+          everyElement(false));
+      expect([for (final r in ranking) r['you']], [false, true, false]);
       expect([for (final r in ranking) r['rank']], [1, 2, 3]);
       expect(ranking.first['name'], 'Anna');
       expect(ranking.first['slot'], 1);

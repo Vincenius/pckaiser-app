@@ -79,7 +79,7 @@ championships (year INT PK, match_id, announced_at, old_build_notice_at, finishe
 | POST | `/matches/:id/turn` | Submit turn action or pending decision (resets the seat's `idle_turns`) |
 | GET | `/players/:id/matches` | List player's matches (incl. `is_creator`) |
 | GET | `/championship?player_id=` | `{championship}`: the Weltmeisterschaft open for sign-up (year, `match_id`, `starts_at`, joined/16, `joined_by_me`), `null` outside the sign-up window. `player_id` optional |
-| GET | `/championship/results` | Hall of fame: every finished championship with its full ranking, newest first |
+| GET | `/championship/results?player_id=` | Hall of fame: every finished championship with its full ranking, newest first. Never exposes player ids (they are credentials); `player_id` optional — marks the requester's own lines `you: true` |
 
 Match ids are 5-letter uppercase room codes (typed by hand; lowercase
 accepted on lookup). There is no fixed player count: players join via the

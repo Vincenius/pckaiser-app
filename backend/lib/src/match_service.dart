@@ -411,8 +411,9 @@ class MatchService {
   }
 
   /// Every finished championship with its full ranking, newest first — the
-  /// client's hall of fame.
-  Future<List<Map<String, dynamic>>> championshipResults() async {
+  /// client's hall of fame. [playerId] (optional) marks the viewer's lines.
+  Future<List<Map<String, dynamic>>> championshipResults(
+      {String? playerId}) async {
     final finished = [
       for (final r in await _store.allChampionships())
         if (r.ranking != null) r,
@@ -422,7 +423,9 @@ class MatchService {
         {
           'year': r.year,
           'finished_at': r.finishedAt?.toIso8601String(),
-          'ranking': [for (final s in r.ranking!) s.toClientJson()],
+          'ranking': [
+            for (final s in r.ranking!) s.toClientJson(viewerId: playerId),
+          ],
         },
     ];
   }
@@ -484,23 +487,26 @@ class MatchService {
   /// out to the first — and stores the ranking for good (the match itself
   /// is deleted by the retention sweep a month later).
   Future<void> _finishChampionship(MatchRecord match, GameState state) async {
-    final last = state.events.last;
-    final winnerOrder =
-        last.type == 'gameWon' ? state.dynasty(last.slot).humanPlayer : null;
+    final last = state.events.isEmpty ? null : state.events.last;
+    final winnerOrder = last?.type == 'gameWon'
+        ? state.dynasty(last!.slot).humanPlayer
+        : null;
     final remaining = [
       for (final seat in match.players)
         if (!_hasExited(match, seat.playerId)) seat,
     ];
+    final tiles = {
+      for (final seat in remaining) seat: _tilesOf(state, seat.turnOrder),
+    };
+    // The winner first, the rest by land held. A consistent comparator
+    // (compare(a, a) == 0), so the sort never misplaces the winner.
+    int key(MatchPlayer seat) =>
+        seat.turnOrder == winnerOrder ? 1 << 30 : tiles[seat]!;
     final survivors = [
       for (final seat in remaining)
         if (_controlledSlots(state, seat.turnOrder, seat.slot).isNotEmpty)
           seat,
-    ]..sort((a, b) {
-        if (a.turnOrder == winnerOrder) return -1;
-        if (b.turnOrder == winnerOrder) return 1;
-        return _tilesOf(state, b.turnOrder)
-            .compareTo(_tilesOf(state, a.turnOrder));
-      });
+    ]..sort((a, b) => key(b).compareTo(key(a)));
     final ranking = <ChampionshipStanding>[
       for (final seat in survivors)
         ChampionshipStanding(
@@ -511,7 +517,7 @@ class MatchService {
           reason: seat.turnOrder == winnerOrder
               ? StandingReason.winner
               : StandingReason.survived,
-          tiles: _tilesOf(state, seat.turnOrder),
+          tiles: tiles[seat]!,
         ),
     ];
     // Defensive: a seat without land that somehow was never recorded as an
@@ -694,6 +700,14 @@ class MatchService {
     }
 
     if (match.players.isEmpty) {
+      // The last human left a championship the game did not end on its
+      // own: rank it now — the match is deleted, the ranking must stay.
+      if (match.settings.championship != null &&
+          match.status == MatchStatus.active &&
+          match.stateJson != null) {
+        match.status = MatchStatus.finished;
+        await _finishChampionship(match, _load(match));
+      }
       await _store.deleteMatch(match.id);
       return true;
     }
