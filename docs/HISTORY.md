@@ -53,6 +53,16 @@ sweep kicks a seat automatically as soon as it has missed 3 turns in a row
 (the same `idle_turns` counter the manual kick used). The waiting-room text
 tells players about the rule.
 
+Third review pass (client): the Options switch for the championship now
+counts as answering the one-time question (before, a "yes" given there was
+ignored by the topic sync while the prompt was unanswered) and asks for the
+system notification permission when switched on (a "no" in the question
+never asked for it). The launch sync uploads the notification choices and
+build even when the permission is denied, so such a player is no longer
+treated as an old build by the one-off notice. Signing up from the home
+banner with a brand-new profile refreshes the whole online section (push
+wiring, match list), not just the stale, unconfigured match list.
+
 ## 2026-10-04 — Autopilot side no longer starts the war at once (user report)
 
 Online, the "exactly one live side → start at once" rule fired whenever a

@@ -4,6 +4,7 @@ import '../l10n/strings.dart';
 import '../services/championship_topic.dart';
 import '../services/online_service.dart';
 import '../services/push_kinds.dart';
+import '../services/push_service.dart';
 import '../services/settings_service.dart';
 
 /// Options sub-menu (reached from the main menu): the UI language and the
@@ -37,11 +38,24 @@ class _OptionsScreenState extends State<OptionsScreen> {
   }
 
   Future<void> _setPush(String kind, bool enabled) async {
-    await SettingsService.instance?.setPushEnabled(kind, enabled);
+    if (kind == pushChampionship) {
+      // Flipping the switch is an explicit answer to the one-time question
+      // too — without it the topic sync would ignore a "yes" given here.
+      await SettingsService.instance?.answerChampionshipPrompt(
+        enabled: enabled,
+      );
+    } else {
+      await SettingsService.instance?.setPushEnabled(kind, enabled);
+    }
     if (mounted) setState(() {});
-    // The championship announcement is a topic broadcast — the switch acts
-    // on the device's subscription (no online profile needed).
-    if (kind == pushChampionship) await syncChampionshipTopic();
+    if (kind == pushChampionship) {
+      // A "no" to the question never asked for the system permission —
+      // ask now, or the subscribed topic could never show anything.
+      if (enabled) await PushService.instance?.requestPermission();
+      // The championship announcement is a topic broadcast — the switch
+      // acts on the device's subscription (no online profile needed).
+      await syncChampionshipTopic();
+    }
     final online = _online;
     if (online == null || !online.isConfigured) return;
     // The server is the one that decides what to send, so a failed upload

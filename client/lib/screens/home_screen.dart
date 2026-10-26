@@ -266,7 +266,9 @@ class _HomeScreenState extends State<HomeScreen> {
             // The yearly Weltmeisterschaft — only while its sign-up is open.
             ChampionshipBanner(
               key: _championshipBanner,
-              onJoined: _reloadOnlineMatches,
+              // Not just _reloadOnlineMatches: signing up may have created
+              // the online profile, which [_online] does not know yet.
+              onJoined: _refreshOnline,
             ),
             const SizedBox(height: 8),
             // The two ways to PLAY first (local, online), learning last —

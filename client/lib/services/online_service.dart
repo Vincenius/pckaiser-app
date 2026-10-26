@@ -90,7 +90,14 @@ class OnlineService {
   Future<void> syncPushToken() async {
     final push = PushService.instance;
     if (push == null || !isConfigured) return;
-    if (!await push.requestPermission()) return;
+    if (!await push.requestPermission()) {
+      // No token without permission — but the choices and the build still
+      // go up: the championship one-off notice to old builds keys off the
+      // reported build (`app_version`), and a permission granted later in
+      // the system settings must not start with stale opt-outs.
+      await syncPushPrefs();
+      return;
+    }
 
     Future<void> upload(String token) async {
       try {
